@@ -1,0 +1,1690 @@
+{
+  "revision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
+  "binaryVersion": "codex-cli 0.0.0",
+  "requests": [
+    {
+      "method": "initialize",
+      "params": "InitializeParams",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "server/diagnostics",
+      "params": "ServerDiagnosticsParams",
+      "response": "ServerDiagnosticsResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/start",
+      "params": "ThreadStartParams",
+      "response": "ThreadStartResponse",
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "thread/resume",
+      "params": "ThreadResumeParams",
+      "response": "ThreadResumeResponse",
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "thread/fork",
+      "params": "ThreadForkParams",
+      "response": "ThreadForkResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/archive",
+      "params": "ThreadArchiveParams",
+      "response": "ThreadArchiveResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/delete",
+      "params": "ThreadDeleteParams",
+      "response": "ThreadDeleteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/unsubscribe",
+      "params": "ThreadUnsubscribeParams",
+      "response": "ThreadUnsubscribeResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/increment_elicitation",
+      "params": "ThreadIncrementElicitationParams",
+      "response": "ThreadIncrementElicitationResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/decrement_elicitation",
+      "params": "ThreadDecrementElicitationParams",
+      "response": "ThreadDecrementElicitationResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/name/set",
+      "params": "ThreadSetNameParams",
+      "response": "ThreadSetNameResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/goal/set",
+      "params": "ThreadGoalSetParams",
+      "response": "ThreadGoalSetResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/goal/get",
+      "params": "ThreadGoalGetParams",
+      "response": "ThreadGoalGetResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/goal/clear",
+      "params": "ThreadGoalClearParams",
+      "response": "ThreadGoalClearResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/queue/add",
+      "params": "ThreadQueueAddParams",
+      "response": "ThreadQueueAddResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/queue/list",
+      "params": "ThreadQueueListParams",
+      "response": "ThreadQueueListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/queue/update",
+      "params": "ThreadQueueUpdateParams",
+      "response": "ThreadQueueUpdateResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/queue/delete",
+      "params": "ThreadQueueDeleteParams",
+      "response": "ThreadQueueDeleteResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/queue/reorder",
+      "params": "ThreadQueueReorderParams",
+      "response": "ThreadQueueReorderResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/queue/start",
+      "params": "ThreadQueueStartParams",
+      "response": "ThreadQueueStartResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/metadata/update",
+      "params": "ThreadMetadataUpdateParams",
+      "response": "ThreadMetadataUpdateResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/section/move",
+      "params": "ThreadSectionMoveParams",
+      "response": "ThreadSectionMoveResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/settings/update",
+      "params": "ThreadSettingsUpdateParams",
+      "response": "ThreadSettingsUpdateResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/memoryMode/set",
+      "params": "ThreadMemoryModeSetParams",
+      "response": "ThreadMemoryModeSetResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "memory/reset",
+      "params": "undefined",
+      "response": "MemoryResetResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/unarchive",
+      "params": "ThreadUnarchiveParams",
+      "response": "ThreadUnarchiveResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/compact/start",
+      "params": "ThreadCompactStartParams",
+      "response": "ThreadCompactStartResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/shellCommand",
+      "params": "ThreadShellCommandParams",
+      "response": "ThreadShellCommandResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/approveGuardianDeniedAction",
+      "params": "ThreadApproveGuardianDeniedActionParams",
+      "response": "ThreadApproveGuardianDeniedActionResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/backgroundTerminals/clean",
+      "params": "ThreadBackgroundTerminalsCleanParams",
+      "response": "ThreadBackgroundTerminalsCleanResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/backgroundTerminals/list",
+      "params": "ThreadBackgroundTerminalsListParams",
+      "response": "ThreadBackgroundTerminalsListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/backgroundTerminals/terminate",
+      "params": "ThreadBackgroundTerminalsTerminateParams",
+      "response": "ThreadBackgroundTerminalsTerminateResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/rollback",
+      "params": "ThreadRollbackParams",
+      "response": "ThreadRollbackResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/revert",
+      "params": "ThreadRevertParams",
+      "response": "ThreadRevertResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/list",
+      "params": "ThreadListParams",
+      "response": "ThreadListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "project/list",
+      "params": "ProjectListParams",
+      "response": "ProjectListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "project/read",
+      "params": "ProjectReadParams",
+      "response": "ProjectReadResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "project/create",
+      "params": "ProjectCreateParams",
+      "response": "ProjectCreateResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "project/import",
+      "params": "ProjectImportParams",
+      "response": "ProjectImportResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "project/update",
+      "params": "ProjectUpdateParams",
+      "response": "ProjectUpdateResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "project/move",
+      "params": "ProjectMoveParams",
+      "response": "ProjectMoveResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "project/delete",
+      "params": "ProjectDeleteParams",
+      "response": "ProjectDeleteResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "threadSection/list",
+      "params": "ThreadSectionListParams",
+      "response": "ThreadSectionListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "threadSection/create",
+      "params": "ThreadSectionCreateParams",
+      "response": "ThreadSectionCreateResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "threadSection/update",
+      "params": "ThreadSectionUpdateParams",
+      "response": "ThreadSectionUpdateResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "threadSection/delete",
+      "params": "ThreadSectionDeleteParams",
+      "response": "ThreadSectionDeleteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/search",
+      "params": "ThreadSearchParams",
+      "response": "ThreadSearchResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/searchOccurrences",
+      "params": "ThreadSearchOccurrencesParams",
+      "response": "ThreadSearchOccurrencesResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/loaded/list",
+      "params": "ThreadLoadedListParams",
+      "response": "ThreadLoadedListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/read",
+      "params": "ThreadReadParams",
+      "response": "ThreadReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/turns/list",
+      "params": "ThreadTurnsListParams",
+      "response": "ThreadTurnsListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/items/list",
+      "params": "ThreadItemsListParams",
+      "response": "ThreadItemsListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/inject_items",
+      "params": "ThreadInjectItemsParams",
+      "response": "ThreadInjectItemsResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "skills/list",
+      "params": "SkillsListParams",
+      "response": "SkillsListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "skills/extraRoots/set",
+      "params": "SkillsExtraRootsSetParams",
+      "response": "SkillsExtraRootsSetResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "hooks/list",
+      "params": "HooksListParams",
+      "response": "HooksListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "marketplace/add",
+      "params": "MarketplaceAddParams",
+      "response": "MarketplaceAddResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "marketplace/remove",
+      "params": "MarketplaceRemoveParams",
+      "response": "MarketplaceRemoveResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "marketplace/upgrade",
+      "params": "MarketplaceUpgradeParams",
+      "response": "MarketplaceUpgradeResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/list",
+      "params": "PluginListParams",
+      "response": "PluginListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/search",
+      "params": "PluginSearchParams",
+      "response": "PluginSearchResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "plugin/installed",
+      "params": "PluginInstalledParams",
+      "response": "PluginInstalledResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/read",
+      "params": "PluginReadParams",
+      "response": "PluginReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/skill/read",
+      "params": "PluginSkillReadParams",
+      "response": "PluginSkillReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/share/save",
+      "params": "PluginShareSaveParams",
+      "response": "PluginShareSaveResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/share/updateTargets",
+      "params": "PluginShareUpdateTargetsParams",
+      "response": "PluginShareUpdateTargetsResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/share/list",
+      "params": "PluginShareListParams",
+      "response": "PluginShareListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/share/checkout",
+      "params": "PluginShareCheckoutParams",
+      "response": "PluginShareCheckoutResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/share/delete",
+      "params": "PluginShareDeleteParams",
+      "response": "PluginShareDeleteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "app/read",
+      "params": "AppsReadParams",
+      "response": "AppsReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "app/list",
+      "params": "AppsListParams",
+      "response": "AppsListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "app/installed",
+      "params": "AppsInstalledParams",
+      "response": "AppsInstalledResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/readFile",
+      "params": "FsReadFileParams",
+      "response": "FsReadFileResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/writeFile",
+      "params": "FsWriteFileParams",
+      "response": "FsWriteFileResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/createDirectory",
+      "params": "FsCreateDirectoryParams",
+      "response": "FsCreateDirectoryResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/getMetadata",
+      "params": "FsGetMetadataParams",
+      "response": "FsGetMetadataResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/readDirectory",
+      "params": "FsReadDirectoryParams",
+      "response": "FsReadDirectoryResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/remove",
+      "params": "FsRemoveParams",
+      "response": "FsRemoveResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/copy",
+      "params": "FsCopyParams",
+      "response": "FsCopyResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/watch",
+      "params": "FsWatchParams",
+      "response": "FsWatchResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/unwatch",
+      "params": "FsUnwatchParams",
+      "response": "FsUnwatchResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "skills/config/write",
+      "params": "SkillsConfigWriteParams",
+      "response": "SkillsConfigWriteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/install",
+      "params": "PluginInstallParams",
+      "response": "PluginInstallResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/uninstall",
+      "params": "PluginUninstallParams",
+      "response": "PluginUninstallResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "turn/start",
+      "params": "TurnStartParams",
+      "response": "TurnStartResponse",
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "turn/steer",
+      "params": "TurnSteerParams",
+      "response": "TurnSteerResponse",
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "turn/interrupt",
+      "params": "TurnInterruptParams",
+      "response": "TurnInterruptResponse",
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "thread/realtime/start",
+      "params": "ThreadRealtimeStartParams",
+      "response": "ThreadRealtimeStartResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/appendAudio",
+      "params": "ThreadRealtimeAppendAudioParams",
+      "response": "ThreadRealtimeAppendAudioResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/appendText",
+      "params": "ThreadRealtimeAppendTextParams",
+      "response": "ThreadRealtimeAppendTextResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/appendSpeech",
+      "params": "ThreadRealtimeAppendSpeechParams",
+      "response": "ThreadRealtimeAppendSpeechResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/stop",
+      "params": "ThreadRealtimeStopParams",
+      "response": "ThreadRealtimeStopResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/listVoices",
+      "params": "ThreadRealtimeListVoicesParams",
+      "response": "ThreadRealtimeListVoicesResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "review/start",
+      "params": "ReviewStartParams",
+      "response": "ReviewStartResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "model/list",
+      "params": "ModelListParams",
+      "response": "ModelListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "modelProvider/capabilities/read",
+      "params": "ModelProviderCapabilitiesReadParams",
+      "response": "ModelProviderCapabilitiesReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "experimentalFeature/list",
+      "params": "ExperimentalFeatureListParams",
+      "response": "ExperimentalFeatureListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "permissionProfile/list",
+      "params": "PermissionProfileListParams",
+      "response": "PermissionProfileListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "experimentalFeature/enablement/set",
+      "params": "ExperimentalFeatureEnablementSetParams",
+      "response": "ExperimentalFeatureEnablementSetResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/enable",
+      "params": "RemoteControlEnableParams",
+      "response": "RemoteControlEnableResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/disable",
+      "params": "RemoteControlDisableParams",
+      "response": "RemoteControlDisableResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/status/read",
+      "params": "undefined",
+      "response": "RemoteControlStatusReadResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/pairing/start",
+      "params": "RemoteControlPairingStartParams",
+      "response": "RemoteControlPairingStartResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/pairing/status",
+      "params": "RemoteControlPairingStatusParams",
+      "response": "RemoteControlPairingStatusResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/client/list",
+      "params": "RemoteControlClientsListParams",
+      "response": "RemoteControlClientsListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/client/revoke",
+      "params": "RemoteControlClientsRevokeParams",
+      "response": "RemoteControlClientsRevokeResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "collaborationMode/list",
+      "params": "CollaborationModeListParams",
+      "response": "CollaborationModeListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "mock/experimentalMethod",
+      "params": "MockExperimentalMethodParams",
+      "response": "MockExperimentalMethodResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "environment/add",
+      "params": "EnvironmentAddParams",
+      "response": "EnvironmentAddResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "environment/info",
+      "params": "EnvironmentInfoParams",
+      "response": "EnvironmentInfoResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "environment/status",
+      "params": "EnvironmentStatusParams",
+      "response": "EnvironmentStatusResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "mcpServer/oauth/login",
+      "params": "McpServerOauthLoginParams",
+      "response": "McpServerOauthLoginResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "config/mcpServer/reload",
+      "params": "undefined",
+      "response": "McpServerRefreshResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "mcpServerStatus/list",
+      "params": "ListMcpServerStatusParams",
+      "response": "ListMcpServerStatusResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "mcpServer/resource/read",
+      "params": "McpResourceReadParams",
+      "response": "McpResourceReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "mcpServer/tool/call",
+      "params": "McpServerToolCallParams",
+      "response": "McpServerToolCallResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "windowsSandbox/setupStart",
+      "params": "WindowsSandboxSetupStartParams",
+      "response": "WindowsSandboxSetupStartResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "windowsSandbox/readiness",
+      "params": "undefined",
+      "response": "WindowsSandboxReadinessResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/login/start",
+      "params": "LoginAccountParams",
+      "response": "LoginAccountResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/bedrock/discover",
+      "params": "BedrockDiscoverParams",
+      "response": "BedrockDiscoverResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "account/bedrock/setup",
+      "params": "BedrockSetupParams",
+      "response": "BedrockSetupResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "account/login/cancel",
+      "params": "CancelLoginAccountParams",
+      "response": "CancelLoginAccountResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/logout",
+      "params": "undefined",
+      "response": "LogoutAccountResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/rateLimits/read",
+      "params": "undefined",
+      "response": "GetAccountRateLimitsResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/rateLimitResetCredit/consume",
+      "params": "ConsumeAccountRateLimitResetCreditParams",
+      "response": "ConsumeAccountRateLimitResetCreditResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/workspaceMessages/read",
+      "params": "undefined",
+      "response": "GetWorkspaceMessagesResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/sendAddCreditsNudgeEmail",
+      "params": "SendAddCreditsNudgeEmailParams",
+      "response": "SendAddCreditsNudgeEmailResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "feedback/upload",
+      "params": "FeedbackUploadParams",
+      "response": "FeedbackUploadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "command/exec",
+      "params": "CommandExecParams",
+      "response": "CommandExecResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "command/exec/write",
+      "params": "CommandExecWriteParams",
+      "response": "CommandExecWriteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "command/exec/terminate",
+      "params": "CommandExecTerminateParams",
+      "response": "CommandExecTerminateResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "command/exec/resize",
+      "params": "CommandExecResizeParams",
+      "response": "CommandExecResizeResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "process/spawn",
+      "params": "ProcessSpawnParams",
+      "response": "ProcessSpawnResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "process/writeStdin",
+      "params": "ProcessWriteStdinParams",
+      "response": "ProcessWriteStdinResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "process/kill",
+      "params": "ProcessKillParams",
+      "response": "ProcessKillResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "process/resizePty",
+      "params": "ProcessResizePtyParams",
+      "response": "ProcessResizePtyResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "config/read",
+      "params": "ConfigReadParams",
+      "response": "ConfigReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "externalAgentConfig/detect",
+      "params": "ExternalAgentConfigDetectParams",
+      "response": "ExternalAgentConfigDetectResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "externalAgentConfig/import",
+      "params": "ExternalAgentConfigImportParams",
+      "response": "ExternalAgentConfigImportResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "externalAgentConfig/import/recordHistory",
+      "params": "ExternalAgentConfigImportHistoryRecordParams",
+      "response": "ExternalAgentConfigImportHistoryRecordResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "externalAgentConfig/import/readHistories",
+      "params": "undefined",
+      "response": "ExternalAgentConfigImportHistoriesReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "config/value/write",
+      "params": "ConfigValueWriteParams",
+      "response": "ConfigWriteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "config/batchWrite",
+      "params": "ConfigBatchWriteParams",
+      "response": "ConfigWriteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "configRequirements/read",
+      "params": "undefined",
+      "response": "ConfigRequirementsReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/read",
+      "params": "GetAccountParams",
+      "response": "GetAccountResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "getConversationSummary",
+      "params": "GetConversationSummaryParams",
+      "response": "GetConversationSummaryResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "gitDiffToRemote",
+      "params": "GitDiffToRemoteParams",
+      "response": "GitDiffToRemoteResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "getAuthStatus",
+      "params": "GetAuthStatusParams",
+      "response": "GetAuthStatusResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fuzzyFileSearch",
+      "params": "FuzzyFileSearchParams",
+      "response": "FuzzyFileSearchResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fuzzyFileSearch/sessionStart",
+      "params": "FuzzyFileSearchSessionStartParams",
+      "response": "FuzzyFileSearchSessionStartResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "fuzzyFileSearch/sessionUpdate",
+      "params": "FuzzyFileSearchSessionUpdateParams",
+      "response": "FuzzyFileSearchSessionUpdateResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "fuzzyFileSearch/sessionStop",
+      "params": "FuzzyFileSearchSessionStopParams",
+      "response": "FuzzyFileSearchSessionStopResponse",
+      "experimental": true,
+      "basic": false
+    }
+  ],
+  "serverRequests": [
+    {
+      "method": "item/commandExecution/requestApproval",
+      "params": "CommandExecutionRequestApprovalParams",
+      "response": "CommandExecutionRequestApprovalResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/fileChange/requestApproval",
+      "params": "FileChangeRequestApprovalParams",
+      "response": "FileChangeRequestApprovalResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/tool/requestUserInput",
+      "params": "ToolRequestUserInputParams",
+      "response": "ToolRequestUserInputResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "mcpServer/elicitation/request",
+      "params": "McpServerElicitationRequestParams",
+      "response": "McpServerElicitationRequestResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/permissions/requestApproval",
+      "params": "PermissionsRequestApprovalParams",
+      "response": "PermissionsRequestApprovalResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/tool/call",
+      "params": "DynamicToolCallParams",
+      "response": "DynamicToolCallResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/chatgptAuthTokens/refresh",
+      "params": "ChatgptAuthTokensRefreshParams",
+      "response": "ChatgptAuthTokensRefreshResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "attestation/generate",
+      "params": "AttestationGenerateParams",
+      "response": "AttestationGenerateResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "currentTime/read",
+      "params": "CurrentTimeReadParams",
+      "response": "CurrentTimeReadResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "applyPatchApproval",
+      "params": "ApplyPatchApprovalParams",
+      "response": "ApplyPatchApprovalResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "execCommandApproval",
+      "params": "ExecCommandApprovalParams",
+      "response": "ExecCommandApprovalResponse",
+      "experimental": false,
+      "basic": false
+    }
+  ],
+  "notifications": [
+    {
+      "method": "error",
+      "params": "ErrorNotification",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "thread/started",
+      "params": "ThreadStartedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "thread/status/changed",
+      "params": "ThreadStatusChangedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/archived",
+      "params": "ThreadArchivedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/deleted",
+      "params": "ThreadDeletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/unarchived",
+      "params": "ThreadUnarchivedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/closed",
+      "params": "ThreadClosedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/reverted",
+      "params": "ThreadRevertedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "skills/changed",
+      "params": "SkillsChangedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/name/updated",
+      "params": "ThreadNameUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/goal/updated",
+      "params": "ThreadGoalUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/goal/cleared",
+      "params": "ThreadGoalClearedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/queue/changed",
+      "params": "ThreadQueueChangedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "project/changed",
+      "params": "ProjectChangedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/project/updated",
+      "params": "ThreadProjectUpdatedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/environment/connected",
+      "params": "EnvironmentConnectionNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/environment/disconnected",
+      "params": "EnvironmentConnectionNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/settings/updated",
+      "params": "ThreadSettingsUpdatedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/tokenUsage/updated",
+      "params": "ThreadTokenUsageUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "turn/started",
+      "params": "TurnStartedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "hook/started",
+      "params": "HookStartedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "turn/completed",
+      "params": "TurnCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "hook/completed",
+      "params": "HookCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "turn/diff/updated",
+      "params": "TurnDiffUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "turn/plan/updated",
+      "params": "TurnPlanUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/started",
+      "params": "ItemStartedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "item/autoApprovalReview/started",
+      "params": "ItemGuardianApprovalReviewStartedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/autoApprovalReview/completed",
+      "params": "ItemGuardianApprovalReviewCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "autoApprovalReview/strictReviewRequired",
+      "params": "StrictReviewRequiredNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "item/completed",
+      "params": "ItemCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "rawResponseItem/completed",
+      "params": "RawResponseItemCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "rawResponse/completed",
+      "params": "RawResponseCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/agentMessage/delta",
+      "params": "AgentMessageDeltaNotification",
+      "response": null,
+      "experimental": false,
+      "basic": true
+    },
+    {
+      "method": "item/plan/delta",
+      "params": "PlanDeltaNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "command/exec/outputDelta",
+      "params": "CommandExecOutputDeltaNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "process/outputDelta",
+      "params": "ProcessOutputDeltaNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "process/exited",
+      "params": "ProcessExitedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "item/commandExecution/outputDelta",
+      "params": "CommandExecutionOutputDeltaNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/commandExecution/terminalInteraction",
+      "params": "TerminalInteractionNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/fileChange/outputDelta",
+      "params": "FileChangeOutputDeltaNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/fileChange/patchUpdated",
+      "params": "FileChangePatchUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "serverRequest/resolved",
+      "params": "ServerRequestResolvedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/mcpToolCall/progress",
+      "params": "McpToolCallProgressNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "mcpServer/oauthLogin/completed",
+      "params": "McpServerOauthLoginCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "mcpServer/startupStatus/updated",
+      "params": "McpServerStatusUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/updated",
+      "params": "AccountUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/rateLimits/updated",
+      "params": "AccountRateLimitsUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "app/list/updated",
+      "params": "AppListUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "remoteControl/status/changed",
+      "params": "RemoteControlStatusChangedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "externalAgentConfig/import/progress",
+      "params": "ExternalAgentConfigImportProgressNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "externalAgentConfig/import/completed",
+      "params": "ExternalAgentConfigImportCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fs/changed",
+      "params": "FsChangedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/reasoning/summaryTextDelta",
+      "params": "ReasoningSummaryTextDeltaNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/reasoning/summaryPartAdded",
+      "params": "ReasoningSummaryPartAddedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "item/reasoning/textDelta",
+      "params": "ReasoningTextDeltaNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/compacted",
+      "params": "ContextCompactedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "model/rerouted",
+      "params": "ModelReroutedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "model/verification",
+      "params": "ModelVerificationNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "turn/moderationMetadata",
+      "params": "TurnModerationMetadataNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "model/safetyBuffering/updated",
+      "params": "ModelSafetyBufferingUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "warning",
+      "params": "WarningNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "guardianWarning",
+      "params": "GuardianWarningNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "deprecationNotice",
+      "params": "DeprecationNoticeNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "configWarning",
+      "params": "ConfigWarningNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fuzzyFileSearch/sessionUpdated",
+      "params": "FuzzyFileSearchSessionUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "fuzzyFileSearch/sessionCompleted",
+      "params": "FuzzyFileSearchSessionCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/started",
+      "params": "ThreadRealtimeStartedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/itemAdded",
+      "params": "ThreadRealtimeItemAddedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/transcript/delta",
+      "params": "ThreadRealtimeTranscriptDeltaNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/transcript/done",
+      "params": "ThreadRealtimeTranscriptDoneNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/outputAudio/delta",
+      "params": "ThreadRealtimeOutputAudioDeltaNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/sdp",
+      "params": "ThreadRealtimeSdpNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/error",
+      "params": "ThreadRealtimeErrorNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/closed",
+      "params": "ThreadRealtimeClosedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "windows/worldWritableWarning",
+      "params": "WindowsWorldWritableWarningNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "windowsSandbox/setupCompleted",
+      "params": "WindowsSandboxSetupCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/login/completed",
+      "params": "AccountLoginCompletedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    }
+  ]
+}

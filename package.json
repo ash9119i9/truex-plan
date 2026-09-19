@@ -1,0 +1,19 @@
+{
+  "name": "agent-core-platform",
+  "private": true,
+  "scripts": {
+    "protocol:gen": "node scripts/protocol.mjs",
+    "dev": "node scripts/dev.mjs",
+    "install:all": "npm --prefix agent-core ci && npm --prefix platform ci && npm --prefix frontend ci",
+    "build": "npm --prefix agent-core run build && npm --prefix platform run build && npm --prefix frontend run build",
+    "test": "npm --prefix agent-core test && npm --prefix platform test",
+    "codex:setup": "node scripts/codex.mjs --build",
+    "codex:verify": "node scripts/codex.mjs",
+    "demo": "node scripts/demo.mjs",
+    "format": "prettier --write \"{agent-core,platform}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events}.ts\"",
+    "format:check": "prettier --check \"{agent-core,platform}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events}.ts\""
+  },
+  "devDependencies": {
+    "prettier": "^3.9.8"
+  }
+}

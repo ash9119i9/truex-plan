@@ -1,0 +1,27 @@
+services:
+  mongo:
+    image: mongo:8.0
+    ports: ["127.0.0.1:27017:27017"]
+    volumes: ["mongo:/data/db"]
+  agent-core:
+    build: {context: .., dockerfile: agent-core/Dockerfile}
+    ports: ["127.0.0.1:4100:4100"]
+    volumes: ["runtime:/data"]
+    environment: {CODEX_HOME: /data/codex, AGENT_WORKSPACE: /data/workspace}
+  platform:
+    build: {context: .., dockerfile: platform/Dockerfile}
+    ports: ["127.0.0.1:4000:4000"]
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: truex
+      AGENT_CORE_URLS: http://agent-core:4100
+      AGENT_WORKSPACE: /data/workspace
+      FRONTEND_ORIGIN: http://localhost:3000
+    depends_on: [mongo, agent-core]
+  frontend:
+    build: {context: .., dockerfile: frontend/Dockerfile}
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [platform]
+volumes:
+  mongo:
+  runtime:

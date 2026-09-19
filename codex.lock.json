@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/openai/codex.git",
+  "revision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
+  "source": "vendor/codex",
+  "binary": "vendor/codex/codex-rs/target/debug/codex",
+  "build": ["cargo", "build", "--locked", "-p", "codex-cli", "--bin", "codex"]
+}

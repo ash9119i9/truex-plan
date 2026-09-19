@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.next/
+.env
+.env.local
+.runtime/
+*.log
+.DS_Store
+vendor/codex/
+*.tsbuildinfo
+a.json

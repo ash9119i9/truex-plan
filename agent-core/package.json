@@ -1,0 +1,22 @@
+{
+  "name": "agent-core",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/agent-core/src/index.js",
+    "build": "tsc",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "dotenv": "^17.2.0",
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0",
+    "tsx": "^4.20.0"
+  }
+}
