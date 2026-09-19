@@ -35,6 +35,7 @@ export interface AgentSummary {
 export interface Session {
   _id: string;
   agentId: string;
+  title?: string;
   threadId: string;
   agentCoreHost: string;
   status: "active" | "orphaned" | "dead";

@@ -280,6 +280,23 @@ export class PlatformService {
         "DUPLICATE_MESSAGE",
       );
     }
+    if (!s.title) {
+      const summary = text.trim().replace(/\s+/g, " ");
+      await this.store.sessions.updateOne(
+        {
+          _id: id,
+          $or: [{ title: { $exists: false } }, { title: "" }],
+        },
+        {
+          $set: {
+            title:
+              summary.length > 80
+                ? summary.slice(0, 79).trimEnd() + "…"
+                : summary,
+          },
+        },
+      );
+    }
     const begin = performance.now();
     try {
       const result = await this.owned(s, "/turns", "POST", { text, clientId });

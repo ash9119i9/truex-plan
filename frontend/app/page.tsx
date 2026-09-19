@@ -11,7 +11,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { RuntimeItem } from "@/components/runtime-item";
+import { ChatMessages } from "@/components/chat-messages";
+import { applyChatEvent, historyEntries, type Entry } from "@/lib/chat";
 import { RequestCard } from "@/components/request-card";
 import { Capabilities } from "@/components/capabilities";
 import { api, base } from "@/lib/api";
@@ -20,32 +21,20 @@ import type {
   AgentSummary,
   Session,
   DomainEvent,
-  Message,
   PendingRequest,
   TurnTiming,
 } from "../../shared/contracts";
-interface Bubble {
-  id: string;
-  role: string;
-  text: string;
-  turnId?: string;
-  final?: boolean;
-  delivery?: string;
-  steer?: boolean;
-}
 export default function Home() {
   const [agents, setAgents] = useState<AgentSummary[]>([]),
     [agentId, setAgentId] = useState(""),
     [sessions, setSessions] = useState<Session[]>([]),
     [session, setSession] = useState<Session | null>(null);
-  const [messages, setMessages] = useState<Bubble[]>([]),
+  const [entries, setEntries] = useState<Entry[]>([]),
     [events, setEvents] = useState<DomainEvent[]>([]),
     [pending, setPending] = useState<PendingRequest[]>([]),
     [timings, setTimings] = useState<TurnTiming[]>([]);
-  const [items, setItems] = useState<any[]>([]),
-    [resolutions, setResolutions] = useState<any[]>([]);
+  const [resolutions, setResolutions] = useState<any[]>([]);
   const [text, setText] = useState(""),
-    [reasoning, setReasoning] = useState(""),
     [error, setError] = useState(""),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
@@ -56,10 +45,12 @@ export default function Home() {
     [diff, setDiff] = useState(""),
     [health, setHealth] = useState<any>(null);
   const scroll = useRef<HTMLDivElement>(null),
+    composer = useRef<HTMLTextAreaElement>(null),
     following = useRef(true),
     generation = useRef(0),
     sessionRef = useRef<Session | null>(null),
-    seen = useRef(new Set<string>());
+    seen = useRef(new Set<string>()),
+    sending = useRef(false);
   const refreshSessions = () =>
     api("/api/sessions")
       .then(setSessions)
@@ -74,31 +65,27 @@ export default function Home() {
       sessionRef.current = data.session;
       setSession(data.session);
       setAgentId(data.session.agentId);
-      setMessages(
-        data.messages.map((m: Message) => ({
-          id: m.role === "assistant" ? m._id : m.itemId || m._id,
-          role: m.role,
-          text: m.text,
-          turnId: m.turnId,
-          final: true,
-          delivery: m.delivery,
-          steer: m.steer,
-        })),
+      following.current = true;
+      setEntries(
+        data.snapshot
+          ? applyChatEvent(historyEntries(data.messages), {
+              type: "snapshot",
+              data: data.snapshot,
+            } as DomainEvent)
+          : historyEntries(data.messages),
       );
       setEvents([]);
-      setItems([]);
       setResolutions(data.session.approvals || []);
       seen.current.clear();
-      setReasoning("");
       setPending([]);
       setTimings(data.session.timings || []);
       setPlan([]);
       setDiff("");
-      setRunning(false);
+      setRunning(!!data.snapshot && data.snapshot.state.kind !== "idle");
       if (data.recoveryError) setError(data.recoveryError);
       history.replaceState(null, "", "?session=" + id);
     } catch (e) {
-      setError((e as Error).message);
+      if (token === generation.current) setError((e as Error).message);
     } finally {
       if (token === generation.current) setBusy(false);
     }
@@ -134,71 +121,47 @@ export default function Home() {
         }
         setEvents((old) => [...old.slice(-299), event]);
         const d = event.data;
+        setEntries((old) => applyChatEvent(old, event));
         switch (event.type) {
           case "snapshot":
             setPending(d.pending);
             setRunning(d.state.kind !== "idle");
             setPlan(d.plan || []);
             setDiff(d.diff || "");
-            setMessages((old) => {
-              const next = [...old];
-              for (const m of d.messages) {
-                const key = `${id}:assistant:${m.turnId}:${m.messageIndex ?? m.id}`;
-                const i = next.findIndex((x) => x.id === key);
-                const b = { ...m, id: key, role: "assistant" };
-                if (i < 0) next.push(b);
-                else next[i] = b;
-              }
-              return next;
-            });
+            setTimings(d.timings || []);
             break;
-          case "resync.required":
+          case "resync.required": {
+            const token = generation.current;
             void api("/api/sessions/" + id)
-              .then((data) =>
-                setMessages(
-                  data.messages.map((m: Message) => ({
-                    id: m.role === "assistant" ? m._id : m.itemId || m._id,
-                    role: m.role,
-                    text: m.text,
-                    final: true,
-                    turnId: m.turnId,
-                  })),
-                ),
-              )
-              .catch((e) => setError(e.message));
+              .then((data) => {
+                if (
+                  token !== generation.current ||
+                  sessionRef.current?._id !== id
+                )
+                  return;
+                setEntries((old) => {
+                  let next = historyEntries(data.messages);
+                  // Keep live items received while history was in flight.
+                  for (const entry of old) {
+                    if (entry.kind !== "message" || entry.role === "user") {
+                      if (!next.some((e) => e.id === entry.id))
+                        next.push(entry);
+                    } else
+                      next = applyChatEvent(next, {
+                        type: "snapshot",
+                        data: { messages: [{ ...entry, id: entry.itemId }] },
+                      } as unknown as DomainEvent);
+                  }
+                  return next;
+                });
+              })
+              .catch((e) => {
+                if (token === generation.current) setError(e.message);
+              });
             break;
-          case "message.delta":
-          case "message.final":
-            setMessages((old) => {
-              const next = [...old];
-              const finalKey = `${id}:assistant:${event.turnId}:${d.messageIndex ?? event.itemId}`;
-              const i = next.findIndex(
-                (x) => x.id === event.itemId || x.id === finalKey,
-              );
-              const value = {
-                id:
-                  d.messageIndex !== undefined || event.type === "message.final"
-                    ? finalKey
-                    : event.itemId!,
-                role: "assistant",
-                turnId: event.turnId,
-                text:
-                  event.type === "message.final"
-                    ? d.text
-                    : (i >= 0 ? next[i].text : "") + d.delta,
-                final: event.type === "message.final",
-              };
-              if (i < 0) next.push(value);
-              else next[i] = value;
-              return next;
-            });
-            break;
-          case "reasoning.delta":
-            setReasoning((old) => old + d.delta);
-            break;
+          }
           case "turn.started":
             setRunning(true);
-            setReasoning("");
             setDiff("");
             setPlan([]);
             break;
@@ -215,13 +178,6 @@ export default function Home() {
               ...old.filter((p) => p.requestId !== d.requestId),
               d as PendingRequest,
             ]);
-            break;
-          case "item.started":
-          case "item.completed":
-            if (d.item)
-              setItems((old) =>
-                [...old.filter((x) => x.id !== d.item.id), d.item].slice(-100),
-              );
             break;
           case "mcp.status":
             if (d.status === "failed")
@@ -254,52 +210,92 @@ export default function Home() {
     if (following.current)
       scroll.current?.scrollTo({
         top: scroll.current.scrollHeight,
-        behavior: "smooth",
+        behavior: "instant",
       });
-  }, [messages, pending, reasoning]);
-  async function create() {
-    setBusy(true);
+  }, [entries, pending]);
+  function startDraft() {
+    generation.current++;
+    sessionRef.current = null;
+    following.current = true;
+    setSession(null);
+    setEntries([]);
+    setEvents([]);
+    setResolutions([]);
+    setPending([]);
+    setTimings([]);
+    setPlan([]);
+    setDiff("");
     setError("");
-    try {
-      const s = await api("/api/sessions", { agentId });
-      await refreshSessions();
-      await open(s._id);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    setRunning(false);
+    setBusy(false);
+    setStatus("Not connected");
+    seen.current.clear();
+    history.replaceState(null, "", location.pathname);
+    composer.current?.focus();
+  }
+  async function ensureSession(): Promise<Session> {
+    if (sessionRef.current) return sessionRef.current;
+    const token = generation.current;
+    const created: Session = await api("/api/sessions", { agentId });
+    if (token !== generation.current) return created;
+    sessionRef.current = created;
+    setSession(created);
+    history.replaceState(null, "", "?session=" + created._id);
+    void refreshSessions();
+    return created;
   }
   async function send() {
-    if (!session || !text.trim()) return;
+    if (
+      sending.current ||
+      !text.trim() ||
+      busy ||
+      (!sessionRef.current && !agentId)
+    )
+      return;
+    sending.current = true;
+    const token = generation.current;
     const value = text,
       clientId = crypto.randomUUID(),
       id = clientId;
+    following.current = true;
     setText("");
     setError("");
-    setMessages((old) => [
+    setEntries((old) => [
       ...old,
-      { id, role: "user", text: value, delivery: "pending" },
+      { kind: "message", id, role: "user", text: value, delivery: "pending" },
     ]);
     try {
-      const result = await transport.send(session._id, value, clientId);
-      setMessages((old) =>
-        old.map((m) =>
-          m.id === id
+      if (!sessionRef.current) setBusy(true);
+      const active = await ensureSession();
+      if (token !== generation.current) return;
+      const result = await transport.send(active._id, value, clientId);
+      if (token !== generation.current) return;
+      void refreshSessions();
+      setEntries((old) =>
+        old.map((e) =>
+          e.kind === "message" && e.id === id
             ? {
-                ...m,
+                ...e,
                 delivery: "accepted",
                 turnId: result.turnId,
                 steer: result.steer,
               }
-            : m,
+            : e,
         ),
       );
     } catch (e) {
+      if (token !== generation.current) return;
       setError((e as Error).message);
-      setMessages((old) =>
-        old.map((m) => (m.id === id ? { ...m, delivery: "unknown" } : m)),
+      setEntries((old) =>
+        old.map((e) =>
+          e.kind === "message" && e.id === id
+            ? { ...e, delivery: "unknown" }
+            : e,
+        ),
       );
+    } finally {
+      sending.current = false;
+      if (token === generation.current) setBusy(false);
     }
   }
   const agent = agents.find((a) => a.id === agentId);
@@ -310,11 +306,7 @@ export default function Home() {
           truex<span> / agents</span>
         </a>
         <div className="eyebrow">WORKSPACE</div>
-        <Button
-          variant="outline"
-          onClick={() => void create()}
-          disabled={!agentId || busy}
-        >
+        <Button variant="outline" onClick={startDraft} disabled={busy}>
           <Plus size={16} /> New conversation
         </Button>
         <div className="sidebar-label">Recent conversations</div>
@@ -331,8 +323,11 @@ export default function Home() {
             >
               <MessageSquare size={14} />
               <span>
-                {agents.find((a) => a.id === s.agentId)?.name || s.agentId}
-                <small>{new Date(s.createdAt).toLocaleString()}</small>
+                <b>{s.title || "New conversation"}</b>
+                <small>
+                  {agents.find((a) => a.id === s.agentId)?.name || s.agentId} ·{" "}
+                  {new Date(s.createdAt).toLocaleString()}
+                </small>
               </span>
             </button>
           ))}
@@ -387,6 +382,9 @@ export default function Home() {
         )}
         <div
           className="transcript"
+          role="log"
+          aria-label="Conversation"
+          aria-live="off"
           ref={scroll}
           onScroll={() => {
             const el = scroll.current;
@@ -395,7 +393,7 @@ export default function Home() {
                 el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           }}
         >
-          {!session ? (
+          {!session && !entries.length ? (
             <div className="empty">
               <div className="empty-icon">
                 <Layers size={30} />
@@ -403,11 +401,14 @@ export default function Home() {
               <div className="eyebrow">A PLACE TO THINK AND BUILD</div>
               <h2>Start with a conversation.</h2>
               <p>
-                Choose an agent, bring a question, and follow the work as it
-                happens.
+                Choose an agent and ask your first question. The session starts
+                when you send it.
               </p>
-              <Button onClick={() => void create()} disabled={!agentId || busy}>
-                {busy ? "Creating…" : "Start a conversation"}
+              <Button
+                onClick={() => composer.current?.focus()}
+                disabled={!agentId}
+              >
+                Ask your first question
                 <ArrowUp size={16} />
               </Button>
               {!loading && !agents.length && (
@@ -419,28 +420,11 @@ export default function Home() {
             </div>
           ) : (
             <>
-              {messages.map((m) => (
-                <article className={"message " + m.role} key={m.id}>
-                  <div className="message-label">
-                    {m.role === "user"
-                      ? "YOU"
-                      : agent?.name?.toUpperCase() || "ASSISTANT"}
-                    {m.steer && <span> · steer</span>}
-                    {m.delivery && m.delivery !== "accepted" && (
-                      <span> · {m.delivery}</span>
-                    )}
-                  </div>
-                  <div className="message-text">
-                    {m.text}
-                    {m.role === "assistant" && !m.final && running && (
-                      <span className="cursor" />
-                    )}
-                  </div>
-                </article>
-              ))}
-              {items.map((item) => (
-                <RuntimeItem key={item.id} item={item} />
-              ))}
+              <ChatMessages
+                entries={entries}
+                agentName={agent?.name || "Assistant"}
+                running={running}
+              />
               {resolutions.map((r) => (
                 <p className="resolution" key={r.requestId}>
                   {r.reason === "expired"
@@ -456,21 +440,16 @@ export default function Home() {
                           : `Request resolved · ${r.reason}`}
                 </p>
               ))}
-              {reasoning && (
-                <details className="thinking">
-                  <summary>{running ? "Thinking…" : "Reasoning"}</summary>
-                  <p>{reasoning}</p>
-                </details>
-              )}
-              {pending.map((p) => (
-                <RequestCard
-                  key={p.requestId}
-                  request={p}
-                  onAnswer={async (result) => {
-                    await transport.answer(session._id, p.requestId, result);
-                  }}
-                />
-              ))}
+              {session &&
+                pending.map((p) => (
+                  <RequestCard
+                    key={p.requestId}
+                    request={p}
+                    onAnswer={async (result) => {
+                      await transport.answer(session._id, p.requestId, result);
+                    }}
+                  />
+                ))}
             </>
           )}
         </div>
@@ -482,6 +461,7 @@ export default function Home() {
           }}
         >
           <textarea
+            ref={composer}
             aria-label="Message"
             placeholder={
               running
@@ -489,7 +469,7 @@ export default function Home() {
                 : "What would you like to work on?"
             }
             value={text}
-            disabled={!session}
+            disabled={!session && !agentId}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               if (
@@ -520,7 +500,7 @@ export default function Home() {
             )}
             <Button
               type="submit"
-              disabled={!session || !text.trim()}
+              disabled={!text.trim() || busy || (!session && !agentId)}
               aria-label="Send message"
             >
               <ArrowUp size={18} />
@@ -635,7 +615,9 @@ export default function Home() {
                 }}
               />
             ) : (
-              <p className="muted">Create a session to explore capabilities.</p>
+              <p className="muted">
+                Send your first message to explore capabilities.
+              </p>
             ))}
         </div>
       </aside>

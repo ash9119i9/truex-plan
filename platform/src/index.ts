@@ -94,18 +94,34 @@ async function main() {
   );
   http.get(
     "/api/sessions",
-    route(async (_req, res) =>
-      res.json(
-        await store.sessions
-          .find(
-            { archived: { $ne: true } },
-            { projection: { approvals: 0, timings: 0 } },
-          )
-          .sort({ createdAt: -1 })
-          .limit(100)
-          .toArray(),
-      ),
-    ),
+    route(async (_req, res) => {
+      const sessions = await store.sessions
+        .find(
+          { archived: { $ne: true } },
+          { projection: { approvals: 0, timings: 0 } },
+        )
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .toArray();
+      const untitled = sessions.filter((s) => !s.title).map((s) => s._id);
+      if (untitled.length) {
+        const firsts = await store.messages
+          .aggregate<{ _id: string; text: string }>([
+            { $match: { sessionId: { $in: untitled }, role: "user" } },
+            { $sort: { at: 1, _id: 1 } },
+            { $group: { _id: "$sessionId", text: { $first: "$text" } } },
+          ])
+          .toArray();
+        const titles = new Map(firsts.map((f) => [f._id, f.text]));
+        for (const s of sessions) {
+          const first = titles.get(s._id)?.trim().replace(/\s+/g, " ");
+          if (first)
+            s.title =
+              first.length > 80 ? first.slice(0, 79).trimEnd() + "…" : first;
+        }
+      }
+      res.json(sessions);
+    }),
   );
   http.get(
     "/api/sessions/:id",

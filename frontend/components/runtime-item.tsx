@@ -1,14 +1,17 @@
-import { Terminal, FileDiff, Wrench, Brain } from "lucide-react";
+import { Terminal, FileDiff, Wrench } from "lucide-react";
 export function RuntimeItem({ item }: { item: any }) {
-  if (item.type === "agentMessage" || item.type === "userMessage") return null;
+  if (
+    item.type === "agentMessage" ||
+    item.type === "userMessage" ||
+    item.type === "reasoning"
+  )
+    return null;
   const Icon =
     item.type === "commandExecution"
       ? Terminal
       : item.type === "fileChange"
         ? FileDiff
-        : item.type === "reasoning"
-          ? Brain
-          : Wrench;
+        : Wrench;
   const label =
     item.type === "commandExecution"
       ? "Command"
@@ -39,8 +42,6 @@ export function RuntimeItem({ item }: { item: any }) {
             <pre>{change.diff || JSON.stringify(change.kind)}</pre>
           </section>
         ))
-      ) : item.type === "reasoning" ? (
-        <p>{(item.summary || []).join("\n")}</p>
       ) : (
         <pre>{JSON.stringify(item, null, 2)}</pre>
       )}
