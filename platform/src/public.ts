@@ -148,13 +148,28 @@ export function publicEvent(e: any): any | null {
           },
         },
       };
-    case "error":
+    case "error": {
+      const info = d.error?.codexErrorInfo;
+      const rateLimited =
+        info === "usageLimitExceeded" ||
+        (info &&
+          typeof info === "object" &&
+          [
+            "httpConnectionFailed",
+            "responseStreamConnectionFailed",
+            "responseStreamDisconnected",
+            "responseTooManyFailedAttempts",
+          ].some((kind) => info[kind]?.httpStatusCode === 429));
       return {
         ...base,
         data: {
-          message: "The request could not be completed. Please try again.",
+          message: rateLimited
+            ? "The model provider's rate limit has been reached. Try again later, or ask your administrator to check the provider quota or change the configured model."
+            : "The request could not be completed. Please try again.",
+          ...(rateLimited ? { code: "PROVIDER_RATE_LIMITED" } : {}),
         },
       };
+    }
     case "approval.requested": {
       const pending = request(d);
       return pending ? { ...base, data: pending } : null;

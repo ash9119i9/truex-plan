@@ -2,6 +2,43 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { publicEvent, publicSession, PublicEventStream } from "../src/public";
 
+test("provider rate limits are actionable without exposing raw diagnostics", () => {
+  for (const codexErrorInfo of [
+    "usageLimitExceeded",
+    { responseTooManyFailedAttempts: { httpStatusCode: 429 } },
+    { httpConnectionFailed: { httpStatusCode: 429 } },
+    { responseStreamConnectionFailed: { httpStatusCode: 429 } },
+    { responseStreamDisconnected: { httpStatusCode: 429 } },
+  ]) {
+    const event = publicEvent({
+      type: "error",
+      data: {
+        error: {
+          codexErrorInfo,
+          message: "private provider diagnostics",
+          additionalDetails: "secret credentials",
+        },
+      },
+    });
+    assert.equal(event.data.code, "PROVIDER_RATE_LIMITED");
+    assert.match(event.data.message, /rate limit/);
+    assert.doesNotMatch(JSON.stringify(event), /private|secret/);
+  }
+  for (const error of [
+    undefined,
+    { message: "private diagnostics 429" },
+    {
+      codexErrorInfo: {
+        responseTooManyFailedAttempts: { httpStatusCode: 500 },
+      },
+    },
+  ]) {
+    assert.deepEqual(publicEvent({ type: "error", data: { error } }).data, {
+      message: "The request could not be completed. Please try again.",
+    });
+  }
+});
+
 test("public boundary drops raw runtime data and unknown events, including nested completed-turn items", () => {
   const secret = "/Users/internal/repo truex_models command_output";
   for (const type of [

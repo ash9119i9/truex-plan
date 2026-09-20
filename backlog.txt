@@ -1,0 +1,9 @@
+by default it should be loaded as a empty session
+goal status and token are not updating 
+first message can be goal 
+Implement sub-agents feature
+plan feature
+conversation export
+Observability feature 
+Ui Enhancement
+Error handling Detailed Error
