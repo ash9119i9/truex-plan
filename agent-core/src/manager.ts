@@ -1,3 +1,5 @@
+import { businessCapabilities } from "../../shared/business-capabilities";
+import { BusinessRuntime } from "./business-runtime";
 import { Redactor } from "./redact";
 import { randomUUID } from "node:crypto";
 import {
@@ -50,6 +52,7 @@ interface Thread {
   subscribers: Set<Response>;
   pending: Map<string, Pending>;
   messages: Snapshot["messages"];
+  thinking: NonNullable<Snapshot["thinking"]>;
   plan: unknown;
   diff: string;
   timings: TurnTiming[];
@@ -121,6 +124,7 @@ export class ThreadManager {
         subscribers: new Set(),
         pending: new Map(),
         messages: [],
+        thinking: [],
         plan: null,
         diff: "",
         timings: [],
@@ -299,6 +303,7 @@ export class ThreadManager {
       state: t.state,
       pending: [...t.pending.values()].map(({ timer, rawId, ...p }) => p),
       messages: t.messages,
+      thinking: t.thinking,
       plan: t.plan,
       diff: t.diff,
       timings: t.timings,
@@ -427,6 +432,28 @@ export class ThreadManager {
         t.state = { kind: "running", turnId };
       if (t.clock) t.clock.turnId = turnId;
     }
+    if (
+      method === "item/reasoning/summaryTextDelta" ||
+      method === "item/reasoning/textDelta" ||
+      (method === "item/completed" && p.item?.type === "reasoning")
+    ) {
+      let thinking = t.thinking.find(
+        (r) => r.id === itemId && r.turnId === turnId,
+      );
+      if (!thinking) {
+        thinking = { id: itemId, turnId, summary: "", raw: "", done: false };
+        t.thinking.push(thinking);
+      }
+      if (method === "item/reasoning/summaryTextDelta")
+        thinking.summary += p.delta;
+      if (method === "item/reasoning/textDelta") thinking.raw += p.delta;
+      if (method === "item/completed") {
+        thinking.summary =
+          (p.item.summary || []).join("\n") || thinking.summary;
+        thinking.done = true;
+      }
+      if (t.thinking.length > 100) t.thinking.shift();
+    }
     if (method === "item/agentMessage/delta") {
       let message = t.messages.find((x) => x.id === itemId);
       if (!message) {
@@ -500,6 +527,7 @@ export class ThreadManager {
     }
     let data = { method, ...p };
     if (method === "turn/completed") {
+      for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
       if (t.clock && t.clock.turnId === turnId) {
         const c = t.clock,
           total = begin - c.start,
@@ -561,6 +589,13 @@ export class ThreadManager {
         code: -32601,
         message: "Host capability unavailable in profile-based API-key mode",
       });
+      return;
+    }
+    if (
+      this.runtime instanceof BusinessRuntime &&
+      method !== "item/tool/requestUserInput"
+    ) {
+      this.runtime.respond(msg.id, defaults[method]);
       return;
     }
     const threadId = msg.params.threadId || msg.params.conversationId;
@@ -662,6 +697,16 @@ export class ThreadManager {
     }
   }
   async capability(id: string, method: string, params: any) {
+    if (
+      this.runtime instanceof BusinessRuntime &&
+      method !== "thread/delete" &&
+      !Object.hasOwn(businessCapabilities, method)
+    )
+      throw new HttpError(
+        403,
+        "Runtime controls are unavailable",
+        "CAPABILITY_DENIED",
+      );
     if (
       [
         "initialize",

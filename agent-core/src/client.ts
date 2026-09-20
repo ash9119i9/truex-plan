@@ -44,7 +44,14 @@ export class CodexClient extends EventEmitter implements Runtime {
   private async boot() {
     const begin = performance.now();
     const child = spawn(this.binary, ["app-server", "--listen", "stdio://"], {
-      env: { ...process.env, CODEX_HOME: this.home },
+      cwd: this.home,
+      env: {
+        PATH: process.env.PATH,
+        HOME: this.home,
+        TMPDIR: process.env.TMPDIR,
+        LANG: process.env.LANG || "en_US.UTF-8",
+        CODEX_HOME: this.home,
+      },
       stdio: "pipe",
     });
     this.child = child;

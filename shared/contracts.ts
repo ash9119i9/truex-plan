@@ -33,6 +33,14 @@ export interface AgentSummary {
   sandbox: string;
 }
 export interface Session {
+  runtimePolicyVersion?: number;
+  settings?: {
+    model?: string;
+    effort?: string;
+    summary?: string;
+    serviceTier?: string | null;
+    personality?: string;
+  };
   _id: string;
   agentId: string;
   title?: string;
@@ -48,7 +56,25 @@ export interface Session {
   threadStartMs?: number;
   runtimeStartup?: { spawnMs: number; initializeMs: number };
 }
+export interface CommandRecord {
+  method: string;
+  params: Record<string, unknown>;
+  state: "running" | "succeeded" | "failed" | "unknown";
+  afterMessageId?: string;
+  result?: {
+    help?: string;
+    goal?: {
+      objective: string;
+      status: string;
+      tokenBudget?: number | null;
+      tokensUsed?: number;
+    } | null;
+    sessionId?: string;
+  };
+  error?: string;
+}
 export interface Message {
+  command?: CommandRecord;
   _id: string;
   sessionId: string;
   role: "user" | "assistant";
@@ -105,6 +131,7 @@ export type DomainType =
   | "approval.resolved"
   | "plan.updated"
   | "diff.updated"
+  | "activity.updated"
   | "runtime.event"
   | "snapshot"
   | "resync.required";
@@ -119,6 +146,13 @@ export interface DomainEvent {
   data: Record<string, any>;
 }
 export interface Snapshot {
+  thinking?: {
+    id: string;
+    turnId?: string;
+    summary: string;
+    raw: string;
+    done: boolean;
+  }[];
   cursor: string;
   state: TurnState;
   pending: PendingRequest[];
@@ -133,3 +167,8 @@ export interface Snapshot {
   diff: string;
   timings: TurnTiming[];
 }
+
+export type PublicSession = Pick<
+  Session,
+  "_id" | "agentId" | "title" | "status" | "createdAt"
+>;

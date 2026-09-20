@@ -8,7 +8,7 @@ import {
   readFileSync,
   realpathSync,
 } from "node:fs";
-import { CodexClient } from "./client";
+import { BusinessRuntime } from "./business-runtime";
 import { ThreadManager } from "./manager";
 import { readItems } from "./history";
 import { HttpError } from "./errors";
@@ -17,13 +17,16 @@ const root = resolve(process.env.PROJECT_ROOT || "..");
 const pin = JSON.parse(readFileSync(join(root, "codex.lock.json"), "utf8"));
 const binary = resolve(root, pin.binary);
 // No PATH lookup or external CODEX_BIN override: runtime must be the project pin.
-const home = resolve(process.env.CODEX_HOME || join(root, ".runtime/codex"));
+const home = join(
+  resolve(process.env.CODEX_HOME || join(root, ".runtime/codex")),
+  "business-v1",
+);
 mkdirSync(home, { recursive: true });
 mkdirSync(
   resolve(process.env.AGENT_WORKSPACE || join(root, ".runtime/workspace")),
   { recursive: true },
 );
-const client = new CodexClient(
+const client = new BusinessRuntime(
   binary,
   home,
   Number(process.env.RPC_TIMEOUT_MS || 30000),

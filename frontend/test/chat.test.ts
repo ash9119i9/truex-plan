@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyChatEvent,
   historyEntries,
+  mergeHistoryEntries,
   visibleEntries,
   type Entry,
 } from "../lib/chat.ts";
@@ -177,4 +178,142 @@ test("a partial replay that diverges becomes a separate visible message", () => 
     event("message.delta", { delta: " again", messageIndex: 1 }, "second"),
   );
   assert.equal(visibleEntries(entries).length, 2);
+});
+
+test("reconnect restores thinking before its answer without duplicating either", () => {
+  const initial = historyEntries([
+    {
+      _id: "saved",
+      sessionId: "s",
+      role: "assistant",
+      text: "Order shipped",
+      turnId: "t",
+      itemId: "m",
+      at: "now",
+    },
+  ] as any);
+  const snapshot = {
+    type: "snapshot",
+    data: {
+      state: { kind: "idle" },
+      thinking: [
+        {
+          id: "r",
+          turnId: "t",
+          summary: "Checked order status",
+          raw: "",
+          done: true,
+        },
+      ],
+      messages: [{ id: "m", turnId: "t", text: "Order shipped", final: true }],
+    },
+  } as any;
+  const once = applyChatEvent(initial, snapshot);
+  const twice = applyChatEvent(once, snapshot);
+  assert.deepEqual(
+    twice.map((e) => e.kind),
+    ["thinking", "message"],
+  );
+  assert.equal(
+    twice[0].kind === "thinking" && twice[0].text,
+    "Checked order status",
+  );
+});
+
+test("command submissions and structured results survive history plus replayed goal answers", () => {
+  const command: Message = {
+    _id: "s:command:request",
+    clientId: "request",
+    sessionId: "s",
+    role: "user",
+    text: "/goal Write\n a report",
+    at: "2026-01-01",
+    delivery: "accepted",
+    command: {
+      method: "thread/goal/set",
+      params: { objective: "Write\n a report" },
+      state: "succeeded",
+      result: { goal: { objective: "Write\n a report", status: "active" } },
+    },
+  };
+  let entries = historyEntries([command]);
+  entries = applyChatEvent(
+    entries,
+    event(
+      "message.final",
+      { text: "First answer", messageIndex: 0 },
+      "a",
+      "t1",
+    ),
+  );
+  entries = applyChatEvent(
+    entries,
+    event(
+      "message.final",
+      { text: "Continuation", messageIndex: 0 },
+      "b",
+      "t2",
+    ),
+  );
+  entries = applyChatEvent(
+    entries,
+    event(
+      "message.final",
+      { text: "First answer", messageIndex: 0 },
+      "a",
+      "t1",
+    ),
+  );
+  assert.equal(entries.length, 3);
+  assert.equal(entries[0].kind, "message");
+  if (entries[0].kind === "message") {
+    assert.equal(entries[0].text, command.text);
+    assert.equal(entries[0].command?.result?.goal?.status, "active");
+    assert.equal(entries[0].id, "request");
+  }
+});
+
+test("reconnect preserves completed command results and keeps thinking before the answer", () => {
+  const request: Message = {
+    _id: "command",
+    clientId: "request",
+    role: "user",
+    sessionId: "s",
+    text: "/goal Report",
+    at: "2026-01-01",
+    command: {
+      method: "thread/goal/set",
+      params: { objective: "Report" },
+      state: "running",
+    },
+  };
+  const answer: Message = {
+    _id: "answer",
+    role: "assistant",
+    sessionId: "s",
+    text: "Report ready",
+    at: "2026-01-02",
+    turnId: "turn",
+    itemId: "answer",
+  };
+  const live: Entry[] = [
+    {
+      ...historyEntries([request])[0],
+      command: { ...request.command!, state: "succeeded" },
+    } as Entry,
+    {
+      kind: "thinking",
+      id: "thinking",
+      turnId: "turn",
+      text: "Considering the request",
+      done: true,
+    },
+    ...historyEntries([answer]),
+  ];
+  const restored = mergeHistoryEntries([request, answer], live);
+  assert.equal(restored.length, 3);
+  assert.equal(restored[1].kind, "thinking");
+  assert.equal(restored[2].kind, "message");
+  if (restored[0].kind === "message")
+    assert.equal(restored[0].command?.state, "succeeded");
 });

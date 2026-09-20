@@ -1,17 +1,15 @@
+import { businessCapabilityParams } from "../../shared/business-capabilities";
+import { publicSession, publicSnapshot, POLICY_VERSION } from "./public";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
-import type { Session } from "../../shared/contracts";
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public code = "REQUEST_FAILED",
-  ) {
-    super(message);
-  }
-}
+import { orderConversation } from "../../shared/command-history";
+import { isDeepStrictEqual } from "node:util";
+import type { CommandRecord, Message, Session } from "../../shared/contracts";
+import { ApiError } from "./errors";
+export { ApiError } from "./errors";
+import { mcpConfig, mcpInstructions, newMcpProfile } from "./mcp";
 export class PlatformService {
   readonly hosts: string[];
   private polling = false;
@@ -66,6 +64,12 @@ export class PlatformService {
   async session(id: string) {
     const session = await this.store.sessions.findOne({ _id: id });
     if (!session) throw new ApiError(404, "Session not found");
+    if (session.runtimePolicyVersion !== POLICY_VERSION)
+      throw new ApiError(
+        409,
+        "This conversation predates the Truex access policy. Start a new conversation.",
+        "LEGACY_SESSION",
+      );
     return session;
   }
   async configuration(agentId: string, cwd?: string) {
@@ -96,55 +100,36 @@ export class PlatformService {
         ? { model_reasoning_effort: profile.reasoningEffort }
         : {}),
     };
+    const names = new Set<string>();
     for (const id of agent.mcpProfileIds || []) {
       const mcp = await this.store.findMcp(id);
       if (!mcp) throw new ApiError(422, `MCP profile missing: ${String(id)}`);
-      if (mcp.enabled === false)
-        throw new ApiError(422, `MCP profile disabled: ${mcp.name}`);
-      if (!/^[\w-]+$/.test(mcp.name))
-        throw new ApiError(422, "Invalid MCP name");
-      let server: Record<string, unknown>;
-      if (mcp.config) server = { ...mcp.config };
-      else if (mcp.transport === "stdio") {
-        if (!mcp.command)
-          throw new ApiError(422, `MCP ${mcp.name} requires a command`);
-        server = {
-          command: mcp.command,
-          args: mcp.args || [],
-          ...(mcp.env ? { env: mcp.env } : {}),
-        };
-      } else {
-        if (!mcp.url) throw new ApiError(422, `MCP ${mcp.name} requires a URL`);
-        server = { url: mcp.url };
-        const key = mcp.apiKey || mcp.apikey;
-        if (key && mcp.auth?.kind !== "none") {
-          const header =
-            mcp.auth?.kind === "header" ? mcp.auth.headerName : "Authorization";
-          if (!header)
-            throw new ApiError(422, `MCP ${mcp.name} requires auth.headerName`);
-          server.http_headers = {
-            [header]: mcp.auth?.kind === "header" ? key : `Bearer ${key}`,
-          };
-        }
-      }
-      if (mcp.capabilities?.connectTimeoutMs)
-        server.startup_timeout_sec = mcp.capabilities.connectTimeoutMs / 1000;
-      if (mcp.capabilities?.requestTimeoutMs)
-        server.tool_timeout_sec = mcp.capabilities.requestTimeoutMs / 1000;
+      if (names.has(mcp.name))
+        throw new ApiError(422, `Duplicate MCP server name: ${mcp.name}`);
+      names.add(mcp.name);
+      const server = mcpConfig(mcp);
+      if (server.command)
+        throw new ApiError(
+          422,
+          "Business connectors must use HTTP. Configure this connector on a separate service.",
+          "CONNECTOR_POLICY",
+        );
       config[`mcp_servers.${mcp.name}`] = server;
     }
     return {
       model: profile.modelName,
       modelProvider: provider,
       config,
-      baseInstructions: agent.systemPrompt || "You are a helpful assistant.",
+      baseInstructions:
+        (agent.systemPrompt || "You are a helpful assistant.") +
+        (names.size ? mcpInstructions : ""),
       ...(profile.serviceTier && profile.serviceTier !== "auto"
         ? { serviceTier: profile.serviceTier }
         : {}),
       cwd:
         cwd || resolve(process.env.AGENT_WORKSPACE || "../.runtime/workspace"),
-      sandbox: agent.sandbox || "read-only",
-      approvalPolicy: agent.approvalPolicy || "never",
+      sandbox: "read-only",
+      approvalPolicy: "never",
     };
   }
   async agents() {
@@ -171,6 +156,67 @@ export class PlatformService {
       };
     });
   }
+  async agentMcp(agentId: string) {
+    const agent = await this.store.findAgent(agentId);
+    if (!agent) throw new ApiError(404, "Agent not found");
+    const profiles = await this.store.mcp
+      .find({}, { projection: { _id: 1, name: 1, enabled: 1, transport: 1 } })
+      .toArray();
+    return {
+      profileIds: (agent.mcpProfileIds || []).map(String),
+      profiles: profiles.map((p) => ({
+        id: String(p._id),
+        name: p.name,
+        enabled: p.enabled !== false,
+        transport: p.transport || "configured",
+      })),
+    };
+  }
+  async setAgentMcp(agentId: string, ids: unknown) {
+    const agent = await this.store.findAgent(agentId);
+    if (!agent) throw new ApiError(404, "Agent not found");
+    if (
+      !Array.isArray(ids) ||
+      ids.length > 50 ||
+      ids.some((id) => typeof id !== "string" || !id || id.length > 200)
+    )
+      throw new ApiError(
+        400,
+        "profileIds must be an array of up to 50 MCP IDs",
+      );
+    const names = new Set<string>();
+    const references = [];
+    for (const id of new Set(ids as string[])) {
+      const profile = await this.store.findMcp(id);
+      if (!profile) throw new ApiError(422, `MCP profile missing: ${id}`);
+      if (mcpConfig(profile).command)
+        throw new ApiError(
+          422,
+          "Local command connectors are unavailable. Use an HTTP connector.",
+          "CONNECTOR_POLICY",
+        );
+      if (names.has(profile.name))
+        throw new ApiError(422, `Duplicate MCP server name: ${profile.name}`);
+      names.add(profile.name);
+      references.push(profile._id);
+    }
+    await this.store.agents.updateOne(
+      { _id: agent._id },
+      { $set: { mcpProfileIds: references } },
+    );
+    return this.agentMcp(agentId);
+  }
+  async createMcp(body: unknown) {
+    const profile = newMcpProfile(body);
+    if (mcpConfig(profile).command)
+      throw new ApiError(
+        422,
+        "Local command connectors are unavailable. Use an HTTP connector.",
+        "CONNECTOR_POLICY",
+      );
+    await this.store.mcp.insertOne(profile);
+    return { id: String(profile._id), name: profile.name };
+  }
   async create(agentId: string) {
     if (typeof agentId !== "string")
       throw new ApiError(400, "agentId is required");
@@ -192,6 +238,7 @@ export class PlatformService {
     }
     const session: Session = {
       _id: "sess_" + randomUUID(),
+      runtimePolicyVersion: POLICY_VERSION,
       agentId,
       threadId: thread.threadId,
       agentCoreHost: host,
@@ -211,7 +258,7 @@ export class PlatformService {
       );
       throw e;
     }
-    return session;
+    return publicSession(session);
   }
   async owned(session: Session, path: string, method = "GET", body?: any) {
     if (session.status === "dead")
@@ -239,7 +286,15 @@ export class PlatformService {
   }
   async resume(session: Session) {
     const config = await this.configuration(session.agentId, session.cwd);
+    if (session.settings?.model) config.model = session.settings.model;
+    if (session.settings?.effort)
+      config.config.model_reasoning_effort = session.settings.effort;
     const snapshot = await this.owned(session, "/resume", "POST", config);
+    if (session.settings && Object.keys(session.settings).length)
+      await this.owned(session, "/capabilities", "POST", {
+        method: "thread/settings/update",
+        params: session.settings,
+      });
     if (session.status !== "active")
       await this.store.sessions.updateOne(
         { _id: session._id },
@@ -411,19 +466,14 @@ export class PlatformService {
         e instanceof Error ? e.message : "History reconciliation unavailable";
     }
     return {
-      session: await this.session(id),
-      messages: (
-        await this.store.messages
-          .find({ sessionId: id })
-          .sort({ at: 1, _id: 1 })
-          .toArray()
-      ).sort(
-        (a, b) =>
-          (a.order ?? Number.MAX_SAFE_INTEGER) -
-          (b.order ?? Number.MAX_SAFE_INTEGER),
+      session: publicSession(await this.session(id)),
+      messages: orderConversation(
+        await this.store.messages.find({ sessionId: id }).toArray(),
       ),
-      snapshot,
-      recoveryError,
+      snapshot: snapshot ? publicSnapshot(snapshot) : null,
+      recoveryError: recoveryError
+        ? "Conversation recovery is temporarily unavailable."
+        : null,
     };
   }
   async ingest(s: Session) {
@@ -456,6 +506,7 @@ export class PlatformService {
     try {
       for await (const s of this.store.sessions.find({
         status: { $ne: "dead" },
+        runtimePolicyVersion: POLICY_VERSION,
       }))
         await this.ingest(s).catch(() => {});
     } finally {
@@ -465,7 +516,115 @@ export class PlatformService {
   stop() {
     if (this.timer) clearInterval(this.timer);
   }
-  async capability(id: string, method: string, params: any) {
+  async command(
+    id: string,
+    method: string,
+    params: unknown,
+    request: { clientId: string; text: string },
+  ) {
+    if (
+      !request ||
+      typeof request.clientId !== "string" ||
+      !/^[-\w]{1,100}$/.test(request.clientId) ||
+      typeof request.text !== "string" ||
+      !request.text.trim() ||
+      request.text.length > 50000
+    )
+      throw new ApiError(400, "A command needs text and a valid clientId");
+    if (method !== "help") businessCapabilityParams(method, params);
+    else if (
+      !params ||
+      typeof params !== "object" ||
+      Object.keys(params).length
+    )
+      throw new ApiError(400, "Help takes no arguments");
+    const session = await this.session(id);
+    const key = `${id}:command:${request.clientId}`;
+    const existing = await this.store.messages.findOne({ _id: key });
+    const replay = (message: Message) => {
+      if (
+        message.text !== request.text ||
+        message.command?.method !== method ||
+        !isDeepStrictEqual(message.command.params, params)
+      )
+        throw new ApiError(
+          409,
+          "This command ID already belongs to another request",
+        );
+      return { commandMessage: message };
+    };
+    if (existing) return replay(existing);
+    await this.resume(session);
+    await this.ingest(session);
+    await this.reconcile(session);
+    const history = orderConversation(
+      await this.store.messages.find({ sessionId: id }).toArray(),
+    );
+    const message: Message = {
+      _id: key,
+      sessionId: id,
+      clientId: request.clientId,
+      role: "user",
+      text: request.text,
+      at: new Date().toISOString(),
+      delivery: "accepted",
+      command: {
+        method,
+        params: params as Record<string, unknown>,
+        state: "running",
+        afterMessageId: history.at(-1)?._id,
+      },
+    };
+    try {
+      await this.store.messages.insertOne(message);
+    } catch (e) {
+      if ((e as { code?: number }).code !== 11000) throw e;
+      return replay((await this.store.messages.findOne({ _id: key }))!);
+    }
+    // Persist before dispatch: a retry must never repeat a fork or other mutation.
+    let command: CommandRecord;
+    try {
+      const result =
+        method === "help"
+          ? {
+              help: "/goal <objective> — Set a goal\n/goal show — View goal status\n/goal clear — Clear the goal\n/fork — Create a conversation branch\n/compact — Compact context\n/model <identifier> — Change the model\n/effort <level> — Change reasoning effort\n/archive — Archive this conversation\n/unarchive — Restore this conversation\n\nPrefix a literal command with // to send it as a question.",
+            }
+          : await this.capability(id, method, params);
+      command = {
+        ...message.command!,
+        state: "succeeded",
+        result: {
+          ...("help" in result ? { help: result.help } : {}),
+          ...("goal" in result ? { goal: result.goal } : {}),
+          ...("session" in result && result.session
+            ? { sessionId: result.session._id }
+            : {}),
+        },
+      };
+    } catch (e) {
+      const definite =
+        e instanceof ApiError && e.status >= 400 && e.status < 500;
+      command = {
+        ...message.command!,
+        state: definite ? "failed" : "unknown",
+        error: definite
+          ? "The command was rejected. Check its arguments and try again."
+          : "The command outcome could not be confirmed. Check the current state before trying again.",
+      };
+    }
+    await this.store.messages.updateOne({ _id: key }, { $set: { command } });
+    return { commandMessage: { ...message, command } };
+  }
+  async capability(id: string, method: string, params: unknown) {
+    try {
+      businessCapabilityParams(method, params);
+    } catch {
+      throw new ApiError(
+        403,
+        "This operation or setting is not available in Truex",
+        "CAPABILITY_DENIED",
+      );
+    }
     const s = await this.session(id);
     await this.resume(s);
     const result = await this.owned(s, "/capabilities", "POST", {
@@ -481,20 +640,35 @@ export class PlatformService {
         timings: [],
         approvals: [],
         cursor: undefined,
+        archived: false,
       };
       await this.store.sessions.insertOne(fork);
-      return { session: fork };
+      return { session: publicSession(fork) };
     }
-    if (method === "thread/archive")
+    if (method === "thread/archive" || method === "thread/unarchive")
       await this.store.sessions.updateOne(
         { _id: id },
-        { $set: { archived: true } },
+        { $set: { archived: method === "thread/archive" } },
       );
-    if (method === "thread/delete")
+    if (method === "thread/settings/update")
       await this.store.sessions.updateOne(
         { _id: id },
-        { $set: { status: "dead" } },
+        { $set: { settings: { ...s.settings, ...(params as object) } } },
       );
-    return result;
+    if (method.startsWith("thread/goal/")) {
+      const g = result.goal;
+      return {
+        goal: g
+          ? {
+              objective: g.objective,
+              status: g.status,
+              tokenBudget: g.tokenBudget,
+              tokensUsed: g.tokensUsed,
+              timeUsedSeconds: g.timeUsedSeconds,
+            }
+          : null,
+      };
+    }
+    return { ok: true };
   }
 }

@@ -1,3 +1,4 @@
+import { BusinessRuntime } from "../src/business-runtime";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
@@ -71,7 +72,7 @@ test(
     });
     await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
     const port = (server.address() as any).port;
-    let client = new CodexClient(binary, home, 15000),
+    let client = new BusinessRuntime(binary, home, 15000),
       manager = new ThreadManager(client, home);
     t.after(async () => {
       manager.close();
@@ -126,7 +127,7 @@ test(
     manager.close();
     client.stop();
     await new Promise((r) => setTimeout(r, 500));
-    client = new CodexClient(binary, home, 15000);
+    client = new BusinessRuntime(binary, home, 15000);
     manager = new ThreadManager(client, home);
     await manager.resume(a.threadId, config("fixture-key-a"));
     await manager.message(a.threadId, "Remember the greeting", "message_c");

@@ -155,8 +155,52 @@ test(
       return res.ok;
     });
     const health = await call("/healthz");
-    assert.ok(health.agentCore.codex);
-    assert.ok(health.mongo);
+    assert.deepEqual(health, { ok: true });
+    for (const path of [
+      "/api/capabilities",
+      "/api/schemas/ThreadStartParams",
+    ]) {
+      const response = await fetch(`http://127.0.0.1:${platformPort}${path}`);
+      assert.equal(response.status, 403);
+    }
+    await store.sessions.insertOne({
+      _id: "legacy",
+      agentId: "assistant",
+      threadId: "old",
+      agentCoreHost: "http://127.0.0.1:" + corePort,
+      status: "active",
+      cwd: root,
+      createdAt: new Date().toISOString(),
+    });
+    for (const path of [
+      "/api/sessions/legacy",
+      "/api/sessions/legacy/events",
+    ]) {
+      const response = await fetch(`http://127.0.0.1:${platformPort}${path}`);
+      assert.equal(response.status, 409);
+    }
+    assert.equal(
+      (await call("/api/sessions")).some((s: any) => s._id === "legacy"),
+      false,
+    );
+    const connector = await call("/api/mcp", {
+      name: "remote",
+      transport: "http",
+      url: "https://example.com/mcp",
+      auth: { kind: "none" },
+    });
+    assert.ok(connector.id);
+    await call("/api/agents/assistant/mcp");
+    const local = await fetch(`http://127.0.0.1:${platformPort}/api/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "local",
+        transport: "stdio",
+        command: "sh",
+      }),
+    });
+    assert.equal(local.status, 422);
     const session = await call("/api/sessions", { agentId: "assistant" });
     const message = { text: "Hello", clientId: "http-message-1" };
     const first = await call(`/api/sessions/${session._id}/messages`, message);
@@ -178,10 +222,49 @@ test(
     assert.equal(history.messages.length, 2, JSON.stringify(history.messages));
     assert.equal(history.messages[1].text, "HTTP fixture reply 1");
     assert.equal(JSON.stringify(history).includes("http-fixture-key"), false);
-    assert.equal(
-      (await call(`/api/sessions/${session._id}/timings`)).turns.length,
-      1,
+    assert.doesNotMatch(
+      JSON.stringify(history.session),
+      /cwd|agentCoreHost|threadId|runtimeStartup/,
     );
+    const denied = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions/${session._id}/capabilities`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          method: "command/exec",
+          params: { command: ["pwd"] },
+        }),
+      },
+    );
+    assert.equal(denied.status, 403);
+    const timingData = await call(`/api/sessions/${session._id}/timings`);
+    assert.equal(timingData.turns.length, 1);
+    assert.ok(timingData.turns[0].totalMs > 0);
+    const settings = await call(`/api/sessions/${session._id}/capabilities`, {
+      method: "thread/settings/update",
+      params: { effort: "low" },
+    });
+    assert.deepEqual(settings, { ok: true });
+    const goal = await call(`/api/sessions/${session._id}/capabilities`, {
+      method: "thread/goal/get",
+      params: {},
+    });
+    assert.equal(goal.goal, null);
+    for (const [method, params] of [
+      ["thread/settings/update", { cwd: root }],
+      ["thread/fork", { config: { "features.shell_tool": true } }],
+    ]) {
+      const rejected = await fetch(
+        `http://127.0.0.1:${platformPort}/api/sessions/${session._id}/capabilities`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ method, params }),
+        },
+      );
+      assert.equal(rejected.status, 403);
+    }
     await stop(core);
     core = launch("agent-core", coreEnv);
     await wait(async () => {

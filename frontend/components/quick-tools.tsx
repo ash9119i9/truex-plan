@@ -12,18 +12,24 @@ export function QuickTools({
   const [goal, setGoal] = useState(""),
     [model, setModel] = useState(""),
     [effort, setEffort] = useState("medium"),
-    [processId, setProcessId] = useState(""),
     [result, setResult] = useState(""),
     [busy, setBusy] = useState(false);
   async function run(method: string, params: unknown = {}) {
     setBusy(true);
+    setResult("");
     try {
-      const result = await api(`/api/sessions/${sessionId}/capabilities`, {
+      const data = await api(`/api/sessions/${sessionId}/capabilities`, {
         method,
         params,
       });
-      setResult(JSON.stringify(result, null, 2));
-      if (result.session) onFork(result.session._id);
+      if (data.session) onFork(data.session._id);
+      setResult(
+        data.goal
+          ? `${data.goal.objective} · ${data.goal.status} · ${data.goal.tokensUsed} tokens used`
+          : method === "thread/goal/get"
+            ? "No goal is set."
+            : "Done.",
+      );
     } catch (e) {
       setResult((e as Error).message);
     } finally {
@@ -39,20 +45,20 @@ export function QuickTools({
           disabled={busy}
           onClick={() => void run("thread/fork")}
         >
-          Fork
+          Fork conversation
         </Button>
         <Button
           variant="outline"
           disabled={busy}
           onClick={() => void run("thread/compact/start")}
         >
-          Compact
+          Compact context
         </Button>
       </div>
       <details>
         <summary>Goal</summary>
         <textarea
-          aria-label="Thread goal"
+          aria-label="Conversation goal"
           placeholder="What should this conversation achieve?"
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
@@ -69,14 +75,14 @@ export function QuickTools({
             disabled={busy}
             onClick={() => void run("thread/goal/get")}
           >
-            Read
+            Read goal
           </Button>
           <Button
             variant="outline"
             disabled={busy}
             onClick={() => void run("thread/goal/clear")}
           >
-            Clear
+            Clear goal
           </Button>
         </div>
       </details>
@@ -87,7 +93,7 @@ export function QuickTools({
           <input
             value={model}
             onChange={(e) => setModel(e.target.value)}
-            placeholder="Model identifier"
+            placeholder="Model identifier (optional)"
           />
         </label>
         <label>
@@ -113,45 +119,16 @@ export function QuickTools({
         </Button>
       </details>
       <details>
-        <summary>Background terminals</summary>
-        <Button
-          variant="outline"
-          disabled={busy}
-          onClick={() => void run("thread/backgroundTerminals/list")}
-        >
-          List terminals
-        </Button>
-        <input
-          aria-label="Process identifier"
-          placeholder="Process identifier to terminate"
-          value={processId}
-          onChange={(e) => setProcessId(e.target.value)}
-        />
-        <Button
-          variant="outline"
-          disabled={busy || !processId}
-          onClick={() =>
-            void run("thread/backgroundTerminals/terminate", { processId })
-          }
-        >
-          Terminate
-        </Button>
-      </details>
-      <details>
-        <summary>Lifecycle</summary>
+        <summary>Conversation lifecycle</summary>
         <Button
           variant="outline"
           disabled={busy}
           onClick={() => void run("thread/archive")}
         >
-          Archive
+          Archive conversation
         </Button>
-        <p className="muted">
-          Delete is available in the advanced console and removes runtime
-          history.
-        </p>
       </details>
-      {result && <pre>{result}</pre>}
+      {result && <p role="status">{result}</p>}
     </section>
   );
 }

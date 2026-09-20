@@ -1,25 +1,24 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ArrowUp,
-  Plus,
-  Square,
-  Activity,
-  ChevronRight,
-  MessageSquare,
-  Layers,
-} from "lucide-react";
+import { ArrowUp, Plus, Square, MessageSquare, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { ChatMessages } from "@/components/chat-messages";
-import { applyChatEvent, historyEntries, type Entry } from "@/lib/chat";
+import {
+  applyChatEvent,
+  historyEntries,
+  mergeHistoryEntries,
+  type Entry,
+} from "@/lib/chat";
+import { SessionActivity } from "@/components/session-activity";
+import { McpSettings } from "@/components/mcp-settings";
 import { RequestCard } from "@/components/request-card";
-import { Capabilities } from "@/components/capabilities";
 import { api, base } from "@/lib/api";
 import { transport } from "@/lib/transport";
+import { parseChatInput, suggestCommands } from "@/lib/slash-commands";
 import type {
   AgentSummary,
-  Session,
+  PublicSession as Session,
   DomainEvent,
   PendingRequest,
   TurnTiming,
@@ -31,18 +30,18 @@ export default function Home() {
     [session, setSession] = useState<Session | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]),
     [events, setEvents] = useState<DomainEvent[]>([]),
-    [pending, setPending] = useState<PendingRequest[]>([]),
-    [timings, setTimings] = useState<TurnTiming[]>([]);
-  const [resolutions, setResolutions] = useState<any[]>([]);
+    [pending, setPending] = useState<PendingRequest[]>([]);
+  const [plan, setPlan] = useState<{ step: string; status: string }[]>([]);
+  const [timings, setTimings] = useState<TurnTiming[]>([]);
   const [text, setText] = useState(""),
     [error, setError] = useState(""),
+    [notice, setNotice] = useState(""),
+    [commandOpen, setCommandOpen] = useState(false),
+    [commandIndex, setCommandIndex] = useState(0),
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false),
     [status, setStatus] = useState("Not connected"),
-    [panel, setPanel] = useState("events"),
-    [plan, setPlan] = useState<any[]>([]),
-    [diff, setDiff] = useState(""),
     [health, setHealth] = useState<any>(null);
   const scroll = useRef<HTMLDivElement>(null),
     composer = useRef<HTMLTextAreaElement>(null),
@@ -50,7 +49,12 @@ export default function Home() {
     generation = useRef(0),
     sessionRef = useRef<Session | null>(null),
     seen = useRef(new Set<string>()),
-    sending = useRef(false);
+    sending = useRef(false),
+    commandAttempt = useRef<{
+      sessionId: string;
+      text: string;
+      clientId: string;
+    } | null>(null);
   const refreshSessions = () =>
     api("/api/sessions")
       .then(setSessions)
@@ -59,6 +63,8 @@ export default function Home() {
     const token = ++generation.current;
     setBusy(true);
     setError("");
+    setNotice("");
+    setCommandOpen(false);
     try {
       const data = await api("/api/sessions/" + id);
       if (token !== generation.current) return;
@@ -75,12 +81,25 @@ export default function Home() {
           : historyEntries(data.messages),
       );
       setEvents([]);
-      setResolutions(data.session.approvals || []);
+
       seen.current.clear();
-      setPending([]);
-      setTimings(data.session.timings || []);
-      setPlan([]);
-      setDiff("");
+      setPending(data.snapshot?.pending || []);
+      setPlan(data.snapshot?.plan || []);
+      setTimings(data.snapshot?.timings || []);
+      void api(`/api/sessions/${id}/timings`)
+        .then((timingData) => {
+          if (token === generation.current)
+            setTimings((old) => [
+              ...new Map(
+                [...timingData.turns, ...old].map((t: TurnTiming) => [
+                  t.turnId,
+                  t,
+                ]),
+              ).values(),
+            ]);
+        })
+        .catch(() => {});
+
       setRunning(!!data.snapshot && data.snapshot.state.kind !== "idle");
       if (data.recoveryError) setError(data.recoveryError);
       history.replaceState(null, "", "?session=" + id);
@@ -109,6 +128,18 @@ export default function Home() {
   useEffect(() => {
     if (!session) return;
     const id = session._id;
+    const reloadTranscript = () => {
+      const token = generation.current;
+      void api("/api/sessions/" + id)
+        .then((data) => {
+          if (token !== generation.current || sessionRef.current?._id !== id)
+            return;
+          setEntries((old) => mergeHistoryEntries(data.messages, old));
+        })
+        .catch((e) => {
+          if (token === generation.current) setError(e.message);
+        });
+    };
     return transport.subscribe(
       id,
       (event) => {
@@ -119,7 +150,12 @@ export default function Home() {
           if (seen.current.size > 2000)
             seen.current.delete(seen.current.values().next().value!);
         }
-        setEvents((old) => [...old.slice(-299), event]);
+        if (
+          ["activity.updated", "turn.started", "turn.completed"].includes(
+            event.type,
+          )
+        )
+          setEvents((old) => [...old.slice(-99), event]);
         const d = event.data;
         setEntries((old) => applyChatEvent(old, event));
         switch (event.type) {
@@ -127,43 +163,27 @@ export default function Home() {
             setPending(d.pending);
             setRunning(d.state.kind !== "idle");
             setPlan(d.plan || []);
-            setDiff(d.diff || "");
-            setTimings(d.timings || []);
+            setTimings((old) => [
+              ...new Map(
+                [...old, ...(d.timings || [])].map((t: TurnTiming) => [
+                  t.turnId,
+                  t,
+                ]),
+              ).values(),
+            ]);
+
+            reloadTranscript();
             break;
-          case "resync.required": {
-            const token = generation.current;
-            void api("/api/sessions/" + id)
-              .then((data) => {
-                if (
-                  token !== generation.current ||
-                  sessionRef.current?._id !== id
-                )
-                  return;
-                setEntries((old) => {
-                  let next = historyEntries(data.messages);
-                  // Keep live items received while history was in flight.
-                  for (const entry of old) {
-                    if (entry.kind !== "message" || entry.role === "user") {
-                      if (!next.some((e) => e.id === entry.id))
-                        next.push(entry);
-                    } else
-                      next = applyChatEvent(next, {
-                        type: "snapshot",
-                        data: { messages: [{ ...entry, id: entry.itemId }] },
-                      } as unknown as DomainEvent);
-                  }
-                  return next;
-                });
-              })
-              .catch((e) => {
-                if (token === generation.current) setError(e.message);
-              });
+          case "resync.required":
+            reloadTranscript();
             break;
-          }
           case "turn.started":
             setRunning(true);
-            setDiff("");
             setPlan([]);
+
+            break;
+          case "plan.updated":
+            setPlan(d.plan || []);
             break;
           case "turn.completed":
             setRunning(false);
@@ -179,27 +199,11 @@ export default function Home() {
               d as PendingRequest,
             ]);
             break;
-          case "mcp.status":
-            if (d.status === "failed")
-              setError(
-                `MCP server ${d.name || d.server || ""} failed: ${d.error || "startup failed"}`,
-              );
-            break;
           case "approval.resolved":
-            setResolutions((old) => [
-              ...old.filter((x) => x.requestId !== d.requestId),
-              d,
-            ]);
             setPending((old) => old.filter((p) => p.requestId !== d.requestId));
             break;
-          case "plan.updated":
-            setPlan(d.plan || []);
-            break;
-          case "diff.updated":
-            setDiff(d.diff || "");
-            break;
           case "error":
-            setError(d.message || d.error?.message || "Runtime error");
+            setError(d.message || "The request could not be completed.");
             break;
         }
       },
@@ -215,16 +219,19 @@ export default function Home() {
   }, [entries, pending]);
   function startDraft() {
     generation.current++;
+    setText("");
+    setNotice("");
+    setCommandOpen(false);
     sessionRef.current = null;
     following.current = true;
     setSession(null);
     setEntries([]);
     setEvents([]);
-    setResolutions([]);
+
     setPending([]);
-    setTimings([]);
     setPlan([]);
-    setDiff("");
+    setTimings([]);
+
     setError("");
     setRunning(false);
     setBusy(false);
@@ -244,7 +251,7 @@ export default function Home() {
     void refreshSessions();
     return created;
   }
-  async function send() {
+  async function send(value = text) {
     if (
       sending.current ||
       !text.trim() ||
@@ -254,8 +261,7 @@ export default function Home() {
       return;
     sending.current = true;
     const token = generation.current;
-    const value = text,
-      clientId = crypto.randomUUID(),
+    const clientId = crypto.randomUUID(),
       id = clientId;
     following.current = true;
     setText("");
@@ -298,6 +304,136 @@ export default function Home() {
       if (token === generation.current) setBusy(false);
     }
   }
+
+  const commandSuggestions = commandOpen ? suggestCommands(text) : [];
+  function selectCommand(name: string) {
+    setText(`${name} `);
+    setCommandOpen(false);
+    setCommandIndex(0);
+    composer.current?.focus();
+  }
+  async function submitInput() {
+    if (
+      busy ||
+      sending.current ||
+      !text.trim() ||
+      (!sessionRef.current && !agentId)
+    )
+      return;
+    const selected = commandSuggestions[commandIndex];
+    // Completing a partial name never executes a command.
+    if (selected && selected.name !== text.toLowerCase()) {
+      selectCommand(selected.name);
+      return;
+    }
+    const parsed = parseChatInput(text);
+    const input =
+      parsed.kind === "help" && sessionRef.current
+        ? { kind: "command" as const, method: "help", params: {}, success: "" }
+        : parsed;
+    if (input.kind === "message") {
+      setCommandOpen(false);
+      setNotice("");
+      await send(input.text);
+      return;
+    }
+    setCommandOpen(false);
+    if (input.kind === "invalid") {
+      setNotice(input.message);
+      return;
+    }
+    if (input.kind === "help") {
+      setNotice(
+        "Commands: /goal [objective|show|clear], /fork, /compact, /model <identifier>, /effort <level>, /archive, /unarchive. Use // to send a literal command as a question.",
+      );
+      setText("");
+      return;
+    }
+    if (running) {
+      setNotice(
+        "Wait for the current response to finish or press Stop before running a command. Your draft is saved.",
+      );
+      return;
+    }
+    const active = sessionRef.current;
+    if (!active) {
+      setNotice(
+        "Start a conversation with a message before using this command. Your draft is saved.",
+      );
+      return;
+    }
+    const token = generation.current;
+    const commandText = text;
+    const previous = commandAttempt.current;
+    const clientId =
+      previous?.sessionId === active._id && previous.text === text
+        ? previous.clientId
+        : crypto.randomUUID();
+    commandAttempt.current = { sessionId: active._id, text, clientId };
+    following.current = true;
+    setEntries((old) =>
+      old.some((entry) => entry.id === clientId)
+        ? old
+        : [
+            ...old,
+            {
+              kind: "message",
+              id: clientId,
+              role: "user",
+              text: commandText,
+              delivery: "pending",
+              command: {
+                method: input.method,
+                params: input.params,
+                state: "running",
+              },
+            },
+          ],
+    );
+    sending.current = true;
+    setBusy(true);
+    setNotice("");
+    setError("");
+    try {
+      const result = await api(`/api/sessions/${active._id}/capabilities`, {
+        method: input.method,
+        params: input.params,
+        command: { clientId, text: commandText },
+      });
+      if (token !== generation.current) return;
+      const saved = historyEntries([result.commandMessage])[0];
+      setEntries((old) =>
+        old.map((entry) => (entry.id === clientId ? saved : entry)),
+      );
+      if (["succeeded", "failed"].includes(result.commandMessage.command.state))
+        commandAttempt.current = null;
+      if (result.commandMessage.command.state === "succeeded") setText("");
+      void refreshSessions();
+    } catch (e) {
+      if (token === generation.current) {
+        setEntries((old) =>
+          old.map((entry) =>
+            entry.id === clientId && entry.kind === "message"
+              ? {
+                  ...entry,
+                  delivery: "unknown",
+                  command: {
+                    ...entry.command!,
+                    state: "unknown",
+                    error:
+                      "Connection interrupted. Refresh the conversation to check the saved result before trying again.",
+                  },
+                }
+              : entry,
+          ),
+        );
+        setError((e as Error).message);
+      }
+    } finally {
+      sending.current = false;
+      if (token === generation.current) setBusy(false);
+    }
+  }
   const agent = agents.find((a) => a.id === agentId);
   return (
     <main className="workspace">
@@ -319,6 +455,7 @@ export default function Home() {
                   ? "session-link selected"
                   : "session-link"
               }
+              disabled={busy}
               onClick={() => void open(s._id)}
             >
               <MessageSquare size={14} />
@@ -335,10 +472,6 @@ export default function Home() {
         <div className="health">
           <span className={health?.ok ? "dot good" : "dot"} />
           {health?.ok ? "All systems connected" : "Connection needs attention"}
-          <details>
-            <summary>Diagnostics</summary>
-            <pre>{JSON.stringify(health, null, 2)}</pre>
-          </details>
         </div>
       </aside>
       <section className="conversation">
@@ -358,20 +491,13 @@ export default function Home() {
             onValueChange={setAgentId}
             options={agents.map((a) => ({
               value: a.id,
-              label: `${a.name} — ${a.provider}/${a.model}`,
+              label: a.name,
             }))}
             placeholder={loading ? "Loading agents…" : "Select an agent"}
           />
           <span className="muted">{agent?.description}</span>
         </div>
-        {session && (
-          <div className="session-meta">
-            {session._id}
-            <ChevronRight size={12} />
-            {session.threadId}
-            {session.status !== "active" && <b>{session.status}</b>}
-          </div>
-        )}
+        {agentId && <McpSettings key={agentId} agentId={agentId} />}
         {error && (
           <div role="alert" className="error-banner">
             {error}
@@ -398,7 +524,7 @@ export default function Home() {
               <div className="empty-icon">
                 <Layers size={30} />
               </div>
-              <div className="eyebrow">A PLACE TO THINK AND BUILD</div>
+              <div className="eyebrow">YOUR BUSINESS ASSISTANT</div>
               <h2>Start with a conversation.</h2>
               <p>
                 Choose an agent and ask your first question. The session starts
@@ -413,8 +539,7 @@ export default function Home() {
               </Button>
               {!loading && !agents.length && (
                 <p>
-                  No agents found. Add your agents and model profiles to the
-                  truex database.
+                  No agents are available. Contact your Truex administrator.
                 </p>
               )}
             </div>
@@ -424,22 +549,14 @@ export default function Home() {
                 entries={entries}
                 agentName={agent?.name || "Assistant"}
                 running={running}
+                onCommand={(command) => {
+                  setText(command);
+                  setCommandOpen(false);
+                  composer.current?.focus();
+                }}
+                onOpen={(id) => void open(id)}
+                onRefresh={() => session && void open(session._id)}
               />
-              {resolutions.map((r) => (
-                <p className="resolution" key={r.requestId}>
-                  {r.reason === "expired"
-                    ? "Automatically denied after the deadline"
-                    : r.reason === "runtime-unavailable"
-                      ? "Decision could not be delivered to the runtime"
-                      : r.result?.decision === "accept" ||
-                          r.result?.decision === "approved"
-                        ? "Approved"
-                        : r.result?.decision === "decline" ||
-                            r.result?.decision?.denied
-                          ? "Denied by user"
-                          : `Request resolved · ${r.reason}`}
-                </p>
-              ))}
               {session &&
                 pending.map((p) => (
                   <RequestCard
@@ -457,33 +574,104 @@ export default function Home() {
           className="composer"
           onSubmit={(e) => {
             e.preventDefault();
-            void send();
+            void submitInput();
           }}
         >
           <textarea
             ref={composer}
             aria-label="Message"
+            aria-describedby="composer-hint"
+            aria-controls={
+              commandSuggestions.length ? "chat-commands" : undefined
+            }
+            aria-haspopup="listbox"
+            aria-expanded={commandSuggestions.length > 0}
+            aria-activedescendant={
+              commandSuggestions.length
+                ? `chat-command-${commandIndex}`
+                : undefined
+            }
             placeholder={
               running
                 ? "Add a thought to steer the current turn…"
-                : "What would you like to work on?"
+                : "Ask a question or type / for commands"
             }
             value={text}
-            disabled={!session && !agentId}
-            onChange={(e) => setText(e.target.value)}
+            disabled={busy || (!session && !agentId)}
+            onChange={(e) => {
+              setText(e.target.value);
+              setCommandOpen(e.target.value.startsWith("/"));
+              setCommandIndex(0);
+              if (notice) setNotice("");
+            }}
             onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+              if (e.key === "Escape") {
+                setCommandOpen(false);
+                return;
+              }
               if (
-                e.key === "Enter" &&
+                commandSuggestions.length &&
                 !e.shiftKey &&
-                !e.nativeEvent.isComposing
+                !e.altKey &&
+                !e.ctrlKey &&
+                !e.metaKey
               ) {
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  const direction = e.key === "ArrowDown" ? 1 : -1;
+                  setCommandIndex(
+                    (index) =>
+                      (index + direction + commandSuggestions.length) %
+                      commandSuggestions.length,
+                  );
+                  return;
+                }
+                if (e.key === "Tab") {
+                  e.preventDefault();
+                  selectCommand(commandSuggestions[commandIndex].name);
+                  return;
+                }
+              }
+              if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void send();
+                void submitInput();
               }
             }}
           />
+          {commandSuggestions.length > 0 && (
+            <div
+              id="chat-commands"
+              className="slash-menu"
+              role="listbox"
+              aria-label="Chat commands"
+            >
+              {commandSuggestions.map((command, index) => (
+                <button
+                  id={`chat-command-${index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === commandIndex}
+                  className={index === commandIndex ? "selected" : ""}
+                  key={command.name}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => selectCommand(command.name)}
+                >
+                  <strong>{command.name}</strong>
+                  <span>{command.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {notice && (
+            <div className="composer-notice" role="status">
+              {notice}
+            </div>
+          )}
           <div className="composer-footer">
-            <span>Enter to send · Shift + Enter for a new line</span>
+            <span id="composer-hint">
+              / for commands · Enter to send · Shift + Enter for a new line
+            </span>
             {running && (
               <Button
                 type="button"
@@ -508,119 +696,7 @@ export default function Home() {
           </div>
         </form>
       </section>
-      <aside className="inspector">
-        <div className="inspector-title">
-          <Activity size={16} /> Session activity
-        </div>
-        <div className="tabs">
-          {["events", "plan", "timings", "tools"].map((p) => (
-            <button
-              key={p}
-              className={panel === p ? "active" : ""}
-              onClick={() => setPanel(p)}
-            >
-              {p}
-            </button>
-          ))}
-        </div>
-        <div className="inspector-content">
-          {panel === "events" &&
-            (events.length ? (
-              events.map((e, i) => (
-                <details className="event" key={i}>
-                  <summary>
-                    <span>{e.type}</span>
-                    <time>
-                      {e.at ? new Date(e.at).toLocaleTimeString() : ""}
-                    </time>
-                  </summary>
-                  <pre>{JSON.stringify(e.data, null, 2)}</pre>
-                </details>
-              ))
-            ) : (
-              <p className="muted">Events appear here as your agent works.</p>
-            ))}
-          {panel === "plan" && (
-            <>
-              <h3>Plan</h3>
-              {plan.length ? (
-                plan.map((p, i) => (
-                  <div className="plan-item" key={i}>
-                    <input
-                      type="checkbox"
-                      readOnly
-                      checked={p.status === "completed"}
-                    />
-                    <span>{p.step}</span>
-                  </div>
-                ))
-              ) : (
-                <p className="muted">No plan yet.</p>
-              )}
-              <h3>Changes</h3>
-              <pre>{diff || "No changes yet."}</pre>
-            </>
-          )}
-          {panel === "timings" && (
-            <>
-              <p className="muted">
-                Average total:{" "}
-                {timings.length
-                  ? (
-                      timings.reduce((s, t) => s + t.totalMs, 0) /
-                      timings.length /
-                      1000
-                    ).toFixed(2)
-                  : "—"}
-                s
-              </p>
-              {timings.map((t, i) => (
-                <div className="timing" key={t.turnId}>
-                  <b>Turn {i + 1}</b>
-                  <span>
-                    {t.nonStreaming ? " · non-streaming" : ""} · {t.status}
-                  </span>
-                  <div className="timing-bar">
-                    <i
-                      style={{
-                        width: `${((t.ttftMs || 0) / t.totalMs) * 100}%`,
-                      }}
-                    />
-                    <i
-                      style={{ width: `${(t.streamMs / t.totalMs) * 100}%` }}
-                    />
-                    <i
-                      style={{ width: `${(t.finalizeMs / t.totalMs) * 100}%` }}
-                    />
-                  </div>
-                  <small>
-                    First output{" "}
-                    {t.ttftMs === null
-                      ? "—"
-                      : (t.ttftMs / 1000).toFixed(2) + "s"}{" "}
-                    · stream {(t.streamMs / 1000).toFixed(2)}s · total{" "}
-                    {(t.totalMs / 1000).toFixed(2)}s
-                  </small>
-                </div>
-              ))}
-            </>
-          )}
-          {panel === "tools" &&
-            (session ? (
-              <Capabilities
-                sessionId={session._id}
-                onFork={(id) => {
-                  void refreshSessions();
-                  void open(id);
-                }}
-              />
-            ) : (
-              <p className="muted">
-                Send your first message to explore capabilities.
-              </p>
-            ))}
-        </div>
-      </aside>
+      <SessionActivity events={events} plan={plan} timings={timings} />
     </main>
   );
 }

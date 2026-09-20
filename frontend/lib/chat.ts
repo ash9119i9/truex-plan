@@ -3,6 +3,7 @@ import type { DomainEvent, Message } from "../../shared/contracts";
 export type Entry =
   | {
       kind: "message";
+      command?: Message["command"];
       id: string;
       role: string;
       text: string;
@@ -120,6 +121,7 @@ export function historyEntries(messages: Message[]): Entry[] {
       text: m.text,
       turnId: m.turnId,
       delivery: m.delivery,
+      command: m.command,
       steer: m.steer,
       final: true,
     };
@@ -127,9 +129,76 @@ export function historyEntries(messages: Message[]): Entry[] {
   }, []);
 }
 
+// Merge a history fetch with events received while it was in flight.
+export function mergeHistoryEntries(
+  messages: Message[],
+  live: Entry[],
+): Entry[] {
+  let next = historyEntries(messages);
+  for (const entry of live) {
+    if (entry.kind === "message" && entry.role === "assistant") {
+      next = applyChatEvent(next, {
+        type: "snapshot",
+        data: { messages: [{ ...entry, id: entry.itemId }] },
+      } as unknown as DomainEvent);
+      continue;
+    }
+    const existing = next.findIndex((e) => e.id === entry.id);
+    if (existing >= 0) {
+      const saved = next[existing];
+      if (
+        entry.kind === "message" &&
+        saved.kind === "message" &&
+        entry.command &&
+        saved.command &&
+        ["succeeded", "failed"].includes(entry.command.state) &&
+        ["running", "unknown"].includes(saved.command.state)
+      )
+        next[existing] = entry;
+      continue;
+    }
+    const answerIndex =
+      entry.kind === "thinking"
+        ? next.findIndex(
+            (e) =>
+              e.kind === "message" &&
+              e.role === "assistant" &&
+              e.turnId === entry.turnId,
+          )
+        : -1;
+    next.splice(answerIndex < 0 ? next.length : answerIndex, 0, entry);
+  }
+  return next;
+}
+
 export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
   const { data: d, turnId, itemId, type } = event;
-  if (type === "snapshot")
+  if (type === "snapshot") {
+    for (const r of d.thinking || []) {
+      const id = `thinking:${r.turnId}:${r.id}`;
+      const entry: Entry = {
+        kind: "thinking",
+        id,
+        turnId: r.turnId,
+        itemId: r.id,
+        text: r.raw || r.summary || "",
+        raw: r.raw,
+        summary: r.summary,
+        done: r.done,
+      };
+      if (list.some((e) => e.id === id))
+        list = list.map((e) => (e.id === id ? entry : e));
+      else {
+        const index = list.findIndex(
+          (e) =>
+            e.turnId === r.turnId &&
+            e.kind === "message" &&
+            e.role === "assistant",
+        );
+        list = [...list];
+        list.splice(index < 0 ? list.length : index, 0, entry);
+      }
+    }
     return (d.messages || [])
       .reduce(
         (next: Entry[], m: any) =>
@@ -147,6 +216,7 @@ export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
           ? { ...e, done: true }
           : e,
       );
+  }
   if (type === "message.delta" || type === "message.final")
     return upsertMessage(list, {
       turnId,

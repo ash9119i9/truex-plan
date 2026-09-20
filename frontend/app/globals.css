@@ -196,7 +196,7 @@ select:focus-visible {
   height: 100%;
   overflow: hidden;
 }
-.conversation header {
+.conversation > header {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -434,11 +434,55 @@ h1 {
   }
 }
 .composer {
+  position: relative;
   border: 1px solid #dcded4;
   background: #fff;
   border-radius: 12px;
   margin: 15px 34px 25px;
   box-shadow: 0 3px 15px #252b2005;
+}
+.slash-menu {
+  position: absolute;
+  z-index: 5;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+  box-shadow: 0 8px 24px #252b201c;
+}
+.slash-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+}
+.slash-menu button.selected,
+.slash-menu button:hover {
+  background: #f1f2eb;
+}
+.slash-menu strong {
+  min-width: 78px;
+  font-size: 12px;
+}
+.slash-menu span,
+.composer-notice {
+  font-size: 11px;
+  color: var(--muted);
+}
+.composer-notice {
+  padding: 0 18px 10px;
 }
 .composer textarea {
   display: block;
@@ -683,7 +727,7 @@ h3 {
   .sidebar {
     display: none;
   }
-  .conversation header {
+  .conversation > header {
     padding: 20px;
   }
   .agent-bar {
@@ -940,4 +984,123 @@ h3 {
 .markdown img {
   max-width: 100%;
   border-radius: 8px;
+}
+
+.mcp-settings {
+  margin: 0 24px 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 45vh;
+  overflow: auto;
+  font-size: 13px;
+}
+.mcp-settings summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.mcp-settings p {
+  margin: 10px 0;
+}
+.mcp-settings fieldset {
+  border: 0;
+  padding: 10px 0;
+  display: grid;
+  gap: 10px;
+}
+.mcp-settings label {
+  display: grid;
+  gap: 5px;
+}
+.mcp-settings .mcp-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mcp-settings input:not([type="checkbox"]),
+.mcp-settings select {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--background);
+  color: inherit;
+}
+.mcp-settings button {
+  justify-self: start;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.command-badge {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: #e7ecdf;
+  color: #526342;
+}
+.command-result {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fafbf7;
+  padding: 16px 20px;
+  margin: 8px 0 22px;
+  font-size: 13px;
+}
+.command-result header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.command-result header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.command-result p {
+  margin: 12px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.command-result dl {
+  margin: 12px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 28px;
+}
+.command-result dt {
+  font-size: 11px;
+  color: var(--muted);
+}
+.command-result dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+.command-failed,
+.command-unknown {
+  border-color: #dfbd99;
+}
+.command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.command-actions button {
+  border: 1px solid var(--border);
+  background: white;
+  padding: 7px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.goal-context {
+  display: block;
+  margin: 8px 0 14px;
+  color: #657950;
+  font-size: 12px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
 }

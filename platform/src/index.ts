@@ -4,6 +4,12 @@ import { Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { Request, Response, NextFunction } from "express";
 import { json } from "express";
+import {
+  publicSession,
+  publicTiming,
+  PublicEventStream,
+  POLICY_VERSION,
+} from "./public";
 import { Store } from "./store";
 import { PlatformService, ApiError } from "./service";
 @Module({})
@@ -58,16 +64,48 @@ async function main() {
       }
       res
         .status(mongo && agentCore.ok ? 200 : 503)
-        .json({ ok: mongo && agentCore.ok, mongo, agentCore });
+        .json({ ok: mongo && agentCore.ok });
     }),
   );
   http.use("/api", (_req: Request, _res: Response, next: NextFunction) => {
     if (!connected) return next(new ApiError(503, "MongoDB is unavailable"));
     next();
   });
+  // Raw schema/configuration and host capabilities are not a product API.
+  http.use("/api", (req: Request, _res: Response, next: NextFunction) => {
+    if (/^\/(capabilities|schemas)(\/|$)/.test(req.path))
+      return next(
+        new ApiError(
+          403,
+          "This operation is not available in Truex",
+          "CAPABILITY_DENIED",
+        ),
+      );
+    next();
+  });
   http.get(
     "/api/agents",
     route(async (_req, res) => res.json(await service.agents())),
+  );
+  http.get(
+    "/api/agents/:id/mcp",
+    route(async (req, res) =>
+      res.json(await service.agentMcp(String(req.params.id))),
+    ),
+  );
+  http.post(
+    "/api/agents/:id/mcp",
+    route(async (req, res) =>
+      res.json(
+        await service.setAgentMcp(String(req.params.id), req.body.profileIds),
+      ),
+    ),
+  );
+  http.post(
+    "/api/mcp",
+    route(async (req, res) =>
+      res.status(201).json(await service.createMcp(req.body)),
+    ),
   );
   http.get(
     "/api/capabilities",
@@ -97,7 +135,7 @@ async function main() {
     route(async (_req, res) => {
       const sessions = await store.sessions
         .find(
-          { archived: { $ne: true } },
+          { archived: { $ne: true }, runtimePolicyVersion: POLICY_VERSION },
           { projection: { approvals: 0, timings: 0 } },
         )
         .sort({ createdAt: -1 })
@@ -120,7 +158,7 @@ async function main() {
               first.length > 80 ? first.slice(0, 79).trimEnd() + "…" : first;
         }
       }
-      res.json(sessions);
+      res.json(sessions.map(publicSession));
     }),
   );
   http.get(
@@ -173,11 +211,18 @@ async function main() {
     "/api/sessions/:id/capabilities",
     route(async (req, res) =>
       res.json(
-        await service.capability(
-          String(req.params.id),
-          req.body.method,
-          req.body.params || {},
-        ),
+        await (req.body.command
+          ? service.command(
+              String(req.params.id),
+              req.body.method,
+              req.body.params || {},
+              req.body.command,
+            )
+          : service.capability(
+              String(req.params.id),
+              req.body.method,
+              req.body.params || {},
+            )),
       ),
     ),
   );
@@ -186,9 +231,16 @@ async function main() {
     route(async (req, res) => {
       const s = await service.session(String(req.params.id));
       await service.ingest(s);
-      const rows = (await service.session(s._id)).timings || [];
+      const rows = ((await service.session(s._id)).timings || []).map(
+        publicTiming,
+      );
       res.json({
-        runtimeStartup: s.runtimeStartup,
+        runtimeStartup: s.runtimeStartup
+          ? {
+              spawnMs: s.runtimeStartup.spawnMs,
+              initializeMs: s.runtimeStartup.initializeMs,
+            }
+          : undefined,
         threadStartMs: s.threadStartMs,
         turns: rows,
         averages: {
@@ -237,8 +289,10 @@ async function main() {
       });
       res.flushHeaders();
       try {
+        const stream = new PublicEventStream();
         for await (const chunk of upstream.body as any) {
-          if (!res.write(Buffer.from(chunk))) {
+          const output = stream.push(chunk);
+          if (output && !res.write(output)) {
             abort.abort();
             res.destroy();
             break;
@@ -254,7 +308,17 @@ async function main() {
   );
   http.use((error: any, _req: Request, res: Response, _next: NextFunction) =>
     res.status(error.status || 500).json({
-      error: error.status ? error.message : "Internal platform error",
+      error: [
+        "LEGACY_SESSION",
+        "CAPABILITY_DENIED",
+        "CONNECTOR_POLICY",
+      ].includes(error.code)
+        ? error.message
+        : error.status === 400
+          ? "Invalid request. Check your input and try again."
+          : error.status === 404
+            ? "Conversation or agent not found."
+            : "The request could not be completed. Please try again.",
       code: error.code || "INTERNAL",
     }),
   );

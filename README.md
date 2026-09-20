@@ -2,6 +2,17 @@
 
 A TypeScript platform around a **project-local, source-pinned Codex app-server**. Next.js frontend, NestJS platform, Express adapter, MongoDB persistence and SSE streaming. No authentication or multi-tenancy is implemented; use an internal development environment.
 
+## Truex runtime
+
+Truex retains thinking, plans, response timings, streaming, stop/steer, fork,
+compact, goals, model settings, collaboration and HTTP MCP tools. The access
+policy blocks local shell/file tools and host configuration overrides. Public
+responses retain useful agent activity while excluding raw commands, repository
+paths, internal configuration and runtime diagnostics. HTTP connectors can be
+managed in the Connected tools panel; local stdio launch remains disabled.
+Pre-policy conversations are retained but cannot be reopened or resumed.
+See [runtime policy, migration and verification](docs/TRUEX_RUNTIME.md).
+
 ## Local Codex pin
 
 `codex.lock.json` pins OpenAI Codex revision `4a942885c8b4745757a9f86ad2075e16c42483c5`.
@@ -35,7 +46,7 @@ Set `MONGO_URI` in `platform/.env`. The database is `truex` (`MONGO_DB=truex`). 
 | `truex_models` | Provider endpoint, model name and **API key stored in MongoDB** |
 | `truex_mcp` | MCP endpoint/command and authentication configuration |
 
-There is no production seed command and no provider API-key or model configuration in `.env`. Add or update these documents yourself. The service rereads them per request; ObjectId and string IDs are supported, including string references to ObjectIds. Both `apiKey` and `apikey` credential fields are accepted (the camel-case field takes precedence if both exist). See [MongoDB document examples](docs/mongodb.md).
+There is no production seed command and no provider API-key or model configuration in `.env`. Manage agents and model profiles in MongoDB. HTTP MCP profiles and agent attachments can also be managed through the Connected tools panel; local command connectors are blocked. The service rereads them per request; ObjectId and string IDs are supported, including string references to ObjectIds. Both `apiKey` and `apikey` credential fields are accepted (the camel-case field takes precedence if both exist). See [MongoDB document examples](docs/mongodb.md).
 
 ```sh
 npm run dev
@@ -65,14 +76,15 @@ DEMO_FRONTEND_PORT=3100 DEMO_PLATFORM_PORT=4200 DEMO_CORE_PORT=4300 npm run demo
 
 - Mongo-backed agent picker and session list.
 - One active turn per thread; overlapping messages serialize into start or steer.
-- Stop control, token streaming, reasoning, plan/diff panels and runtime event inspection.
+- Stop/steer, streaming, expandable thinking, plans, response timings and business activity; host execution details remain private.
 - Bounded event replay, generation-aware cursors, snapshots and slow-subscriber eviction at both SSE layers.
-- Runtime-request cards, typed response validation, deadlines, automatic denial and audit records. Non-approval request variants accept their schema-specific responses.
+- Business clarification questions, typed response validation and deadlines. Other runtime approval requests are denied automatically.
 - Final messages, decisions and completed-turn metrics are written to a small adapter record spool on the Codex volume. Platform consumes and acknowledges these records independently of browser streams. This is a local persistence handoff, not a turn scheduling queue or broker.
 - Mongo writes deduplicate records. Message submission requires `clientId`; ambiguous failures are not blindly retried.
+- HTTP MCP tools and connector configuration are available; local stdio connectors are rejected.
 - Per-thread provider and MCP configuration. Concurrent provider-key isolation is tested against the real runtime with local fixtures.
 - Lazy same-owner resume with retained runtime/workspace storage and cold-open transcript reconciliation.
-- Per-turn timing panel and a schema-driven capabilities console. All 152 inventoried client requests are represented; lifecycle methods use dedicated endpoints. Backend-gated methods may return explicit unsupported errors. The console is not a completed bespoke UI for every capability.
+- Conversation tools expose fork, compact, goals, model/reasoning settings and archive through a restricted API. Raw schema/configuration and host execution methods remain private.
 
 ## Repository
 
