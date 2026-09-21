@@ -1,9 +1,11 @@
+import { httpError } from "../../shared/errors";
 import "reflect-metadata";
 import "dotenv/config";
 import { Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import type { Request, Response, NextFunction } from "express";
 import { json } from "express";
+import { assistantCapabilities } from "../../shared/assistant-capabilities";
 import {
   publicSession,
   publicTiming,
@@ -86,6 +88,68 @@ async function main() {
   http.get(
     "/api/agents",
     route(async (_req, res) => res.json(await service.agents())),
+  );
+  http.get(
+    "/api/assistant-capabilities",
+    route((_req, res) => res.json(assistantCapabilities)),
+  );
+  http.get(
+    "/api/sessions/:id/documents",
+    route(async (req, res) =>
+      res.json(
+        await service.owned(
+          await service.session(String(req.params.id)),
+          "/documents",
+        ),
+      ),
+    ),
+  );
+  http.post(
+    "/api/sessions/:id/documents",
+    route(async (req, res) =>
+      res
+        .status(201)
+        .json(
+          await service.owned(
+            await service.session(String(req.params.id)),
+            "/documents",
+            "POST",
+            { name: req.body.name, base64: req.body.base64 },
+          ),
+        ),
+    ),
+  );
+  http.get(
+    "/api/sessions/:id/documents/:fileId",
+    route(async (req, res) => {
+      const file = await service.owned(
+        await service.session(String(req.params.id)),
+        "/documents/" + encodeURIComponent(String(req.params.fileId)),
+      );
+      if (file.kind === "visualization")
+        throw new ApiError(400, "Use Download HTML in the visual viewer");
+      res.setHeader("Content-Type", file.mediaType);
+      res.setHeader(
+        "Content-Disposition",
+        "attachment; filename*=UTF-8''" + encodeURIComponent(file.name),
+      );
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(Buffer.from(file.base64, "base64"));
+    }),
+  );
+  http.get(
+    "/api/sessions/:id/visualizations/:fileId",
+    route(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.json(
+        await service.owned(
+          await service.session(String(req.params.id)),
+          "/visualizations/" + encodeURIComponent(String(req.params.fileId)),
+        ),
+      );
+    }),
   );
   http.get(
     "/api/agents/:id/mcp",
@@ -277,10 +341,28 @@ async function main() {
           },
         );
       } catch {
-        throw new ApiError(503, "Session owner unavailable");
+        throw new ApiError(
+          503,
+          "Live updates cannot connect to the assistant service. Reopen the conversation when the service is available.",
+          "OWNER_UNAVAILABLE",
+        );
       }
-      if (!upstream.ok || !upstream.body)
-        throw new ApiError(upstream.status, "Upstream stream unavailable");
+      if (!upstream.ok) {
+        const detail = await upstream.json().catch(() => null);
+        throw new ApiError(
+          upstream.status,
+          typeof detail?.error === "string"
+            ? detail.error
+            : "Live updates are unavailable. Reopen the conversation to reconnect.",
+          typeof detail?.code === "string" ? detail.code : "STREAM_UNAVAILABLE",
+        );
+      }
+      if (!upstream.body)
+        throw new ApiError(
+          502,
+          "The assistant service returned an empty live-update stream. Reopen the conversation to reconnect.",
+          "STREAM_UNAVAILABLE",
+        );
       res.set({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
@@ -306,21 +388,12 @@ async function main() {
       }
     }),
   );
-  http.use((error: any, _req: Request, res: Response, _next: NextFunction) =>
-    res.status(error.status || 500).json({
-      error: [
-        "LEGACY_SESSION",
-        "CAPABILITY_DENIED",
-        "CONNECTOR_POLICY",
-      ].includes(error.code)
-        ? error.message
-        : error.status === 400
-          ? "Invalid request. Check your input and try again."
-          : error.status === 404
-            ? "Conversation or agent not found."
-            : "The request could not be completed. Please try again.",
-      code: error.code || "INTERNAL",
-    }),
+  http.use(
+    (error: unknown, _req: Request, res: Response, next: NextFunction) => {
+      if (res.headersSent) return next(error);
+      const { status, ...body } = httpError(error, "platform");
+      res.status(status).json(body);
+    },
   );
   await app.listen(
     Number(process.env.PORT || 4000),

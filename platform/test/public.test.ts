@@ -2,6 +2,32 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { publicEvent, publicSession, PublicEventStream } from "../src/public";
 
+test("web, documents and collaboration emit public activity without raw arguments", () => {
+  for (const type of [
+    "webSearch",
+    "dynamicToolCall",
+    "collabAgentToolCall",
+    "subAgentActivity",
+  ]) {
+    for (const eventType of ["item.started", "item.completed"]) {
+      const event = publicEvent({
+        type: eventType,
+        data: {
+          item: {
+            type,
+            arguments: { secret: "hidden" },
+            prompt: "private",
+            tool: "/host/path",
+          },
+        },
+      });
+      assert.equal(event.type, "activity.updated");
+      assert.ok(event.data.label);
+      assert.doesNotMatch(JSON.stringify(event), /hidden|private|host/);
+    }
+  }
+});
+
 test("provider rate limits are actionable without exposing raw diagnostics", () => {
   for (const codexErrorInfo of [
     "usageLimitExceeded",
@@ -24,19 +50,12 @@ test("provider rate limits are actionable without exposing raw diagnostics", () 
     assert.match(event.data.message, /rate limit/);
     assert.doesNotMatch(JSON.stringify(event), /private|secret/);
   }
-  for (const error of [
-    undefined,
-    { message: "private diagnostics 429" },
-    {
-      codexErrorInfo: {
-        responseTooManyFailedAttempts: { httpStatusCode: 500 },
-      },
-    },
-  ]) {
-    assert.deepEqual(publicEvent({ type: "error", data: { error } }).data, {
-      message: "The request could not be completed. Please try again.",
-    });
-  }
+  const fallback = publicEvent({
+    type: "error",
+    data: { error: { message: "private diagnostics 429" } },
+  }).data;
+  assert.equal(fallback.code, "RUNTIME_FAILED");
+  assert.doesNotMatch(fallback.message, /private|429/);
 });
 
 test("public boundary drops raw runtime data and unknown events, including nested completed-turn items", () => {

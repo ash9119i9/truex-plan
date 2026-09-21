@@ -74,6 +74,9 @@ DEMO_FRONTEND_PORT=3100 DEMO_PLATFORM_PORT=4200 DEMO_CORE_PORT=4300 npm run demo
 
 ## Features
 
+- Capabilities, documents & visuals panel for explanations/planning, clarification questions, web research, documents, Visualize, goal tracking and helper-agent collaboration. Project/Git/command execution is excluded.
+- [Visualize](docs/VISUALIZE.md): interactive charts, diagrams, simulations and explainers inside replies, with saved source, an expandable viewer, remembered controls, follow-up drafts and sandboxed HTML exports.
+- Upload and read PDF, DOCX, XLSX, PPTX and text documents; create downloadable PDF, Word, Excel and PowerPoint files through model-callable tools. Revisions preserve the original and create a new version. See [assistant capabilities](docs/ASSISTANT_CAPABILITIES.md) for limits and provider configuration.
 - Mongo-backed agent picker and session list.
 - One active turn per thread; overlapping messages serialize into start or steer.
 - Stop/steer, streaming, expandable thinking, plans, response timings and business activity; host execution details remain private.

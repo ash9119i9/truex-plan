@@ -22,6 +22,7 @@ export interface ModelDocument {
   wireApi?: string;
   reasoningEffort?: string;
   serviceTier?: string;
+  webSearch?: "disabled" | "cached" | "live";
   enabled?: boolean;
 }
 export interface McpDocument {

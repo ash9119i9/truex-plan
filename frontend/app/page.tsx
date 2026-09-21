@@ -12,6 +12,7 @@ import {
 } from "@/lib/chat";
 import { SessionActivity } from "@/components/session-activity";
 import { McpSettings } from "@/components/mcp-settings";
+import { AssistantTools } from "@/components/assistant-tools";
 import { RequestCard } from "@/components/request-card";
 import { api, base } from "@/lib/api";
 import { transport } from "@/lib/transport";
@@ -187,6 +188,7 @@ export default function Home() {
             break;
           case "turn.completed":
             setRunning(false);
+            if (d.turn?.error?.message) setError(d.turn.error.message);
             if (d.timing)
               setTimings((old) => [
                 ...old.filter((t) => t.turnId !== d.timing.turnId),
@@ -498,6 +500,21 @@ export default function Home() {
           <span className="muted">{agent?.description}</span>
         </div>
         {agentId && <McpSettings key={agentId} agentId={agentId} />}
+        <AssistantTools
+          key={session?._id || "new"}
+          sessionId={session?._id}
+          refreshKey={timings.length}
+          running={running}
+          onPrompt={(prompt) => {
+            setText(prompt);
+            setCommandOpen(prompt.startsWith("/"));
+            composer.current?.focus();
+          }}
+          onFork={(id) => {
+            void refreshSessions();
+            void open(id);
+          }}
+        />
         {error && (
           <div role="alert" className="error-banner">
             {error}
@@ -546,6 +563,12 @@ export default function Home() {
           ) : (
             <>
               <ChatMessages
+                sessionId={session?._id}
+                onPrompt={(prompt) => {
+                  setText(prompt);
+                  setCommandOpen(false);
+                  composer.current?.focus();
+                }}
                 entries={entries}
                 agentName={agent?.name || "Assistant"}
                 running={running}

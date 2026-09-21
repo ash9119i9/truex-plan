@@ -1,3 +1,4 @@
+import { httpError } from "../../shared/errors";
 import "dotenv/config";
 import express from "express";
 import { resolve, join } from "node:path";
@@ -67,6 +68,32 @@ app.get("/healthz", async (_req, res) => {
   });
 });
 app.get("/capabilities", (_req, res) => res.json(inventory));
+app.get("/threads/:id/documents", async (req, res) =>
+  res.json({
+    available: client.documentToolsAvailable(req.params.id),
+    visualizationAvailable: client.visualizationToolsAvailable(req.params.id),
+    files: await client.files.list(req.params.id),
+  }),
+);
+app.post("/threads/:id/documents", async (req, res) => {
+  if (!client.documentToolsAvailable(req.params.id))
+    throw new HttpError(409, "Start a new conversation to use documents");
+  res
+    .status(201)
+    .json(
+      await client.files.upload(req.params.id, req.body.name, req.body.base64),
+    );
+});
+app.get("/threads/:id/visualizations/:fileId", async (req, res) =>
+  res.json(await client.files.visualization(req.params.id, req.params.fileId)),
+);
+app.get("/threads/:id/documents/:fileId", async (req, res) => {
+  const { data, ...file } = await client.files.get(
+    req.params.id,
+    req.params.fileId,
+  );
+  res.json({ ...file, base64: data.toString("base64") });
+});
 app.get("/schemas/:name", (req, res) => {
   if (!/^\w+$/.test(req.params.name))
     throw new HttpError(400, "Invalid schema");
@@ -160,12 +187,9 @@ app.use(
     res: express.Response,
     _next: express.NextFunction,
   ) => {
-    res.status(error.status || 500).json({
-      error: error.status
-        ? manager.redactor.clean(error.message)
-        : "Internal agent-core error",
-      code: error.code || "INTERNAL",
-    });
+    if (res.headersSent) return _next(error);
+    const { status, ...body } = httpError(error, "agent-core");
+    res.status(status).json(manager.redactor.clean(body));
   },
 );
 const server = app.listen(

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PendingRequest } from "../../shared/contracts";
 import { Button } from "./ui/button";
 export function RequestCard({
@@ -12,6 +12,16 @@ export function RequestCard({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [expired, setExpired] = useState(
+    Date.now() >= Date.parse(request.expiresAt),
+  );
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setExpired(true),
+      Math.max(0, Date.parse(request.expiresAt) - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [request.expiresAt]);
   if (request.method !== "item/tool/requestUserInput") return null;
   const questions = request.detail.questions as {
     id: string;
@@ -24,6 +34,7 @@ export function RequestCard({
       className="request-card"
       onSubmit={async (e) => {
         e.preventDefault();
+        if (expired || busy) return;
         setBusy(true);
         setError("");
         try {
@@ -48,6 +59,9 @@ export function RequestCard({
               key={option.label}
               type="button"
               variant="outline"
+              disabled={busy || expired}
+              aria-pressed={answers[q.id] === option.label}
+              title={option.description}
               onClick={() =>
                 setAnswers((old) => ({ ...old, [q.id]: option.label }))
               }
@@ -57,6 +71,8 @@ export function RequestCard({
           ))}
           <input
             required
+            disabled={busy || expired}
+            aria-label={q.question}
             type={q.isSecret ? "password" : "text"}
             value={answers[q.id] || ""}
             onChange={(e) =>
@@ -66,10 +82,12 @@ export function RequestCard({
         </label>
       ))}
       {error && <p role="alert">{error}</p>}
-      <Button
-        disabled={busy || Date.now() >= Date.parse(request.expiresAt)}
-        type="submit"
-      >
+      {expired && (
+        <p role="status">
+          This question has expired. Send a message to continue.
+        </p>
+      )}
+      <Button disabled={busy || expired} type="submit">
         Submit answer
       </Button>
     </form>

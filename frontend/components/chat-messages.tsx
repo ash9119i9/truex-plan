@@ -5,6 +5,8 @@ import remarkGfm from "remark-gfm";
 import { Fragment } from "react";
 import { CommandResult, commandLabel } from "./command-result";
 import { ThinkingBlock } from "./thinking-block";
+import { Visualization } from "./visualization";
+import { splitVisualizations } from "@/lib/visualization";
 
 export function ChatMessages({
   entries,
@@ -13,6 +15,8 @@ export function ChatMessages({
   onCommand,
   onOpen,
   onRefresh,
+  sessionId,
+  onPrompt,
 }: {
   entries: Entry[];
   agentName: string;
@@ -20,6 +24,8 @@ export function ChatMessages({
   onCommand?: (text: string) => void;
   onOpen?: (id: string) => void;
   onRefresh?: () => void;
+  sessionId?: string;
+  onPrompt?: (text: string) => void;
 }) {
   const groups: {
     id: string;
@@ -143,7 +149,27 @@ export function ChatMessages({
               e.kind === "message" && e.text ? (
                 <div className="message assistant" key={e.id}>
                   <div className="message-text markdown">
-                    <Markdown remarkPlugins={[remarkGfm]}>{e.text}</Markdown>
+                    {splitVisualizations(e.text, !e.final && !e.done).map(
+                      (part, i) =>
+                        part.type === "visualization" ? (
+                          sessionId ? (
+                            <Visualization
+                              key={part.id + ":" + i}
+                              sessionId={sessionId}
+                              id={part.id}
+                              onPrompt={onPrompt}
+                            />
+                          ) : (
+                            <p key={i}>
+                              Open this conversation to view the visualization.
+                            </p>
+                          )
+                        ) : (
+                          <Markdown key={i} remarkPlugins={[remarkGfm]}>
+                            {part.text}
+                          </Markdown>
+                        ),
+                    )}
                     {active && !e.final && !e.done && (
                       <span className="cursor" aria-hidden="true" />
                     )}

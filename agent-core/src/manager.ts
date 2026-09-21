@@ -584,6 +584,22 @@ export class ThreadManager {
       });
       return;
     }
+    if (
+      this.runtime instanceof BusinessRuntime &&
+      method === "item/tool/call"
+    ) {
+      const generation = this.generation;
+      void this.runtime.executeTool(msg.params).then((result) => {
+        if (generation === this.generation) {
+          try {
+            this.runtime.respond(msg.id, result);
+          } catch {
+            /* Runtime disconnected. */
+          }
+        }
+      });
+      return;
+    }
     if (!Object.hasOwn(defaults, method) || defaults[method] === null) {
       this.runtime.respond(msg.id, undefined, {
         code: -32601,

@@ -1,3 +1,4 @@
+import { httpError } from "../../shared/errors";
 import { businessCapabilityParams } from "../../shared/business-capabilities";
 import { publicSession, publicSnapshot, POLICY_VERSION } from "./public";
 import { randomUUID } from "node:crypto";
@@ -45,19 +46,42 @@ export class PlatformService {
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(35000),
       });
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.name === "TimeoutError")
+        throw new ApiError(
+          504,
+          "The assistant service timed out. Check the conversation before retrying; the request may have been accepted.",
+          "OWNER_TIMEOUT",
+        );
       throw new ApiError(
         503,
-        "Session owner is temporarily unavailable",
+        "The assistant service is unavailable. Try again later or ask your administrator to check the service.",
         "OWNER_UNAVAILABLE",
       );
     }
-    const result = await response.json();
+    let result: any;
+    try {
+      result = await response.json();
+    } catch {
+      throw new ApiError(
+        502,
+        `The assistant service returned an unreadable response (HTTP ${response.status}). Check the conversation before retrying.`,
+        "INVALID_UPSTREAM_RESPONSE",
+      );
+    }
+    if (!result || typeof result !== "object")
+      throw new ApiError(
+        502,
+        "The assistant service returned an invalid response. Check the conversation before retrying.",
+        "INVALID_UPSTREAM_RESPONSE",
+      );
     if (!response.ok)
       throw new ApiError(
         response.status,
-        result.error || "Runtime request failed",
-        result.code,
+        typeof result.error === "string"
+          ? result.error
+          : `The assistant service rejected the request (HTTP ${response.status}).`,
+        typeof result.code === "string" ? result.code : "UPSTREAM_FAILED",
       );
     return result;
   }
@@ -90,6 +114,7 @@ export class PlatformService {
     const provider =
       "profile_" + String(profile._id).replace(/[^a-zA-Z0-9_]/g, "_");
     const config: Record<string, any> = {
+      web_search: profile.webSearch || "live",
       [`model_providers.${provider}`]: {
         name: profile.provider,
         base_url: profile.baseUrl,
@@ -462,8 +487,7 @@ export class PlatformService {
       await this.ingest(s);
       await this.reconcile(s);
     } catch (e) {
-      recoveryError =
-        e instanceof Error ? e.message : "History reconciliation unavailable";
+      recoveryError = httpError(e, "platform").error;
     }
     return {
       session: publicSession(await this.session(id)),
@@ -472,7 +496,7 @@ export class PlatformService {
       ),
       snapshot: snapshot ? publicSnapshot(snapshot) : null,
       recoveryError: recoveryError
-        ? "Conversation recovery is temporarily unavailable."
+        ? `Conversation recovery: ${recoveryError}`
         : null,
     };
   }
@@ -531,8 +555,17 @@ export class PlatformService {
       request.text.length > 50000
     )
       throw new ApiError(400, "A command needs text and a valid clientId");
-    if (method !== "help") businessCapabilityParams(method, params);
-    else if (
+    if (method !== "help") {
+      try {
+        businessCapabilityParams(method, params);
+      } catch {
+        throw new ApiError(
+          403,
+          "This operation or setting is not available in Truex",
+          "CAPABILITY_DENIED",
+        );
+      }
+    } else if (
       !params ||
       typeof params !== "object" ||
       Object.keys(params).length
@@ -607,9 +640,7 @@ export class PlatformService {
       command = {
         ...message.command!,
         state: definite ? "failed" : "unknown",
-        error: definite
-          ? "The command was rejected. Check its arguments and try again."
-          : "The command outcome could not be confirmed. Check the current state before trying again.",
+        error: `${httpError(e, "platform").error}${definite ? "" : " The command outcome could not be confirmed. Check the current state before trying again."}`,
       };
     }
     await this.store.messages.updateOne({ _id: key }, { $set: { command } });

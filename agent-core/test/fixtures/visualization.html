@@ -1,0 +1,32 @@
+<div id="capacity-visual" aria-label="Capacity scenario">
+  <h2>Capacity scenario</h2>
+  <label for="capacity-team">Team size <output id="capacity-size"></output></label>
+  <input id="capacity-team" class="form-range" type="range" min="1" max="10" value="4">
+  <svg role="img" aria-labelledby="capacity-title" viewBox="0 0 420 110">
+    <title id="capacity-title">Weekly capacity in hours</title>
+    <rect x="0" y="20" width="400" height="35" fill="var(--muted)"></rect>
+    <rect id="capacity-bar" x="0" y="20" width="160" height="35" fill="var(--viz-series-1)"></rect>
+    <text id="capacity-label" x="0" y="85" fill="var(--foreground)"></text>
+  </svg>
+  <p id="capacity-result" aria-live="polite"></p>
+  <button id="capacity-followup" type="button" class="btn">Explain this scenario</button>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('capacity-visual');
+  const slider = root.querySelector('#capacity-team');
+  const saved = window.openai.widgetState;
+  if (saved && Number.isInteger(saved.modelContent?.teamSize)) slider.value = String(saved.modelContent.teamSize);
+  function draw(save) {
+    const size = Number(slider.value), hours = size * 30;
+    root.querySelector('#capacity-size').textContent = String(size);
+    root.querySelector('#capacity-bar').setAttribute('width', String(size * 40));
+    root.querySelector('#capacity-label').textContent = hours + ' hours / week';
+    root.querySelector('#capacity-result').textContent = 'Illustrative capacity: ' + hours + ' hours per week.';
+    if (save) window.openai.setWidgetState({ modelContent: { teamSize: size, hours }, privateContent: null }).catch(() => {});
+  }
+  slider.addEventListener('input', () => draw(true));
+  root.querySelector('#capacity-followup').addEventListener('click', () => window.openai.sendFollowUpMessage({ prompt: 'Explain the capacity assumptions for a team of ' + slider.value + '.', title: 'Explore this scenario' }));
+  draw(false);
+})();
+</script>

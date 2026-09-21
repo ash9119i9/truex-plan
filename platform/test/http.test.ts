@@ -60,6 +60,31 @@ test(
       res.writeHead(200, { "Content-Type": "text/event-stream" });
       const emit = (x: any) =>
         res.write(`event: ${x.type}\ndata: ${JSON.stringify(x)}\n\n`);
+      if (n === 3) {
+        emit({ type: "response.created", response: { id: "visual-fixture" } });
+        emit({
+          type: "response.output_item.done",
+          item: {
+            type: "function_call",
+            call_id: "visual-call",
+            name: "create_visualization",
+            arguments: JSON.stringify({
+              title: "Chart fixture",
+              description: "Saved chart",
+              html: '<div id="chart">Fixture chart</div><script>document.getElementById("chart").textContent="Interactive chart";</script>',
+            }),
+          },
+        });
+        emit({
+          type: "response.completed",
+          response: {
+            id: "visual-fixture",
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          },
+        });
+        res.end();
+        return;
+      }
       emit({ type: "response.created", response: { id: "r" + n } });
       emit({
         type: "response.output_item.added",
@@ -154,6 +179,25 @@ test(
       const res = await fetch(`http://127.0.0.1:${platformPort}/healthz`);
       return res.ok;
     });
+    const invalidRequest = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      },
+    );
+    assert.equal(invalidRequest.status, 400);
+    assert.equal((await invalidRequest.json()).error, "agentId is required");
+    for (const targetPort of [platformPort, corePort]) {
+      const malformed = await fetch(`http://127.0.0.1:${targetPort}/threads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{invalid",
+      });
+      assert.equal(malformed.status, 400);
+      assert.equal((await malformed.json()).code, "INVALID_JSON");
+    }
     const health = await call("/healthz");
     assert.deepEqual(health, { ok: true });
     for (const path of [
@@ -202,6 +246,49 @@ test(
     });
     assert.equal(local.status, 422);
     const session = await call("/api/sessions", { agentId: "assistant" });
+    const capabilities = await call("/api/assistant-capabilities");
+    assert.deepEqual(
+      capabilities.map((c: any) => c.id),
+      [
+        "explain",
+        "questions",
+        "web",
+        "documents",
+        "visualize",
+        "goals",
+        "collaboration",
+      ],
+    );
+    const document = await call(`/api/sessions/${session._id}/documents`, {
+      name: "notes.txt",
+      base64: Buffer.from("Conversation document").toString("base64"),
+    });
+    const documents = await call(`/api/sessions/${session._id}/documents`);
+    assert.equal(documents.available, true);
+    assert.equal(documents.files[0].id, document.id);
+    assert.doesNotMatch(
+      JSON.stringify(documents),
+      /business-workspaces|\.runtime|cwd/,
+    );
+    const download = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions/${session._id}/documents/${document.id}`,
+    );
+    assert.equal(download.status, 200);
+    assert.match(
+      download.headers.get("content-disposition") || "",
+      /attachment/,
+    );
+    assert.equal(download.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(await download.text(), "Conversation document");
+    const otherSession = await call("/api/sessions", { agentId: "assistant" });
+    const inaccessible = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions/${otherSession._id}/documents/${document.id}`,
+    );
+    assert.equal(inaccessible.status, 404);
+    assert.equal(
+      (await inaccessible.json()).error,
+      "File not found in this conversation",
+    );
     const message = { text: "Hello", clientId: "http-message-1" };
     const first = await call(`/api/sessions/${session._id}/messages`, message);
     const duplicate = await call(
@@ -286,5 +373,42 @@ test(
     const reopened = await call(`/api/sessions/${session._id}`);
     assert.equal(reopened.messages.length, 4);
     assert.equal(logs.includes("http-fixture-key"), false);
+    await call(`/api/sessions/${session._id}/messages`, {
+      text: "Create a visualization",
+      clientId: "http-visualization",
+    });
+    await wait(
+      async () =>
+        (await store.messages.countDocuments({
+          sessionId: session._id,
+          role: "assistant",
+        })) === 3,
+    );
+    const savedFiles = await call(`/api/sessions/${session._id}/documents`);
+    assert.equal(savedFiles.visualizationAvailable, true);
+    const visual = savedFiles.files.find(
+      (file: any) => file.kind === "visualization",
+    );
+    assert.ok(visual);
+    const visualPath = `/api/sessions/${session._id}/visualizations/${visual.id}`;
+    assert.match((await call(visualPath)).html, /Fixture chart/);
+    const crossSession = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions/${otherSession._id}/visualizations/${visual.id}`,
+    );
+    assert.equal(crossSession.status, 404);
+    const rawDownload = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions/${session._id}/documents/${visual.id}`,
+    );
+    assert.equal(
+      rawDownload.status,
+      400,
+      "Raw executable HTML must not be exported through the document endpoint",
+    );
+    await stop(core);
+    core = launch("agent-core", coreEnv);
+    await wait(
+      async () => (await fetch(`http://127.0.0.1:${corePort}/healthz`)).ok,
+    );
+    assert.equal((await call(visualPath)).title, "Chart fixture");
   },
 );

@@ -17,9 +17,12 @@ it is not a reduced chat-only runtime.
   instructions, runtime configuration or arbitrary history. Forks retain the
   parent's provider configuration and get a new managed work directory.
 - HTTP MCP tools and connector configuration in the Connected tools panel.
-- Normal engine defaults for collaboration, apps, plugins and web search. These
-  remain subject to the pinned engine's provider/authentication support. Removing
-  a policy override does not install a plugin or enable an experimental feature.
+- Explicitly enabled collaboration, goals, normal-mode clarification and live web
+  search (configurable per model profile). Web search remains subject to provider
+  support. Apps/plugins still depend on the pinned engine's authentication support.
+- Adapter-owned document upload, extraction and generation through validated
+  dynamic tools. Files are confined to managed conversation storage; no host paths
+  or shell access are granted. See [assistant capabilities](ASSISTANT_CAPABILITIES.md).
 
 ## Restricted features and data
 

@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 const require = createRequire(resolve("platform/package.json"));
@@ -24,6 +24,52 @@ const provider = createServer(async (req, res) => {
     return;
   }
   const number = ++sequence;
+  if (process.env.DEMO_VISUALIZE === "1") {
+    const reference = body.match(/\[truex-visualization:[a-f0-9-]{36}\]/)?.[0];
+    const item = reference
+      ? {
+          type: "message",
+          id: "visual_answer_" + number,
+          role: "assistant",
+          content: [
+            {
+              type: "output_text",
+              text:
+                "Explore this illustrative capacity scenario.\n\n" + reference,
+            },
+          ],
+        }
+      : {
+          type: "function_call",
+          id: "visual_tool_" + number,
+          call_id: "visual_call_" + number,
+          name: "create_visualization",
+          arguments: JSON.stringify({
+            title: "Capacity scenario",
+            description:
+              "Adjust team size to explore illustrative weekly capacity.",
+            html: readFileSync(
+              resolve("agent-core/test/fixtures/visualization.html"),
+              "utf8",
+            ),
+          }),
+        };
+    res.writeHead(200, { "Content-Type": "text/event-stream" });
+    for (const event of [
+      { type: "response.created", response: { id: "visual_" + number } },
+      { type: "response.output_item.done", item },
+      {
+        type: "response.completed",
+        response: {
+          id: "visual_" + number,
+          usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+        },
+      },
+    ])
+      res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    res.end();
+    return;
+  }
   const text =
     "This is a local fixture response, streamed through the project-pinned Codex runtime. Your session, transcript, timings, and reconnect flow are real. Configure a model profile to use a live provider.";
   res.writeHead(200, { "Content-Type": "text/event-stream" });

@@ -1,3 +1,4 @@
+import { runtimeError } from "../../shared/errors";
 import type { Session, TurnTiming } from "../../shared/contracts";
 export const POLICY_VERSION = 1;
 
@@ -140,6 +141,9 @@ export function publicEvent(e: any): any | null {
         data: {
           ...(d.timing ? { timing: publicTiming(d.timing) } : {}),
           turn: {
+            ...(d.turn?.status === "failed"
+              ? { error: runtimeError(d.turn) }
+              : {}),
             status: ["completed", "failed", "interrupted"].includes(
               d.turn?.status,
             )
@@ -148,28 +152,8 @@ export function publicEvent(e: any): any | null {
           },
         },
       };
-    case "error": {
-      const info = d.error?.codexErrorInfo;
-      const rateLimited =
-        info === "usageLimitExceeded" ||
-        (info &&
-          typeof info === "object" &&
-          [
-            "httpConnectionFailed",
-            "responseStreamConnectionFailed",
-            "responseStreamDisconnected",
-            "responseTooManyFailedAttempts",
-          ].some((kind) => info[kind]?.httpStatusCode === 429));
-      return {
-        ...base,
-        data: {
-          message: rateLimited
-            ? "The model provider's rate limit has been reached. Try again later, or ask your administrator to check the provider quota or change the configured model."
-            : "The request could not be completed. Please try again.",
-          ...(rateLimited ? { code: "PROVIDER_RATE_LIMITED" } : {}),
-        },
-      };
-    }
+    case "error":
+      return { ...base, data: runtimeError(d) };
     case "approval.requested": {
       const pending = request(d);
       return pending ? { ...base, data: pending } : null;
@@ -178,6 +162,42 @@ export function publicEvent(e: any): any | null {
       return { ...base, data: { requestId: d.requestId } };
     case "item.started":
     case "item.completed":
+      if (
+        [
+          "webSearch",
+          "collabAgentToolCall",
+          "subAgentActivity",
+          "dynamicToolCall",
+        ].includes(d.item?.type)
+      ) {
+        const complete = e.type === "item.completed";
+        const labels: Record<string, string> = {
+          webSearch: complete ? "Web research finished" : "Researching the web",
+          collabAgentToolCall: complete
+            ? "Helper agent request finished"
+            : "Coordinating helper agents",
+          subAgentActivity: complete
+            ? "Helper agent activity finished"
+            : "Helper agent is working",
+          dynamicToolCall: complete
+            ? "Document request finished"
+            : "Working with conversation documents",
+        };
+        if (
+          d.item.type === "dynamicToolCall" &&
+          d.item.tool === "create_visualization"
+        )
+          labels.dynamicToolCall = complete
+            ? d.item.success === false
+              ? "Visualization could not be created"
+              : "Visualization created"
+            : "Creating an interactive visual";
+        return {
+          ...base,
+          type: "activity.updated",
+          data: { label: labels[d.item.type] },
+        };
+      }
       if (d.item?.type === "reasoning")
         return {
           ...base,
