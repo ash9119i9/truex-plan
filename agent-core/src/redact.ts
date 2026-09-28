@@ -29,7 +29,12 @@ export class Redactor {
       return Object.fromEntries(
         Object.entries(value).map(([key, item]) => [
           key,
-          sensitive.test(key) ? "[REDACTED]" : this.clean(item),
+          // Flags such as isSecret carry no secret; only values that can hold one are hidden.
+          sensitive.test(key) &&
+          item !== null &&
+          ["string", "object"].includes(typeof item)
+            ? "[REDACTED]"
+            : this.clean(item),
         ]),
       );
     return value;

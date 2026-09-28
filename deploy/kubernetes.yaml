@@ -30,6 +30,8 @@ spec:
             - {name: CODEX_HOME, value: /data/codex}
             - {name: AGENT_WORKSPACE, value: /data/workspace}
             - {name: MAX_THREADS, value: "20"}
+            # run_script stays disabled (SCRIPT_RUNNER unset). The docker runner is not for this cluster:
+            # it needs a Docker socket (root on the node). Use a separate sandboxed runner (gVisor/Kata/Job) instead.
           volumeMounts: [{name: runtime, mountPath: /data}]
           readinessProbe: {httpGet: {path: /healthz, port: 4100}, initialDelaySeconds: 5, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /livez, port: 4100}, periodSeconds: 10}
@@ -62,6 +64,9 @@ spec:
             - {name: AGENT_CORE_URLS, value: "http://agent-core-0.agent-core.agent-platform.svc.cluster.local:4100,http://agent-core-1.agent-core.agent-platform.svc.cluster.local:4100"}
             - {name: AGENT_WORKSPACE, value: /data/workspace}
             - {name: FRONTEND_ORIGIN, value: "http://localhost:3000"}
+            # Remove both to run direct-only; chat/anthropic/gemini profiles then fail with GATEWAY_NOT_CONFIGURED.
+            - {name: MODEL_GATEWAY_URL, value: "http://model-gateway.agent-platform.svc.cluster.local:4200"}
+            - {name: MODEL_GATEWAY_SECRET, valueFrom: {secretKeyRef: {name: platform-config, key: MODEL_GATEWAY_SECRET, optional: true}}}
           readinessProbe: {httpGet: {path: /healthz, port: 4000}, periodSeconds: 10}
           livenessProbe: {httpGet: {path: /livez, port: 4000}, periodSeconds: 10}
           resources: {requests: {cpu: "100m", memory: "256Mi"}, limits: {cpu: "1", memory: "1Gi"}}
@@ -92,3 +97,34 @@ spec:
   podSelector: {}
   policyTypes: [Ingress]
   ingress: [{from: [{podSelector: {}}]}]
+---
+# ClusterIP only; not exposed through any ingress.
+apiVersion: v1
+kind: Service
+metadata: {name: model-gateway, namespace: agent-platform}
+spec: {selector: {app: model-gateway}, ports: [{port: 4200}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: model-gateway, namespace: agent-platform}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: model-gateway}}
+  template:
+    metadata: {labels: {app: model-gateway}}
+    spec:
+      # Long model streams: give in-flight requests time to finish (DRAIN_GRACE_MS + margin).
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: model-gateway
+          image: truex-model-gateway:local
+          ports: [{containerPort: 4200}]
+          env:
+            - {name: HOST, value: "0.0.0.0"}
+            - {name: DRAIN_GRACE_MS, value: "45000"}
+            - {name: MONGO_URI, valueFrom: {secretKeyRef: {name: platform-config, key: MONGO_URI}}}
+            - {name: MONGO_DB, value: truex}
+            - {name: MODEL_GATEWAY_SECRET, valueFrom: {secretKeyRef: {name: platform-config, key: MODEL_GATEWAY_SECRET}}}
+          readinessProbe: {httpGet: {path: /ready, port: 4200}, periodSeconds: 5}
+          livenessProbe: {httpGet: {path: /health, port: 4200}, periodSeconds: 10}
+          resources: {requests: {cpu: "100m", memory: "128Mi"}, limits: {cpu: "1", memory: "512Mi"}}

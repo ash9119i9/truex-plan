@@ -20,6 +20,11 @@ export interface ModelDocument {
   apikey?: string;
   apiKey?: string;
   wireApi?: string;
+  /** Overrides the route implied by wireApi; see model-route.ts. */
+  route?: string;
+  /** Codex has no metadata for non-OpenAI models; set limits explicitly. */
+  contextWindow?: number;
+  autoCompactTokenLimit?: number;
   reasoningEffort?: string;
   serviceTier?: string;
   webSearch?: "disabled" | "cached" | "live";

@@ -1,4 +1,8 @@
-import type { DomainEvent, Message } from "../../shared/contracts";
+import type {
+  ApprovalRecord,
+  DomainEvent,
+  Message,
+} from "../../shared/contracts";
 
 export type Entry =
   | {
@@ -26,7 +30,10 @@ export type Entry =
       raw?: string;
       done?: boolean;
     }
-  | { kind: "item"; id: string; turnId?: string; item: any };
+  | { kind: "item"; id: string; turnId?: string; item: any }
+  // The helper agents a turn started, shown as one live block.
+  | { kind: "agents"; id: string; turnId?: string; threadIds: string[] }
+  | { kind: "approval"; id: string; turnId?: string; record: ApprovalRecord };
 type Answer = Extract<Entry, { kind: "message" }>;
 
 // Persisted IDs and runtime IDs are aliases, not separate messages. Never
@@ -136,6 +143,10 @@ export function mergeHistoryEntries(
 ): Entry[] {
   let next = historyEntries(messages);
   for (const entry of live) {
+    if (entry.kind === "approval") {
+      next = addApprovals(next, [entry.record]);
+      continue;
+    }
     if (entry.kind === "message" && entry.role === "assistant") {
       next = applyChatEvent(next, {
         type: "snapshot",
@@ -171,9 +182,83 @@ export function mergeHistoryEntries(
   return next;
 }
 
+// Resolved approvals stay in the chat as an audit record, placed after the
+// rest of their turn so far.
+export function addApprovals(list: Entry[], records: ApprovalRecord[]) {
+  for (const record of records) {
+    const id = `approval:${record.requestId}`;
+    const entry: Entry = {
+      kind: "approval",
+      id,
+      turnId: record.turnId,
+      record,
+    };
+    if (list.some((e) => e.id === id)) {
+      list = list.map((e) => (e.id === id ? entry : e));
+      continue;
+    }
+    let index = -1;
+    if (record.turnId)
+      for (let i = list.length - 1; i >= 0; i--)
+        if (list[i].turnId === record.turnId) {
+          index = i;
+          break;
+        }
+    list = [...list];
+    list.splice(index < 0 ? list.length : index + 1, 0, entry);
+  }
+  return list;
+}
+
+// Each helper appears once, in the block of the turn that first reported it.
+// Later updates, including a later turn waiting on or closing it, only change
+// the helper's state, so replays and duplicates add nothing.
+export function addHelpers(
+  list: Entry[],
+  turnId: string | undefined,
+  threadIds: string[],
+): Entry[] {
+  const shown = new Set(
+    list.flatMap((e) => (e.kind === "agents" ? e.threadIds : [])),
+  );
+  const fresh = [...new Set(threadIds)].filter((id) => !shown.has(id));
+  if (!fresh.length) return list;
+  const id = `agents:${turnId ?? "none"}`;
+  const block = list.find(
+    (e): e is Extract<Entry, { kind: "agents" }> =>
+      e.kind === "agents" && e.id === id,
+  );
+  if (block)
+    return list.map((e) =>
+      e === block ? { ...block, threadIds: [...block.threadIds, ...fresh] } : e,
+    );
+  return [...list, { kind: "agents", id, turnId, threadIds: fresh }];
+}
+
 export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
   const { data: d, turnId, itemId, type } = event;
+  if (type === "approval.resolved")
+    return d?.audit ? addApprovals(list, [d.audit]) : list;
+  if (
+    type === "subagent.spawned" ||
+    type === "subagent.status" ||
+    type === "subagent.completed"
+  )
+    return typeof d?.agent?.threadId === "string"
+      ? addHelpers(list, turnId, [d.agent.threadId])
+      : list;
   if (type === "snapshot") {
+    // Snapshots don't say which turn started a helper; place any the chat
+    // hasn't shown yet with the latest turn.
+    const ids = (Array.isArray(d.subAgents) ? d.subAgents : [])
+      .map((a: any) => a?.threadId)
+      .filter((id: unknown): id is string => typeof id === "string");
+    if (ids.length)
+      list = addHelpers(
+        list,
+        d.state?.turnId ?? list.findLast((e) => e.turnId)?.turnId,
+        ids,
+      );
     for (const r of d.thinking || []) {
       const id = `thinking:${r.turnId}:${r.id}`;
       const entry: Entry = {

@@ -1,11 +1,21 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowUp, Plus, Square, MessageSquare, Layers } from "lucide-react";
+import {
+  ArrowUp,
+  Plus,
+  Square,
+  MessageSquare,
+  Layers,
+  Sparkles,
+  Target,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { ChatMessages } from "@/components/chat-messages";
 import {
   applyChatEvent,
+  addApprovals,
   historyEntries,
   mergeHistoryEntries,
   type Entry,
@@ -14,16 +24,55 @@ import { SessionActivity } from "@/components/session-activity";
 import { McpSettings } from "@/components/mcp-settings";
 import { AssistantTools } from "@/components/assistant-tools";
 import { RequestCard } from "@/components/request-card";
-import { api, base } from "@/lib/api";
+import { Sheet } from "@/components/sheet";
+import { ConnectedTools } from "@/components/connected-tools";
+import { GoalBar } from "@/components/goal-bar";
+import {
+  awaitingReview,
+  budgetHelp,
+  goalCommand,
+  goalStatus,
+} from "@/lib/goal";
+import { BudgetField } from "@/components/budget-field";
+import { turnFailure, type TurnFailure } from "@/lib/goal-errors";
+import {
+  assistantCapabilities,
+  type ConversationFile,
+} from "../../shared/assistant-capabilities";
+import { api, ApiRequestError, base, listAgents } from "@/lib/api";
+import {
+  applySubAgentEvent,
+  defaultDelegation,
+  emptySubAgents,
+  loadDelegation,
+  rehydrate,
+  saveDelegation,
+  type DelegationPrefs,
+  type SubAgentState,
+} from "@/lib/subagents";
+import { AgentsPanel } from "@/components/agents-panel";
+import { HelperChip } from "@/components/helper-chip";
 import { transport } from "@/lib/transport";
 import { parseChatInput, suggestCommands } from "@/lib/slash-commands";
 import type {
   AgentSummary,
   PublicSession as Session,
   DomainEvent,
+  Goal,
+  GoalReview,
   PendingRequest,
   TurnTiming,
 } from "../../shared/contracts";
+// Goal starters open the composer in goal mode with a template.
+const goalStarters = [
+  { label: "Research report", text: "Research and write a cited report on " },
+  { label: "Spreadsheet model", text: "Build a spreadsheet model that " },
+  { label: "Project plan", text: "Create a complete project plan for " },
+];
+// Starter prompts shown on an empty conversation.
+const starters = assistantCapabilities.filter((c) =>
+  ["explain", "web", "documents", "visualize"].includes(c.id),
+);
 export default function Home() {
   const [agents, setAgents] = useState<AgentSummary[]>([]),
     [agentId, setAgentId] = useState(""),
@@ -43,7 +92,21 @@ export default function Home() {
     [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false),
     [status, setStatus] = useState("Not connected"),
-    [health, setHealth] = useState<any>(null);
+    [health, setHealth] = useState<any>(null),
+    [panel, setPanel] = useState<"mcp" | "tools" | "agents" | null>(null),
+    [inspectorTab, setInspectorTab] = useState("activity"),
+    [subAgents, setSubAgents] = useState<SubAgentState>(emptySubAgents),
+    [delegation, setDelegation] = useState<DelegationPrefs>(defaultDelegation),
+    [mcpVersion, setMcpVersion] = useState(0),
+    [goal, setGoal] = useState<Goal | null>(null),
+    [goalReview, setGoalReview] = useState<GoalReview | null>(null),
+    [documents, setDocuments] = useState<ConversationFile[]>([]),
+    // Why the last turn failed, shown with a stopped goal.
+    [failure, setFailure] = useState<TurnFailure | null>(null),
+    [goalMode, setGoalMode] = useState(false),
+    [goalBudget, setGoalBudget] = useState<number | null>(null),
+    [goalBudgetValid, setGoalBudgetValid] = useState(true),
+    [goalsOnly, setGoalsOnly] = useState(false);
   const scroll = useRef<HTMLDivElement>(null),
     composer = useRef<HTMLTextAreaElement>(null),
     following = useRef(true),
@@ -60,6 +123,20 @@ export default function Home() {
     api("/api/sessions")
       .then(setSessions)
       .catch(() => {});
+  // Mirror goal changes into the conversation list without a refetch.
+  const syncSessionGoal = (id: string, next: Goal | null) =>
+    setSessions((old) =>
+      old.map((s) =>
+        s._id === id
+          ? {
+              ...s,
+              goal: next
+                ? { objective: next.objective, status: next.status }
+                : undefined,
+            }
+          : s,
+      ),
+    );
   const open = useCallback(async (id: string) => {
     const token = ++generation.current;
     setBusy(true);
@@ -73,19 +150,27 @@ export default function Home() {
       setSession(data.session);
       setAgentId(data.session.agentId);
       following.current = true;
+      const saved = addApprovals(
+        historyEntries(data.messages),
+        data.approvals || [],
+      );
       setEntries(
         data.snapshot
-          ? applyChatEvent(historyEntries(data.messages), {
+          ? applyChatEvent(saved, {
               type: "snapshot",
               data: data.snapshot,
             } as DomainEvent)
-          : historyEntries(data.messages),
+          : saved,
       );
       setEvents([]);
 
       seen.current.clear();
       setPending(data.snapshot?.pending || []);
+      setSubAgents(rehydrate(emptySubAgents, data.snapshot?.subAgents || []));
       setPlan(data.snapshot?.plan || []);
+      setGoal(data.snapshot?.goal || null);
+      setGoalReview(data.goalReview || null);
+      setFailure(null);
       setTimings(data.snapshot?.timings || []);
       void api(`/api/sessions/${id}/timings`)
         .then((timingData) => {
@@ -110,6 +195,8 @@ export default function Home() {
       if (token === generation.current) setBusy(false);
     }
   }, []);
+  // Browser-only preference; read after mount so server and client render match.
+  useEffect(() => setDelegation(loadDelegation()), []);
   useEffect(() => {
     fetch(base + "/healthz")
       .then((r) => r.json())
@@ -135,7 +222,12 @@ export default function Home() {
         .then((data) => {
           if (token !== generation.current || sessionRef.current?._id !== id)
             return;
-          setEntries((old) => mergeHistoryEntries(data.messages, old));
+          setEntries((old) =>
+            addApprovals(
+              mergeHistoryEntries(data.messages, old),
+              data.approvals || [],
+            ),
+          );
         })
         .catch((e) => {
           if (token === generation.current) setError(e.message);
@@ -152,18 +244,26 @@ export default function Home() {
             seen.current.delete(seen.current.values().next().value!);
         }
         if (
-          ["activity.updated", "turn.started", "turn.completed"].includes(
-            event.type,
-          )
+          [
+            "activity.updated",
+            "subagent.spawned",
+            "subagent.status",
+            "subagent.completed",
+            "turn.started",
+            "turn.completed",
+          ].includes(event.type)
         )
           setEvents((old) => [...old.slice(-99), event]);
         const d = event.data;
         setEntries((old) => applyChatEvent(old, event));
+        setSubAgents((old) => applySubAgentEvent(old, event));
         switch (event.type) {
           case "snapshot":
             setPending(d.pending);
             setRunning(d.state.kind !== "idle");
             setPlan(d.plan || []);
+            setGoal(d.goal || null);
+            syncSessionGoal(id, d.goal || null);
             setTimings((old) => [
               ...new Map(
                 [...old, ...(d.timings || [])].map((t: TurnTiming) => [
@@ -177,18 +277,37 @@ export default function Home() {
             break;
           case "resync.required":
             reloadTranscript();
+            void listAgents(id)
+              .then((list) => {
+                if (sessionRef.current?._id === id && Array.isArray(list))
+                  setSubAgents((old) => rehydrate(old, list));
+              })
+              .catch(() => {});
             break;
           case "turn.started":
             setRunning(true);
             setPlan([]);
+            setFailure(null);
 
             break;
           case "plan.updated":
             setPlan(d.plan || []);
             break;
+          case "goal.updated":
+            setGoal(d.goal);
+            syncSessionGoal(id, d.goal);
+            // A goal that is no longer complete invalidates an earlier review.
+            if (d.goal.status !== "complete") setGoalReview(null);
+            break;
+          case "goal.cleared":
+            setGoal(null);
+            syncSessionGoal(id, null);
+            setGoalReview(null);
+            break;
           case "turn.completed":
             setRunning(false);
             if (d.turn?.error?.message) setError(d.turn.error.message);
+            setFailure(turnFailure(d.turn?.error));
             if (d.timing)
               setTimings((old) => [
                 ...old.filter((t) => t.turnId !== d.timing.turnId),
@@ -206,12 +325,33 @@ export default function Home() {
             break;
           case "error":
             setError(d.message || "The request could not be completed.");
+            setFailure(turnFailure(d));
             break;
         }
       },
       setStatus,
     );
   }, [session?._id]);
+  // The completion card lists documents made during the goal, so they are
+  // loaded once the goal is ready for review.
+  const reviewing = awaitingReview(goal, goalReview);
+  useEffect(() => {
+    setDocuments([]);
+    if (!session?._id || !reviewing) return;
+    let active = true;
+    api(`/api/sessions/${session._id}/documents`)
+      .then((data) => active && setDocuments(data.files || []))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [session?._id, reviewing]);
+  useEffect(() => {
+    const el = composer.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 240) + "px";
+  }, [text]);
   useEffect(() => {
     if (following.current)
       scroll.current?.scrollTo({
@@ -231,8 +371,12 @@ export default function Home() {
     setEvents([]);
 
     setPending([]);
+    setSubAgents(emptySubAgents);
     setPlan([]);
     setTimings([]);
+    setGoal(null);
+    setGoalReview(null);
+    setFailure(null);
 
     setError("");
     setRunning(false);
@@ -242,10 +386,39 @@ export default function Home() {
     history.replaceState(null, "", location.pathname);
     composer.current?.focus();
   }
+  // The inspector is hidden on narrow screens; show agents in a sheet there.
+  // With a helper given, its card is brought into view once rendered.
+  function openAgents(threadId?: string) {
+    if (!window.matchMedia("(max-width: 1100px)").matches)
+      setInspectorTab("agents");
+    else setPanel("agents");
+    if (threadId)
+      setTimeout(() => {
+        const card = document.getElementById(`agent-card-${threadId}`);
+        card?.scrollIntoView({ block: "nearest" });
+        card?.focus();
+      }, 50);
+  }
+  // The chip jumps back to the newest helper block in the chat.
+  function viewHelpers() {
+    const blocks = document.querySelectorAll<HTMLElement>(".helper-group");
+    const block = blocks[blocks.length - 1];
+    if (!block) return openAgents();
+    following.current = false;
+    block.scrollIntoView({ block: "center" });
+    block.focus({ preventScroll: true });
+  }
+  function changeDelegation(next: DelegationPrefs) {
+    setDelegation(next);
+    saveDelegation(next);
+  }
   async function ensureSession(): Promise<Session> {
     if (sessionRef.current) return sessionRef.current;
     const token = generation.current;
-    const created: Session = await api("/api/sessions", { agentId });
+    const created: Session = await api("/api/sessions", {
+      agentId,
+      subAgents: delegation,
+    });
     if (token !== generation.current) return created;
     sessionRef.current = created;
     setSession(created);
@@ -328,7 +501,23 @@ export default function Home() {
       selectCommand(selected.name);
       return;
     }
-    const parsed = parseChatInput(text);
+    if (goalMode && !goalBudgetValid) {
+      setNotice(budgetHelp);
+      return;
+    }
+    const parsed = goalMode
+      ? goalCommand(text, goalBudget)
+      : parseChatInput(text);
+    // Setting an objective edits an existing goal in place, so a new goal
+    // from the composer clears the old one first and starts fresh.
+    const replaceGoal = goalMode && !!goal;
+    if (
+      goalMode &&
+      goal &&
+      goal.status !== "complete" &&
+      !window.confirm("Replace the current goal with this one?")
+    )
+      return;
     const input =
       parsed.kind === "help" && sessionRef.current
         ? { kind: "command" as const, method: "help", params: {}, success: "" }
@@ -340,13 +529,20 @@ export default function Home() {
       return;
     }
     setCommandOpen(false);
+    if (input.kind === "panel") {
+      setText("");
+      setNotice("");
+      if (input.panel === "agents") openAgents();
+      else setPanel(input.panel);
+      return;
+    }
     if (input.kind === "invalid") {
       setNotice(input.message);
       return;
     }
     if (input.kind === "help") {
       setNotice(
-        "Commands: /goal [objective|show|clear], /fork, /compact, /model <identifier>, /effort <level>, /archive, /unarchive. Use // to send a literal command as a question.",
+        "Commands: /goal [objective|show|pause|resume|budget <tokens>|clear], /fork, /compact, /model <identifier>, /effort <level>, /archive, /unarchive, /tools, /mcp. Use // to send a literal command as a question.",
       );
       setText("");
       return;
@@ -357,12 +553,25 @@ export default function Home() {
       );
       return;
     }
-    const active = sessionRef.current;
+    let active = sessionRef.current;
     if (!active) {
-      setNotice(
-        "Start a conversation with a message before using this command. Your draft is saved.",
-      );
-      return;
+      // A goal can open a conversation; other commands need an existing one.
+      const objective =
+        input.method === "thread/goal/set" ? input.params.objective : undefined;
+      if (typeof objective !== "string" || !objective.trim()) {
+        setNotice(
+          "Start a conversation with a message before using this command. Your draft is saved.",
+        );
+        return;
+      }
+      try {
+        setBusy(true);
+        active = await ensureSession();
+      } catch (e) {
+        setError((e as Error).message);
+        setBusy(false);
+        return;
+      }
     }
     const token = generation.current;
     const commandText = text;
@@ -397,6 +606,11 @@ export default function Home() {
     setNotice("");
     setError("");
     try {
+      if (replaceGoal)
+        await api(`/api/sessions/${active._id}/capabilities`, {
+          method: "thread/goal/clear",
+          params: {},
+        });
       const result = await api(`/api/sessions/${active._id}/capabilities`, {
         method: input.method,
         params: input.params,
@@ -409,6 +623,19 @@ export default function Home() {
       );
       if (["succeeded", "failed"].includes(result.commandMessage.command.state))
         commandAttempt.current = null;
+      const record = result.commandMessage.command;
+      if (
+        record.state === "succeeded" &&
+        record.method.startsWith("thread/goal/")
+      ) {
+        setGoal(record.result?.goal ?? null);
+        syncSessionGoal(active._id, record.result?.goal ?? null);
+        if (record.method !== "thread/goal/get") setGoalReview(null);
+        if (record.method === "thread/goal/set") {
+          setGoalMode(false);
+          setGoalBudget(null);
+        }
+      }
       if (result.commandMessage.command.state === "succeeded") setText("");
       void refreshSessions();
     } catch (e) {
@@ -437,6 +664,25 @@ export default function Home() {
     }
   }
   const agent = agents.find((a) => a.id === agentId);
+  // Fill the composer from a panel or starter; focus after the sheet closes.
+  function startGoal(template = "") {
+    setPanel(null);
+    setGoalMode(true);
+    setCommandOpen(false);
+    setText(template);
+    setTimeout(() => {
+      const el = composer.current;
+      el?.focus();
+      el?.setSelectionRange(template.length, template.length);
+    }, 0);
+  }
+  function applyPrompt(prompt: string) {
+    if (prompt.trim() === "/goal") return startGoal();
+    setPanel(null);
+    setText(prompt);
+    setCommandOpen(prompt.startsWith("/"));
+    setTimeout(() => composer.current?.focus(), 0);
+  }
   return (
     <main className="workspace">
       <aside className="sidebar">
@@ -447,9 +693,23 @@ export default function Home() {
         <Button variant="outline" onClick={startDraft} disabled={busy}>
           <Plus size={16} /> New conversation
         </Button>
-        <div className="sidebar-label">Recent conversations</div>
+        <div className="sidebar-label">
+          Recent conversations
+          <button
+            type="button"
+            className="sidebar-filter"
+            aria-pressed={goalsOnly}
+            onClick={() => setGoalsOnly((on) => !on)}
+            title="Show only conversations with a goal"
+          >
+            Goals
+          </button>
+        </div>
         <nav>
-          {sessions.map((s) => (
+          {goalsOnly && !sessions.some((s) => s.goal) && (
+            <p className="sidebar-empty">No conversations with goals yet.</p>
+          )}
+          {(goalsOnly ? sessions.filter((s) => s.goal) : sessions).map((s) => (
             <button
               key={s._id}
               className={
@@ -460,10 +720,21 @@ export default function Home() {
               disabled={busy}
               onClick={() => void open(s._id)}
             >
-              <MessageSquare size={14} />
+              {s.goal ? (
+                <Target
+                  size={14}
+                  className="session-goal"
+                  data-tone={goalStatus[s.goal.status]?.tone}
+                  aria-hidden="true"
+                />
+              ) : (
+                <MessageSquare size={14} />
+              )}
               <span>
                 <b>{s.title || "New conversation"}</b>
                 <small>
+                  {s.goal &&
+                    `Goal ${goalStatus[s.goal.status]?.label.toLowerCase() || ""} · `}
                   {agents.find((a) => a.id === s.agentId)?.name || s.agentId} ·{" "}
                   {new Date(s.createdAt).toLocaleString()}
                 </small>
@@ -477,44 +748,72 @@ export default function Home() {
         </div>
       </aside>
       <section className="conversation">
-        <header>
-          <div>
-            <div className="eyebrow">AGENT WORKSPACE</div>
-            <h1>{agent?.name || "Your next conversation"}</h1>
-          </div>
-          <div className="connection">
-            <span className={status === "Connected" ? "dot good" : "dot"} />
-            {status}
+        <header className="topbar">
+          <h1>
+            {session
+              ? session.title || "Untitled conversation"
+              : "New conversation"}
+          </h1>
+          <div className="topbar-actions">
+            {session && (
+              <span className="connection" role="status">
+                <span className={status === "Connected" ? "dot good" : "dot"} />
+                {status}
+              </span>
+            )}
+            <Select
+              value={agentId}
+              onValueChange={setAgentId}
+              options={agents.map((a) => ({
+                value: a.id,
+                label: a.name,
+              }))}
+              placeholder={loading ? "Loading agents…" : "Select an agent"}
+            />
+            <button
+              type="button"
+              className="icon-button"
+              onClick={() => setPanel("tools")}
+              aria-label="Capabilities, documents & visuals"
+              title="Capabilities, documents & visuals (/tools)"
+            >
+              <Sparkles size={16} />
+            </button>
           </div>
         </header>
-        <div className="agent-bar">
-          <Select
-            value={agentId}
-            onValueChange={setAgentId}
-            options={agents.map((a) => ({
-              value: a.id,
-              label: a.name,
-            }))}
-            placeholder={loading ? "Loading agents…" : "Select an agent"}
+        {session && goal && (
+          <GoalBar
+            key={session._id}
+            sessionId={session._id}
+            goal={goal}
+            review={goalReview}
+            onChange={(next, review) => {
+              setGoal(next);
+              setGoalReview(review);
+              syncSessionGoal(session._id, next);
+            }}
+            onReopen={(feedback) =>
+              applyPrompt(
+                feedback
+                  ? `The goal isn’t complete yet: ${feedback}`
+                  : "The goal isn’t complete yet. Please keep working on it.",
+              )
+            }
+            onProvideInput={() => {
+              setPanel(null);
+              setTimeout(() => composer.current?.focus(), 0);
+            }}
+            onFollowUp={() => startGoal()}
+            running={running}
+            entries={entries}
+            documents={documents}
+            documentHref={(id) =>
+              `${base}/api/sessions/${session._id}/documents/${encodeURIComponent(id)}`
+            }
+            failure={failure}
+            provider={agents.find((a) => a.id === session.agentId)?.provider}
           />
-          <span className="muted">{agent?.description}</span>
-        </div>
-        {agentId && <McpSettings key={agentId} agentId={agentId} />}
-        <AssistantTools
-          key={session?._id || "new"}
-          sessionId={session?._id}
-          refreshKey={timings.length}
-          running={running}
-          onPrompt={(prompt) => {
-            setText(prompt);
-            setCommandOpen(prompt.startsWith("/"));
-            composer.current?.focus();
-          }}
-          onFork={(id) => {
-            void refreshSessions();
-            void open(id);
-          }}
-        />
+        )}
         {error && (
           <div role="alert" className="error-banner">
             {error}
@@ -539,23 +838,42 @@ export default function Home() {
           {!session && !entries.length ? (
             <div className="empty">
               <div className="empty-icon">
-                <Layers size={30} />
+                <Layers size={22} />
               </div>
-              <div className="eyebrow">YOUR BUSINESS ASSISTANT</div>
-              <h2>Start with a conversation.</h2>
+              <h2>How can I help today?</h2>
               <p>
-                Choose an agent and ask your first question. The session starts
-                when you send it.
+                {agent
+                  ? `Ask ${agent.name} anything, or type / for commands and tools.`
+                  : "Choose an agent to start a conversation."}
               </p>
-              <Button
-                onClick={() => composer.current?.focus()}
-                disabled={!agentId}
-              >
-                Ask your first question
-                <ArrowUp size={16} />
-              </Button>
+              <div className="starters" aria-label="Suggestions">
+                {starters.map((c) => (
+                  <button
+                    type="button"
+                    key={c.id}
+                    disabled={!agentId}
+                    onClick={() => applyPrompt(c.prompt)}
+                  >
+                    <strong>{c.name}</strong>
+                    <span>{c.description}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="goal-starters" aria-label="Start with a goal">
+                <span>Or start with a goal the assistant works through</span>
+                {goalStarters.map((g) => (
+                  <button
+                    type="button"
+                    key={g.label}
+                    disabled={!agentId}
+                    onClick={() => startGoal(g.text)}
+                  >
+                    <Target size={13} aria-hidden="true" /> {g.label}
+                  </button>
+                ))}
+              </div>
               {!loading && !agents.length && (
-                <p>
+                <p className="empty-note">
                   No agents are available. Contact your Truex administrator.
                 </p>
               )}
@@ -570,6 +888,10 @@ export default function Home() {
                   composer.current?.focus();
                 }}
                 entries={entries}
+                goal={goal}
+                goalReview={goalReview}
+                subAgents={subAgents}
+                onOpenAgent={openAgents}
                 agentName={agent?.name || "Assistant"}
                 running={running}
                 onCommand={(command) => {
@@ -593,13 +915,31 @@ export default function Home() {
             </>
           )}
         </div>
+        <HelperChip state={subAgents} onView={viewHelpers} />
         <form
-          className="composer"
+          className={goalMode ? "composer goal-mode" : "composer"}
           onSubmit={(e) => {
             e.preventDefault();
             void submitInput();
           }}
         >
+          {goalMode && (
+            <div className="composer-goal-head">
+              <Target size={14} aria-hidden="true" />
+              <span>
+                <strong>New goal</strong> The assistant keeps working until the
+                goal is done, paused or out of budget.
+              </span>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setGoalMode(false)}
+                aria-label="Cancel goal"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          )}
           <textarea
             ref={composer}
             aria-label="Message"
@@ -615,21 +955,24 @@ export default function Home() {
                 : undefined
             }
             placeholder={
-              running
-                ? "Add a thought to steer the current turn…"
-                : "Ask a question or type / for commands"
+              goalMode
+                ? "Describe the outcome you want. The assistant works until it’s done."
+                : running
+                  ? "Add a thought to steer the current turn…"
+                  : "Ask a question or type / for commands"
             }
             value={text}
             disabled={busy || (!session && !agentId)}
             onChange={(e) => {
               setText(e.target.value);
-              setCommandOpen(e.target.value.startsWith("/"));
+              setCommandOpen(!goalMode && e.target.value.startsWith("/"));
               setCommandIndex(0);
               if (notice) setNotice("");
             }}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing || e.keyCode === 229) return;
               if (e.key === "Escape") {
+                if (goalMode && !commandSuggestions.length) setGoalMode(false);
                 setCommandOpen(false);
                 return;
               }
@@ -692,17 +1035,83 @@ export default function Home() {
             </div>
           )}
           <div className="composer-footer">
-            <span id="composer-hint">
-              / for commands · Enter to send · Shift + Enter for a new line
+            <span id="composer-hint" className="visually-hidden">
+              Type / for commands. Enter to send, Shift + Enter for a new line.
             </span>
+            <div className="composer-tools">
+              <button
+                type="button"
+                className="composer-chip"
+                aria-pressed={goalMode}
+                onClick={() =>
+                  goalMode ? setGoalMode(false) : startGoal(text)
+                }
+                title="Set this message as the conversation goal"
+              >
+                <Target size={14} aria-hidden="true" /> Goal
+              </button>
+              {goalMode && (
+                <BudgetField
+                  initial={goalBudget}
+                  selectClassName="composer-select"
+                  onChange={({ tokens, valid }) => {
+                    setGoalBudget(tokens);
+                    setGoalBudgetValid(valid);
+                  }}
+                />
+              )}
+              <button
+                type="button"
+                className="composer-chip"
+                onClick={() => setPanel("tools")}
+                title="Capabilities, documents & visuals (/tools)"
+              >
+                <Sparkles size={14} aria-hidden="true" /> Tools
+              </button>
+              {agentId && (
+                <ConnectedTools
+                  key={agentId}
+                  agentId={agentId}
+                  refreshKey={mcpVersion}
+                  onManage={() => setPanel("mcp")}
+                />
+              )}
+            </div>
             {running && (
               <Button
                 type="button"
                 variant="outline"
+                title={
+                  goal?.status === "active"
+                    ? "Pause the goal and stop the current response"
+                    : "Stop the current response"
+                }
                 onClick={() =>
-                  void transport
-                    .interrupt(session!._id)
-                    .catch((e) => setError(e.message))
+                  void (async () => {
+                    const id = session!._id;
+                    try {
+                      // An active goal restarts on its own once the thread is
+                      // idle, so pause it before stopping the turn.
+                      if (goal?.status === "active") {
+                        const data = await api(
+                          `/api/sessions/${id}/capabilities`,
+                          {
+                            method: "thread/goal/set",
+                            params: { status: "paused" },
+                          },
+                        );
+                        setGoal(data.goal);
+                        syncSessionGoal(id, data.goal);
+                      }
+                      await transport.interrupt(id).catch((e) => {
+                        // The turn already ended, so there is nothing to stop.
+                        if (!(e instanceof ApiRequestError && e.status === 409))
+                          throw e;
+                      });
+                    } catch (e) {
+                      setError((e as Error).message);
+                    }
+                  })()
                 }
               >
                 <Square size={12} />
@@ -712,14 +1121,74 @@ export default function Home() {
             <Button
               type="submit"
               disabled={!text.trim() || busy || (!session && !agentId)}
-              aria-label="Send message"
+              aria-label={goalMode ? "Set goal" : "Send message"}
             >
               <ArrowUp size={18} />
             </Button>
           </div>
         </form>
       </section>
-      <SessionActivity events={events} plan={plan} timings={timings} />
+      <SessionActivity
+        events={events}
+        plan={plan}
+        timings={timings}
+        sessionId={session?._id}
+        goal={goal}
+        goalReview={goalReview}
+        tab={inspectorTab}
+        onTab={setInspectorTab}
+        subAgents={subAgents}
+        delegation={delegation}
+        onDelegation={changeDelegation}
+      />
+      <Sheet
+        open={panel === "agents"}
+        title="Helper agents"
+        description="Agents your assistant started for parts of this task."
+        onClose={() => setPanel(null)}
+      >
+        <AgentsPanel
+          sessionId={session?._id}
+          agents={subAgents.agents}
+          previews={subAgents.previews}
+          skewMs={subAgents.skewMs}
+        />
+      </Sheet>
+      <Sheet
+        open={panel === "tools"}
+        title="Capabilities, documents & visuals"
+        description="Start from a capability, or work with this conversation’s files."
+        onClose={() => setPanel(null)}
+      >
+        <AssistantTools
+          key={session?._id || "new"}
+          sessionId={session?._id}
+          refreshKey={timings.length}
+          running={running}
+          onPrompt={applyPrompt}
+          onFork={(id) => {
+            setPanel(null);
+            void refreshSessions();
+            void open(id);
+          }}
+        />
+      </Sheet>
+      <Sheet
+        open={panel === "mcp"}
+        title="Connected tools"
+        description={`MCP servers attached to ${agent?.name || "this agent"}. Changes apply to new chats.`}
+        onClose={() => setPanel(null)}
+      >
+        {agentId ? (
+          <McpSettings
+            key={agentId}
+            agentId={agentId}
+            onSaved={() => setMcpVersion((v) => v + 1)}
+          />
+        ) : (
+          <p className="muted">Select an agent to manage its tools.</p>
+        )}
+      </Sheet>
     </main>
   );
 }

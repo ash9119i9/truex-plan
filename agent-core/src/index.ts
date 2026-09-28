@@ -10,6 +10,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { BusinessRuntime } from "./business-runtime";
+import { startWorkspaceSweeper } from "./workspace-sweeper";
 import { ThreadManager } from "./manager";
 import { readItems } from "./history";
 import { HttpError } from "./errors";
@@ -39,6 +40,7 @@ const manager = new ThreadManager(
   Number(process.env.REPLAY_LIMIT || 500),
   Number(process.env.REQUEST_TIMEOUT_MS || 120000),
 );
+const stopSweeper = startWorkspaceSweeper(join(home, "business-workspaces"));
 client.on("diagnostic", (line) =>
   process.stderr.write(manager.redactor.clean(line) + "\n"),
 );
@@ -168,6 +170,15 @@ app.get("/threads/:id/items", async (req, res) =>
     ),
   ),
 );
+app.get("/threads/:id/agents", (req, res) =>
+  res.json(manager.agents(req.params.id)),
+);
+app.get("/threads/:id/agents/:agentId", (req, res) =>
+  res.json(manager.agent(req.params.id, req.params.agentId)),
+);
+app.post("/threads/:id/agents/:agentId/interrupt", async (req, res) =>
+  res.json(await manager.interruptAgent(req.params.id, req.params.agentId)),
+);
 app.post("/threads/:id/capabilities", async (req, res) =>
   res.json(
     await manager.capability(
@@ -209,6 +220,7 @@ for (const signal of ["SIGTERM", "SIGINT"])
       Date.now() < deadline
     )
       await new Promise((r) => setTimeout(r, 100));
+    stopSweeper();
     manager.close();
     client.stop();
     server.close(() => process.exit(0));

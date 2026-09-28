@@ -1,16 +1,164 @@
 import { httpError } from "../../shared/errors";
 import { businessCapabilityParams } from "../../shared/business-capabilities";
-import { publicSession, publicSnapshot, POLICY_VERSION } from "./public";
+import {
+  publicGoal,
+  publicSession,
+  publicApproval,
+  publicSnapshot,
+  publicSubAgent,
+  publicSubAgentTranscript,
+  SUB_AGENT_ID,
+  POLICY_VERSION,
+} from "./public";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
 import { orderConversation } from "../../shared/command-history";
 import { isDeepStrictEqual } from "node:util";
-import type { CommandRecord, Message, Session } from "../../shared/contracts";
+import type {
+  CommandRecord,
+  Goal,
+  GoalHistoryEntry,
+  GoalReview,
+  Message,
+  Session,
+  SessionGoal,
+} from "../../shared/contracts";
 import { ApiError } from "./errors";
 export { ApiError } from "./errors";
-import { mcpConfig, mcpInstructions, newMcpProfile } from "./mcp";
+import { attachedMcpInstructions, mcpConfig, newMcpProfile } from "./mcp";
+import type { ModelDocument } from "./documents";
+import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
+// Codex edits an objective in place, so the creation time identifies a goal.
+function sameGoal(saved: SessionGoal | undefined, goal: Goal) {
+  return !!saved && (saved.createdAt ?? null) === (goal.createdAt ?? null);
+}
+const GOAL_HISTORY_LIMIT = 60;
+// What changed between the saved goal summary and the latest goal.
+export function goalChanges(
+  saved: SessionGoal | undefined,
+  goal: Goal | null,
+  at: string,
+  turnId?: string,
+): GoalHistoryEntry[] {
+  const turn = turnId ? { turnId } : {};
+  if (!goal)
+    return saved
+      ? [{ at, kind: "cleared", objective: saved.objective, ...turn }]
+      : [];
+  const tokens = Math.max(goal.tokensUsed, goal.tokensObserved ?? 0);
+  const entry = (kind: GoalHistoryEntry["kind"]): GoalHistoryEntry => ({
+    at,
+    kind,
+    objective: goal.objective,
+    status: goal.status,
+    tokens,
+    tokensUsed: goal.tokensUsed,
+    tokenBudget: goal.tokenBudget,
+    ...turn,
+  });
+  if (!sameGoal(saved, goal)) return [entry("set")];
+  const changes: GoalHistoryEntry[] = [];
+  if (saved!.objective !== goal.objective) changes.push(entry("objective"));
+  // Older summaries have no budget, so a budget change is only known once saved.
+  if (
+    saved!.tokenBudget !== undefined &&
+    saved!.tokenBudget !== goal.tokenBudget
+  )
+    changes.push(entry("budget"));
+  if (saved!.status !== goal.status) changes.push(entry("status"));
+  return changes;
+}
+// Where a goal save came from. Event times come from agent-core, so they are
+// only compared with each other, never with platform time.
+export interface GoalSource {
+  turnId?: string | null;
+  eventAt?: string;
+  // A durable record replayed by ingest, possibly out of order.
+  replay?: boolean;
+  // Creation time of the goal a replayed clear removed.
+  clearedCreatedAt?: number | null;
+}
+// Whether saving this goal would roll back a newer saved state.
+export function staleGoal(
+  s: Pick<Session, "goal" | "goalCleared"> | null,
+  goal: Goal | null,
+  source: GoalSource,
+) {
+  // The live stream is ordered and command results are current.
+  if (!source.replay) return false;
+  const saved = s?.goal;
+  const { eventAt } = source;
+  const notAfter = (known?: string) => !!known && !!eventAt && eventAt <= known;
+  if (!goal) {
+    if (!saved) return false;
+    const cleared = source.clearedCreatedAt;
+    if (
+      cleared != null &&
+      saved.createdAt != null &&
+      saved.createdAt !== cleared
+    )
+      return saved.createdAt > cleared;
+    return notAfter(saved.goalEventAt);
+  }
+  if (!saved) {
+    const cleared = s?.goalCleared;
+    if (!cleared || cleared.createdAt == null || goal.createdAt == null)
+      return false;
+    if (goal.createdAt !== cleared.createdAt)
+      return goal.createdAt < cleared.createdAt;
+    // A new goal set in the same second as the clear is newer than it.
+    return !cleared.eventAt || !eventAt || eventAt <= cleared.eventAt;
+  }
+  if (!sameGoal(saved, goal))
+    return (
+      saved.createdAt != null &&
+      goal.createdAt != null &&
+      goal.createdAt < saved.createdAt
+    );
+  const known = saved.goalUpdatedAt;
+  if (known == null || goal.updatedAt == null) return false;
+  if (goal.updatedAt !== known) return goal.updatedAt < known;
+  // Codex times are whole seconds; the event time breaks a tie.
+  return notAfter(saved.goalEventAt);
+}
+const DELEGATION_MODES = ["explicitRequestOnly", "proactive"];
+// Optional helper-agent limits chosen when a conversation starts.
+export function subAgentOptions(value: unknown) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value))
+    throw new ApiError(400, "subAgents must be an object");
+  const { mode, maxConcurrent } = value as Record<string, unknown>;
+  if (mode !== undefined && !DELEGATION_MODES.includes(mode as string))
+    throw new ApiError(
+      400,
+      "subAgents.mode must be explicitRequestOnly or proactive",
+    );
+  if (
+    maxConcurrent !== undefined &&
+    !(
+      Number.isInteger(maxConcurrent) &&
+      (maxConcurrent as number) >= 1 &&
+      (maxConcurrent as number) <= 5
+    )
+  )
+    throw new ApiError(
+      400,
+      "subAgents.maxConcurrent must be a whole number from 1 to 5",
+    );
+  return {
+    ...(mode !== undefined ? { mode: mode as string } : {}),
+    ...(maxConcurrent !== undefined
+      ? { maxConcurrent: maxConcurrent as number }
+      : {}),
+  };
+}
+function validAgentId(agentId: string) {
+  if (typeof agentId !== "string" || !SUB_AGENT_ID.test(agentId))
+    throw new ApiError(400, "Invalid helper agent id");
+  return agentId;
+}
 export class PlatformService {
   readonly hosts: string[];
   private polling = false;
@@ -103,28 +251,26 @@ export class PlatformService {
     const apiKey = profile?.apiKey || profile?.apikey;
     if (!profile || !apiKey)
       throw new ApiError(422, "Agent requires a model profile with an API key");
-    if (profile.wireApi && profile.wireApi !== "responses")
-      throw new ApiError(
-        422,
-        `Model profile ${String(profile._id)} uses wireApi "${profile.wireApi}". The pinned Codex supports only Responses API. Update this profile to a compatible Responses provider in truex_models.`,
-        "UNSUPPORTED_WIRE_API",
-      );
+    const { route } = resolveRoute(profile);
     if (!profile.baseUrl || !profile.modelName)
       throw new ApiError(422, "Model profile requires baseUrl and modelName");
     const provider =
       "profile_" + String(profile._id).replace(/[^a-zA-Z0-9_]/g, "_");
-    const config: Record<string, any> = {
-      web_search: profile.webSearch || "live",
-      [`model_providers.${provider}`]: {
-        name: profile.provider,
-        base_url: profile.baseUrl,
-        wire_api: "responses",
-        experimental_bearer_token: apiKey,
-      },
-      ...(profile.reasoningEffort
-        ? { model_reasoning_effort: profile.reasoningEffort }
-        : {}),
-    };
+    const config: Record<string, any> =
+      route === "direct"
+        ? {
+            web_search: profile.webSearch || "live",
+            [`model_providers.${provider}`]: {
+              name: profile.provider,
+              base_url: profile.baseUrl,
+              wire_api: "responses",
+              experimental_bearer_token: apiKey,
+            },
+            ...(profile.reasoningEffort
+              ? { model_reasoning_effort: profile.reasoningEffort }
+              : {}),
+          }
+        : this.gatewayConfig(profile, provider);
     const names = new Set<string>();
     for (const id of agent.mcpProfileIds || []) {
       const mcp = await this.store.findMcp(id);
@@ -147,14 +293,47 @@ export class PlatformService {
       config,
       baseInstructions:
         (agent.systemPrompt || "You are a helpful assistant.") +
-        (names.size ? mcpInstructions : ""),
+        attachedMcpInstructions([...names]),
       ...(profile.serviceTier && profile.serviceTier !== "auto"
         ? { serviceTier: profile.serviceTier }
         : {}),
       cwd:
         cwd || resolve(process.env.AGENT_WORKSPACE || "../.runtime/workspace"),
       sandbox: "read-only",
-      approvalPolicy: "never",
+      approvalPolicy: "on-request",
+    };
+  }
+  // Codex sees an ordinary Responses provider; the gateway holds the real key.
+  private gatewayConfig(profile: ModelDocument, provider: string) {
+    const gateway = gatewaySettings();
+    if (!gateway)
+      throw new ApiError(
+        422,
+        `Model profile ${String(profile._id)} needs the model gateway, which is not configured. Ask your administrator to set MODEL_GATEWAY_URL and MODEL_GATEWAY_SECRET.`,
+        "GATEWAY_NOT_CONFIGURED",
+      );
+    const id = String(profile._id);
+    return {
+      // Codex's built-in web search runs only on OpenAI's Responses backend.
+      web_search:
+        profile.wireApi && profile.wireApi !== "responses"
+          ? "disabled"
+          : profile.webSearch || "live",
+      [`model_providers.${provider}`]: {
+        name: profile.provider,
+        base_url: `${gateway.url}/p/${encodeURIComponent(id)}/v1`,
+        wire_api: "responses",
+        experimental_bearer_token: signGatewayToken(id, gateway.secret),
+      },
+      ...(profile.reasoningEffort
+        ? { model_reasoning_effort: profile.reasoningEffort }
+        : {}),
+      ...(profile.contextWindow
+        ? { model_context_window: profile.contextWindow }
+        : {}),
+      ...(profile.autoCompactTokenLimit
+        ? { model_auto_compact_token_limit: profile.autoCompactTokenLimit }
+        : {}),
     };
   }
   async agents() {
@@ -242,10 +421,12 @@ export class PlatformService {
     await this.store.mcp.insertOne(profile);
     return { id: String(profile._id), name: profile.name };
   }
-  async create(agentId: string) {
+  async create(agentId: string, subAgents?: unknown) {
     if (typeof agentId !== "string")
       throw new ApiError(400, "agentId is required");
-    const config = await this.configuration(agentId);
+    const delegation = subAgentOptions(subAgents);
+    const config: any = await this.configuration(agentId);
+    if (delegation) config.subAgents = delegation;
     let host = "",
       thread: any;
     for (let n = 0; n < this.hosts.length; n++) {
@@ -309,6 +490,31 @@ export class PlatformService {
       throw e;
     }
   }
+  async subAgents(id: string) {
+    const agents = await this.owned(await this.session(id), "/agents");
+    return (Array.isArray(agents) ? agents : [])
+      .map(publicSubAgent)
+      .filter(Boolean);
+  }
+  async subAgent(id: string, agentId: string) {
+    const transcript = publicSubAgentTranscript(
+      await this.owned(
+        await this.session(id),
+        "/agents/" + encodeURIComponent(validAgentId(agentId)),
+      ),
+    );
+    if (!transcript) throw new ApiError(404, "Helper agent not found");
+    return transcript;
+  }
+  async interruptAgent(id: string, agentId: string) {
+    await this.owned(
+      await this.session(id),
+      "/agents/" + encodeURIComponent(validAgentId(agentId)) + "/interrupt",
+      "POST",
+      {},
+    );
+    return { ok: true };
+  }
   async resume(session: Session) {
     const config = await this.configuration(session.agentId, session.cwd);
     if (session.settings?.model) config.model = session.settings.model;
@@ -360,23 +566,7 @@ export class PlatformService {
         "DUPLICATE_MESSAGE",
       );
     }
-    if (!s.title) {
-      const summary = text.trim().replace(/\s+/g, " ");
-      await this.store.sessions.updateOne(
-        {
-          _id: id,
-          $or: [{ title: { $exists: false } }, { title: "" }],
-        },
-        {
-          $set: {
-            title:
-              summary.length > 80
-                ? summary.slice(0, 79).trimEnd() + "…"
-                : summary,
-          },
-        },
-      );
-    }
+    if (!s.title) await this.titleIfUntitled(id, text);
     const begin = performance.now();
     try {
       const result = await this.owned(s, "/turns", "POST", { text, clientId });
@@ -484,6 +674,11 @@ export class PlatformService {
       recoveryError = null;
     try {
       snapshot = await this.owned(s, "/snapshot");
+      if (snapshot && "goal" in snapshot)
+        snapshot = {
+          ...snapshot,
+          goal: await this.rememberGoal(id, publicGoal(snapshot.goal)),
+        };
       await this.ingest(s);
       await this.reconcile(s);
     } catch (e) {
@@ -495,6 +690,11 @@ export class PlatformService {
         await this.store.messages.find({ sessionId: id }).toArray(),
       ),
       snapshot: snapshot ? publicSnapshot(snapshot) : null,
+      approvals: ((await this.session(id)).approvals || [])
+        .map(publicApproval)
+        .filter(Boolean),
+      goalReview: (await this.session(id)).goalReview || null,
+      goalHistory: (await this.session(id)).goalHistory || [],
       recoveryError: recoveryError
         ? `Conversation recovery: ${recoveryError}`
         : null,
@@ -505,7 +705,24 @@ export class PlatformService {
       s.agentCoreHost,
       `/threads/${s.threadId}/records`,
     );
-    for (const record of records) await this.store.persist(s._id, record.event);
+    for (const record of records) {
+      const event = record.event;
+      if (event?.type === "goal.updated" || event?.type === "goal.cleared") {
+        const goal =
+          event.type === "goal.updated" ? publicGoal(event.data?.goal) : null;
+        if (event.type === "goal.cleared" || goal)
+          await this.rememberGoal(s._id, goal, {
+            turnId: event.turnId,
+            eventAt: event.at,
+            replay: true,
+            clearedCreatedAt:
+              typeof event.data?.goalCreatedAt === "number"
+                ? event.data.goalCreatedAt
+                : null,
+          });
+      }
+      await this.store.persist(s._id, event);
+    }
     if (records.length)
       await this.call(
         s.agentCoreHost,
@@ -620,7 +837,7 @@ export class PlatformService {
       const result =
         method === "help"
           ? {
-              help: "/goal <objective> — Set a goal\n/goal show — View goal status\n/goal clear — Clear the goal\n/fork — Create a conversation branch\n/compact — Compact context\n/model <identifier> — Change the model\n/effort <level> — Change reasoning effort\n/archive — Archive this conversation\n/unarchive — Restore this conversation\n\nPrefix a literal command with // to send it as a question.",
+              help: "/goal <objective> — Set a goal\n/goal show — View goal status\n/goal pause — Pause the goal\n/goal resume — Resume the goal\n/goal budget <tokens> — Set a token budget\n/goal clear — Clear the goal\n/fork — Create a conversation branch\n/compact — Compact context\n/model <identifier> — Change the model\n/effort <level> — Change reasoning effort\n/archive — Archive this conversation\n/unarchive — Restore this conversation\n\nPrefix a literal command with // to send it as a question.",
             }
           : await this.capability(id, method, params);
       command = {
@@ -687,19 +904,184 @@ export class PlatformService {
         { $set: { settings: { ...s.settings, ...(params as object) } } },
       );
     if (method.startsWith("thread/goal/")) {
-      const g = result.goal;
-      return {
-        goal: g
-          ? {
-              objective: g.objective,
-              status: g.status,
-              tokenBudget: g.tokenBudget,
-              tokensUsed: g.tokensUsed,
-              timeUsedSeconds: g.timeUsedSeconds,
-            }
-          : null,
-      };
+      const update = params as { objective?: unknown; status?: unknown };
+      // A new, edited, cleared or reopened goal invalidates an earlier review.
+      if (
+        method === "thread/goal/clear" ||
+        (method === "thread/goal/set" &&
+          (update.objective !== undefined ||
+            (update.status !== undefined && update.status !== "complete")))
+      )
+        await this.store.sessions.updateOne(
+          { _id: id },
+          { $unset: { goalReview: "" } },
+        );
+      const goal = await this.rememberGoal(id, publicGoal(result.goal), {
+        turnId: typeof result.turnId === "string" ? result.turnId : undefined,
+      });
+      // A goal-first conversation is named after its objective.
+      if (
+        !s.title &&
+        method === "thread/goal/set" &&
+        typeof update.objective === "string" &&
+        update.objective.trim()
+      )
+        await this.titleIfUntitled(id, update.objective);
+      return { goal };
     }
     return { ok: true };
+  }
+  private async titleIfUntitled(id: string, text: string) {
+    const summary = text.trim().replace(/\s+/g, " ");
+    await this.store.sessions.updateOne(
+      { _id: id, $or: [{ title: { $exists: false } }, { title: "" }] },
+      {
+        $set: {
+          title:
+            summary.length > 80
+              ? summary.slice(0, 79).trimEnd() + "…"
+              : summary,
+        },
+      },
+    );
+  }
+  // Latest goal summary for the conversation list. The runtime remains the
+  // source of truth; this copy only drives list indicators and filters.
+  async rememberGoal(id: string, goal: Goal | null, source: GoalSource = {}) {
+    // The command response and the live event stream both save goal changes.
+    // Each write only applies if the summary is still the one it read, so two
+    // savers can't both log the same change; the loser re-reads and retries.
+    for (let attempt = 0; ; attempt++) {
+      const session = await this.store.sessions.findOne({ _id: id });
+      const saved = session?.goal;
+      // A replayed record never rolls back a newer saved state.
+      if (staleGoal(session, goal, source)) return goal;
+      // A save without an event time (snapshot, command) keeps the saved one
+      // while Codex reports the same update.
+      const eventAt =
+        source.eventAt ??
+        (goal &&
+        sameGoal(saved, goal) &&
+        saved?.goalUpdatedAt === goal.updatedAt
+          ? saved?.goalEventAt
+          : undefined);
+      const changes = goalChanges(
+        saved,
+        goal,
+        new Date().toISOString(),
+        source.turnId || undefined,
+      );
+      // After a few lost races, save the summary without history rather than fail.
+      const guarded = attempt < 5;
+      const history =
+        guarded && changes.length
+          ? {
+              $push: {
+                goalHistory: { $each: changes, $slice: -GOAL_HISTORY_LIMIT },
+              },
+            }
+          : {};
+      const tokensObserved = goal
+        ? Math.max(
+            goal.tokensObserved ?? 0,
+            sameGoal(saved, goal) ? (saved?.tokensObserved ?? 0) : 0,
+          )
+        : 0;
+      const update = goal
+        ? {
+            $set: {
+              goal: {
+                objective: goal.objective,
+                status: goal.status,
+                createdAt: goal.createdAt,
+                tokensObserved,
+                tokenBudget: goal.tokenBudget,
+                updatedAt: new Date().toISOString(),
+                goalUpdatedAt: goal.updatedAt,
+                ...(eventAt ? { goalEventAt: eventAt } : {}),
+              },
+            },
+            ...history,
+          }
+        : {
+            $unset: { goal: "" as const },
+            ...(saved
+              ? {
+                  $set: {
+                    goalCleared: {
+                      createdAt: saved.createdAt ?? null,
+                      ...(source.eventAt ? { eventAt: source.eventAt } : {}),
+                    },
+                  },
+                }
+              : {}),
+            ...history,
+          };
+      const result = await this.store.sessions.updateOne(
+        guarded
+          ? { _id: id, goal: saved === undefined ? { $exists: false } : saved }
+          : { _id: id },
+        update,
+      );
+      if (result.matchedCount || !guarded) {
+        // An agent-core restart loses its tally; keep the larger saved count.
+        return goal ? { ...goal, tokensObserved } : goal;
+      }
+      if (!(await this.store.sessions.findOne({ _id: id }))) return goal;
+    }
+  }
+  async goalHistory(id: string) {
+    return { entries: (await this.session(id)).goalHistory || [] };
+  }
+  // The agent marks a goal complete; the user then accepts it or reopens it
+  // with feedback. Reopening makes the goal active again for the agent.
+  async reviewGoal(
+    id: string,
+    body: { decision?: unknown; feedback?: unknown },
+  ) {
+    const decision = body?.decision;
+    if (decision !== "accepted" && decision !== "reopened")
+      throw new ApiError(400, "Choose accepted or reopened", "INVALID_REVIEW");
+    const feedback =
+      typeof body.feedback === "string" ? body.feedback.trim() : "";
+    if (feedback.length > 4000)
+      throw new ApiError(400, "Feedback is too long", "INVALID_REVIEW");
+    const { goal } = await this.capability(id, "thread/goal/get", {});
+    if (!goal || goal.status !== "complete")
+      throw new ApiError(
+        409,
+        "Only a goal the assistant has completed can be reviewed",
+        "GOAL_NOT_COMPLETE",
+      );
+    const review: GoalReview = {
+      objective: goal.objective,
+      goalCreatedAt: goal.createdAt,
+      decision,
+      ...(feedback ? { feedback } : {}),
+      at: new Date().toISOString(),
+    };
+    const entry: GoalHistoryEntry = {
+      at: review.at,
+      kind: decision,
+      objective: goal.objective,
+      status: goal.status,
+      tokens: Math.max(goal.tokensUsed, goal.tokensObserved ?? 0),
+      ...(feedback ? { feedback } : {}),
+    };
+    const log = {
+      $push: { goalHistory: { $each: [entry], $slice: -GOAL_HISTORY_LIMIT } },
+    };
+    if (decision === "reopened") {
+      await this.store.sessions.updateOne({ _id: id }, log);
+      const reopened = await this.capability(id, "thread/goal/set", {
+        status: "active",
+      });
+      return { goal: reopened.goal, review };
+    }
+    await this.store.sessions.updateOne(
+      { _id: id },
+      { $set: { goalReview: review }, ...log },
+    );
+    return { goal, review };
   }
 }

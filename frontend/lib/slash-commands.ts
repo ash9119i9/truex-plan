@@ -1,7 +1,10 @@
+import { parseTokenBudget } from "./goal.ts";
+
 export const slashCommands = [
   {
     name: "/goal",
-    description: "View goal, or use /goal <objective> or /goal clear",
+    description:
+      "Set a goal, or /goal show | pause | resume | budget <tokens> | clear",
   },
   { name: "/fork", description: "Create a new conversation branch" },
   { name: "/compact", description: "Summarize this conversation context" },
@@ -9,6 +12,9 @@ export const slashCommands = [
   { name: "/effort", description: "Change reasoning: /effort <level>" },
   { name: "/archive", description: "Archive this conversation" },
   { name: "/unarchive", description: "Restore this conversation" },
+  { name: "/tools", description: "Capabilities, documents & visuals" },
+  { name: "/mcp", description: "Manage connected tools (MCP)" },
+  { name: "/agents", description: "Show helper agents in this conversation" },
   { name: "/help", description: "Show available chat commands" },
 ];
 
@@ -25,6 +31,7 @@ type ParsedInput =
   | { kind: "message"; text: string }
   | { kind: "invalid"; message: string }
   | { kind: "help" }
+  | { kind: "panel"; panel: "mcp" | "tools" | "agents" }
   | {
       kind: "command";
       method: string;
@@ -50,8 +57,27 @@ export function parseChatInput(text: string): ParsedInput {
   if (name === "/goal") {
     if (!argument || argument.toLowerCase() === "show")
       return command("thread/goal/get", "");
-    if (argument.toLowerCase() === "clear")
+    const keyword = argument.toLowerCase();
+    if (keyword === "clear")
       return command("thread/goal/clear", "Goal cleared.");
+    if (keyword === "pause")
+      return command("thread/goal/set", "Goal paused.", { status: "paused" });
+    if (keyword === "resume")
+      return command("thread/goal/set", "Goal resumed.", { status: "active" });
+    const budget = /^budget(?:\s+(\S+))?$/i.exec(argument);
+    if (budget) {
+      const tokens = parseTokenBudget(budget[1] || "");
+      if (tokens === null)
+        return {
+          kind: "invalid",
+          message: "Usage: /goal budget <tokens>, for example /goal budget 50k",
+        };
+      return command(
+        "thread/goal/set",
+        `Token budget set to ${tokens.toLocaleString("en-US")}.`,
+        { tokenBudget: tokens },
+      );
+    }
     return command("thread/goal/set", "Goal updated.", { objective: argument });
   }
   if (name === "/model") {
@@ -86,6 +112,12 @@ export function parseChatInput(text: string): ParsedInput {
   switch (name) {
     case "/help":
       return { kind: "help" };
+    case "/mcp":
+      return { kind: "panel", panel: "mcp" };
+    case "/tools":
+      return { kind: "panel", panel: "tools" };
+    case "/agents":
+      return { kind: "panel", panel: "agents" };
     case "/fork":
       return command("thread/fork", "Created a conversation branch.");
     case "/compact":

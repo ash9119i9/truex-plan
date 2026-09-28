@@ -1,5 +1,12 @@
 "use client";
-import type { CommandRecord } from "../../shared/contracts";
+import type { CommandRecord, Goal, GoalReview } from "../../shared/contracts";
+import {
+  formatDuration,
+  goalStateLabel,
+  goalStatus,
+  goalTokens,
+  sameGoal,
+} from "@/lib/goal";
 
 export function commandLabel(method: string) {
   if (method === "help") return "Chat commands";
@@ -21,13 +28,21 @@ export function CommandResult({
   onCommand,
   onOpen,
   onRefresh,
+  currentGoal,
+  goalReview,
 }: {
   command: CommandRecord;
+  currentGoal?: Goal | null;
+  goalReview?: GoalReview | null;
   onCommand?: (text: string) => void;
   onOpen?: (id: string) => void;
   onRefresh?: () => void;
 }) {
-  const goal = command.result?.goal;
+  const recorded = command.result?.goal;
+  // A card for the conversation's current goal follows its live state; an
+  // older card keeps the status it recorded.
+  const live = sameGoal(recorded, currentGoal) ? currentGoal! : null;
+  const goal = live || recorded;
   const succeeded = command.state === "succeeded";
   const status = {
     running: "Awaiting confirmation",
@@ -67,13 +82,23 @@ export function CommandResult({
       {succeeded && goal && (
         <dl>
           <div>
-            <dt>Status at this update</dt>
-            <dd>{goal.status}</dd>
+            <dt>{live ? "Status" : "Status at this update"}</dt>
+            <dd>
+              {live
+                ? goalStateLabel(live, goalReview ?? null)
+                : goalStatus[goal.status]?.label || goal.status}
+            </dd>
           </div>
+          {!!goal.timeUsedSeconds && (
+            <div>
+              <dt>Time spent</dt>
+              <dd>{formatDuration(goal.timeUsedSeconds)}</dd>
+            </div>
+          )}
           {goal.tokensUsed !== undefined && (
             <div>
               <dt>Tokens used</dt>
-              <dd>{goal.tokensUsed.toLocaleString()}</dd>
+              <dd>{goalTokens(goal).toLocaleString()}</dd>
             </div>
           )}
           {goal.tokenBudget != null && (
@@ -101,7 +126,7 @@ export function CommandResult({
         </dl>
       )}
       <div className="command-actions">
-        {succeeded && goal && onCommand && (
+        {succeeded && live && onCommand && (
           <>
             <button type="button" onClick={() => onCommand("/goal show")}>
               Check goal status

@@ -1,12 +1,65 @@
-by default it should be loaded as a empty session
-goal status and token are not updating 
-first message can be goal 
-Implement sub-agents feature
+by default it should be loaded as a empty session -> completed
+goal status and token are not updating -> completed
+first message can be goal -> completed
+Implement sub-agents feature 
 plan feature
 conversation export
 Observability feature 
-Ui Enhancement
-Error handling Detailed Error
+Ui Enhancement -> Partially Done
+Error handling Detailed Error 
 Build a Todo for a long running tasks and usecase
 taking all the tool and build that 
-Model setting up for NON - Response kind of 
+Model setting up for NON - Response kind of --> Completed
+Model Routing ---> Completed
+skills implementation
+Creates a new project in the sidebar and pin the existing chat or creates a new chat from the pinned project
+implmenting the AWS usecase
+implement the helper Model for the Subagents
+Document Enrichment ---> PPT,EXCEL,WORD,.md File
+Connecting the Standard App using MCP
+Chat Rich Preview 
+In the session secondary sidebar Plan is not updating
+SAP push bridge: push_workspace_file, 
+so the model sends a path instead of re-sending 5,000 lines 
+to your SAP MCP tool. I need that tool's name and arguments to build it.
+Auto Accepts / Accept Read Only / Ask me Everytime
+
+
+
+// small small features 
+1. Implmenting skiper UI chat code 
+2. In the sidebar showing the running and completed chats kind of differentiate 
+3. At the end of the convo ask a related Question from the user Previous message and it should be clickable 
+4. Dark Mode implementation
+5. sidebar collapse 
+6. Secondary sidebar Collapse 
+7. Timer Component 
+8. CSS Link for the question
+9. floating deck for Multiple Sidebar / navigation --> https://ui.aceternity.com/components/floating-dock
+
+
+// Complete testing of this Application
+Testing the Context layer 
+testing the User flow experience 
+Hard test the application 
+sub-agents needs to be faster response 
+   a. Helper instructions (agent-core/src/business-runtime.ts): no progress messages while helpers run,
+      one long wait instead of Codex's 30s default, answer as soon as the last helper finishes without
+      closing helpers first. Expect ~13s -> ~5s after the last helper. Measured 28/09: 3 helpers done at
+      11s/61s/153s, final answer at 166s.
+   b. Auto-close finished helpers when the main turn ends (agent-core/src/manager.ts), so the model
+      never spends a call closing them.
+
+
+
+
+
+// Usecases
+Say "fan out subagents" and Claude sends a team.
+Each one digs deep so nothing gets missed.
+
+
+// Tomorrow things to be covered 
+1. Vimal questions
+2. Pravin for agent Arabic Agent
+3. Mail for veeeradevi

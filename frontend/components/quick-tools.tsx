@@ -1,44 +1,21 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "@/lib/api";
 import { Button } from "./ui/button";
 export function QuickTools({
   sessionId,
   onFork,
   disabled = false,
-  refreshKey = 0,
 }: {
   sessionId: string;
   onFork: (id: string) => void;
   disabled?: boolean;
   refreshKey?: number;
 }) {
-  const [goal, setGoal] = useState(""),
-    [model, setModel] = useState(""),
+  const [model, setModel] = useState(""),
     [effort, setEffort] = useState("medium"),
     [result, setResult] = useState(""),
     [busy, setBusy] = useState(false);
-  const [currentGoal, setCurrentGoal] = useState<{
-    objective: string;
-    status: string;
-    tokensUsed: number;
-  } | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    api(`/api/sessions/${sessionId}/capabilities`, {
-      method: "thread/goal/get",
-      params: {},
-    })
-      .then((data) => {
-        if (!cancelled) setCurrentGoal(data.goal);
-      })
-      .catch((error) => {
-        if (!cancelled) setResult(error.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, refreshKey]);
   async function run(method: string, params: unknown = {}) {
     setBusy(true);
     setResult("");
@@ -48,14 +25,7 @@ export function QuickTools({
         params,
       });
       if (data.session) onFork(data.session._id);
-      if (method.startsWith("thread/goal/")) setCurrentGoal(data.goal || null);
-      setResult(
-        data.goal
-          ? `${data.goal.objective} · ${data.goal.status} · ${data.goal.tokensUsed} tokens used`
-          : method === "thread/goal/get"
-            ? "No goal is set."
-            : "Done.",
-      );
+      setResult("Done.");
     } catch (e) {
       setResult((e as Error).message);
     } finally {
@@ -81,68 +51,6 @@ export function QuickTools({
           Compact context
         </Button>
       </div>
-      <details>
-        <summary>Goal</summary>
-        {currentGoal && (
-          <p role="status">
-            <strong>{currentGoal.objective}</strong>
-            <br />
-            {currentGoal.status} · {currentGoal.tokensUsed} tokens used
-          </p>
-        )}
-        <textarea
-          aria-label="Conversation goal"
-          placeholder="What should this conversation achieve?"
-          value={goal}
-          onChange={(e) => setGoal(e.target.value)}
-        />
-        <div className="actions">
-          <Button
-            disabled={busy || !goal.trim()}
-            onClick={() => void run("thread/goal/set", { objective: goal })}
-          >
-            Set goal
-          </Button>
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => void run("thread/goal/get")}
-          >
-            Read goal
-          </Button>
-          {currentGoal && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                void run("thread/goal/set", {
-                  status: currentGoal.status === "active" ? "paused" : "active",
-                })
-              }
-            >
-              {currentGoal.status === "active" ? "Pause goal" : "Resume goal"}
-            </Button>
-          )}
-          {currentGoal && currentGoal.status !== "complete" && (
-            <Button
-              variant="outline"
-              disabled={busy}
-              onClick={() =>
-                void run("thread/goal/set", { status: "complete" })
-              }
-            >
-              Mark complete
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() => void run("thread/goal/clear")}
-          >
-            Clear goal
-          </Button>
-        </div>
-      </details>
       <details>
         <summary>Model settings</summary>
         <label>

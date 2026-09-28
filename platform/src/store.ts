@@ -80,7 +80,11 @@ export class Store {
           _id: sessionId,
           "approvals.requestId": { $ne: event.data.requestId },
         },
-        { $push: { approvals: { ...event.data, at: event.at } } },
+        {
+          $push: {
+            approvals: { ...event.data, at: event.at, turnId: event.turnId },
+          },
+        },
       );
     if (event.type === "turn.completed" && event.data.timing)
       await this.sessions.updateOne(

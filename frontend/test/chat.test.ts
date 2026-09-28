@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  addApprovals,
   applyChatEvent,
   historyEntries,
   mergeHistoryEntries,
@@ -233,7 +234,17 @@ test("command submissions and structured results survive history plus replayed g
       method: "thread/goal/set",
       params: { objective: "Write\n a report" },
       state: "succeeded",
-      result: { goal: { objective: "Write\n a report", status: "active" } },
+      result: {
+        goal: {
+          objective: "Write\n a report",
+          status: "active",
+          tokenBudget: null,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      },
     },
   };
   let entries = historyEntries([command]);
@@ -316,4 +327,44 @@ test("reconnect preserves completed command results and keeps thinking before th
   assert.equal(restored[2].kind, "message");
   if (restored[0].kind === "message")
     assert.equal(restored[0].command?.state, "succeeded");
+});
+
+test("resolved approvals stay in the chat after their turn, once", () => {
+  const record = {
+    requestId: "r1",
+    turnId: "turn",
+    outcome: "answered" as const,
+    items: [
+      {
+        kind: "toolApproval" as const,
+        action: "Get deployed artifact",
+        decision: "allowedOnce" as const,
+      },
+    ],
+  };
+  const list: Entry[] = [
+    { kind: "message", id: "u", role: "user", text: "hi" },
+    { kind: "thinking", id: "t", turnId: "turn", text: "…" },
+    { kind: "message", id: "later", role: "user", text: "next" },
+  ];
+  const live = applyChatEvent(
+    list,
+    event("approval.resolved", { requestId: "r1", audit: record }),
+  );
+  assert.deepEqual(
+    live.map((e) => e.id),
+    ["u", "t", "approval:r1", "later"],
+  );
+  // History reloads merge the same record instead of duplicating it.
+  assert.equal(
+    addApprovals(live, [record]).filter((e) => e.kind === "approval").length,
+    1,
+  );
+  const merged = mergeHistoryEntries([], live);
+  assert.equal(merged.filter((e) => e.kind === "approval").length, 1);
+  // Approvals without an audit record (non-input requests) add nothing.
+  assert.equal(
+    applyChatEvent(list, event("approval.resolved", { requestId: "x" })),
+    list,
+  );
 });

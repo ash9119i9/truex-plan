@@ -1,0 +1,22 @@
+{
+  "name": "model-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/model-gateway/src/index.js",
+    "build": "tsc",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.128.0",
+    "@aws-sdk/client-secrets-manager": "3.1141.0",
+    "dotenv": "17.4.2",
+    "mongodb": "6.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  }
+}

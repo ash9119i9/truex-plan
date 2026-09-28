@@ -5,8 +5,12 @@ import remarkGfm from "remark-gfm";
 import { Fragment } from "react";
 import { CommandResult, commandLabel } from "./command-result";
 import { ThinkingBlock } from "./thinking-block";
+import { ApprovalRecordView } from "./approval-record";
 import { Visualization } from "./visualization";
 import { splitVisualizations } from "@/lib/visualization";
+import { HelperGroup } from "./helper-group";
+import { emptySubAgents, type SubAgentState } from "@/lib/subagents";
+import type { Goal, GoalReview } from "../../shared/contracts";
 
 export function ChatMessages({
   entries,
@@ -17,6 +21,10 @@ export function ChatMessages({
   onRefresh,
   sessionId,
   onPrompt,
+  goal,
+  goalReview,
+  subAgents = emptySubAgents,
+  onOpenAgent,
 }: {
   entries: Entry[];
   agentName: string;
@@ -26,39 +34,21 @@ export function ChatMessages({
   onRefresh?: () => void;
   sessionId?: string;
   onPrompt?: (text: string) => void;
+  goal?: Goal | null;
+  goalReview?: GoalReview | null;
+  subAgents?: SubAgentState;
+  onOpenAgent?: (threadId: string) => void;
 }) {
   const groups: {
     id: string;
     user?: Extract<Entry, { kind: "message" }>;
     entries: Entry[];
     turnId?: string;
-    goal?: { id: string; objective: string };
   }[] = [];
-  let goal: { id: string; objective: string } | undefined;
   for (const entry of visibleEntries(entries).filter(
     (e) => e.kind !== "item",
   )) {
     if (entry.kind === "message" && entry.role === "user") {
-      const command = entry.command;
-      if (
-        command &&
-        (command.state === "succeeded" || command.state === "running")
-      ) {
-        if (
-          command.method === "thread/goal/set" &&
-          typeof command.params.objective === "string"
-        )
-          goal = { id: entry.id, objective: command.params.objective };
-        if (command.method === "thread/goal/get" && command.result?.goal)
-          goal = { id: entry.id, objective: command.result.goal.objective };
-        if (
-          command.method === "thread/goal/clear" ||
-          (command.method === "thread/goal/get" &&
-            command.state === "succeeded" &&
-            !command.result?.goal)
-        )
-          goal = undefined;
-      }
       groups.push({ id: entry.id, user: entry, entries: [] });
     } else {
       const last = groups.at(-1);
@@ -69,12 +59,13 @@ export function ChatMessages({
           id: entry.id,
           turnId: entry.turnId,
           entries: [entry],
-          goal,
         });
     }
   }
   const last = groups.at(-1);
   const needsPlaceholder = running && (!last || !!last.user);
+  // Turns with an anchor, so each turn id is used once.
+  const anchored = new Set<string>();
   return (
     <div className="chat-messages">
       {groups.map((group, index) => {
@@ -113,6 +104,8 @@ export function ChatMessages({
                   onCommand={onCommand}
                   onOpen={onOpen}
                   onRefresh={onRefresh}
+                  currentGoal={goal}
+                  goalReview={goalReview}
                 />
               )}
             </Fragment>
@@ -122,18 +115,21 @@ export function ChatMessages({
         const content = group.entries.filter((e) => e.kind !== "thinking");
         const active = running && index === groups.length - 1;
         const answering = content.some((e) => e.kind === "message" && !!e.text);
+        // The goal timeline links to the first response of a turn.
+        const anchor =
+          group.turnId && !anchored.has(group.turnId)
+            ? `turn-${group.turnId}`
+            : undefined;
+        if (group.turnId) anchored.add(group.turnId);
         return (
           <article
             className="assistant-turn"
             key={`assistant:${group.id}`}
+            id={anchor}
+            tabIndex={anchor ? -1 : undefined}
             aria-label={`${agentName} response`}
           >
             <div className="message-label">{agentName}</div>
-            {group.goal && (
-              <a className="goal-context" href={`#request-${group.goal.id}`}>
-                Goal: {group.goal.objective}
-              </a>
-            )}
             {!!thinking.length && (
               <ThinkingBlock
                 text={thinking
@@ -146,7 +142,18 @@ export function ChatMessages({
               />
             )}
             {content.map((e) =>
-              e.kind === "message" && e.text ? (
+              e.kind === "approval" ? (
+                <ApprovalRecordView key={e.id} record={e.record} />
+              ) : e.kind === "agents" ? (
+                <HelperGroup
+                  key={e.id}
+                  id={e.id.replace(/[^\w-]/g, "-")}
+                  threadIds={e.threadIds}
+                  state={subAgents}
+                  sessionId={sessionId}
+                  onOpenAgent={onOpenAgent}
+                />
+              ) : e.kind === "message" && e.text ? (
                 <div className="message assistant" key={e.id}>
                   <div className="message-text markdown">
                     {splitVisualizations(e.text, !e.final && !e.done).map(

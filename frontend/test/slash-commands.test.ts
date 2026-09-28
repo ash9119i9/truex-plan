@@ -19,7 +19,7 @@ test("questions containing slashes and paths remain messages", () => {
 });
 
 test("picker only captures command names, never goal text or multiline editing", () => {
-  assert.equal(suggestCommands("/").length, 8);
+  assert.equal(suggestCommands("/").length, 11);
   assert.deepEqual(
     suggestCommands("/GO").map((c) => c.name),
     ["/goal"],
@@ -100,4 +100,55 @@ test("valid actions map to the existing capability APIs", () => {
     success: "Reasoning effort changed to high.",
   });
   assert.deepEqual(parseChatInput("/help"), { kind: "help" });
+});
+
+test("panel commands open workspace panels and take no arguments", () => {
+  assert.deepEqual(parseChatInput("/mcp"), { kind: "panel", panel: "mcp" });
+  assert.deepEqual(parseChatInput("/TOOLS"), { kind: "panel", panel: "tools" });
+  assert.equal(parseChatInput("/mcp github").kind, "invalid");
+  assert.deepEqual(parseChatInput("/agents"), {
+    kind: "panel",
+    panel: "agents",
+  });
+  assert.deepEqual(parseChatInput("/AGENTS"), {
+    kind: "panel",
+    panel: "agents",
+  });
+  assert.equal(parseChatInput("/agents stop").kind, "invalid");
+  assert.deepEqual(
+    suggestCommands("/a").map((c) => c.name),
+    ["/archive", "/agents"],
+  );
+  assert.deepEqual(
+    suggestCommands("/m").map((c) => c.name),
+    ["/model", "/mcp"],
+  );
+});
+
+test("goal subcommands pause, resume and budget without becoming objectives", () => {
+  assert.deepEqual(parseChatInput("/goal pause"), {
+    kind: "command",
+    method: "thread/goal/set",
+    params: { status: "paused" },
+    success: "Goal paused.",
+  });
+  const resume = parseChatInput("/goal RESUME");
+  assert.equal(resume.kind === "command" && resume.params.status, "active");
+  for (const [text, tokens] of [
+    ["/goal budget 50000", 50000],
+    ["/goal budget 50k", 50000],
+    ["/goal budget 1,500", 1500],
+  ] as const) {
+    const result = parseChatInput(text);
+    assert.equal(result.kind, "command", text);
+    if (result.kind === "command")
+      assert.deepEqual(result.params, { tokenBudget: tokens });
+  }
+  for (const text of ["/goal budget", "/goal budget 0", "/goal budget lots"])
+    assert.equal(parseChatInput(text).kind, "invalid", text);
+  const objective = parseChatInput("/goal pause the rollout and report");
+  assert.equal(
+    objective.kind === "command" && objective.params.objective,
+    "pause the rollout and report",
+  );
 });

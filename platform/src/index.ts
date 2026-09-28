@@ -11,6 +11,7 @@ import {
   publicTiming,
   PublicEventStream,
   POLICY_VERSION,
+  relay,
 } from "./public";
 import { Store } from "./store";
 import { PlatformService, ApiError } from "./service";
@@ -191,7 +192,9 @@ async function main() {
   http.post(
     "/api/sessions",
     route(async (req, res) =>
-      res.status(201).json(await service.create(req.body.agentId)),
+      res
+        .status(201)
+        .json(await service.create(req.body.agentId, req.body.subAgents)),
     ),
   );
   http.get(
@@ -245,6 +248,34 @@ async function main() {
         ),
     ),
   );
+  http.get(
+    "/api/sessions/:id/agents",
+    route(async (req, res) =>
+      res.json(await service.subAgents(String(req.params.id))),
+    ),
+  );
+  http.get(
+    "/api/sessions/:id/agents/:agentId",
+    route(async (req, res) =>
+      res.json(
+        await service.subAgent(
+          String(req.params.id),
+          String(req.params.agentId),
+        ),
+      ),
+    ),
+  );
+  http.post(
+    "/api/sessions/:id/agents/:agentId/interrupt",
+    route(async (req, res) =>
+      res.json(
+        await service.interruptAgent(
+          String(req.params.id),
+          String(req.params.agentId),
+        ),
+      ),
+    ),
+  );
   http.post(
     "/api/sessions/:id/interrupt",
     route(async (req, res) =>
@@ -288,6 +319,18 @@ async function main() {
               req.body.params || {},
             )),
       ),
+    ),
+  );
+  http.get(
+    "/api/sessions/:id/goal/history",
+    route(async (req, res) =>
+      res.json(await service.goalHistory(String(req.params.id))),
+    ),
+  );
+  http.post(
+    "/api/sessions/:id/goal/review",
+    route(async (req, res) =>
+      res.json(await service.reviewGoal(String(req.params.id), req.body || {})),
     ),
   );
   http.get(
@@ -371,15 +414,34 @@ async function main() {
       });
       res.flushHeaders();
       try {
-        const stream = new PublicEventStream();
-        for await (const chunk of upstream.body as any) {
-          const output = stream.push(chunk);
-          if (output && !res.write(output)) {
-            abort.abort();
-            res.destroy();
-            break;
+        // Highest token count seen for the current goal on this stream, so a
+        // restarted assistant service never shows a smaller count.
+        let counted = s.goal ?? null;
+        const remember = (goal: any, event?: { turnId?: string; at?: string }) => {
+          if (goal) {
+            const same =
+              !!counted &&
+              (counted.createdAt ?? null) === (goal.createdAt ?? null);
+            goal.tokensObserved = Math.max(
+              goal.tokensObserved ?? 0,
+              same ? (counted?.tokensObserved ?? 0) : 0,
+            );
           }
-        }
+          counted = goal;
+          void service
+            .rememberGoal(s._id, goal, {
+              turnId: event?.turnId,
+              eventAt: event?.at,
+            })
+            .catch(() => {});
+        };
+        const stream = new PublicEventStream((event) => {
+          if (event.type === "goal.updated") remember(event.data.goal, event);
+          if (event.type === "goal.cleared") remember(null, event);
+          if (event.type === "snapshot" && "goal" in event.data)
+            remember(event.data.goal);
+        });
+        await relay(upstream.body as any, res, stream);
       } catch {
         if (!res.destroyed) res.end();
       } finally {

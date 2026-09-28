@@ -74,3 +74,13 @@ export async function api(path: string, body?: unknown) {
     );
   return data;
 }
+
+// Helper agents spawned inside a conversation.
+const agentsPath = (sessionId: string, agentId?: string) =>
+  `/api/sessions/${encodeURIComponent(sessionId)}/agents` +
+  (agentId ? `/${encodeURIComponent(agentId)}` : "");
+export const listAgents = (sessionId: string) => api(agentsPath(sessionId));
+export const getAgentTranscript = (sessionId: string, agentId: string) =>
+  api(agentsPath(sessionId, agentId));
+export const interruptAgent = (sessionId: string, agentId: string) =>
+  api(agentsPath(sessionId, agentId) + "/interrupt", {});

@@ -1,11 +1,13 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { FileText, Sparkles, Upload, Download } from "lucide-react";
+import { FileText, Upload, Download } from "lucide-react";
 import {
   assistantCapabilities,
   type ConversationFile,
 } from "../../shared/assistant-capabilities";
 import { api, base } from "@/lib/api";
+import { documentKind, uploadAccept } from "@/lib/document-kind";
+import { DocumentIcon } from "./document-icon";
 import { Button } from "./ui/button";
 import { QuickTools } from "./quick-tools";
 import { Visualization } from "./visualization";
@@ -88,12 +90,9 @@ export function AssistantTools({
     }
   }
   return (
-    <details className="assistant-tools">
-      <summary>
-        <Sparkles size={15} /> Capabilities, documents & visuals{" "}
-        {files.length > 0 && <span>({files.length})</span>}
-      </summary>
+    <div className="assistant-tools">
       <div className="assistant-tools-body">
+        <h3>Capabilities</h3>
         <div className="capability-grid">
           {assistantCapabilities.map((capability) => (
             <button
@@ -129,7 +128,7 @@ export function AssistantTools({
                 <input
                   type="file"
                   aria-label="Upload a document"
-                  accept=".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.tsv"
+                  accept={uploadAccept}
                   disabled={busy || running}
                   onChange={(event) => {
                     const file = event.target.files?.[0];
@@ -139,8 +138,8 @@ export function AssistantTools({
                 />
               </label>
               <p className="muted">
-                PDF, Word, Excel, PowerPoint, or text · 1 MB per file. Revisions
-                create a new version; original formatting may change.
+                PDF, Word, Excel, PowerPoint, text, or code · 1 MB per file.
+                Revisions create a new version; original formatting may change.
               </p>
               <Button
                 type="button"
@@ -158,9 +157,11 @@ export function AssistantTools({
             .filter((file) => file.kind !== "visualization")
             .map((file) => (
               <div className="document-row" key={file.id}>
+                <DocumentIcon name={file.name} size={16} />
                 <div>
                   <strong>{file.name}</strong>
                   <small>
+                    {documentKind(file.name).label} ·{" "}
                     {Math.ceil(file.size / 1024)} KB
                     {file.sourceId ? " · Revised version" : ""}
                   </small>
@@ -244,6 +245,6 @@ export function AssistantTools({
           </p>
         )}
       </div>
-    </details>
+    </div>
   );
 }

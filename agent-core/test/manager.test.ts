@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ThreadManager } from "../src/manager";
@@ -110,6 +110,12 @@ test("approval answer validation, single resolution, expiry and snapshot survive
     /Invalid/,
   );
   manager.answer("thread_1", request.requestId, { decision: "accept" });
+  const resolved = manager
+    .records("thread_1")
+    .find((r) => r.event.type === "approval.resolved")!.event;
+  // The question is kept with its answer for the chat's audit trail.
+  assert.equal(resolved.data.detail.itemId, "item");
+  assert.equal(resolved.turnId, "turn_1");
   assert.throws(
     () => manager.answer("thread_1", request.requestId, { decision: "accept" }),
     /already resolved/,
@@ -159,4 +165,808 @@ test("full subscriber buffers disconnect without blocking other threads", async 
   assert.equal(res.destroyed, true);
   await manager.message("thread_1", "still works");
   assert.equal(manager.snapshot("thread_1").state.kind, "running");
+});
+test("goal notifications keep the snapshot goal current and reach subscribers", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  const goal = {
+    threadId: "thread_1",
+    objective: "Ship the report",
+    status: "active",
+    tokenBudget: null,
+    tokensUsed: 120,
+    timeUsedSeconds: 30,
+    createdAt: 1,
+    updatedAt: 2,
+  };
+  runtime.emit("notification", {
+    method: "thread/goal/updated",
+    params: { threadId: "thread_1", turnId: null, goal },
+  });
+  assert.equal(
+    (manager.snapshot("thread_1").goal as any).objective,
+    "Ship the report",
+  );
+  assert.equal(
+    manager.threads.get("thread_1")!.events.at(-1)!.type,
+    "goal.updated",
+  );
+  runtime.emit("notification", {
+    method: "thread/goal/cleared",
+    params: { threadId: "thread_1" },
+  });
+  assert.equal(manager.snapshot("thread_1").goal, null);
+  assert.equal(
+    manager.threads.get("thread_1")!.events.at(-1)!.type,
+    "goal.cleared",
+  );
+});
+test("goal token tally counts usage reported after the goal completes and resets for a new goal", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  const goal = {
+    threadId: "thread_1",
+    objective: "Ship the report",
+    status: "active",
+    tokenBudget: 25000,
+    tokensUsed: 0,
+    timeUsedSeconds: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const usage = (
+    turnId: string,
+    input: number,
+    cached: number,
+    output: number,
+  ) =>
+    runtime.emit("notification", {
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: "thread_1",
+        turnId,
+        tokenUsage: {
+          total: { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+          last: {
+            inputTokens: input,
+            cachedInputTokens: cached,
+            outputTokens: output,
+          },
+        },
+      },
+    });
+  runtime.emit("notification", {
+    method: "thread/goal/updated",
+    params: { threadId: "thread_1", turnId: null, goal },
+  });
+  runtime.emit("notification", {
+    method: "turn/started",
+    params: { threadId: "thread_1", turn: { id: "turn_1" } },
+  });
+  // The agent completes the goal before the turn's usage arrives.
+  runtime.emit("notification", {
+    method: "thread/goal/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      goal: { ...goal, status: "complete" },
+    },
+  });
+  // The fixture keeps only a few events, so compare by sequence number.
+  const thread = manager.threads.get("thread_1")!;
+  const before = thread.seq;
+  usage("turn_1", 10335, 335, 257);
+  usage("turn_1", 9466, 0, 40);
+  const events = thread.events.filter((e) => e.seq > before);
+  assert.deepEqual(
+    events.map((e) => e.type),
+    ["goal.updated", "goal.updated"],
+  );
+  assert.equal((events.at(-1)!.data as any).goal.tokensObserved, 10257 + 9506);
+  assert.equal(
+    (manager.snapshot("thread_1").goal as any).tokensObserved,
+    19763,
+  );
+  // Codex's own count is left untouched.
+  assert.equal((manager.snapshot("thread_1").goal as any).tokensUsed, 0);
+  // Usage from a turn that never ran for this goal is ignored and not published.
+  const quiet = thread.seq;
+  usage("turn_other", 500, 0, 5);
+  assert.equal(thread.seq, quiet);
+  // Editing the objective keeps the goal, so the tally carries over.
+  runtime.emit("notification", {
+    method: "thread/goal/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: null,
+      goal: { ...goal, objective: "Ship the edited report" },
+    },
+  });
+  assert.equal(
+    (manager.snapshot("thread_1").goal as any).tokensObserved,
+    19763,
+  );
+  // A new goal starts a fresh tally.
+  runtime.emit("notification", {
+    method: "thread/goal/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: null,
+      goal: { ...goal, objective: "Next goal", createdAt: 2 },
+    },
+  });
+  assert.equal((manager.snapshot("thread_1").goal as any).tokensObserved, 0);
+  usage("turn_1", 100, 0, 1);
+  assert.equal((manager.snapshot("thread_1").goal as any).tokensObserved, 0);
+});
+// A healthy client must not be dropped just because one frame exceeds the
+// socket's high-water mark; large MCP tool results routinely do.
+async function sse(t: any, manager: ThreadManager) {
+  const express = (await import("express")).default;
+  const app = express();
+  app.get("/threads/:id/events", (req, res) =>
+    manager.subscribe(
+      req.params.id,
+      res,
+      req.get("Last-Event-ID") || undefined,
+    ),
+  );
+  const server = app.listen(0);
+  await new Promise((r) => server.once("listening", r));
+  t.after(() => server.close());
+  const url = `http://127.0.0.1:${(server.address() as any).port}/threads/thread_1/events`;
+  return async (
+    cursor: string | undefined,
+    until: (events: any[]) => boolean,
+  ) => {
+    const ac = new AbortController();
+    const response = await fetch(url, {
+      signal: ac.signal,
+      headers: cursor ? { "Last-Event-ID": cursor } : {},
+    });
+    const events: any[] = [];
+    let buffer = "",
+      ended = true;
+    const timer = setTimeout(() => ac.abort(), 3000);
+    try {
+      for await (const chunk of response.body as any) {
+        buffer += Buffer.from(chunk).toString();
+        let i;
+        while ((i = buffer.indexOf("\n\n")) >= 0) {
+          const data = buffer
+            .slice(0, i)
+            .split("\n")
+            .find((l) => l.startsWith("data:"));
+          buffer = buffer.slice(i + 2);
+          if (data) events.push(JSON.parse(data.slice(5)));
+        }
+        if (until(events)) {
+          ended = false;
+          break;
+        }
+      }
+    } catch {}
+    clearTimeout(timer);
+    ac.abort();
+    return { events, ended };
+  };
+}
+const bigToolResult = (id: string) => ({
+  method: "item/completed",
+  params: {
+    threadId: "thread_1",
+    turnId: "turn_1",
+    item: {
+      id,
+      type: "mcpToolCall",
+      server: "btp",
+      tool: "list_tenants",
+      result: { content: [{ type: "text", text: "x".repeat(64 * 1024) }] },
+    },
+  },
+});
+test("a large MCP tool result streams live without disconnecting the subscriber", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  const read = await sse(t, manager);
+  const reading = read(undefined, (events) =>
+    events.some((e) => e.type === "message.delta"),
+  );
+  await new Promise((r) => setTimeout(r, 100));
+  runtime.emit("notification", bigToolResult("mcp_1"));
+  runtime.emit("notification", {
+    method: "item/agentMessage/delta",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      itemId: "answer",
+      delta: "Hi",
+    },
+  });
+  const { events, ended } = await reading;
+  assert.equal(ended, false, "server closed the stream");
+  assert.deepEqual(
+    events.map((e) => e.type),
+    ["snapshot", "item.completed", "message.delta"],
+  );
+});
+test("reconnecting behind a large backlog replays it instead of closing", async (t) => {
+  const runtime = new Fake(),
+    dir = mkdtempSync(join(tmpdir(), "adapter-test-")),
+    manager = new ThreadManager(runtime, dir, 2, 50, 1000);
+  t.after(() => {
+    manager.close();
+    rmSync(dir, { recursive: true, force: true });
+  });
+  await manager.create({});
+  const cursor = manager.snapshot("thread_1").cursor;
+  for (const id of ["mcp_1", "mcp_2", "mcp_3"])
+    runtime.emit("notification", bigToolResult(id));
+  const read = await sse(t, manager);
+  const { events, ended } = await read(cursor, (events) =>
+    events.some((e) => e.type === "snapshot"),
+  );
+  assert.equal(ended, false, "server closed the stream during replay");
+  assert.deepEqual(
+    events.map((e) => e.itemId ?? e.type),
+    ["mcp_1", "mcp_2", "mcp_3", "snapshot"],
+  );
+});
+
+test("goal changes are durable records with their turn; token-only updates are not", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  const goal = {
+    threadId: "thread_1",
+    objective: "Ship the report",
+    status: "active",
+    tokenBudget: null,
+    tokensUsed: 0,
+    timeUsedSeconds: 0,
+    createdAt: 1,
+    updatedAt: 1,
+  };
+  const update = (g: any, turnId: string | null = "turn_1") =>
+    runtime.emit("notification", {
+      method: "thread/goal/updated",
+      params: { threadId: "thread_1", turnId, goal: g },
+    });
+  const goalRecords = () =>
+    manager
+      .records("thread_1")
+      .map((r) => r.event)
+      .filter((e) => e.type.startsWith("goal."));
+  update(goal);
+  runtime.emit("notification", {
+    method: "turn/started",
+    params: { threadId: "thread_1", turn: { id: "turn_1" } },
+  });
+  // Codex's count moves and Truex's tally moves: neither is a goal change.
+  update({ ...goal, tokensUsed: 500, updatedAt: 2 });
+  runtime.emit("notification", {
+    method: "thread/tokenUsage/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      tokenUsage: {
+        last: { inputTokens: 100, cachedInputTokens: 0, outputTokens: 20 },
+      },
+    },
+  });
+  update({ ...goal, status: "complete", tokensUsed: 700, updatedAt: 3 });
+  runtime.emit("notification", {
+    method: "thread/goal/cleared",
+    params: { threadId: "thread_1" },
+  });
+  const records = goalRecords();
+  assert.deepEqual(
+    records.map((e) => [e.type, e.data.goal?.status ?? null, e.turnId]),
+    [
+      ["goal.updated", "active", "turn_1"],
+      ["goal.updated", "complete", "turn_1"],
+      ["goal.cleared", null, undefined],
+    ],
+  );
+  assert.equal(records[1].data.goal.tokensUsed, 700);
+  assert.equal(records[2].data.goalCreatedAt, 1);
+  // The same goal set again after a clear is a change.
+  update(goal, null);
+  assert.equal(goalRecords().length, 4);
+});
+// Emits a root collab spawn call naming helper `child_1`.
+function spawn(
+  runtime: Fake,
+  status = "running",
+  message: string | null = null,
+) {
+  runtime.emit("notification", {
+    method: "item/completed",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      item: {
+        type: "collabAgentToolCall",
+        id: "call_1",
+        tool: "spawnAgent",
+        status: "completed",
+        senderThreadId: "thread_1",
+        receiverThreadIds: ["child_1"],
+        prompt: "Research competitor pricing",
+        model: null,
+        reasoningEffort: null,
+        agentsStates: { child_1: { status, message } },
+      },
+    },
+  });
+}
+test("helper agents link to the root conversation and publish lifecycle events", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "go");
+  spawn(runtime);
+  runtime.emit("notification", {
+    method: "item/started",
+    params: {
+      threadId: "thread_1",
+      item: {
+        type: "subAgentActivity",
+        id: "act_1",
+        kind: "started",
+        agentThreadId: "child_1",
+        agentPath: "/root/researcher",
+      },
+    },
+  });
+  runtime.emit("notification", {
+    method: "turn/started",
+    params: { threadId: "child_1", turn: { id: "child_turn" } },
+  });
+  runtime.emit("notification", {
+    method: "item/agentMessage/delta",
+    params: { threadId: "child_1", itemId: "m1", delta: "Found " },
+  });
+  runtime.emit("notification", {
+    method: "item/started",
+    params: {
+      threadId: "child_1",
+      item: { type: "mcpToolCall", id: "tool", arguments: { secret: "x" } },
+    },
+  });
+  runtime.emit("notification", {
+    method: "item/completed",
+    params: {
+      threadId: "child_1",
+      item: { type: "agentMessage", id: "m1", text: "Found three plans" },
+    },
+  });
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: {
+      threadId: "child_1",
+      turn: { id: "child_turn", status: "completed" },
+    },
+  });
+  // No session record is created for the helper.
+  assert.equal(manager.threads.has("child_1"), false);
+  const snapshot = manager.snapshot("thread_1");
+  assert.equal(snapshot.subAgents?.length, 1);
+  const agent = snapshot.subAgents![0];
+  assert.equal(agent.threadId, "child_1");
+  assert.equal(agent.depth, 1);
+  assert.equal(agent.path, "/root/researcher");
+  assert.equal(agent.task, "Research competitor pricing");
+  assert.equal(agent.status, "completed");
+  assert.equal(agent.lastMessage, "Found three plans");
+  assert.ok(agent.endedAt);
+  assert.deepEqual(manager.agent("thread_1", "child_1").messages, [
+    { id: "m1", text: "Found three plans", final: true },
+  ]);
+  assert.deepEqual(manager.agents("thread_1"), snapshot.subAgents);
+});
+test("helper events stream on the root with no raw tool data", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  const frames: any[] = [];
+  const res: any = new EventEmitter();
+  Object.assign(res, {
+    set() {},
+    flushHeaders() {},
+    writableLength: 0,
+    write(chunk: string) {
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (line) frames.push(JSON.parse(line.slice(6)));
+      return true;
+    },
+    destroy() {},
+    end() {},
+  });
+  manager.subscribe("thread_1", res);
+  t.after(() => res.emit("close"));
+  spawn(runtime, "pendingInit");
+  runtime.emit("notification", {
+    method: "item/agentMessage/delta",
+    params: { threadId: "child_1", itemId: "m1", delta: "Hello" },
+  });
+  runtime.emit("notification", {
+    method: "item/started",
+    params: {
+      threadId: "child_1",
+      item: { type: "mcpToolCall", id: "t", arguments: { q: "raw-args" } },
+    },
+  });
+  spawn(runtime, "completed", "Done");
+  const types = frames.map((f) => f.type);
+  assert.ok(types.includes("subagent.spawned"));
+  assert.ok(types.includes("subagent.completed"));
+  const delta = frames.find((f) => f.type === "subagent.event");
+  assert.equal(delta.threadId, "thread_1");
+  assert.deepEqual(
+    {
+      kind: delta.data.kind,
+      delta: delta.data.delta,
+      id: delta.data.agentThreadId,
+    },
+    { kind: "message.delta", delta: "Hello", id: "child_1" },
+  );
+  assert.equal(JSON.stringify(frames).includes("raw-args"), false);
+  const done = frames.find((f) => f.type === "subagent.completed");
+  assert.equal(done.data.agent.lastMessage, "Done");
+  assert.equal(done.data.tool, "spawnAgent");
+  // Root collab items still flow for the fallback activity label.
+  assert.ok(
+    frames.some(
+      (f) =>
+        f.type === "item.completed" &&
+        f.data.item?.type === "collabAgentToolCall",
+    ),
+  );
+});
+test("helper server requests are declined and never reach the root queue", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  spawn(runtime);
+  runtime.emit("serverRequest", {
+    id: 7,
+    method: "item/tool/requestUserInput",
+    params: {
+      threadId: "child_1",
+      turnId: "ct",
+      itemId: "i",
+      questions: [
+        {
+          id: "q1",
+          header: "Scope",
+          question: "Which region?",
+          isOther: false,
+          isSecret: false,
+          options: null,
+        },
+      ],
+      autoResolutionMs: null,
+    },
+  });
+  runtime.emit("serverRequest", {
+    id: 8,
+    method: "item/commandExecution/requestApproval",
+    params: { threadId: "child_1", turnId: "ct", itemId: "i" },
+  });
+  // A helper not yet identified is declined too.
+  runtime.emit("serverRequest", {
+    id: 9,
+    method: "item/tool/requestUserInput",
+    params: { threadId: "child_unknown", questions: [] },
+  });
+  assert.equal(manager.snapshot("thread_1").pending.length, 0);
+  const [question, approval, unknown] = runtime.replies;
+  assert.equal(question.id, 7);
+  assert.match(question.result.answers.q1.answers[0], /main agent/);
+  validateResponse("item/tool/requestUserInput", question.result);
+  assert.deepEqual(approval.result, { decision: "decline" });
+  assert.deepEqual(unknown.result, { answers: {} });
+  // Root requests still queue for the user.
+  runtime.emit("serverRequest", {
+    id: 10,
+    method: "item/tool/requestUserInput",
+    params: { threadId: "thread_1", questions: [] },
+  });
+  assert.equal(manager.snapshot("thread_1").pending.length, 1);
+});
+test("interrupting the root interrupts running helpers; helper routes check ownership", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "go");
+  spawn(runtime);
+  runtime.emit("notification", {
+    method: "turn/started",
+    params: { threadId: "child_1", turn: { id: "child_turn" } },
+  });
+  await manager.interruptAgent("thread_1", "child_1");
+  // Name lookups may run in between, so find the stop request itself.
+  assert.deepEqual(runtime.calls.filter((c) => c.method === "turn/interrupt").at(-1), {
+    method: "turn/interrupt",
+    params: { threadId: "child_1", turnId: "child_turn" },
+  });
+  // The helper is then shut down so the main agent's wait ends.
+  assert.deepEqual(runtime.calls.at(-1), {
+    method: "thread/archive",
+    params: { threadId: "child_1" },
+  });
+  await manager.interrupt("thread_1");
+  const interrupts = runtime.calls
+    .filter((c) => c.method === "turn/interrupt")
+    .map((c) => c.params.threadId);
+  assert.deepEqual(interrupts, ["child_1", "thread_1", "child_1"]);
+  assert.throws(() => manager.agent("thread_1", "nope"), /not found/);
+  assert.throws(() => manager.agent("other", "child_1"), /not found/);
+  await assert.rejects(
+    manager.interruptAgent("thread_1", "missing"),
+    (e: any) => e.status === 404,
+  );
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: {
+      threadId: "child_1",
+      turn: { id: "child_turn", status: "interrupted" },
+    },
+  });
+  assert.equal(manager.agents("thread_1")[0].status, "interrupted");
+  await assert.rejects(
+    manager.interruptAgent("thread_1", "child_1"),
+    (e: any) => e.status === 409,
+  );
+});
+test("thread/started with a spawn source registers nested helpers under the root", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  spawn(runtime);
+  runtime.emit("notification", {
+    method: "thread/started",
+    params: {
+      thread: {
+        id: "grandchild",
+        source: {
+          subagent: {
+            thread_spawn: {
+              parent_thread_id: "child_1",
+              depth: 2,
+              agent_path: "/root/researcher/checker",
+              agent_nickname: "Checker",
+              agent_role: "reviewer",
+            },
+          },
+        },
+      },
+    },
+  });
+  const nested = manager
+    .agents("thread_1")
+    .find((a) => a.threadId === "grandchild");
+  assert.deepEqual(
+    [nested?.depth, nested?.nickname, nested?.role, nested?.path],
+    [2, "Checker", "reviewer", "/root/researcher/checker"],
+  );
+  assert.equal(manager.threads.has("grandchild"), false);
+  await manager.capability("thread_1", "thread/delete", {});
+  assert.throws(() => manager.agent("thread_1", "grandchild"), /not found/);
+  // Codex reports each deleted helper afterwards; none becomes a thread.
+  for (const id of ["child_1", "grandchild"])
+    runtime.emit("notification", {
+      method: "thread/deleted",
+      params: { threadId: id },
+    });
+  assert.equal(manager.threads.has("child_1"), false);
+  assert.equal(manager.threads.has("grandchild"), false);
+});
+test("helper transcripts are bounded", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  spawn(runtime);
+  for (let i = 0; i < 250; i++)
+    runtime.emit("notification", {
+      method: "item/completed",
+      params: {
+        threadId: "child_1",
+        item: { type: "agentMessage", id: `m${i}`, text: `n${i}` },
+      },
+    });
+  const messages = manager.agent("thread_1", "child_1").messages;
+  assert.equal(messages.length, 200);
+  assert.equal(messages[0].id, "m50");
+});
+test("thread create accepts helper settings without sending them as protocol params", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({
+    subAgents: { mode: "explicitRequestOnly", maxConcurrent: 9 },
+  });
+  assert.deepEqual(runtime.calls[0].params.subAgents, {
+    mode: "explicitRequestOnly",
+    maxConcurrent: 9,
+  });
+});
+test("helper output that arrives before its spawn call is replayed on the root", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "go");
+  // The fixture keeps only 3 replay events, so read the live stream.
+  const frames: any[] = [];
+  const res: any = new EventEmitter();
+  Object.assign(res, {
+    set() {},
+    flushHeaders() {},
+    writableLength: 0,
+    write(chunk: string) {
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (line) frames.push(JSON.parse(line.slice(6)));
+      return true;
+    },
+    destroy() {},
+    end() {},
+  });
+  manager.subscribe("thread_1", res);
+  t.after(() => res.emit("close"));
+  runtime.emit("notification", {
+    method: "item/agentMessage/delta",
+    params: { threadId: "child_1", itemId: "m1", delta: "Early" },
+  });
+  runtime.emit("notification", {
+    method: "item/completed",
+    params: {
+      threadId: "child_1",
+      item: { type: "agentMessage", id: "m1", text: "Early words" },
+    },
+  });
+  // Nothing observable exists for the helper until it is identified.
+  assert.equal(manager.threads.has("child_1"), false);
+  spawn(runtime);
+  const sub = frames.filter((e: any) => e.type === "subagent.event");
+  assert.deepEqual(
+    sub.map((e: any) => e.data.kind),
+    ["message.delta", "message.final"],
+  );
+  assert.equal(sub[0].data.delta, "Early");
+  assert.equal(manager.threads.has("child_1"), false);
+  assert.equal(
+    existsSync(join(manager.home, "adapter-records", "child_1")),
+    false,
+  );
+});
+test("a helper runs through spawn, wait and close on the root stream", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "go");
+  const frames: any[] = [];
+  const res: any = new EventEmitter();
+  Object.assign(res, {
+    set() {},
+    flushHeaders() {},
+    writableLength: 0,
+    write(chunk: string) {
+      const line = chunk.split("\n").find((l) => l.startsWith("data: "));
+      if (line) frames.push(JSON.parse(line.slice(6)));
+      return true;
+    },
+    destroy() {},
+    end() {},
+  });
+  manager.subscribe("thread_1", res);
+  t.after(() => res.emit("close"));
+  const collab = (
+    method: string,
+    tool: string,
+    status: string,
+    states: Record<string, any>,
+  ) =>
+    runtime.emit("notification", {
+      method,
+      params: {
+        threadId: "thread_1",
+        turnId: "turn_1",
+        item: {
+          type: "collabAgentToolCall",
+          id: `call_${tool}`,
+          tool,
+          status,
+          senderThreadId: "thread_1",
+          receiverThreadIds: ["child_1"],
+          prompt: tool === "spawnAgent" ? "Summarise the pricing page" : null,
+          model: null,
+          reasoningEffort: null,
+          agentsStates: states,
+        },
+      },
+    });
+  const child = (method: string, params: any) =>
+    runtime.emit("notification", {
+      method,
+      params: { threadId: "child_1", ...params },
+    });
+  collab("item/started", "spawnAgent", "inProgress", {});
+  collab("item/completed", "spawnAgent", "completed", {
+    child_1: { status: "pendingInit", message: null },
+  });
+  child("turn/started", { turn: { id: "ct1" } });
+  child("item/agentMessage/delta", { itemId: "cm1", delta: "Plans start" });
+  collab("item/started", "wait", "inProgress", {
+    child_1: { status: "running", message: null },
+  });
+  child("item/completed", {
+    item: { type: "agentMessage", id: "cm1", text: "Plans start at $10" },
+  });
+  child("turn/completed", { turn: { id: "ct1", status: "completed" } });
+  collab("item/completed", "wait", "completed", {
+    child_1: { status: "completed", message: "Plans start at $10" },
+  });
+  collab("item/completed", "closeAgent", "completed", {
+    child_1: { status: "shutdown", message: null },
+  });
+
+  const lifecycle = frames
+    .filter((f) => f.type.startsWith("subagent.") && f.type !== "subagent.event")
+    .map((f) => [f.type, f.data.agent.status]);
+  assert.deepEqual(lifecycle[0], ["subagent.spawned", "pendingInit"]);
+  assert.ok(
+    lifecycle.some(([type, s]) => type === "subagent.status" && s === "running"),
+  );
+  assert.equal(
+    lifecycle.filter(([type]) => type === "subagent.completed").length,
+    1,
+  );
+  const kinds = frames
+    .filter((f) => f.type === "subagent.event")
+    .map((f) => f.data.kind);
+  assert.deepEqual(kinds, [
+    "turn.started",
+    "message.delta",
+    "message.final",
+    "turn.completed",
+  ]);
+  const [agent] = manager.snapshot("thread_1").subAgents;
+  assert.equal(agent.task, "Summarise the pricing page");
+  assert.equal(agent.lastMessage, "Plans start at $10");
+  assert.ok(agent.endedAt);
+  assert.equal(JSON.stringify(frames).includes("\"arguments\""), false);
+});
+test("helpers take the nickname Codex gave their thread", async (t) => {
+  const { runtime, manager } = fixture(t);
+  const request = runtime.request.bind(runtime);
+  runtime.request = async (method: string, params: any) => {
+    if (method !== "thread/read") return request(method, params);
+    runtime.calls.push({ method, params });
+    return {
+      thread: { id: params.threadId, agentNickname: "Hypatia", agentRole: null },
+    };
+  };
+  await manager.create({});
+  spawn(runtime);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.equal(manager.agents("thread_1")[0].nickname, "Hypatia");
+  assert.deepEqual(
+    runtime.calls.filter((c) => c.method === "thread/read").map((c) => c.params),
+    [{ threadId: "child_1", includeTurns: false }],
+  );
+  const events = (manager.threads.get("thread_1") as any).events;
+  assert.equal(events.at(-1).type, "subagent.status");
+  assert.equal(events.at(-1).data.agent.nickname, "Hypatia");
+});
+test("a stopped helper stays stopped after it is shut down", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "go");
+  spawn(runtime);
+  runtime.emit("notification", {
+    method: "turn/started",
+    params: { threadId: "child_1", turn: { id: "ct" } },
+  });
+  await manager.interruptAgent("thread_1", "child_1");
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: { threadId: "child_1", turn: { id: "ct", status: "interrupted" } },
+  });
+  // Codex then reports the shut-down helper as closed and missing.
+  runtime.emit("notification", {
+    method: "thread/archived",
+    params: { threadId: "child_1" },
+  });
+  spawn(runtime, "notFound");
+  assert.equal(manager.agents("thread_1")[0].status, "interrupted");
 });

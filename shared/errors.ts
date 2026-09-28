@@ -63,7 +63,29 @@ export function httpError(error: unknown, layer: "platform" | "agent-core") {
   };
 }
 
-export function runtimeError(data: any): { message: string; code: string } {
+/** Why a model call failed. Derived from Codex's error info and HTTP status
+ * only, so it reads the same for every provider. */
+export type ErrorReason =
+  | "rateLimited"
+  | "quota"
+  | "credentials"
+  | "providerDown"
+  | "contextWindow"
+  | "other";
+const errorReasons: Record<string, ErrorReason> = {
+  PROVIDER_RATE_LIMITED: "rateLimited",
+  PROVIDER_QUOTA_EXCEEDED: "quota",
+  PROVIDER_AUTH_FAILED: "credentials",
+  PROVIDER_UNAVAILABLE: "providerDown",
+  PROVIDER_CONNECTION_FAILED: "providerDown",
+  CONTEXT_LIMIT: "contextWindow",
+};
+export function runtimeError(data: any): {
+  message: string;
+  code: string;
+  reason: ErrorReason;
+  httpStatus?: number;
+} {
   const info = data?.error?.codexErrorInfo ?? data?.codexErrorInfo;
   const kind =
     typeof info === "string"
@@ -73,8 +95,18 @@ export function runtimeError(data: any): { message: string; code: string } {
         : undefined;
   const status =
     kind && typeof info === "object" ? info[kind]?.httpStatusCode : undefined;
-  const result = (code: string, message: string) => ({ code, message });
-  if (kind === "usageLimitExceeded" || status === 429)
+  const result = (code: string, message: string) => ({
+    code,
+    message,
+    reason: errorReasons[code] ?? ("other" as const),
+    ...(typeof status === "number" ? { httpStatus: status } : {}),
+  });
+  if (kind === "usageLimitExceeded" || status === 402)
+    return result(
+      "PROVIDER_QUOTA_EXCEEDED",
+      "The model provider account has run out of usage or credits. Ask your administrator to check the provider account, then try again.",
+    );
+  if (status === 429)
     return result(
       "PROVIDER_RATE_LIMITED",
       "The model provider's rate limit has been reached. Try again later, or ask your administrator to check the provider quota or change the configured model.",

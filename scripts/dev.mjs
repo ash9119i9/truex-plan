@@ -7,10 +7,26 @@ const services = [
   ["platform", 4000],
   ["frontend", 3000],
 ];
-for (const [name, fallback] of services) {
+const read = (name) => {
   const file = resolve(name, ".env");
-  const env = existsSync(file) ? readFileSync(file, "utf8") : "";
-  const port = Number(env.match(/^PORT=(\d+)/m)?.[1] || fallback);
+  return existsSync(file) ? readFileSync(file, "utf8") : "";
+};
+const value = (env, key) =>
+  env.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1].trim();
+// The model gateway is a separate service: it starts only once
+// model-gateway/.env exists. Its secret must match platform's, or every
+// gateway request fails with 401.
+if (existsSync(resolve("model-gateway", ".env"))) {
+  services.push(["model-gateway", 4200]);
+  const platform = value(read("platform"), "MODEL_GATEWAY_SECRET");
+  const gateway = value(read("model-gateway"), "MODEL_GATEWAY_SECRET");
+  if (platform && gateway && platform !== gateway)
+    console.warn(
+      "warning: MODEL_GATEWAY_SECRET differs between platform/.env and model-gateway/.env",
+    );
+}
+for (const [name, fallback] of services) {
+  const port = Number(read(name).match(/^PORT=(\d+)/m)?.[1] || fallback);
   await new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once("error", () => {

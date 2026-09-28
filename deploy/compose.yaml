@@ -8,6 +8,9 @@ services:
     ports: ["127.0.0.1:4100:4100"]
     volumes: ["runtime:/data"]
     environment: {CODEX_HOME: /data/codex, AGENT_WORKSPACE: /data/workspace}
+    # run_script is off by default. SCRIPT_RUNNER=docker (+ SCRIPT_RUNNER_IMAGE, built from
+    # deploy/runner/Dockerfile) needs a reachable Docker daemon and host-visible workspace paths.
+    # Do not mount /var/run/docker.sock here casually: socket access is root on the host.
   platform:
     build: {context: .., dockerfile: platform/Dockerfile}
     ports: ["127.0.0.1:4000:4000"]
@@ -17,7 +20,21 @@ services:
       AGENT_CORE_URLS: http://agent-core:4100
       AGENT_WORKSPACE: /data/workspace
       FRONTEND_ORIGIN: http://localhost:3000
+      # Optional: set both to route chat/anthropic/gemini profiles through the gateway.
+      MODEL_GATEWAY_URL: ${MODEL_GATEWAY_URL:-}
+      MODEL_GATEWAY_SECRET: ${MODEL_GATEWAY_SECRET:-}
     depends_on: [mongo, agent-core]
+  # Opt-in: `MODEL_GATEWAY_URL=http://model-gateway:4200 MODEL_GATEWAY_SECRET=... docker compose --profile gateway up`
+  model-gateway:
+    profiles: [gateway]
+    build: {context: .., dockerfile: model-gateway/Dockerfile}
+    # Internal only: no host port. Codex (agent-core) reaches it over the compose network.
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      MONGO_DB: truex
+      MODEL_GATEWAY_SECRET: ${MODEL_GATEWAY_SECRET:-}  # gateway exits unless >= 32 chars
+    stop_grace_period: 60s  # let in-flight model streams finish
+    depends_on: [mongo]
   frontend:
     build: {context: .., dockerfile: frontend/Dockerfile}
     ports: ["127.0.0.1:3000:3000"]

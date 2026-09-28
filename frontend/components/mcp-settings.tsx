@@ -8,7 +8,13 @@ type Profile = {
   enabled: boolean;
   transport: string;
 };
-export function McpSettings({ agentId }: { agentId: string }) {
+export function McpSettings({
+  agentId,
+  onSaved,
+}: {
+  agentId: string;
+  onSaved?: () => void;
+}) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [ready, setReady] = useState(false);
@@ -42,6 +48,7 @@ export function McpSettings({ agentId }: { agentId: string }) {
         profileIds: selected,
       });
       setNotice("Saved. Start a new chat to use these MCP servers.");
+      onSaved?.();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -84,17 +91,17 @@ export function McpSettings({ agentId }: { agentId: string }) {
   }
   const missing = selected.filter((id) => !profiles.some((p) => p.id === id));
   return (
-    <details className="mcp-settings">
-      <summary>Connected tools (MCP)</summary>
-      <p>
-        Attach tools and data sources to this agent. Changes apply to new chats.
-      </p>
+    <div className="mcp-settings">
       {error && (
         <p role="alert" className="error-banner">
           {error}
         </p>
       )}
-      {notice && <p role="status">{notice}</p>}
+      {notice && (
+        <p role="status" className="mcp-notice">
+          {notice}
+        </p>
+      )}
       {!ready ? (
         <p>Loading configuration…</p>
       ) : (
@@ -132,7 +139,7 @@ export function McpSettings({ agentId }: { agentId: string }) {
               Save attachments
             </button>
           </fieldset>
-          <details>
+          <details className="mcp-add">
             <summary>Add an MCP server</summary>
             <form onSubmit={create}>
               <fieldset disabled={busy}>
@@ -189,6 +196,6 @@ export function McpSettings({ agentId }: { agentId: string }) {
           </details>
         </>
       )}
-    </details>
+    </div>
   );
 }

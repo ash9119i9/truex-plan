@@ -1,0 +1,90 @@
+"use client";
+import { useEffect, useId, useState } from "react";
+import { budgetHelp, budgetOptions, parseTokenBudget } from "@/lib/goal";
+
+export type BudgetValue = { tokens: number | null; valid: boolean };
+
+// Preset token budgets plus a custom amount, shared by the composer and the
+// goal bar. Reports the parsed budget and whether the custom text is usable.
+export function BudgetField({
+  initial,
+  onChange,
+  selectClassName,
+  showError = true,
+  autoFocus = false,
+}: {
+  initial: number | null;
+  onChange: (value: BudgetValue) => void;
+  selectClassName?: string;
+  showError?: boolean;
+  autoFocus?: boolean;
+}) {
+  const preset = budgetOptions.find((option) => option.value === initial);
+  const [choice, setChoice] = useState(
+    preset ? String(preset.value ?? "") : "custom",
+  );
+  const [custom, setCustom] = useState(preset ? "" : String(initial));
+  const [touched, setTouched] = useState(false);
+  const errorId = useId();
+  const invalid = choice === "custom" && parseTokenBudget(custom) === null;
+  const described = showError && touched && invalid;
+
+  function report(nextChoice: string, nextCustom: string) {
+    if (nextChoice === "custom") {
+      const tokens = parseTokenBudget(nextCustom);
+      onChange({ tokens, valid: tokens !== null });
+    } else
+      onChange({ tokens: nextChoice ? Number(nextChoice) : null, valid: true });
+  }
+  // Tell the parent the starting value, so a stale invalid state never lingers.
+  useEffect(() => {
+    report(choice, custom);
+  }, []);
+
+  return (
+    <span className="budget-field">
+      <select
+        className={selectClassName}
+        aria-label="Token budget"
+        value={choice}
+        autoFocus={autoFocus}
+        onChange={(e) => {
+          setChoice(e.target.value);
+          setTouched(false);
+          report(e.target.value, custom);
+        }}
+      >
+        {budgetOptions.map((option) => (
+          <option key={option.label} value={option.value ?? ""}>
+            {option.label}
+          </option>
+        ))}
+        <option value="custom">Custom…</option>
+      </select>
+      {choice === "custom" && (
+        <input
+          type="text"
+          inputMode="numeric"
+          className="budget-custom"
+          aria-label="Custom token budget"
+          aria-invalid={touched && invalid}
+          aria-describedby={described ? errorId : undefined}
+          placeholder="e.g. 50k"
+          value={custom}
+          maxLength={12}
+          onChange={(e) => {
+            setCustom(e.target.value);
+            report("custom", e.target.value);
+          }}
+          onBlur={() => setTouched(true)}
+          autoFocus
+        />
+      )}
+      {described && (
+        <span id={errorId} role="alert" className="budget-error">
+          {budgetHelp}
+        </span>
+      )}
+    </span>
+  );
+}

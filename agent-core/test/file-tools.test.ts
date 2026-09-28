@@ -76,7 +76,7 @@ test("uploads are isolated, persistent, validated, and readable in chunks", asyn
   await assert.rejects(files.get("b", uploaded.id), /not found/);
   await assert.rejects(files.get("a", "../secret"), /Invalid file/);
   await assert.rejects(files.upload("a", "../notes.txt", "YQ=="), /filename/);
-  await assert.rejects(files.upload("a", "code.js", "YQ=="), /Upload a PDF/);
+  await assert.rejects(files.upload("a", "run.exe", "YQ=="), /Upload a PDF/);
   await assert.rejects(files.upload("a", "notes.txt", "not base64"), /base64/);
   await assert.rejects(
     files.upload("a", "notes.txt", Buffer.alloc(1048577).toString("base64")),
@@ -194,4 +194,43 @@ test("tool validation rejects unknown operations, cross-conversation revisions a
     /not found/,
   );
   assert.equal((await files.list("b")).length, 0);
+});
+
+test("published and uploaded code files keep text media types and read as UTF-8", async (t) => {
+  const files = await fixture(t);
+  const abap = "REPORT zdemo.\nWRITE: / 'Grüße'.\n";
+  const published = await files.publish("a", "zdemo.abap", Buffer.from(abap));
+  assert.equal(published.mediaType, "text/plain");
+  assert.deepEqual(
+    (await files.list("a")).map((f) => f.id),
+    [published.id],
+  );
+  assert.equal((await files.read("a", published.id)).text, abap);
+  for (const [name, type] of [
+    ["config.json", "application/json"],
+    ["view.cds", "text/plain"],
+    ["page.html", "text/plain"],
+    ["query.sql", "application/sql"],
+    ["app.yaml", "application/yaml"],
+  ]) {
+    const file = await files.publish("a", name, Buffer.from("x = 1"));
+    assert.equal(file.mediaType, type);
+    assert.equal((await files.read("a", file.id)).text, "x = 1");
+  }
+  const upload = await files.upload(
+    "a",
+    "Component.ts",
+    Buffer.from("export {};").toString("base64"),
+  );
+  assert.equal((await files.read("a", upload.id)).text, "export {};");
+  const binary = await files.publish("a", "bin.ts", Buffer.from([0x61, 0]));
+  await assert.rejects(files.read("a", binary.id), /binary/);
+  await assert.rejects(
+    files.publish("a", "../x.ts", Buffer.from("a")),
+    /filename/,
+  );
+  await assert.rejects(
+    files.publish("a", "empty.ts", Buffer.alloc(0)),
+    /1 byte/,
+  );
 });

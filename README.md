@@ -36,6 +36,7 @@ npm run install:all
 cp agent-core/.env.example agent-core/.env
 cp platform/.env.example platform/.env
 cp frontend/.env.example frontend/.env
+cp model-gateway/.env.example model-gateway/.env   # optional, see Model gateway
 ```
 
 Set `MONGO_URI` in `platform/.env`. The database is `truex` (`MONGO_DB=truex`). Configuration is read directly from your existing collections:
@@ -54,7 +55,24 @@ npm run dev
 
 Open `http://localhost:3000`. The runner refuses occupied service ports and prints the listening process. Each service loads its own `.env`. Session/message state is stored separately in `truex.sessions` and `truex.messages`; the existing `truex_runs` and `truex_conversations` collections are left alone.
 
-The pinned runtime accepts only `wireApi: "responses"`; profiles declaring `chat` receive a clear 422 configuration error. The platform does not silently change a provider or rewrite database records. A missing `wireApi` defaults to `responses`; missing sandbox/approval settings default to read-only/never.
+## Model gateway
+
+The pinned runtime speaks only the OpenAI Responses API. Providers that don't (Chat Completions-only endpoints such as NVIDIA, Anthropic, Gemini) go through `model-gateway`, a separate service that translates Responses requests to the provider's API and streams the reply back as Responses events. `vendor/codex` is not modified.
+
+| `wireApi` on the `truex_models` profile | Route |
+|---|---|
+| missing or `responses` | Direct: Codex calls `baseUrl/responses` with the profile key (unchanged behavior) |
+| `chat` | Gateway: Chat Completions (`baseUrl/chat/completions`) |
+| `anthropic` | Gateway: Anthropic Messages API |
+| `gemini` | Gateway: Gemini `streamGenerateContent` |
+
+Optional profile fields: `route` (`gateway` forces a Responses profile through the gateway), `contextWindow`, `autoCompactTokenLimit`, `maxOutputTokens`, `thinking`, and `apiKeySecretArn` (read the key from AWS Secrets Manager instead of `apiKey`).
+
+For gateway profiles the platform never sends the provider key to agent-core. Codex receives the gateway URL `MODEL_GATEWAY_URL/p/<profileId>/v1` and a token signed with `MODEL_GATEWAY_SECRET` that is valid only for that profile. The gateway checks the token, loads the profile and key from `truex_models`, and calls the provider. Tokens do not expire, because Codex keeps a thread's provider config for the life of the thread. Revoke access by disabling the profile (`enabled: false`) or rotating the secret.
+
+Setup: set `MODEL_GATEWAY_URL` and `MODEL_GATEWAY_SECRET` in `platform/.env`, and the same `MODEL_GATEWAY_SECRET` plus `MONGO_URI`/`MONGO_DB` in `model-gateway/.env`. `npm run dev` starts the gateway when `model-gateway/.env` exists and warns if the two secrets differ. Without the gateway configured, gateway profiles fail with a 422 `GATEWAY_NOT_CONFIGURED` error and direct profiles are unaffected. Codex's built-in web search is disabled for non-Responses providers.
+
+The platform does not silently change a provider or rewrite database records. Missing sandbox/approval settings default to read-only/never.
 
 Local MongoDB can be started separately with `docker compose -f deploy/compose.yaml up -d mongo` when Docker is running. The repository does not alter unrelated MongoDB data or borrow credentials from other projects.
 
@@ -124,7 +142,10 @@ Build each image with the repository root as its context. The agent-core Dockerf
 docker build -f agent-core/Dockerfile -t truex-agent-core:local .
 docker build -f platform/Dockerfile -t truex-platform:local .
 docker build -f frontend/Dockerfile -t truex-frontend:local .
+docker build -f model-gateway/Dockerfile -t truex-model-gateway:local .
 ```
+
+The model gateway is stateless and scales horizontally. Run it privately next to the platform, reachable from the agent-core runtime but not from the internet (for AWS AgentCore: VPC mode, an internal ALB, and a security group that admits only the runtime subnets). Model calls are long-lived streams, so keep load-balancer idle timeouts at 300 seconds or more and give deployments enough deregistration delay for in-flight streams to finish. Health: `GET /health` (liveness) and `GET /ready` (readiness, fails while draining or when MongoDB is unreachable).
 
 `deploy/kubernetes.yaml` provides stable per-pod DNS and per-pod `/data` PVCs. `/data/codex` and `/data/workspace` must both survive restarts. Configure the `platform-config` Secret's `MONGO_URI`, image registry/tags, storage class and browser-facing platform URL before deployment. The frontend URL is a build-time `NEXT_PUBLIC_PLATFORM_URL` value. No deployment has been applied.
 

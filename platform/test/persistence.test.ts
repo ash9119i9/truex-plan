@@ -117,7 +117,7 @@ test(
     );
     const config = await service.configuration(agentId.toHexString());
     assert.equal(config.sandbox, "read-only");
-    assert.equal(config.approvalPolicy, "never");
+    assert.equal(config.approvalPolicy, "on-request");
     assert.equal(
       config.config[`model_providers.profile_${modelId}`]
         .experimental_bearer_token,
@@ -133,9 +133,10 @@ test(
       { _id: modelId },
       { $set: { wireApi: "chat" } },
     );
+    // Non-Responses profiles need the gateway; without it they fail clearly.
     await assert.rejects(
       service.configuration(agentId.toHexString()),
-      /supports only Responses/,
+      /GATEWAY_NOT_CONFIGURED|gateway, which is not configured/,
     );
     await store.profiles.updateOne(
       { _id: modelId },

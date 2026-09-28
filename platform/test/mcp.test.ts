@@ -98,6 +98,15 @@ test(
       config.baseInstructions,
       /discover and call the relevant tools/,
     );
+    assert.match(
+      config.baseInstructions,
+      /Configured MCP server names for this agent: \["sap"\]/,
+    );
+    assert.doesNotMatch(config.baseInstructions, /secret|hidden|x-api-key/);
+    assert.doesNotMatch(
+      (await service.configuration("developer")).baseInstructions,
+      /Configured MCP server names/,
+    );
     assert.equal(
       Object.keys((await service.configuration("developer")).config).some((k) =>
         k.startsWith("mcp_servers"),

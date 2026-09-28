@@ -26,7 +26,25 @@ const media: Record<string, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  json: "application/json",
+  xml: "application/xml",
+  yaml: "application/yaml",
+  yml: "application/yaml",
+  sql: "application/sql",
+  md: "text/markdown",
+  csv: "text/csv",
+  tsv: "text/tab-separated-values",
+  js: "text/javascript",
+  ...Object.fromEntries(
+    ["abap", "cds", "ts", "txt", "html", "properties", "java", "py", "sh"].map(
+      (e) => [e, "text/plain"],
+    ),
+  ),
 };
+const textFile = (name: string) =>
+  /^(text\/|application\/(json|xml|yaml|sql)$)/.test(
+    media[extname(name).slice(1).toLowerCase()] || "",
+  );
 const string = { type: "string" };
 const tool = (
   name: string,
@@ -213,10 +231,14 @@ export class ConversationFiles {
   }
   async upload(threadId: string, name: unknown, base64: unknown) {
     filename(name);
-    if (!/\.(pdf|docx|xlsx|pptx|txt|md|csv|tsv)$/i.test(name as string))
+    if (
+      !/\.(pdf|docx|xlsx|pptx|txt|md|csv|tsv|abap|cds|json|xml|yaml|sql|js|ts)$/i.test(
+        name as string,
+      )
+    )
       throw new HttpError(
         400,
-        "Upload a PDF, Word, Excel, PowerPoint, or text document",
+        "Upload a PDF, Word, Excel, PowerPoint, text, or code document",
       );
     if (
       typeof base64 !== "string" ||
@@ -227,6 +249,9 @@ export class ConversationFiles {
     )
       throw new HttpError(400, "Upload must be a base64 file of at most 1 MB");
     return this.save(threadId, name as string, Buffer.from(base64, "base64"));
+  }
+  publish(threadId: string, name: string, data: Buffer) {
+    return this.save(threadId, name, data);
   }
   private async save(
     threadId: string,
@@ -305,7 +330,11 @@ export class ConversationFiles {
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      if (extension === "pdf") {
+      if (textFile(file.name)) {
+        if (file.data.includes(0))
+          throw new HttpError(400, "This text file contains binary data");
+        content = new TextDecoder("utf-8", { fatal: true }).decode(file.data);
+      } else if (extension === "pdf") {
         const { PDFParse } = await import("pdf-parse");
         const parser = new PDFParse({
           data: file.data,
