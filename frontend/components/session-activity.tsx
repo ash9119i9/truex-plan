@@ -4,6 +4,9 @@ import { Activity } from "lucide-react";
 import { GoalTimeline } from "./goal-timeline";
 import { AgentsPanel } from "./agents-panel";
 import { InsightsPanel } from "./observability/insights-panel";
+import { PlanSteps } from "./plan-steps";
+import { planProgress, type PlanStep } from "@/lib/plan";
+import { errorReasons, turnFailure } from "@/lib/goal-errors";
 import {
   isRunning,
   type DelegationPrefs,
@@ -22,6 +25,7 @@ import type {
 export function SessionActivity({
   events,
   plan,
+  awaitingApproval = false,
   timings,
   traces = [],
   traceSummary = null,
@@ -37,7 +41,8 @@ export function SessionActivity({
   onDelegation,
 }: {
   events: DomainEvent[];
-  plan: { step: string; status: string }[];
+  plan: PlanStep[];
+  awaitingApproval?: boolean;
   timings: TurnTiming[];
   traces?: TurnTrace[];
   traceSummary?: TraceSummary | null;
@@ -89,11 +94,15 @@ export function SessionActivity({
                     ? "Working on your request"
                     : e.type === "turn.completed"
                       ? e.data.turn?.status === "failed"
-                        ? "Request failed"
+                        ? failedLabel(e.data.turn?.error)
                         : e.data.turn?.status === "interrupted"
                           ? "Request stopped"
                           : "Request finished"
-                      : e.data.label}
+                      : e.type === "error"
+                        ? e.data?.willRetry === true
+                          ? "Retrying…"
+                          : failedLabel(e.data)
+                        : e.data.label}
                 </span>
                 <time>{e.at ? new Date(e.at).toLocaleTimeString() : ""}</time>
               </div>
@@ -118,23 +127,7 @@ export function SessionActivity({
           <GoalTimeline sessionId={sessionId} goal={goal} review={goalReview} />
         )}
         {panel === "plan" && (
-          <>
-            <h3>Plan</h3>
-            {plan.length ? (
-              plan.map((p, i) => (
-                <div className="plan-item" key={i}>
-                  <input
-                    type="checkbox"
-                    readOnly
-                    checked={p.status === "completed"}
-                  />
-                  <span>{p.step}</span>
-                </div>
-              ))
-            ) : (
-              <p className="muted">Your agent’s plan will appear here.</p>
-            )}
-          </>
+          <PlanPanel plan={plan} awaitingApproval={awaitingApproval} />
         )}
         {panel === "insights" && (
           <InsightsPanel
@@ -196,4 +189,44 @@ function DelegationSettings({
       </label>
     </fieldset>
   );
+}
+
+function PlanPanel({
+  plan,
+  awaitingApproval,
+}: {
+  plan: PlanStep[];
+  awaitingApproval: boolean;
+}) {
+  const progress = planProgress(plan);
+  return (
+    <section className="plan-panel" aria-labelledby="plan-panel-title">
+      <div className="plan-panel-head">
+        <h3 id="plan-panel-title">Plan</h3>
+        {/* Announced as steps finish or approval is needed. */}
+        <p className="plan-panel-status" role="status" aria-live="polite">
+          {awaitingApproval ? (
+            <span className="plan-awaiting">Awaiting approval</span>
+          ) : (
+            progress.label
+          )}
+        </p>
+      </div>
+      {plan.length ? (
+        <PlanSteps plan={plan} />
+      ) : (
+        <p className="muted">Your agent’s plan will appear here.</p>
+      )}
+    </section>
+  );
+}
+
+// "Request failed", refined by the platform's reason when it sends one.
+function failedLabel(error: unknown) {
+  const failure = turnFailure(error);
+  if (!failure || failure.reason === "other") return "Request failed";
+  const { label, hint } = errorReasons[failure.reason];
+  return hint
+    ? `Request failed: ${label}. ${hint}`
+    : `Request failed: ${label}`;
 }

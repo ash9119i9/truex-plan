@@ -1,4 +1,3 @@
-import { httpError } from "../../shared/errors";
 import "reflect-metadata";
 import "dotenv/config";
 import { Module } from "@nestjs/common";
@@ -11,13 +10,22 @@ import {
   publicTiming,
   publicTrace,
   PublicEventStream,
+  withPlanFallback,
   POLICY_VERSION,
   relay,
 } from "./public";
 import { Store } from "./store";
 import { sessionTraces } from "./traces";
 import type { TurnTrace } from "../../shared/contracts";
-import { PlatformService, ApiError } from "./service";
+import { PlatformService, ApiError, upstreamError } from "./service";
+import { errorFields, log, REQUEST_ID_HEADER } from "../../shared/logging";
+import {
+  endedStream,
+  errorHandler,
+  failStream,
+  requestIdMiddleware,
+  route,
+} from "./http";
 @Module({})
 class AppModule {}
 async function main() {
@@ -25,10 +33,12 @@ async function main() {
     logger: ["error", "warn"],
     bodyParser: false,
   });
+  const http = app.getHttpAdapter().getInstance();
+  http.use(requestIdMiddleware);
   app.enableCors({
     origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+    exposedHeaders: [REQUEST_ID_HEADER],
   });
-  const http = app.getHttpAdapter().getInstance();
   http.disable("x-powered-by");
   http.use(json({ limit: "2mb" }));
   const store = new Store();
@@ -37,44 +47,58 @@ async function main() {
     try {
       await store.connect();
       connected = true;
-    } catch {
+    } catch (error) {
       connected = false;
+      log("warn", "storage connection failed", {
+        op: "connect",
+        ...errorFields(error),
+      });
     }
   };
   await connect();
   const service = new PlatformService(store);
   service.startIngestion();
-  const route =
-    (fn: (req: Request, res: Response) => Promise<any> | any) =>
-    (req: Request, res: Response, next: NextFunction) =>
-      Promise.resolve()
-        .then(() => fn(req, res))
-        .catch(next);
   http.get("/livez", (_req: Request, res: Response) => res.json({ ok: true }));
   http.get(
     "/healthz",
     route(async (_req, res) => {
       if (!connected) await connect();
+      // May be unauthenticated: report only booleans and codes.
       let mongo = false,
-        agentCore: any;
+        agentCore: { ok: boolean; code?: string };
       try {
         await store.db.command({ ping: 1 });
         mongo = true;
-      } catch {
+      } catch (error) {
         connected = false;
+        log("warn", "health check failed", {
+          op: "mongo",
+          ...errorFields(error),
+        });
       }
       try {
-        agentCore = await service.call(service.hosts[0], "/healthz");
-      } catch (e) {
-        agentCore = { ok: false, error: (e as Error).message };
+        agentCore = {
+          ok: (await service.call(service.hosts[0], "/healthz")).ok === true,
+        };
+      } catch (error) {
+        agentCore = {
+          ok: false,
+          code: error instanceof ApiError ? error.code : "UNAVAILABLE",
+        };
+        log("warn", "health check failed", {
+          op: "agentCore",
+          ...errorFields(error),
+        });
       }
-      res
-        .status(mongo && agentCore.ok ? 200 : 503)
-        .json({ ok: mongo && agentCore.ok });
+      const ok = mongo && agentCore.ok;
+      res.status(ok ? 200 : 503).json({ ok, mongo, agentCore });
     }),
   );
   http.use("/api", (_req: Request, _res: Response, next: NextFunction) => {
-    if (!connected) return next(new ApiError(503, "MongoDB is unavailable"));
+    if (!connected)
+      return next(
+        new ApiError(503, "MongoDB is unavailable", "STORAGE_UNAVAILABLE"),
+      );
     next();
   });
   // Raw schema/configuration and host capabilities are not a product API.
@@ -92,6 +116,10 @@ async function main() {
   http.get(
     "/api/agents",
     route(async (_req, res) => res.json(await service.agents())),
+  );
+  http.get(
+    "/api/features",
+    route((_req, res) => res.json({ approvalModes: service.approvalModes })),
   );
   http.get(
     "/api/assistant-capabilities",
@@ -131,7 +159,11 @@ async function main() {
         "/documents/" + encodeURIComponent(String(req.params.fileId)),
       );
       if (file.kind === "visualization")
-        throw new ApiError(400, "Use Download HTML in the visual viewer");
+        throw new ApiError(
+          400,
+          "Use Download HTML in the visual viewer",
+          "INVALID_INPUT",
+        );
       res.setHeader("Content-Type", file.mediaType);
       res.setHeader(
         "Content-Disposition",
@@ -197,39 +229,55 @@ async function main() {
     route(async (req, res) =>
       res
         .status(201)
-        .json(await service.create(req.body.agentId, req.body.subAgents)),
+        .json(
+          await service.create(
+            req.body.agentId,
+            req.body.subAgents,
+            req.body.projectId,
+          ),
+        ),
     ),
   );
   http.get(
     "/api/sessions",
-    route(async (_req, res) => {
-      const sessions = await store.sessions
-        .find(
-          { archived: { $ne: true }, runtimePolicyVersion: POLICY_VERSION },
-          { projection: { approvals: 0, timings: 0 } },
-        )
-        .sort({ createdAt: -1 })
-        .limit(100)
-        .toArray();
-      const untitled = sessions.filter((s) => !s.title).map((s) => s._id);
-      if (untitled.length) {
-        const firsts = await store.messages
-          .aggregate<{ _id: string; text: string }>([
-            { $match: { sessionId: { $in: untitled }, role: "user" } },
-            { $sort: { at: 1, _id: 1 } },
-            { $group: { _id: "$sessionId", text: { $first: "$text" } } },
-          ])
-          .toArray();
-        const titles = new Map(firsts.map((f) => [f._id, f.text]));
-        for (const s of sessions) {
-          const first = titles.get(s._id)?.trim().replace(/\s+/g, " ");
-          if (first)
-            s.title =
-              first.length > 80 ? first.slice(0, 79).trimEnd() + "…" : first;
-        }
-      }
-      res.json(sessions.map(publicSession));
-    }),
+    route(async (req, res) =>
+      res.json(await service.sessions(req.query.projectId)),
+    ),
+  );
+  http.post(
+    "/api/sessions/:id/project",
+    route(async (req, res) =>
+      res.json(
+        await service.setSessionProject(
+          String(req.params.id),
+          req.body?.projectId,
+        ),
+      ),
+    ),
+  );
+  http.get(
+    "/api/projects",
+    route(async (_req, res) => res.json(await service.projects())),
+  );
+  http.post(
+    "/api/projects",
+    route(async (req, res) =>
+      res.status(201).json(await service.createProject(req.body?.name)),
+    ),
+  );
+  http.post(
+    "/api/projects/:id",
+    route(async (req, res) =>
+      res.json(
+        await service.renameProject(String(req.params.id), req.body?.name),
+      ),
+    ),
+  );
+  http.post(
+    "/api/projects/:id/delete",
+    route(async (req, res) =>
+      res.json(await service.deleteProject(String(req.params.id))),
+    ),
   );
   http.get(
     "/api/sessions/:id",
@@ -306,6 +354,14 @@ async function main() {
     ),
   );
   http.post(
+    "/api/sessions/:id/approval-mode",
+    route(async (req, res) =>
+      res.json(
+        await service.setApprovalMode(String(req.params.id), req.body?.mode),
+      ),
+    ),
+  );
+  http.post(
     "/api/sessions/:id/capabilities",
     route(async (req, res) =>
       res.json(
@@ -371,7 +427,13 @@ async function main() {
     route(async (req, res) => {
       const s = await service.session(String(req.params.id));
       // Stored traces stay readable while the assistant service is down.
-      await service.ingest(s).catch(() => undefined);
+      await service.ingest(s).catch((error) =>
+        log("warn", "trace ingestion failed", {
+          sessionId: s._id,
+          op: "ingest",
+          ...errorFields(error),
+        }),
+      );
       res.json(
         sessionTraces(
           (await store.sessionTraces(s._id))
@@ -400,7 +462,12 @@ async function main() {
     route(async (req, res) => {
       const s = await service.session(String(req.params.id));
       if (!service.hosts.includes(s.agentCoreHost))
-        throw new ApiError(503, "Session owner is not configured");
+        throw new ApiError(
+          503,
+          "Session owner is not configured",
+          "OWNER_UNCONFIGURED",
+        );
+      const requestId: string = res.locals.requestId;
       const abort = new AbortController();
       res.on("close", () => abort.abort());
       let upstream: globalThis.Response;
@@ -410,28 +477,28 @@ async function main() {
           {
             signal: abort.signal,
             headers: {
+              [REQUEST_ID_HEADER]: requestId,
               "Last-Event-ID":
                 req.get("Last-Event-ID") || String(req.query.cursor || ""),
             },
           },
         );
-      } catch {
+      } catch (error) {
         throw new ApiError(
           503,
           "Live updates cannot connect to the assistant service. Reopen the conversation when the service is available.",
           "OWNER_UNAVAILABLE",
+          { cause: error },
         );
       }
-      if (!upstream.ok) {
-        const detail = await upstream.json().catch(() => null);
-        throw new ApiError(
+      if (!upstream.ok)
+        throw upstreamError(
           upstream.status,
-          typeof detail?.error === "string"
-            ? detail.error
-            : "Live updates are unavailable. Reopen the conversation to reconnect.",
-          typeof detail?.code === "string" ? detail.code : "STREAM_UNAVAILABLE",
+          await upstream.json().catch(() => null),
+          "Live updates are unavailable. Reopen the conversation to reconnect.",
+          "STREAM_UNAVAILABLE",
+          "/events",
         );
-      }
       if (!upstream.body)
         throw new ApiError(
           502,
@@ -468,42 +535,105 @@ async function main() {
               turnId: event?.turnId,
               eventAt: event?.at,
             })
-            .catch(() => {});
+            .catch((error) =>
+              log("warn", "live update persistence failed", {
+                sessionId: s._id,
+                op: "rememberGoal",
+                ...errorFields(error),
+              }),
+            );
         };
+        // Latest plan seen on this stream, starting from the saved one.
+        let planSteps = s.plan?.steps;
         const stream = new PublicEventStream((event) => {
           if (event.type === "goal.updated") remember(event.data.goal, event);
           if (event.type === "goal.cleared") remember(null, event);
           if (event.type === "snapshot" && "goal" in event.data)
             remember(event.data.goal);
+          if (event.type === "plan.updated") {
+            planSteps = event.data.plan;
+            void store
+              .savePlan(s._id, {
+                plan: event.data.plan,
+                explanation: event.data.explanation,
+                turnId: event.turnId,
+                cursor: event.cursor,
+                at: event.at,
+              })
+              .catch((error) =>
+                log("warn", "live update persistence failed", {
+                  sessionId: s._id,
+                  op: "savePlan",
+                  ...errorFields(error),
+                }),
+              );
+          }
+          if (event.type === "snapshot") {
+            if (event.data.plan?.length) {
+              planSteps = event.data.plan;
+              void service
+                .rememberSnapshotPlan(s._id, event.data)
+                .catch((error) =>
+                  log("warn", "live update persistence failed", {
+                    sessionId: s._id,
+                    op: "rememberSnapshotPlan",
+                    ...errorFields(error),
+                  }),
+                );
+            } else
+              return {
+                ...event,
+                data: withPlanFallback(event.data, { steps: planSteps }),
+              };
+          }
         });
         await relay(upstream.body as any, res, stream);
-      } catch {
-        if (!res.destroyed) res.end();
+        if (!res.destroyed) endedStream(res, { requestId, sessionId: s._id });
+      } catch (error) {
+        // A client disconnect aborts the upstream read; that is not a failure.
+        if (!res.destroyed)
+          failStream(res, error, { requestId, sessionId: s._id });
       } finally {
         abort.abort();
         if (!res.destroyed) res.end();
       }
     }),
   );
-  http.use(
-    (error: unknown, _req: Request, res: Response, next: NextFunction) => {
-      if (res.headersSent) return next(error);
-      const { status, ...body } = httpError(error, "platform");
-      res.status(status).json(body);
-    },
-  );
-  await app.listen(
-    Number(process.env.PORT || 4000),
-    process.env.HOST || "127.0.0.1",
-  );
-  console.log(`platform listening on ${process.env.PORT || 4000}`);
+  http.use(errorHandler);
+  const port = Number(process.env.PORT || 4000),
+    host = process.env.HOST || "127.0.0.1";
+  await app.listen(port, host);
+  log("info", "platform listening", { port, host });
+  let stopping = false;
   for (const signal of ["SIGTERM", "SIGINT"])
     process.on(signal, () => {
+      if (stopping) return;
+      stopping = true;
+      log("info", "platform stopping", { signal });
       service.stop();
-      void store.client
+      setTimeout(() => {
+        log("error", "platform shutdown timed out; forcing exit");
+        process.exit(1);
+      }, 10000).unref();
+      // Stop taking requests before the store they depend on goes away.
+      app
         .close()
-        .then(() => app.close())
-        .then(() => process.exit(0));
+        .then(() => store.client.close())
+        .then(() => process.exit(0))
+        .catch((error) => {
+          log("error", "platform shutdown failed", errorFields(error));
+          process.exit(1);
+        });
     });
 }
-void main();
+process.on("unhandledRejection", (reason) =>
+  log("error", "unhandled rejection", errorFields(reason)),
+);
+process.on("uncaughtException", (error) => {
+  log("error", "uncaught exception", errorFields(error));
+  process.exit(1);
+});
+main().catch((error) => {
+  log("error", "platform failed to start", errorFields(error));
+  process.exit(1);
+});

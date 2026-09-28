@@ -1,20 +1,212 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { ListChecks } from "lucide-react";
+import { LiveDuration } from "./live-duration";
+import { useClock } from "./use-clock";
 import type { PendingRequest } from "../../shared/contracts";
 import {
   afterPick,
   answerPayload,
   answersOnClick,
-  complete,
+  answerErrorMessage,
   isDecline,
+  missingAnswers,
   needsText,
   optionLabel,
-  timeLeft,
+  msLeft,
   type InputQuestion,
 } from "../lib/request-input";
+import {
+  APPROVE,
+  PLAN_APPROVAL_ID,
+  REVISE,
+  planApprovalPayload,
+  type PlanStep,
+} from "../lib/plan";
+import { errorRef, type ErrorRef as Ref } from "../lib/api";
 import { Button } from "./ui/button";
+import { ErrorRef } from "./error-ref";
+import { PlanSteps } from "./plan-steps";
 
 export function RequestCard({
+  request,
+  onAnswer,
+  plan = [],
+}: {
+  request: PendingRequest;
+  onAnswer: (value: unknown) => Promise<void>;
+  plan?: PlanStep[];
+}) {
+  const questions = (request.detail?.questions || []) as InputQuestion[];
+  if (
+    request.method === "item/tool/requestUserInput" &&
+    questions.length === 1 &&
+    questions[0].id === PLAN_APPROVAL_ID
+  )
+    return (
+      <PlanApprovalCard
+        request={request}
+        question={questions[0]}
+        plan={plan}
+        onAnswer={onAnswer}
+      />
+    );
+  return <QuestionCard request={request} onAnswer={onAnswer} />;
+}
+
+// Ticks on the shared one-second clock until the request expires.
+function useExpiry(expiresAt: string) {
+  const [done, setDone] = useState(() => msLeft(expiresAt, Date.now()) === 0);
+  const now = useClock(!done);
+  const remaining = msLeft(expiresAt, now);
+  useEffect(() => {
+    if (remaining === 0) setDone(true);
+  }, [remaining]);
+  return { expired: remaining === 0, remaining };
+}
+
+function ExpiryTimer({ ms }: { ms: number }) {
+  return (
+    <span className="request-card-timer">
+      Expires in <LiveDuration ms={ms} trend={-1} />
+    </span>
+  );
+}
+
+function PlanApprovalCard({
+  request,
+  question,
+  plan,
+  onAnswer,
+}: {
+  request: PendingRequest;
+  question: InputQuestion;
+  plan: PlanStep[];
+  onAnswer: (value: unknown) => Promise<void>;
+}) {
+  const { expired, remaining } = useExpiry(request.expiresAt);
+  const [revising, setRevising] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [sending, setSending] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [ref, setRef] = useState<Ref | null>(null);
+  const locked = sending !== null || expired;
+  const feedbackId = `${request.requestId}-feedback`;
+
+  async function send(choice: typeof APPROVE | typeof REVISE) {
+    if (locked || (choice === REVISE && !feedback.trim())) return;
+    setSending(choice);
+    setError("");
+    setRef(null);
+    try {
+      await onAnswer(planApprovalPayload(choice, feedback));
+    } catch (e) {
+      setError(answerErrorMessage(e));
+      setRef(errorRef(e));
+    } finally {
+      setSending(null);
+    }
+  }
+
+  return (
+    <form
+      className="request-card plan-approval"
+      aria-busy={sending !== null}
+      aria-labelledby={`${request.requestId}-title`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void send(revising ? REVISE : APPROVE);
+      }}
+    >
+      <header className="request-card-head">
+        <span className="request-card-icon" aria-hidden="true">
+          <ListChecks size={16} />
+        </span>
+        <h3 id={`${request.requestId}-title`}>
+          {question.header || "Plan"} ready for review
+        </h3>
+        {!expired && <ExpiryTimer ms={remaining} />}
+      </header>
+      {question.question && (
+        <p className="plan-approval-question">{question.question}</p>
+      )}
+      {plan.length ? (
+        <PlanSteps plan={plan} />
+      ) : (
+        <p className="muted">The drafted steps are in the message above.</p>
+      )}
+      <fieldset className="request-question" disabled={locked}>
+        <legend className="sr-only">Approve or revise the plan</legend>
+        {revising && (
+          <>
+            <label htmlFor={feedbackId} className="plan-feedback-label">
+              What should change?
+            </label>
+            <textarea
+              id={feedbackId}
+              className="request-text plan-feedback"
+              rows={3}
+              autoFocus
+              placeholder="For example: split step 2, skip the report"
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  void send(REVISE);
+                }
+                if (e.key === "Escape") setRevising(false);
+              }}
+            />
+          </>
+        )}
+        <div className="request-approval-actions plan-approval-actions">
+          {revising ? (
+            <>
+              <Button type="submit" disabled={locked || !feedback.trim()}>
+                {sending === REVISE ? "Sending…" : "Send feedback"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setRevising(false)}
+              >
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="submit">
+                {sending === APPROVE ? "Sending…" : "Approve plan"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                aria-expanded={false}
+                onClick={() => setRevising(true)}
+              >
+                Revise
+              </Button>
+            </>
+          )}
+        </div>
+      </fieldset>
+      {error && (
+        <p role="alert" className="request-error">
+          {error}
+          <ErrorRef value={ref} />
+        </p>
+      )}
+      {expired && (
+        <p role="status" className="request-expired">
+          No reply in time. Continuing with the recommended option.
+        </p>
+      )}
+    </form>
+  );
+}
+
+function QuestionCard({
   request,
   onAnswer,
 }: {
@@ -26,7 +218,10 @@ export function RequestCard({
   const [other, setOther] = useState<Record<string, boolean>>({});
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const [now, setNow] = useState(() => Date.now());
+  const [ref, setRef] = useState<Ref | null>(null);
+  // Questions the user tried to send without answering.
+  const [missing, setMissing] = useState<string[]>([]);
+  const { expired, remaining } = useExpiry(request.expiresAt);
   // Multi-question requests are asked one question at a time.
   const [step, setStep] = useState(0);
   const questionRef = useRef<HTMLFieldSetElement>(null);
@@ -37,20 +232,8 @@ export function RequestCard({
     shownStep.current = step;
     questionRef.current?.focus();
   }, [step]);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 15000);
-    const end = setTimeout(
-      () => setNow(Date.now()),
-      Math.max(0, Date.parse(request.expiresAt) - Date.now()),
-    );
-    return () => {
-      clearInterval(timer);
-      clearTimeout(end);
-    };
-  }, [request.expiresAt]);
   if (request.method !== "item/tool/requestUserInput") return null;
   const questions = (request.detail.questions || []) as InputQuestion[];
-  const expired = now >= Date.parse(request.expiresAt);
   const busy = sending !== null;
   const locked = busy || expired;
   const approval = questions.some((q) => q.kind === "toolApproval");
@@ -60,13 +243,23 @@ export function RequestCard({
   const current = questions[at];
 
   async function send(values: Record<string, string>, key: string) {
-    if (locked || !complete(questions, values)) return;
+    if (locked) return;
+    const unanswered = missingAnswers(questions, values);
+    setMissing(unanswered);
+    if (unanswered.length) {
+      // Take the user to the first question that still needs an answer.
+      const first = questions.findIndex((q) => q.id === unanswered[0]);
+      if (first >= 0 && first !== at) setStep(first);
+      return;
+    }
     setSending(key);
     setError("");
+    setRef(null);
     try {
       await onAnswer(answerPayload(questions, values));
-    } catch {
-      setError("Your answer could not be sent. Please try again.");
+    } catch (e) {
+      setError(answerErrorMessage(e));
+      setRef(errorRef(e));
     } finally {
       setSending(null);
     }
@@ -74,11 +267,13 @@ export function RequestCard({
   function choose(q: InputQuestion, label: string) {
     const next = { ...answers, [q.id]: label };
     setAnswers(next);
+    setMissing((old) => old.filter((id) => id !== q.id));
     setOther((old) => ({ ...old, [q.id]: false }));
     if (oneClick) return void send(next, label);
     const then = afterPick(questions, at, next);
     if (then === "next") setStep(at + 1);
-    else if (then === "send") void send(next, label);
+    // "wait" means an earlier question is unanswered; send() points to it.
+    else void send(next, label);
   }
   function advance() {
     if (at < last) {
@@ -95,7 +290,6 @@ export function RequestCard({
     : questions.length === 1 && questions[0].header
       ? questions[0].header
       : "Your input is needed";
-  const remaining = timeLeft(request.expiresAt, now);
 
   return (
     <form
@@ -144,13 +338,13 @@ export function RequestCard({
             {at + 1} of {questions.length}
           </span>
         )}
-        {remaining && !expired && (
-          <span className="request-card-timer">{remaining}</span>
-        )}
+        {!expired && <ExpiryTimer ms={remaining} />}
       </header>
 
       {[current].filter(Boolean).map((q) => {
         const inputId = `${request.requestId}-${at}`;
+        const invalidId = `${inputId}-missing`;
+        const invalid = missing.includes(q.id);
         const approvalQuestion = q.kind === "toolApproval";
         return (
           <fieldset
@@ -159,6 +353,8 @@ export function RequestCard({
             tabIndex={-1}
             className="request-question"
             disabled={locked}
+            aria-invalid={invalid || undefined}
+            aria-describedby={invalid ? invalidId : undefined}
           >
             <legend>
               {questions.length > 1 && q.header ? (
@@ -259,12 +455,24 @@ export function RequestCard({
                   }
                   autoComplete="off"
                   autoFocus={!!other[q.id]}
+                  aria-invalid={invalid || undefined}
+                  aria-describedby={invalid ? invalidId : undefined}
                   value={answers[q.id] || ""}
-                  onChange={(e) =>
-                    setAnswers((old) => ({ ...old, [q.id]: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setAnswers((old) => ({ ...old, [q.id]: value }));
+                    if (value.trim())
+                      setMissing((old) => old.filter((id) => id !== q.id));
+                  }}
                 />
               </>
+            )}
+            {invalid && (
+              <p id={invalidId} role="alert" className="request-error">
+                {questions.length > 1
+                  ? `Question ${at + 1} of ${questions.length} needs an answer before you can send.`
+                  : "This question needs an answer before you can send."}
+              </p>
             )}
           </fieldset>
         );
@@ -273,11 +481,15 @@ export function RequestCard({
       {error && (
         <p role="alert" className="request-error">
           {error}
+          <ErrorRef value={ref} />
         </p>
       )}
       {expired && (
         <p role="status" className="request-expired">
-          This question has expired. Send a message to continue.
+          {/* Tool permissions and secret questions are declined, not auto-answered. */}
+          {approval || questions.some((q) => q.isSecret === true)
+            ? "This question has expired. Send a message to continue."
+            : "No reply in time. Continuing with the recommended option."}
         </p>
       )}
       {!expired && (at > 0 || showPrimary) && (
@@ -293,13 +505,7 @@ export function RequestCard({
             </Button>
           )}
           {showPrimary && (
-            <Button
-              type="submit"
-              disabled={
-                locked ||
-                (at < last ? !currentDone : !complete(questions, answers))
-              }
-            >
+            <Button type="submit" disabled={locked || !currentDone}>
               {at < last
                 ? "Next"
                 : sending === "submit"

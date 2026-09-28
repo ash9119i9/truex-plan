@@ -1,15 +1,15 @@
 by default it should be loaded as a empty session -> completed
 goal status and token are not updating -> completed
 first message can be goal -> completed
-Implement sub-agents feature 
-plan feature
+Implement sub-agents feature  -> completed
+plan feature -> completed
 conversation export
-Observability feature
-Observability: cost in dollars per turn/session (needs per-model price table)
+Observability feature -> completed
+Observability: cost in dollars per turn/session (needs per-model price table) 
 Ui Enhancement -> Partially Done
 Error handling Detailed Error 
-Build a Todo for a long running tasks and usecase
-taking all the tool and build that 
+Build a Todo for a long running tasks and usecase -> done in the Plan Mode
+taking all the tool and build that -> completed
 Model setting up for NON - Response kind of --> Completed
 Model Routing ---> Completed
 skills implementation
@@ -23,7 +23,28 @@ In the session secondary sidebar Plan is not updating
 SAP push bridge: push_workspace_file, 
 so the model sends a path instead of re-sending 5,000 lines 
 to your SAP MCP tool. I need that tool's name and arguments to build it.
-Auto Accepts / Accept Read Only / Ask me Everytime
+Auto Accepts / Accept Read Only / Ask me Everytime --> Alpha done (29/09), off by default
+   Modes in the chat input: Ask me every time (default) / Auto-allow read-only tools / Autopilot.
+   Enable on platform: APPROVAL_MODES=on. Optional: APPROVAL_MODES_DEFAULT=ask|readOnly|auto,
+   APPROVAL_MODES_AUTOPILOT=on (shows Autopilot), APPROVAL_NAME_HEURISTIC=on (get_/list_/search_... count as read-only).
+   Plan approval and secret questions always ask. "Allow for this chat" remembers a tool for the rest of the chat.
+   Tested 29/09 against qlik via ashok-agents: ask mode, mode switch, Allow for this chat, later call auto-allowed.
+   Pending:
+   a. qlik tools have no annotations (all 14 null), so read-only mode still asks for them. Add readOnlyHint: true
+      on the qlik server, or turn on APPROVAL_NAME_HEURISTIC (engine_get_visualization_data would still ask).
+   b. Verify read-only mode skips the card with a server that sets readOnlyHint (not seen yet).
+   c. Check the mode picker in the browser (only tested through the API).
+   d. Test Autopilot, and the btp connector (not attached to any agent yet).
+   e. No auth on GET /api/features and POST /api/sessions/:id/approval-mode (same as the other /api routes).
+      Anyone who can reach platform can switch a chat to auto-allow. Fix before users outside the team.
+   f. Mode is saved before agent-core confirms. If agent-core is down the user sees an error, but the mode
+      still applies on the next resume.
+   g. Tool questions that don't match Codex's 'Allow ... to run tool "<name>"?' wording always ask, with no
+      "Allow for this chat" option.
+   h. Heads-up: with the feature on, "Ask me every time" also asks for readOnlyHint tools that run silently today.
+   i. Cleanup: test chat sess_27701fe6-d937-46b1-a7df-533b0add9cc5 in truex.sessions, and .runtime/codex-alpha/.
+   Code: agent-core/src/approval-modes.ts + manager.ts, platform/src/features.ts + service.ts + public.ts,
+         frontend/components/approval-mode-picker.tsx + lib/approval-mode.ts, shared/contracts.ts
 Document Attaching in the Chat
 Model backup for an agent 
 Font size and Font style 
@@ -58,6 +79,13 @@ Agent persona + scope per agent (DB configurable) --> Completed (28/09)
    Code: agent-core/src/business-runtime.ts (personaOptions, defaultPersona), platform/src/service.ts,
          agent-core/src/manager.ts (strips persona/scope before Codex), shared/contracts.ts, docs/mongodb.md
    Next: admin UI editor for systemPrompt / persona / scope (today it's Mongo only)
+
+Migrating the Code for local MCP 
+
+
+
+
+
 
 // small small features 
 1. Implmenting skiper UI chat code --> Completed

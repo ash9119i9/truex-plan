@@ -1,6 +1,10 @@
 import type { Writable } from "node:stream";
 import { runtimeError } from "../../shared/errors";
+import { errorFields, log } from "../../shared/logging";
+import { ALLOW_FOR_CHAT, AUTO_MODE_REASON } from "../../shared/contracts";
+import { effectiveMode } from "./features";
 import type {
+  ApprovalModesConfig,
   Goal,
   Session,
   SubAgent,
@@ -16,13 +20,17 @@ import type {
 } from "../../shared/contracts";
 export const POLICY_VERSION = 1;
 
-export function publicSession(s: Session) {
+export function publicSession(s: Session, approvalModes?: ApprovalModesConfig) {
   return {
     _id: s._id,
     agentId: s.agentId,
     title: s.title,
     status: s.status,
     createdAt: s.createdAt,
+    ...(s.projectId ? { projectId: s.projectId } : {}),
+    ...(approvalModes?.enabled
+      ? { approvalMode: effectiveMode(s.approvalMode, approvalModes) }
+      : {}),
     ...(s.goal
       ? { goal: { objective: s.goal.objective, status: s.goal.status } }
       : {}),
@@ -49,7 +57,11 @@ export function publicTiming(t: any): TurnTiming {
       : "completed",
   };
 }
-function publicPlan(plan: any) {
+export type PlanStep = {
+  step: string;
+  status: "pending" | "inProgress" | "completed";
+};
+export function publicPlan(plan: any): PlanStep[] {
   return Array.isArray(plan)
     ? plan
         .filter((p) => p && typeof p.step === "string")
@@ -60,6 +72,29 @@ function publicPlan(plan: any) {
             : "pending",
         }))
     : [];
+}
+// agent-core loses its in-memory plan on restart or eviction. A snapshot
+// without steps then shows the saved plan instead; a snapshot with steps is
+// the live plan and always wins.
+export function withPlanFallback<T extends { plan: PlanStep[] }>(
+  snapshot: T,
+  saved?: { steps?: unknown } | null,
+): T {
+  if (snapshot.plan.length) return snapshot;
+  const steps = publicPlan(saved?.steps);
+  return steps.length ? { ...snapshot, plan: steps } : snapshot;
+}
+// The saved plan as the browser may see it: no cursor or version.
+export function publicStoredPlan(p: any) {
+  if (!p || !Array.isArray(p.steps)) return null;
+  return {
+    steps: publicPlan(p.steps),
+    ...(typeof p.explanation === "string" && p.explanation
+      ? { explanation: p.explanation }
+      : {}),
+    ...(typeof p.turnId === "string" ? { turnId: p.turnId } : {}),
+    updatedAt: typeof p.updatedAt === "string" ? p.updatedAt : undefined,
+  };
 }
 const goalStatuses = [
   "active",
@@ -213,6 +248,7 @@ const TOOL_APPROVAL_QUESTION = /^Allow .+ to run tool "([^"]+)"\??$/s;
 const TOOL_APPROVAL_OPTIONS: Record<string, string> = {
   Allow: "Run it this one time.",
   "Allow for this session": "Don't ask again for this action in this chat.",
+  [ALLOW_FOR_CHAT]: "Don't ask again for this action in this chat.",
   "Allow and don't ask me again": "Always allow this action.",
   Cancel: "Skip this action.",
 };
@@ -261,9 +297,11 @@ function question(q: any) {
 const TOOL_DECISIONS: Record<string, string> = {
   Allow: "allowedOnce",
   "Allow for this session": "allowedSession",
+  [ALLOW_FOR_CHAT]: "allowedChat",
   "Allow and don't ask me again": "allowedAlways",
   Cancel: "declined",
 };
+const USER_NOTE = "user_note: ";
 // A resolved input request as the chat's audit trail shows it. Tool approvals
 // reuse the public question projection, so raw server and tool ids stay out.
 export function publicApproval(a: any) {
@@ -272,23 +310,39 @@ export function publicApproval(a: any) {
   // Records saved before questions were kept have nothing to show.
   if (!questions.length) return null;
   const answers = a.result?.answers || {};
+  const reason = typeof a.reason === "string" ? a.reason : "";
+  // Settled by the chat's approval mode, e.g. "auto-mode:readOnly".
+  const autoMode = reason.startsWith(AUTO_MODE_REASON)
+    ? reason.slice(AUTO_MODE_REASON.length)
+    : undefined;
   // Anything other than a user answer means the request went unanswered.
   const outcome =
     a.reason === "user"
       ? "answered"
-      : a.reason === "expired"
-        ? "expired"
-        : "interrupted";
-  const expired = outcome !== "answered";
+      : a.reason === "auto-recommended" || autoMode !== undefined
+        ? "auto"
+        : a.reason === "expired"
+          ? "expired"
+          : "interrupted";
+  const expired = outcome !== "answered" && outcome !== "auto";
   return {
     requestId: a.requestId,
     at: typeof a.at === "string" ? a.at : undefined,
     turnId: typeof a.turnId === "string" ? a.turnId : undefined,
     outcome,
+    ...(autoMode ? { autoMode } : {}),
     items: questions.map((q: any, i: number) => {
       const raw = a.detail?.questions?.[i];
-      const value = answers[q.id]?.answers?.[0];
-      const answer = typeof value === "string" ? value : "";
+      // Free-text feedback on a picked option arrives as a separate
+      // "user_note: " entry (for example Revise on plan approval).
+      const values: string[] = (answers[q.id]?.answers || []).filter(
+        (v: unknown): v is string => typeof v === "string",
+      );
+      const answer = values.find((v) => !v.startsWith(USER_NOTE)) ?? "";
+      const note = values
+        .find((v) => v.startsWith(USER_NOTE))
+        ?.slice(USER_NOTE.length)
+        .trim();
       if (q.kind === "toolApproval")
         return {
           kind: "toolApproval",
@@ -301,8 +355,8 @@ export function publicApproval(a: any) {
         // Secret answers are never repeated back.
         ...(raw?.isSecret === true
           ? { secret: true }
-          : !expired && answer
-            ? { answer }
+          : !expired
+            ? { ...(answer ? { answer } : {}), ...(note ? { note } : {}) }
             : {}),
       };
     }),
@@ -508,7 +562,15 @@ export function publicEvent(e: any): any | null {
         },
       };
     case "plan.updated":
-      return { ...base, data: { plan: publicPlan(d.plan) } };
+      return {
+        ...base,
+        data: {
+          plan: publicPlan(d.plan),
+          ...(typeof d.explanation === "string" && d.explanation
+            ? { explanation: d.explanation }
+            : {}),
+        },
+      };
     case "goal.updated": {
       const goal = publicGoal(d.goal);
       return goal ? { ...base, data: { goal } } : null;
@@ -595,7 +657,16 @@ export function publicEvent(e: any): any | null {
       return rateLimits ? { ...base, data: { rateLimits } } : null;
     }
     case "error":
-      return { ...base, data: runtimeError(d) };
+      return {
+        ...base,
+        data: {
+          ...runtimeError(d),
+          ...(typeof d.willRetry === "boolean"
+            ? { willRetry: d.willRetry }
+            : {}),
+          ...(typeof d.turnId === "string" ? { turnId: d.turnId } : {}),
+        },
+      };
     case "approval.requested": {
       const pending = request(d);
       return pending ? { ...base, data: pending } : null;
@@ -680,8 +751,10 @@ export function publicEvent(e: any): any | null {
 export class PublicEventStream {
   private buffer = "";
   private decoder = new TextDecoder();
-  // Observes each public event, for example to persist goal summaries.
-  constructor(private readonly onEvent?: (event: any) => void) {}
+  // Observes each public event, for example to persist goal summaries. An
+  // observer may return a replacement event (for example a snapshot with the
+  // saved plan filled in).
+  constructor(private readonly onEvent?: (event: any) => any) {}
   push(chunk: Uint8Array): string {
     this.buffer += this.decoder.decode(chunk, { stream: true });
     if (this.buffer.length > 4 * 1024 * 1024)
@@ -701,10 +774,21 @@ export class PublicEventStream {
         .map((line) => line.slice(5).trimStart())
         .join("\n");
       if (!data) continue;
-      const event = publicEvent(JSON.parse(data));
+      let event;
+      try {
+        event = publicEvent(JSON.parse(data));
+      } catch (error) {
+        // One bad frame is dropped; the rest of the stream stays usable.
+        log("warn", "skipped malformed live update", {
+          op: "stream",
+          bytes: data.length,
+          ...errorFields(error),
+        });
+        continue;
+      }
       if (event && this.onEvent)
         try {
-          this.onEvent(event);
+          event = this.onEvent(event) ?? event;
         } catch {
           // Observers must never interrupt the live stream.
         }

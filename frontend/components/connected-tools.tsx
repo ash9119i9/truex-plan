@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Plug } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, warnFailure } from "@/lib/api";
 
 type Server = { id: string; name: string; enabled: boolean };
 const VISIBLE = 3;
@@ -38,7 +38,8 @@ export function ConnectedTools({
         );
         setFailed(false);
       })
-      .catch(() => {
+      .catch((e) => {
+        warnFailure("connected tools", e);
         if (active) setFailed(true);
       });
     return () => {

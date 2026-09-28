@@ -848,3 +848,296 @@
 .goal-reason-tip {
   margin-top: 2px;
 }
+
+/* ---------- Projects and conversation menus ---------- */
+.project-section {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 40%;
+}
+.project-section .sidebar-label {
+  margin-bottom: 6px;
+}
+.project-list,
+.project-sessions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.project-list {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c3c7b8 transparent;
+}
+.project-sessions {
+  padding-left: 22px;
+}
+.project-sessions .session-link {
+  padding: 7px 9px;
+}
+.session-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-radius: 6px;
+}
+.session-row:hover {
+  background: #e9ebe3;
+}
+.session-row > .session-link:hover {
+  background: transparent;
+}
+.project-toggle {
+  padding: 8px 9px;
+}
+.project-toggle b {
+  color: #3f4438;
+}
+/* Hover actions sit over the row's right edge and stay hidden until the
+   row is hovered or focused; touch screens always show them. */
+.row-menu {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+.session-row:hover .row-menu,
+.session-row:focus-within .row-menu,
+.row-menu:has([aria-expanded="true"]) {
+  opacity: 1;
+}
+.session-row:hover > .session-link > span,
+.session-row:focus-within > .session-link > span {
+  padding-right: 48px;
+}
+@media (hover: none) {
+  .row-menu {
+    opacity: 1;
+  }
+  .session-row > .session-link > span {
+    padding-right: 48px;
+  }
+}
+.row-action {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: #e3e7da;
+  color: #5a5f53;
+}
+.row-action.visible {
+  background: transparent;
+}
+.row-action:hover:not(:disabled),
+.row-action[aria-expanded="true"] {
+  background: #d8ddce;
+  color: #2f3d27;
+}
+.row-action:disabled {
+  opacity: 0.5;
+}
+.project-name-input {
+  padding: 4px 0;
+}
+.project-name-input input {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 12px;
+}
+.project-name-input input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.project-name-input small,
+.sidebar-error {
+  display: block;
+  margin: 4px 0 0;
+  font-size: 10px;
+  color: var(--danger);
+}
+.sidebar-error {
+  padding: 0 9px 6px;
+}
+.menu {
+  position: fixed;
+  z-index: 60;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  max-height: min(320px, calc(100dvh - 16px));
+  overflow-y: auto;
+}
+.menu .project-name-input {
+  padding: 4px;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-2);
+  font-size: 12px;
+  text-align: left;
+}
+.menu-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-item svg {
+  flex: none;
+  color: var(--muted);
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--surface-hover);
+  color: var(--foreground);
+  outline: none;
+}
+.menu-item.danger,
+.menu-item.danger svg {
+  color: var(--danger);
+}
+.menu-heading {
+  padding: 4px 8px 6px;
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+/* ---------- Error references and retry hints ---------- */
+.error-banner-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.error-ref {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.error-ref-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+.error-banner .error-ref-copy,
+.error-ref-copy {
+  display: inline;
+  width: auto;
+  height: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.error-ref-copy:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.connection-retry,
+.inline-retry {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.connection-retry:focus-visible,
+.inline-retry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.connection-hint {
+  margin-left: 6px;
+  color: var(--subtle);
+}
+.sidebar-refresh-error {
+  padding: 0 9px 6px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.request-question [aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+/* ---------- App error pages (error.tsx, global-error.tsx, not-found.tsx) ---------- */
+.app-error {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 24px 16px;
+  background: var(--background);
+  color: var(--foreground);
+}
+.app-error-card {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  width: 100%;
+  max-width: 440px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.app-error-card h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.app-error-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-2);
+}
+.app-error-card .app-error-ref {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  user-select: all;
+}
+.app-error-card .button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

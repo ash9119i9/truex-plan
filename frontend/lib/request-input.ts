@@ -1,3 +1,5 @@
+import { ApiRequestError, userMessage } from "./api.ts";
+
 export interface InputOption {
   label: string;
   description?: string;
@@ -40,11 +42,20 @@ export function answersOnClick(questions: InputQuestion[]): boolean {
 export function needsText(q: InputQuestion, other: boolean): boolean {
   return !q.options?.length || (other && q.isOther === true);
 }
+// Ids of questions that still have no non-blank answer, in question order.
+export function missingAnswers(
+  questions: InputQuestion[],
+  answers: Record<string, string>,
+): string[] {
+  return questions
+    .filter((q) => (answers[q.id] || "").trim() === "")
+    .map((q) => q.id);
+}
 export function complete(
   questions: InputQuestion[],
   answers: Record<string, string>,
 ): boolean {
-  return questions.every((q) => (answers[q.id] || "").trim() !== "");
+  return missingAnswers(questions, answers).length === 0;
 }
 // Questions are asked one at a time. Picking an option moves to the next
 // question; on the last one it sends, provided every question is answered.
@@ -66,9 +77,19 @@ export function answerPayload(
     ),
   };
 }
-export function timeLeft(expiresAt: string, now: number): string {
+// Milliseconds until a request expires; 0 once it has passed.
+export function msLeft(expiresAt: string, now: number): number {
   const ms = Date.parse(expiresAt) - now;
-  if (!(ms > 0)) return "";
-  const min = Math.ceil(ms / 60000);
-  return min <= 1 ? "Expires in under a minute" : `Expires in ${min} min`;
+  return ms > 0 ? ms : 0;
+}
+
+// Why an answer could not be sent. A conflict means someone (or a timeout)
+// already answered; a missing request has expired or been withdrawn.
+export function answerErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 409) return "This was already answered.";
+    if (error.status === 404 || error.status === 410)
+      return "This request is no longer available.";
+  }
+  return userMessage(error, "Your answer could not be sent. Please try again.");
 }

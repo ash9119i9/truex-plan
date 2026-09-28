@@ -685,3 +685,34 @@ test("observability events reach the public stream without internal ids or raw t
   assert.doesNotMatch(JSON.stringify(limits), /hidden/);
   assert.equal(publicEvent({ type: "usage.updated", data: {} }), null);
 });
+test("audit records show an automatically chosen recommended option", () => {
+  const auto = publicApproval({
+    requestId: "r3",
+    method: "item/tool/requestUserInput",
+    detail: {
+      questions: [
+        {
+          id: "plan_approval",
+          header: "Plan",
+          question: "Approve the plan?",
+          isOther: true,
+          isSecret: false,
+          options: [{ label: "Approve" }, { label: "Revise" }],
+        },
+      ],
+    },
+    result: {
+      answers: {
+        plan_approval: {
+          answers: [
+            "Approve",
+            "user_note: No answer arrived in time; proceeding with the recommended option.",
+          ],
+        },
+      },
+    },
+    reason: "auto-recommended",
+  });
+  assert.equal(auto!.outcome, "auto");
+  assert.equal((auto!.items[0] as any).answer, "Approve");
+});

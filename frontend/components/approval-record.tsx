@@ -1,17 +1,10 @@
 import type { ApprovalRecord } from "../../shared/contracts";
-
-type Item = ApprovalRecord["items"][number];
-const decisions: Record<
-  Extract<Item, { kind: "toolApproval" }>["decision"],
-  { text: string; tone: "allowed" | "declined" | "muted" }
-> = {
-  allowedOnce: { text: "Allowed once", tone: "allowed" },
-  allowedSession: { text: "Allowed for this chat", tone: "allowed" },
-  allowedAlways: { text: "Always allowed", tone: "allowed" },
-  declined: { text: "Not allowed", tone: "declined" },
-  expired: { text: "No answer — timed out", tone: "muted" },
-  interrupted: { text: "No answer — stopped", tone: "muted" },
-};
+import {
+  autoAnswerNote,
+  decisionLabel,
+  recordSummary,
+  type ModeRecord,
+} from "@/lib/approval-mode";
 
 function time(at?: string) {
   const date = at ? new Date(at) : null;
@@ -22,13 +15,18 @@ function time(at?: string) {
 
 // A compact, read-only line in the chat recording what was decided, so the
 // conversation keeps an audit trail after the request card goes away.
-export function ApprovalRecordView({ record }: { record: ApprovalRecord }) {
+export function ApprovalRecordView({
+  record: shared,
+}: {
+  record: ApprovalRecord | ModeRecord;
+}) {
+  const record = shared as ModeRecord;
   const at = time(record.at);
   return (
     <div className="approval-record" role="group" aria-label="Your decision">
       {record.items.map((item, i) => {
         if (item.kind === "toolApproval") {
-          const d = decisions[item.decision] || decisions.declined;
+          const d = decisionLabel(record, item.decision);
           return (
             <div key={i} className="approval-record-row">
               <span
@@ -50,7 +48,13 @@ export function ApprovalRecordView({ record }: { record: ApprovalRecord }) {
         }
         const answer = item.secret
           ? "Answer hidden"
-          : item.answer || (record.outcome === "answered" ? "" : "No answer");
+          : item.answer
+            ? record.outcome === "auto"
+              ? `${item.answer} (${autoAnswerNote(record)})`
+              : item.answer
+            : record.outcome === "answered"
+              ? ""
+              : "No answer";
         return (
           <div key={i} className="approval-record-row">
             <span
@@ -66,7 +70,7 @@ export function ApprovalRecordView({ record }: { record: ApprovalRecord }) {
       })}
       {at && (
         <time className="approval-record-time" dateTime={record.at}>
-          {record.outcome === "answered" ? "You answered" : "Closed"} at {at}
+          {recordSummary(record)} at {at}
         </time>
       )}
     </div>

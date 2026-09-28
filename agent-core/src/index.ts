@@ -1,4 +1,10 @@
 import { httpError } from "../../shared/errors";
+import {
+  REQUEST_ID_HEADER,
+  errorFields,
+  log,
+  requestId,
+} from "../../shared/logging";
 import "dotenv/config";
 import express from "express";
 import { resolve, join } from "node:path";
@@ -42,11 +48,19 @@ const manager = new ThreadManager(
 );
 const stopSweeper = startWorkspaceSweeper(join(home, "business-workspaces"));
 client.on("diagnostic", (line) =>
-  process.stderr.write(manager.redactor.clean(line) + "\n"),
+  log("debug", "codex runtime stderr", { line: manager.redactor.clean(line) }),
 );
-client.on("protocolError", (message) => process.stderr.write(message + "\n"));
+client.on("protocolError", (message) =>
+  log("warn", "codex protocol error", { error: message }),
+);
 const app = express();
 app.disable("x-powered-by");
+app.use((req, res, next) => {
+  const id = requestId(req.get(REQUEST_ID_HEADER));
+  res.locals.requestId = id;
+  res.setHeader(REQUEST_ID_HEADER, id);
+  next();
+});
 app.use(express.json({ limit: "2mb" }));
 app.get("/livez", (_req, res) => res.json({ ok: true }));
 app.get("/healthz", async (_req, res) => {
@@ -112,6 +126,11 @@ app.post("/threads", async (req, res) =>
 );
 app.post("/threads/:id/resume", async (req, res) =>
   res.json(await manager.resume(req.params.id, req.body)),
+);
+// Alpha: changes a conversation's approval mode and applies it to waiting
+// requests. Body { mode: "ask" | "readOnly" | "auto" }.
+app.post("/threads/:id/approval-mode", (req, res) =>
+  res.json(manager.setApprovalMode(req.params.id, req.body?.mode)),
 );
 app.post("/threads/:id/turns", async (req, res) =>
   res
@@ -197,20 +216,40 @@ app.delete("/threads/:id", async (req, res) =>
 app.use(
   (
     error: any,
-    _req: express.Request,
+    req: express.Request,
     res: express.Response,
     _next: express.NextFunction,
   ) => {
-    if (res.headersSent) return _next(error);
     const { status, ...body } = httpError(error, "agent-core");
-    res.status(status).json(manager.redactor.clean(body));
+    const id = res.locals.requestId ?? requestId(req.get(REQUEST_ID_HEADER));
+    log(status >= 500 ? "error" : "debug", "request failed", {
+      requestId: id,
+      method: req.method,
+      path: req.path,
+      status,
+      code: body.code,
+      headersSent: res.headersSent,
+      ...manager.redactor.clean(errorFields(error)),
+    });
+    if (res.headersSent) return _next(error);
+    res.status(status).json(manager.redactor.clean({ ...body, requestId: id }));
   },
 );
 const server = app.listen(
   Number(process.env.PORT || 4100),
   process.env.HOST || "127.0.0.1",
-  () => console.log(`agent-core listening on ${process.env.PORT || 4100}`),
+  () =>
+    log("info", "agent-core listening", {
+      port: Number(process.env.PORT || 4100),
+    }),
 );
+process.on("unhandledRejection", (reason) =>
+  log("error", "unhandled rejection", errorFields(reason)),
+);
+process.on("uncaughtException", (error) => {
+  log("error", "uncaught exception", errorFields(error));
+  process.exit(1);
+});
 let stopping = false;
 for (const signal of ["SIGTERM", "SIGINT"])
   process.on(signal, async () => {

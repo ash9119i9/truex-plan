@@ -1070,3 +1070,68 @@
     transition: none;
   }
 }
+/* "New chat in <project>" note above the composer. */
+.composer-project {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 6px 0 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.composer-project > svg {
+  flex: none;
+  color: var(--accent);
+}
+.composer-project > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-project strong {
+  color: var(--accent-fg);
+}
+.composer-project .icon-button {
+  width: 24px;
+  height: 24px;
+}
+
+/* ---------- Alpha approval mode picker ---------- */
+.approval-mode {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.approval-mode-select {
+  min-width: 0;
+  max-width: 190px;
+  text-overflow: ellipsis;
+}
+.approval-mode-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.approval-mode-tag {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-fg);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.composer-notice.approval-mode-error {
+  color: var(--danger);
+}
+@media (max-width: 640px) {
+  .approval-mode-select {
+    max-width: 128px;
+  }
+}

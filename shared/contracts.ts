@@ -46,6 +46,8 @@ export interface AgentSummary {
 }
 export interface Session {
   runtimePolicyVersion?: number;
+  /** Alpha approval mode; absent means the configured default. */
+  approvalMode?: ApprovalMode;
   settings?: {
     model?: string;
     effort?: string;
@@ -70,6 +72,8 @@ export interface Session {
   goalCleared?: { createdAt: number | null; eventAt?: string };
   goalHistory?: GoalHistoryEntry[];
   archived?: boolean;
+  // Optional project folder; sessions without one are normal conversations.
+  projectId?: string;
   threadStartMs?: number;
   runtimeStartup?: { spawnMs: number; initializeMs: number };
 }
@@ -183,7 +187,10 @@ export interface ApprovalRecord {
   requestId: string;
   at?: string;
   turnId?: string;
-  outcome: "answered" | "expired" | "interrupted";
+  // "auto": nobody answered in time, so the recommended option was used,
+  // or (with autoMode) the chat's approval mode answered it.
+  outcome: "answered" | "auto" | "expired" | "interrupted";
+  autoMode?: "readOnly" | "auto" | "grant";
   items: (
     | {
         kind: "toolApproval";
@@ -191,12 +198,19 @@ export interface ApprovalRecord {
         decision:
           | "allowedOnce"
           | "allowedSession"
+          | "allowedChat"
           | "allowedAlways"
           | "declined"
           | "expired"
           | "interrupted";
       }
-    | { kind: "question"; question: string; answer?: string; secret?: true }
+    | {
+        kind: "question";
+        question: string;
+        answer?: string;
+        note?: string;
+        secret?: true;
+      }
   )[];
 }
 export interface PendingRequest {
@@ -309,8 +323,23 @@ export type CollabTool =
 
 export type PublicSession = Pick<
   Session,
-  "_id" | "agentId" | "title" | "status" | "createdAt" | "goal"
+  | "_id"
+  | "agentId"
+  | "title"
+  | "status"
+  | "createdAt"
+  | "goal"
+  | "projectId"
+  | "approvalMode"
 >;
+
+// A named folder that groups sessions. A session belongs to at most one.
+export interface Project {
+  _id: string; // "proj_" + uuid
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 // --- Observability -------------------------------------------------------
 // One timed step of a turn, in plain words. Built from Codex item events.
@@ -427,3 +456,23 @@ export interface SessionTraces {
   traces: TurnTrace[];
   summary: TraceSummary;
 }
+/**
+ * Alpha: how a chat handles questions and MCP tool approvals.
+ * "ask" asks for everything, "readOnly" runs tools annotated readOnlyHint
+ * without asking, "auto" also runs write tools and answers clarifying
+ * questions with their recommended option. Plan approval and secret
+ * questions always ask.
+ */
+export const APPROVAL_MODES = ["ask", "readOnly", "auto"] as const;
+export type ApprovalMode = (typeof APPROVAL_MODES)[number];
+/** Served by platform at GET /api/features; off means today's behaviour. */
+export interface ApprovalModesConfig {
+  enabled: boolean;
+  defaultMode: ApprovalMode;
+  autopilot: boolean;
+  nameHeuristic: boolean;
+}
+/** Added by agent-core to tool approvals; Codex receives "Allow". */
+export const ALLOW_FOR_CHAT = "Allow for this chat";
+/** Settle reason prefix for requests answered by a mode: "auto-mode:readOnly". */
+export const AUTO_MODE_REASON = "auto-mode:";

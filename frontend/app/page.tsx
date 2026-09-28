@@ -9,6 +9,7 @@ import {
   Sparkles,
   Target,
   X,
+  Folder,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -24,6 +25,7 @@ import { SessionActivity } from "@/components/session-activity";
 import { McpSettings } from "@/components/mcp-settings";
 import { AssistantTools } from "@/components/assistant-tools";
 import { RequestCard } from "@/components/request-card";
+import { applyPlanEvent, awaitingApproval, type PlanStep } from "@/lib/plan";
 import { Sheet } from "@/components/sheet";
 import { ConnectedTools } from "@/components/connected-tools";
 import { GoalBar } from "@/components/goal-bar";
@@ -44,9 +46,14 @@ import {
   api,
   ApiRequestError,
   base,
+  errorRef,
   getTraces,
   listAgents,
+  userMessage,
+  warnFailure,
+  type ErrorRef as ErrorRefValue,
 } from "@/lib/api";
+import { ErrorRef } from "@/components/error-ref";
 import {
   applySubAgentEvent,
   defaultDelegation,
@@ -58,8 +65,21 @@ import {
   type SubAgentState,
 } from "@/lib/subagents";
 import { AgentsPanel } from "@/components/agents-panel";
+import {
+  ProjectSidebar,
+  SessionMenu,
+  useProjects,
+} from "@/components/project-sidebar";
+import { createSessionBody, draftProject } from "@/lib/projects";
 import { HelperChip } from "@/components/helper-chip";
 import { transport } from "@/lib/transport";
+import { ApprovalModePicker } from "@/components/approval-mode-picker";
+import {
+  approvalModesOff,
+  loadApprovalModes,
+  modePicker,
+  setApprovalMode,
+} from "@/lib/approval-mode";
 import {
   applyObservabilityEvent,
   emptyObservability,
@@ -70,7 +90,9 @@ import { PrivacyNote } from "@/components/observability/privacy-note";
 import { parseChatInput, suggestCommands } from "@/lib/slash-commands";
 import type {
   AgentSummary,
-  PublicSession as Session,
+  ApprovalMode,
+  ApprovalModesConfig,
+  PublicSession,
   DomainEvent,
   Goal,
   GoalReview,
@@ -78,6 +100,8 @@ import type {
   TraceSummary,
   TurnTiming,
 } from "../../shared/contracts";
+// The public payload includes the alpha approval mode when it is enabled.
+type Session = PublicSession;
 // Goal starters open the composer in goal mode with a template.
 const goalStarters = [
   { label: "Research report", text: "Research and write a cited report on " },
@@ -93,16 +117,25 @@ export default function Home() {
     [agentId, setAgentId] = useState(""),
     [sessions, setSessions] = useState<Session[]>([]),
     [session, setSession] = useState<Session | null>(null);
+  // Alpha approval modes. A choice made before the chat exists is kept here
+  // and sent once the session is created.
+  const [approvalModes, setApprovalModes] =
+      useState<ApprovalModesConfig>(approvalModesOff),
+    [draftMode, setDraftMode] = useState<ApprovalMode | null>(null),
+    [modeError, setModeError] = useState(""),
+    draftModeRef = useRef<ApprovalMode | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]),
     [events, setEvents] = useState<DomainEvent[]>([]),
     [pending, setPending] = useState<PendingRequest[]>([]);
-  const [plan, setPlan] = useState<{ step: string; status: string }[]>([]);
+  const [plan, setPlan] = useState<PlanStep[]>([]);
   const [timings, setTimings] = useState<TurnTiming[]>([]);
   const [observability, setObservability] =
       useState<ObservabilityState>(emptyObservability),
     [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
   const [text, setText] = useState(""),
-    [error, setError] = useState(""),
+    [error, setErrorText] = useState(""),
+    // Code and request id of the error in the banner, when it has them.
+    [errorDetail, setErrorDetail] = useState<ErrorRefValue | null>(null),
     [notice, setNotice] = useState(""),
     [commandOpen, setCommandOpen] = useState(false),
     [commandIndex, setCommandIndex] = useState(0),
@@ -110,6 +143,12 @@ export default function Home() {
     [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false),
     [status, setStatus] = useState("Not connected"),
+    // Bumped by "Retry" to open a fresh stream after it disconnected.
+    [streamKey, setStreamKey] = useState(0),
+    [slowReconnect, setSlowReconnect] = useState(false),
+    // Codex is retrying the turn on its own after a transient error.
+    [retrying, setRetrying] = useState(false),
+    [sessionsFailed, setSessionsFailed] = useState(false),
     [health, setHealth] = useState<any>(null),
     [panel, setPanel] = useState<"mcp" | "tools" | "agents" | null>(null),
     [inspectorTab, setInspectorTab] = useState("activity"),
@@ -124,7 +163,9 @@ export default function Home() {
     [goalMode, setGoalMode] = useState(false),
     [goalBudget, setGoalBudget] = useState<number | null>(null),
     [goalBudgetValid, setGoalBudgetValid] = useState(true),
-    [goalsOnly, setGoalsOnly] = useState(false);
+    [goalsOnly, setGoalsOnly] = useState(false),
+    // The project a new chat will be created in (from a project's "+").
+    [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const scroll = useRef<HTMLDivElement>(null),
     composer = useRef<HTMLTextAreaElement>(null),
     following = useRef(true),
@@ -137,10 +178,27 @@ export default function Home() {
       text: string;
       clientId: string;
     } | null>(null);
+  // Setting a message always replaces the reference of the previous error.
+  const setError = (message: string, detail: ErrorRefValue | null = null) => {
+    setErrorText(message);
+    setErrorDetail(message ? detail : null);
+  };
+  const reportError = (e: unknown) => setError(userMessage(e), errorRef(e));
   const refreshSessions = () =>
     api("/api/sessions")
-      .then(setSessions)
-      .catch(() => {});
+      .then((list) => {
+        setSessions(list);
+        setSessionsFailed(false);
+      })
+      .catch((e) => {
+        warnFailure("session list", e);
+        setSessionsFailed(true);
+      });
+  const projects = useProjects(refreshSessions);
+  const picker = modePicker(approvalModes, session, draftMode);
+  const pendingProject = session
+    ? null
+    : draftProject(draftProjectId, projects.projects);
   // Mirror goal changes into the conversation list without a refetch.
   const syncSessionGoal = (id: string, next: Goal | null) =>
     setSessions((old) =>
@@ -161,6 +219,8 @@ export default function Home() {
     setError("");
     setNotice("");
     setCommandOpen(false);
+    setDraftProjectId(null);
+    setModeError("");
     try {
       const data = await api("/api/sessions/" + id);
       if (token !== generation.current) return;
@@ -185,7 +245,8 @@ export default function Home() {
       seen.current.clear();
       setPending(data.snapshot?.pending || []);
       setSubAgents(rehydrate(emptySubAgents, data.snapshot?.subAgents || []));
-      setPlan(data.snapshot?.plan || []);
+      // The saved plan stays available when agent-core is unreachable.
+      setPlan(data.snapshot?.plan || data.plan?.steps || []);
       setGoal(data.snapshot?.goal || null);
       setGoalReview(data.goalReview || null);
       setFailure(null);
@@ -208,7 +269,7 @@ export default function Home() {
           }));
           setTraceSummary(traceData?.summary || null);
         })
-        .catch(() => {});
+        .catch((e) => warnFailure("traces", e));
       void api(`/api/sessions/${id}/timings`)
         .then((timingData) => {
           if (token === generation.current)
@@ -221,13 +282,14 @@ export default function Home() {
               ).values(),
             ]);
         })
-        .catch(() => {});
+        .catch((e) => warnFailure("timings", e));
 
       setRunning(!!data.snapshot && data.snapshot.state.kind !== "idle");
-      if (data.recoveryError) setError(data.recoveryError);
+      if (data.recoveryError)
+        setError(data.recoveryError, data.recoveryErrorRef ?? null);
       history.replaceState(null, "", "?session=" + id);
     } catch (e) {
-      if (token === generation.current) setError((e as Error).message);
+      if (token === generation.current) reportError(e);
     } finally {
       if (token === generation.current) setBusy(false);
     }
@@ -235,16 +297,29 @@ export default function Home() {
   // Browser-only preference; read after mount so server and client render match.
   useEffect(() => setDelegation(loadDelegation()), []);
   useEffect(() => {
-    fetch(base + "/healthz")
-      .then((r) => r.json())
+    let live = true;
+    void loadApprovalModes().then((config) => live && setApprovalModes(config));
+    return () => {
+      live = false;
+    };
+  }, []);
+  useEffect(() => {
+    fetch(base + "/healthz", { signal: AbortSignal.timeout(10000) })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Health check returned HTTP ${r.status}`);
+        return r.json();
+      })
       .then(setHealth)
-      .catch(() => setHealth({ ok: false }));
+      .catch((e) => {
+        warnFailure("health check", e);
+        setHealth({ ok: false });
+      });
     api("/api/agents")
       .then((data) => {
         setAgents(data);
         setAgentId(data[0]?.id || "");
       })
-      .catch((e) => setError(e.message))
+      .catch(reportError)
       .finally(() => setLoading(false));
     void refreshSessions();
     const id = new URLSearchParams(location.search).get("session");
@@ -267,9 +342,20 @@ export default function Home() {
           );
         })
         .catch((e) => {
-          if (token === generation.current) setError(e.message);
+          if (token === generation.current) reportError(e);
         });
     };
+    // Reload what the stream may have missed, as the platform asks on resync.
+    const resync = () => {
+      reloadTranscript();
+      void listAgents(id)
+        .then((list) => {
+          if (sessionRef.current?._id === id && Array.isArray(list))
+            setSubAgents((old) => rehydrate(old, list));
+        })
+        .catch((e) => warnFailure("helper agents", e));
+    };
+    setRetrying(false);
     return transport.subscribe(
       id,
       (event) => {
@@ -288,6 +374,7 @@ export default function Home() {
             "subagent.completed",
             "turn.started",
             "turn.completed",
+            "error",
           ].includes(event.type)
         )
           setEvents((old) => [...old.slice(-99), event]);
@@ -295,11 +382,11 @@ export default function Home() {
         setEntries((old) => applyChatEvent(old, event));
         setSubAgents((old) => applySubAgentEvent(old, event));
         setObservability((old) => applyObservabilityEvent(old, event));
+        setPlan((old) => applyPlanEvent(old, event));
         switch (event.type) {
           case "snapshot":
             setPending(d.pending);
             setRunning(d.state.kind !== "idle");
-            setPlan(d.plan || []);
             setGoal(d.goal || null);
             syncSessionGoal(id, d.goal || null);
             setTimings((old) => [
@@ -314,22 +401,13 @@ export default function Home() {
             reloadTranscript();
             break;
           case "resync.required":
-            reloadTranscript();
-            void listAgents(id)
-              .then((list) => {
-                if (sessionRef.current?._id === id && Array.isArray(list))
-                  setSubAgents((old) => rehydrate(old, list));
-              })
-              .catch(() => {});
+            resync();
             break;
           case "turn.started":
             setRunning(true);
-            setPlan([]);
             setFailure(null);
+            setRetrying(false);
 
-            break;
-          case "plan.updated":
-            setPlan(d.plan || []);
             break;
           case "goal.updated":
             setGoal(d.goal);
@@ -344,7 +422,16 @@ export default function Home() {
             break;
           case "turn.completed":
             setRunning(false);
-            if (d.turn?.error?.message) setError(d.turn.error.message);
+            setRetrying(false);
+            if (d.turn?.error?.message) {
+              const turnId = d.turn.id ?? event.turnId;
+              setError(d.turn.error.message, {
+                ...(typeof d.turn.error.code === "string"
+                  ? { code: d.turn.error.code }
+                  : {}),
+                ...(typeof turnId === "string" ? { turnId } : {}),
+              });
+            }
             setFailure(turnFailure(d.turn?.error));
             if (d.timing)
               setTimings((old) => [
@@ -362,14 +449,36 @@ export default function Home() {
             setPending((old) => old.filter((p) => p.requestId !== d.requestId));
             break;
           case "error":
-            setError(d.message || "The request could not be completed.");
+            // Codex retries transient failures itself; only a final error
+            // is a failure.
+            if (d.willRetry === true) {
+              setRetrying(true);
+              break;
+            }
+            setRetrying(false);
+            setError(d.message || "The request could not be completed.", {
+              ...(typeof d.code === "string" ? { code: d.code } : {}),
+              ...(typeof d.turnId === "string" ? { turnId: d.turnId } : {}),
+            });
             setFailure(turnFailure(d));
             break;
         }
       },
       setStatus,
+      {
+        onResync: resync,
+        onFailure: (f) =>
+          setError(f.message, { code: f.code, requestId: f.requestId }),
+      },
     );
-  }, [session?._id]);
+  }, [session?._id, streamKey]);
+  // A stream stuck reconnecting for a while gets a hint in the header.
+  useEffect(() => {
+    setSlowReconnect(false);
+    if (status !== "Reconnecting") return;
+    const timer = setTimeout(() => setSlowReconnect(true), 30000);
+    return () => clearTimeout(timer);
+  }, [status]);
   // The completion card lists documents made during the goal, so they are
   // loaded once the goal is ready for review.
   const reviewing = awaitingReview(goal, goalReview);
@@ -379,7 +488,7 @@ export default function Home() {
     let active = true;
     api(`/api/sessions/${session._id}/documents`)
       .then((data) => active && setDocuments(data.files || []))
-      .catch(() => {});
+      .catch((e) => warnFailure("documents", e));
     return () => {
       active = false;
     };
@@ -397,14 +506,19 @@ export default function Home() {
         behavior: "instant",
       });
   }, [entries, pending]);
-  function startDraft() {
+  // A plain new chat clears any project; a project's "+" passes its id.
+  function startDraft(projectId: string | null = null) {
     generation.current++;
+    setDraftProjectId(projectId);
     setText("");
     setNotice("");
     setCommandOpen(false);
     sessionRef.current = null;
     following.current = true;
     setSession(null);
+    draftModeRef.current = null;
+    setDraftMode(null);
+    setModeError("");
     setEntries([]);
     setEvents([]);
 
@@ -448,22 +562,70 @@ export default function Home() {
     block.scrollIntoView({ block: "center" });
     block.focus({ preventScroll: true });
   }
+  // Keep the open conversation's projectId in step with sidebar moves.
+  function updateCurrentProject(updated: Session) {
+    if (sessionRef.current?._id !== updated._id) return;
+    const next = { ...sessionRef.current, projectId: updated.projectId };
+    sessionRef.current = next;
+    setSession(next);
+  }
   function changeDelegation(next: DelegationPrefs) {
     setDelegation(next);
     saveDelegation(next);
   }
+  // Optimistic: show the new mode at once and roll back if platform refuses.
+  async function changeApprovalMode(
+    mode: ApprovalMode,
+    target: Session | null = sessionRef.current,
+  ) {
+    setModeError("");
+    if (!target) {
+      draftModeRef.current = mode;
+      setDraftMode(mode);
+      return;
+    }
+    const previous = target.approvalMode;
+    const apply = (value: ApprovalMode | undefined) => {
+      if (sessionRef.current?._id !== target._id) return;
+      const next = { ...sessionRef.current, approvalMode: value };
+      sessionRef.current = next;
+      setSession(next);
+    };
+    apply(mode);
+    try {
+      apply(await setApprovalMode(target._id, mode));
+    } catch (e) {
+      apply(previous);
+      if (sessionRef.current?._id === target._id)
+        setModeError(
+          e instanceof ApiRequestError && e.status === 422
+            ? "Autopilot is not available right now."
+            : `Could not change the approval mode. ${userMessage(e)}`,
+        );
+    }
+  }
   async function ensureSession(): Promise<Session> {
     if (sessionRef.current) return sessionRef.current;
     const token = generation.current;
-    const created: Session = await api("/api/sessions", {
-      agentId,
-      subAgents: delegation,
-    });
+    const projectId = draftProject(draftProjectId, projects.projects)?._id;
+    const created: Session = await api(
+      "/api/sessions",
+      createSessionBody(agentId, delegation, projectId),
+    );
     if (token !== generation.current) return created;
     sessionRef.current = created;
     setSession(created);
     history.replaceState(null, "", "?session=" + created._id);
-    void refreshSessions();
+    const chosen = draftModeRef.current;
+    draftModeRef.current = null;
+    setDraftMode(null);
+    // Settle the chosen mode before the first message so its turn uses it.
+    if (chosen && chosen !== created.approvalMode)
+      await changeApprovalMode(chosen, created);
+    if (projectId) {
+      projects.expand(projectId);
+      projects.refreshAll();
+    } else void refreshSessions();
     return created;
   }
   async function send(value = text) {
@@ -506,7 +668,7 @@ export default function Home() {
       );
     } catch (e) {
       if (token !== generation.current) return;
-      setError((e as Error).message);
+      reportError(e);
       setEntries((old) =>
         old.map((e) =>
           e.kind === "message" && e.id === id
@@ -633,7 +795,7 @@ export default function Home() {
         setBusy(true);
         active = await ensureSession();
       } catch (e) {
-        setError((e as Error).message);
+        reportError(e);
         setBusy(false);
         return;
       }
@@ -721,7 +883,7 @@ export default function Home() {
               : entry,
           ),
         );
-        setError((e as Error).message);
+        reportError(e);
       }
     } finally {
       sending.current = false;
@@ -755,9 +917,21 @@ export default function Home() {
           truex<span> / agents</span>
         </a>
         <div className="eyebrow">WORKSPACE</div>
-        <Button variant="outline" onClick={startDraft} disabled={busy}>
+        <Button variant="outline" onClick={() => startDraft()} disabled={busy}>
           <Plus size={16} /> New conversation
         </Button>
+        <ProjectSidebar
+          state={projects}
+          sessions={sessions}
+          currentSessionId={session?._id}
+          busy={busy}
+          onOpen={(id) => void open(id)}
+          onNewChat={(id) => startDraft(id)}
+          onDeleted={(id) =>
+            setDraftProjectId((old) => (old === id ? null : old))
+          }
+          onSessionUpdated={updateCurrentProject}
+        />
         <div className="sidebar-label">
           Recent conversations
           <button
@@ -771,40 +945,59 @@ export default function Home() {
           </button>
         </div>
         <nav>
+          {sessionsFailed && (
+            <p className="sidebar-refresh-error" role="alert">
+              Couldn’t refresh ·{" "}
+              <button
+                type="button"
+                className="inline-retry"
+                onClick={() => void refreshSessions()}
+              >
+                Retry
+              </button>
+            </p>
+          )}
           {goalsOnly && !sessions.some((s) => s.goal) && (
             <p className="sidebar-empty">No conversations with goals yet.</p>
           )}
           {(goalsOnly ? sessions.filter((s) => s.goal) : sessions).map((s) => (
-            <button
-              key={s._id}
-              className={
-                session?._id === s._id
-                  ? "session-link selected"
-                  : "session-link"
-              }
-              disabled={busy}
-              onClick={() => void open(s._id)}
-            >
-              {s.goal ? (
-                <Target
-                  size={14}
-                  className="session-goal"
-                  data-tone={goalStatus[s.goal.status]?.tone}
-                  aria-hidden="true"
-                />
-              ) : (
-                <MessageSquare size={14} />
-              )}
-              <span>
-                <b>{s.title || "New conversation"}</b>
-                <small>
-                  {s.goal &&
-                    `Goal ${goalStatus[s.goal.status]?.label.toLowerCase() || ""} · `}
-                  {agents.find((a) => a.id === s.agentId)?.name || s.agentId} ·{" "}
-                  {new Date(s.createdAt).toLocaleString()}
-                </small>
-              </span>
-            </button>
+            <div key={s._id} className="session-row">
+              <button
+                className={
+                  session?._id === s._id
+                    ? "session-link selected"
+                    : "session-link"
+                }
+                disabled={busy}
+                onClick={() => void open(s._id)}
+              >
+                {s.goal ? (
+                  <Target
+                    size={14}
+                    className="session-goal"
+                    data-tone={goalStatus[s.goal.status]?.tone}
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <MessageSquare size={14} />
+                )}
+                <span>
+                  <b>{s.title || "New conversation"}</b>
+                  <small>
+                    {s.goal &&
+                      `Goal ${goalStatus[s.goal.status]?.label.toLowerCase() || ""} · `}
+                    {agents.find((a) => a.id === s.agentId)?.name || s.agentId}{" "}
+                    · {new Date(s.createdAt).toLocaleString()}
+                  </small>
+                </span>
+              </button>
+              <SessionMenu
+                session={s}
+                state={projects}
+                disabled={busy}
+                onUpdated={updateCurrentProject}
+              />
+            </div>
           ))}
         </nav>
         <div className="health">
@@ -823,7 +1016,24 @@ export default function Home() {
             {session && (
               <span className="connection" role="status">
                 <span className={status === "Connected" ? "dot good" : "dot"} />
-                {status}
+                {retrying && status === "Connected" ? "Retrying…" : status}
+                {status === "Reconnecting" && slowReconnect && (
+                  <span className="connection-hint">
+                    Still trying. Check your network.
+                  </span>
+                )}
+                {status === "Disconnected" && (
+                  <button
+                    type="button"
+                    className="connection-retry"
+                    onClick={() => {
+                      setStatus("Reconnecting");
+                      setStreamKey((k) => k + 1);
+                    }}
+                  >
+                    Retry
+                  </button>
+                )}
               </span>
             )}
             <Select
@@ -881,7 +1091,10 @@ export default function Home() {
         )}
         {error && (
           <div role="alert" className="error-banner">
-            {error}
+            <span className="error-banner-body">
+              {error}
+              <ErrorRef value={errorDetail} />
+            </span>
             <button onClick={() => setError("")} aria-label="Dismiss error">
               ×
             </button>
@@ -978,6 +1191,7 @@ export default function Home() {
                   <RequestCard
                     key={p.requestId}
                     request={p}
+                    plan={plan}
                     onAnswer={async (result) => {
                       await transport.answer(session._id, p.requestId, result);
                     }}
@@ -1008,6 +1222,22 @@ export default function Home() {
                 aria-label="Cancel goal"
               >
                 <X size={14} />
+              </button>
+            </div>
+          )}
+          {pendingProject && (
+            <div className="composer-project" role="status">
+              <Folder size={13} aria-hidden="true" />
+              <span>
+                New chat in <strong>{pendingProject.name}</strong>
+              </span>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setDraftProjectId(null)}
+                aria-label={`Don't add to ${pendingProject.name}`}
+              >
+                <X size={13} />
               </button>
             </div>
           )}
@@ -1106,6 +1336,15 @@ export default function Home() {
               {notice}
             </div>
           )}
+          {modeError && (
+            <div
+              id="approval-mode-error"
+              className="composer-notice approval-mode-error"
+              role="alert"
+            >
+              {modeError}
+            </div>
+          )}
           <div className="composer-footer">
             <span id="composer-hint" className="visually-hidden">
               Type / for commands. Enter to send, Shift + Enter for a new line.
@@ -1148,6 +1387,13 @@ export default function Home() {
                   onManage={() => setPanel("mcp")}
                 />
               )}
+              {picker && (
+                <ApprovalModePicker
+                  picker={picker}
+                  errorId={modeError ? "approval-mode-error" : undefined}
+                  onChange={(mode) => void changeApprovalMode(mode)}
+                />
+              )}
             </div>
             {running && (
               <Button
@@ -1181,7 +1427,7 @@ export default function Home() {
                           throw e;
                       });
                     } catch (e) {
-                      setError((e as Error).message);
+                      reportError(e);
                     }
                   })()
                 }
@@ -1203,6 +1449,7 @@ export default function Home() {
       <SessionActivity
         events={events}
         plan={plan}
+        awaitingApproval={awaitingApproval(pending)}
         timings={timings}
         traces={observability.traces}
         traceSummary={traceSummary}

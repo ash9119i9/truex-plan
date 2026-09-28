@@ -199,7 +199,11 @@ test(
       assert.equal((await malformed.json()).code, "INVALID_JSON");
     }
     const health = await call("/healthz");
-    assert.deepEqual(health, { ok: true });
+    assert.deepEqual(health, {
+      ok: true,
+      mongo: true,
+      agentCore: { ok: true },
+    });
     for (const path of [
       "/api/capabilities",
       "/api/schemas/ThreadStartParams",

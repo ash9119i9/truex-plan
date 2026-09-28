@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, warnFailure } from "@/lib/api";
 import {
   formatDuration,
   formatTokens,
@@ -37,7 +37,10 @@ export function GoalTimeline({
     }
     setMissing(null);
     const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    target.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
+    target.scrollIntoView({
+      behavior: still ? "auto" : "smooth",
+      block: "start",
+    });
     target.focus({ preventScroll: true });
   }
   // Token updates arrive often; only a real change reloads the history.
@@ -59,7 +62,10 @@ export function GoalTimeline({
           setEntries(data.entries || []);
           setFailed(false);
         })
-        .catch(() => active && setFailed(true));
+        .catch((e) => {
+          warnFailure("goal history", e);
+          if (active) setFailed(true);
+        });
     }, 400);
     return () => {
       active = false;
@@ -107,45 +113,56 @@ export function GoalTimeline({
       {!!entries.length && (
         <ol className="goal-history">
           {entries
-            .map((entry, index) => ({ entry, change: tokenChange(entries, index) }))
+            .map((entry, index) => ({
+              entry,
+              change: tokenChange(entries, index),
+            }))
             .reverse()
             .map(({ entry, change }, i) => (
-            <li key={`${entry.at}:${i}`} data-kind={entry.kind}>
-              <span className="goal-history-label">{historyLabel(entry)}</span>
-              {entry.kind !== "cleared" && (
-                <span className="goal-history-objective">{entry.objective}</span>
-              )}
-              {entry.feedback && (
-                <q className="goal-history-feedback">{entry.feedback}</q>
-              )}
-              <span className="goal-history-meta">
-                <time dateTime={entry.at}>
-                  {new Date(entry.at).toLocaleString([], {
-                    month: "short",
-                    day: "numeric",
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </time>
-                {entry.tokens ? ` · ${formatTokens(entry.tokens)} tokens` : ""}
-                {change ? ` · +${formatTokens(change)} since the last change` : ""}
-              </span>
-              {entry.turnId && (
-                <button
-                  type="button"
-                  className="goal-history-turn"
-                  onClick={() => viewTurn(entry.turnId!)}
-                >
-                  View turn
-                </button>
-              )}
-              {entry.turnId && missing === entry.turnId && (
-                <span className="goal-history-note" role="status">
-                  This turn isn’t loaded in the chat.
+              <li key={`${entry.at}:${i}`} data-kind={entry.kind}>
+                <span className="goal-history-label">
+                  {historyLabel(entry)}
                 </span>
-              )}
-            </li>
-          ))}
+                {entry.kind !== "cleared" && (
+                  <span className="goal-history-objective">
+                    {entry.objective}
+                  </span>
+                )}
+                {entry.feedback && (
+                  <q className="goal-history-feedback">{entry.feedback}</q>
+                )}
+                <span className="goal-history-meta">
+                  <time dateTime={entry.at}>
+                    {new Date(entry.at).toLocaleString([], {
+                      month: "short",
+                      day: "numeric",
+                      hour: "numeric",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                  {entry.tokens
+                    ? ` · ${formatTokens(entry.tokens)} tokens`
+                    : ""}
+                  {change
+                    ? ` · +${formatTokens(change)} since the last change`
+                    : ""}
+                </span>
+                {entry.turnId && (
+                  <button
+                    type="button"
+                    className="goal-history-turn"
+                    onClick={() => viewTurn(entry.turnId!)}
+                  >
+                    View turn
+                  </button>
+                )}
+                {entry.turnId && missing === entry.turnId && (
+                  <span className="goal-history-note" role="status">
+                    This turn isn’t loaded in the chat.
+                  </span>
+                )}
+              </li>
+            ))}
         </ol>
       )}
     </div>

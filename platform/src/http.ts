@@ -1,0 +1,115 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { Request, Response, NextFunction } from "express";
+import { httpError } from "../../shared/errors";
+import {
+  errorFields,
+  log,
+  REQUEST_ID_HEADER,
+  requestId,
+} from "../../shared/logging";
+
+// The inbound request id, so agent-core calls can forward it without every
+// service method taking it as a parameter.
+export const requestContext = new AsyncLocalStorage<{ requestId: string }>();
+export const currentRequestId = () => requestContext.getStore()?.requestId;
+
+export function requestIdMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const id = requestId(req.get(REQUEST_ID_HEADER));
+  res.locals.requestId = id;
+  res.setHeader(REQUEST_ID_HEADER, id);
+  next();
+}
+
+// Runs a handler inside its request context. Set per handler because async
+// context does not survive the body parser's stream events.
+export const route =
+  (fn: (req: Request, res: Response) => Promise<any> | any) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    if (req.path.startsWith("/api/sessions/"))
+      res.locals.sessionId = req.params.id;
+    return requestContext.run({ requestId: res.locals.requestId }, () =>
+      Promise.resolve()
+        .then(() => fn(req, res))
+        .catch(next),
+    );
+  };
+
+export function errorHandler(
+  error: unknown,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const { status, ...body } = httpError(error, "platform");
+  const fields = {
+    ...errorFields(error),
+    requestId: res.locals.requestId,
+    method: req.method,
+    path: req.path,
+    sessionId: res.locals.sessionId,
+    status,
+    code: body.code,
+  };
+  if (status >= 500) log("error", "request failed", fields);
+  else log("debug", "request rejected", fields);
+  // A partly written response cannot carry an error body.
+  if (res.headersSent) return next(error);
+  res.status(status).json({ ...body, requestId: res.locals.requestId });
+}
+
+const streamEnds = {
+  STREAM_FAILED:
+    "Live updates stopped unexpectedly. Reopen the conversation to reconnect.",
+  STREAM_ENDED:
+    "The assistant service stopped live updates, usually for a restart. Reconnect in a moment.",
+};
+type StreamEnd = keyof typeof streamEnds;
+
+// Named stream.error because EventSource reserves "error" for connection loss.
+export function streamErrorFrame(
+  requestId?: string,
+  code: StreamEnd = "STREAM_FAILED",
+) {
+  return `event: stream.error\ndata: ${JSON.stringify({
+    code,
+    error: streamEnds[code],
+    requestId,
+  })}\n\n`;
+}
+
+interface StreamResponse {
+  destroyed: boolean;
+  writableEnded: boolean;
+  write(chunk: string): unknown;
+}
+export function failStream(
+  res: StreamResponse,
+  error: unknown,
+  fields: { requestId?: string; sessionId?: string },
+) {
+  log("error", "live update stream failed", {
+    ...errorFields(error),
+    ...fields,
+    code: "STREAM_FAILED",
+  });
+  if (!res.destroyed && !res.writableEnded)
+    res.write(streamErrorFrame(fields.requestId));
+}
+
+// agent-core ends a stream cleanly only when it shuts down; any other end is
+// a destroyed socket and goes through failStream.
+export function endedStream(
+  res: StreamResponse,
+  fields: { requestId?: string; sessionId?: string },
+) {
+  log("warn", "live update stream ended by assistant service", {
+    ...fields,
+    code: "STREAM_ENDED",
+  });
+  if (!res.destroyed && !res.writableEnded)
+    res.write(streamErrorFrame(fields.requestId, "STREAM_ENDED"));
+}

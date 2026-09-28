@@ -30,10 +30,31 @@ import type {
   TurnTiming,
   TurnTrace,
 } from "../../shared/contracts";
-import { HttpError } from "./errors";
+import {
+  ALLOW_FOR_CHAT,
+  AUTO_MODE_REASON,
+  type ApprovalMode,
+} from "../../shared/contracts";
+import {
+  approvalMode as parseMode,
+  AUTO_MODE_NOTE,
+  GRANT,
+  findTool,
+  grantKey,
+  indexTools,
+  isToolQuestion,
+  parseToolQuestion,
+  withChatGrant,
+  type ToolIndex,
+  type ToolRef,
+} from "./approval-modes";
+import { HttpError, rpcText } from "./errors";
+import { errorFields, log } from "../../shared/logging";
 import { inventory, validateRequest } from "./schema";
 import {
+  autoAnswer,
   defaults,
+  recommendedOption,
   responseSchema,
   validateResponse,
   ServerMethod,
@@ -41,6 +62,21 @@ import {
 interface Pending extends PendingRequest {
   rawId: string | number;
   timer: NodeJS.Timeout;
+  // Approval modes: not yet shown while its mode decides, and the latest
+  // decision run, so an older one cannot settle it.
+  hidden?: boolean;
+  reviews?: number;
+}
+// Alpha approval mode of a root conversation. Threads without one keep
+// today's behaviour: every request waits for the user.
+interface ModeState {
+  mode: ApprovalMode;
+  // Treat unannotated tools named like reads (get_, list_, ...) as read-only.
+  heuristic: boolean;
+  // Tools the user allowed for this chat ("Allow for this chat").
+  grants: Set<string>;
+  // server -> tool -> read-only, from mcpServerStatus/list.
+  tools?: Promise<ToolIndex>;
 }
 interface Clock {
   start: number;
@@ -61,7 +97,12 @@ interface Thread {
   pending: Map<string, Pending>;
   messages: Snapshot["messages"];
   thinking: NonNullable<Snapshot["thinking"]>;
+  // Latest plan; kept across turns until a newer turn replaces it.
   plan: unknown;
+  // Turn that produced the stored plan, so an older turn's update is ignored.
+  planTurnId: string | null;
+  // Turns seen on this thread, oldest first, to order plan updates.
+  turnOrder: string[];
   // Latest goal reported by the runtime; one goal per conversation.
   goal: unknown;
   // Tokens seen for the current goal. The runtime only charges usage that
@@ -80,6 +121,10 @@ interface Thread {
   input?: string;
   loaded: boolean;
   threadStartMs: number;
+  // Inactivity watchdog of the running turn; paused while a request waits.
+  stall?: NodeJS.Timeout;
+  // Turn failed by the watchdog; its late completion is not reported again.
+  stalledTurn?: string;
 }
 // A helper agent spawned under a root conversation. Its runtime thread is
 // never exposed as a session; its events reach clients on the root stream.
@@ -120,6 +165,11 @@ const clip = (value: unknown, limit = 2000) =>
       ? value.slice(0, limit) + "…"
       : value
     : undefined;
+// Timing and trace that close a turn, merged into its turn.completed event.
+type TurnEnd = { timing?: TurnTiming; trace?: TurnTrace };
+const defaultStallMs = 15 * 60_000;
+const stalledMessage =
+  "The assistant stopped responding, so this response was ended. Check the conversation for a partial answer and send your message again.";
 const helperQuestionAnswer =
   "Helper agents cannot ask the user. The main agent handles clarifications; proceed with reasonable assumptions and list open questions in your result.";
 const helperToolFailure =
@@ -185,6 +235,8 @@ export class ThreadManager {
   // Last goal written as a durable record, per thread.
   private goalRecords = new Map<string, string>();
   private reservations = 0;
+  // Approval modes per root conversation; see ModeState.
+  private modes = new Map<string, ModeState>();
   // Latest account rate limits, merged from sparse updates.
   rateLimits: RateLimitView | null = null;
   unknownMethods = 0;
@@ -195,13 +247,27 @@ export class ThreadManager {
     readonly capacity = 20,
     readonly replayLimit = 500,
     readonly requestTimeoutMs = 120_000,
+    readonly stallMs = Number(process.env.TURN_STALL_MS) || defaultStallMs,
   ) {
     mkdirSync(join(home, "adapter-records"), { recursive: true });
     runtime.on("notification", (msg) =>
       this.notification(msg.method, msg.params || {}),
     );
     runtime.on("serverRequest", (msg) => this.serverRequest(msg));
+    runtime.on("adapterError", (e) => this.adapterError(e));
     runtime.on("exit", () => {
+      const now = performance.now();
+      // Turns cut off by the exit are closed as failed so traces and timings end.
+      const cut = new Map<Thread, { turnId?: string; done: TurnEnd }>();
+      for (const t of this.threads.values()) {
+        if (t.state.kind === "idle") continue;
+        const turnId =
+          t.state.kind === "starting" ? t.clock?.turnId : t.state.turnId;
+        cut.set(t, {
+          turnId,
+          done: turnId ? this.finishTurn(t, turnId, "failed", now) : {},
+        });
+      }
       this.generation = randomUUID();
       this.early.clear();
       for (const t of this.threads.values()) {
@@ -212,14 +278,120 @@ export class ThreadManager {
         t.loaded = false;
         t.state = { kind: "idle" };
         t.clock = undefined;
+        // A new runtime may report different tools.
+        const mode = this.modes.get(t.id);
+        if (mode) mode.tools = undefined;
         t.trace = undefined;
         for (const c of this.agentsOf(t.id)) c.turnId = undefined;
-        this.emit(t, "error", {
-          message: "Runtime exited; session can be resumed",
-          code: "RUNTIME_UNAVAILABLE",
-        });
+        this.unwatch(t);
+        const turn = cut.get(t);
+        if (!turn) continue;
+        this.failed(
+          t,
+          turn.turnId,
+          {
+            message: "Runtime exited; session can be resumed",
+            code: "RUNTIME_UNAVAILABLE",
+          },
+          turn.done,
+        );
       }
     });
+  }
+  // Reports a failed turn the way the runtime does: error, then completion.
+  private failed(
+    t: Thread,
+    turnId: string | undefined,
+    error: { message: string; code: string },
+    done: TurnEnd = {},
+  ) {
+    this.emit(
+      t,
+      "error",
+      { ...error, willRetry: false, ...(turnId ? { turnId } : {}) },
+      turnId,
+    );
+    if (!turnId) return;
+    this.emit(
+      t,
+      "turn.completed",
+      {
+        method: "turn/completed",
+        threadId: t.id,
+        turn: { id: turnId, status: "failed", code: error.code, error },
+        ...done,
+      },
+      turnId,
+    );
+  }
+  private adapterError(e: {
+    threadId?: string;
+    turnId?: string;
+    method?: string;
+  }) {
+    if (!e?.threadId) return;
+    const child = this.children.get(e.threadId);
+    const t = this.threads.get(child ? child.rootId : e.threadId);
+    if (!t) return;
+    const turnId = child ? undefined : e.turnId;
+    this.emit(
+      t,
+      "error",
+      {
+        message:
+          "The assistant service could not process a runtime update. Check the conversation before continuing; contact support if this continues.",
+        code: "ADAPTER_INTERNAL",
+        willRetry: false,
+        ...(turnId ? { turnId } : {}),
+      },
+      turnId,
+    );
+  }
+  // (Re)arms the running turn's inactivity watchdog. A turn waiting on the
+  // user is not stalled, so the watchdog is off while a request is pending.
+  private watch(t: Thread) {
+    this.unwatch(t);
+    if (t.state.kind !== "running" || t.pending.size) return;
+    const turnId = t.state.turnId;
+    t.stall = setTimeout(() => this.stalled(t, turnId), this.stallMs);
+    t.stall.unref?.();
+  }
+  private unwatch(t: Thread) {
+    clearTimeout(t.stall);
+    t.stall = undefined;
+  }
+  private stalled(t: Thread, turnId: string) {
+    t.stall = undefined;
+    if (
+      t.state.kind !== "running" ||
+      t.state.turnId !== turnId ||
+      t.pending.size
+    )
+      return;
+    log("warn", "turn stalled; interrupting", {
+      threadId: t.id,
+      turnId,
+      stallMs: this.stallMs,
+    });
+    this.runtime
+      .request("turn/interrupt", { threadId: t.id, turnId })
+      .catch((e) =>
+        log("debug", "stalled turn interrupt failed", {
+          threadId: t.id,
+          turnId,
+          ...errorFields(e),
+        }),
+      );
+    const done = this.finishTurn(t, turnId, "failed", performance.now());
+    t.state = { kind: "idle" };
+    t.stalledTurn = turnId;
+    for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
+    this.failed(
+      t,
+      turnId,
+      { message: stalledMessage, code: "TURN_STALLED" },
+      done,
+    );
   }
   private thread(id: string): Thread {
     if (!/^[\w-]+$/.test(id))
@@ -236,6 +408,8 @@ export class ThreadManager {
         messages: [],
         thinking: [],
         plan: null,
+        planTurnId: null,
+        turnOrder: [],
         goal: null,
         goalTokens: { key: null, observed: 0, turns: [] },
         diff: "",
@@ -273,7 +447,15 @@ export class ThreadManager {
   async create(params: any = {}) {
     // Truex's helper and persona settings are not runtime parameters; the
     // business runtime turns them into enforced config and instructions.
-    const { subAgents, persona, scope, ...start } = params || {};
+    const {
+      subAgents,
+      persona,
+      scope,
+      approvalMode,
+      approvalNameHeuristic,
+      ...start
+    } = params || {};
+    if (approvalMode !== undefined) parseMode(approvalMode);
     validateRequest("thread/start", start);
     this.redactor.remember(start);
     this.reserve();
@@ -287,6 +469,7 @@ export class ThreadManager {
       });
       const t = this.thread(result.thread.id);
       this.roots.add(t.id);
+      this.setMode(t.id, approvalMode, approvalNameHeuristic);
       t.loaded = true;
       t.threadStartMs = performance.now() - started;
       return { threadId: t.id, threadStartMs: t.threadStartMs };
@@ -294,9 +477,15 @@ export class ThreadManager {
       this.reservations--;
     }
   }
-  async resume(id: string, params: any = {}) {
+  async resume(id: string, input: any = {}) {
+    // Approval mode fields are Truex settings, not runtime parameters.
+    const { approvalMode, approvalNameHeuristic, ...params } = input || {};
+    if (approvalMode !== undefined) parseMode(approvalMode);
     return this.serial(id, async () => {
       const t = this.thread(id);
+      const moded = this.modes.has(id) || approvalMode !== undefined;
+      this.setMode(id, approvalMode, approvalNameHeuristic);
+      if (moded) this.reevaluate(t);
       if (t.loaded) return this.snapshot(id);
       this.reserve();
       try {
@@ -308,14 +497,17 @@ export class ThreadManager {
         t.loaded = true;
         this.roots.add(id);
         // Rebuild helper agents from the restored history.
-        for (const turn of result.thread?.turns ?? [])
+        for (const turn of result.thread?.turns ?? []) {
+          if (typeof turn?.id === "string") this.seeTurn(t, turn.id);
           for (const item of turn?.items ?? []) this.collab(id, item);
-        const active = result.thread.turns?.find(
+        }
+        const active = result.thread?.turns?.find(
           (turn: any) => turn.status === "inProgress",
         );
         t.state = active
           ? { kind: "running", turnId: active.id }
           : { kind: "idle" };
+        this.watch(t);
         // Recover the goal after an agent-core restart; goals are optional.
         try {
           this.setGoal(
@@ -323,15 +515,18 @@ export class ThreadManager {
             (await this.runtime.request("thread/goal/get", { threadId: id }))
               ?.goal ?? null,
           );
-        } catch {
+        } catch (e) {
+          log("debug", "goal recovery failed", {
+            threadId: id,
+            ...errorFields(e),
+          });
           this.setGoal(t, null);
         }
         return this.snapshot(id);
       } catch (e) {
         if (
-          e instanceof Error &&
           /thread.*(not found|does not exist)|no rollout found|unable to find.*thread/i.test(
-            e.message,
+            rpcText(e),
           )
         )
           throw new HttpError(
@@ -382,7 +577,6 @@ export class ThreadManager {
       if (explicitSteer) throw new HttpError(409, "No running turn to steer");
       t.state = { kind: "starting" };
       t.diff = "";
-      t.plan = null;
       t.clock = {
         start: performance.now(),
         accept: null,
@@ -403,9 +597,12 @@ export class ThreadManager {
           t.clock.accept = performance.now() - t.clock.start;
           t.clock.turnId = result.turn.id;
         }
+        this.seeTurn(t, result.turn.id);
         // A complete notification can arrive before the response; do not revive that turn.
-        if (t.state.kind === "starting")
+        if (t.state.kind === "starting") {
           t.state = { kind: "running", turnId: result.turn.id };
+          this.watch(t);
+        }
         return { turnId: result.turn.id, steer: false };
       } catch (e) {
         if (e instanceof HttpError && e.code === "RPC_TIMEOUT") {
@@ -425,11 +622,14 @@ export class ThreadManager {
         throw new HttpError(409, "No running turn");
       const turnId = t.state.turnId;
       t.state = { kind: "interrupting", turnId };
+      this.unwatch(t);
       try {
         await this.runtime.request("turn/interrupt", { threadId: id, turnId });
       } catch (e) {
-        if (t.state.kind === "interrupting")
+        if (t.state.kind === "interrupting") {
           t.state = { kind: "running", turnId };
+          this.watch(t);
+        }
         throw e;
       }
       // Stopping the conversation stops its helpers too.
@@ -451,7 +651,9 @@ export class ThreadManager {
     return {
       cursor: `${this.generation}:${t.seq}`,
       state: t.state,
-      pending: [...t.pending.values()].map(({ timer, rawId, ...p }) => p),
+      pending: [...t.pending.values()]
+        .filter((p) => !p.hidden)
+        .map(({ timer, rawId, hidden, reviews, ...p }) => p),
       messages: t.messages,
       thinking: t.thinking,
       plan: t.plan,
@@ -488,9 +690,11 @@ export class ThreadManager {
     await this.runtime
       .request("thread/archive", { threadId: c.agent.threadId })
       .catch((e) =>
-        process.stderr.write(
-          `Helper shutdown after stop failed: ${(e as Error).message}\n`,
-        ),
+        log("warn", "helper shutdown after stop failed", {
+          threadId: id,
+          helperThreadId: c.agent.threadId,
+          ...errorFields(e),
+        }),
       );
     return { ok: true };
   }
@@ -588,7 +792,12 @@ export class ThreadManager {
           role: clip(result?.thread?.agentRole, 80),
         });
       })
-      .catch(() => {});
+      .catch((e) =>
+        log("debug", "helper name lookup failed", {
+          helperThreadId: id,
+          ...errorFields(e),
+        }),
+      );
   }
   private apply(agent: SubAgent, patch: Partial<SubAgent>) {
     let changed = false;
@@ -684,6 +893,8 @@ export class ThreadManager {
   private childNotification(c: Child, method: string, p: any) {
     const root = this.threads.get(c.rootId);
     if (!root) return;
+    // A helper working for the running turn keeps that turn alive.
+    this.watch(root);
     const a = c.agent,
       turnId = p.turnId || p.turn?.id,
       itemId = p.itemId || p.item?.id;
@@ -902,6 +1113,66 @@ export class ThreadManager {
       );
     return context;
   }
+  private finishTurn(
+    t: Thread,
+    turnId: string,
+    status: string | undefined,
+    at: number,
+  ): TurnEnd {
+    const end: TurnEnd = {};
+    if (t.clock && t.clock.turnId === turnId) {
+      const c = t.clock,
+        total = at - c.start,
+        stream = c.first !== null && c.last !== null ? c.last - c.first : 0;
+      const timing: TurnTiming = {
+        turnId,
+        acceptMs: c.accept,
+        ttftMs: c.first === null ? null : c.first - c.start,
+        streamMs: stream,
+        adapterStreamMs: Math.min(stream, c.handler),
+        idleStreamMs: Math.max(0, stream - c.handler),
+        maxGapMs: c.gap,
+        deltaRate: stream > 0 ? c.count / (stream / 1000) : 0,
+        finalizeMs: c.last === null ? total : at - c.last,
+        totalMs: total,
+        deltaCount: c.count,
+        nonStreaming: c.count === 0,
+        status: status as string,
+      };
+      t.timings.push(timing);
+      if (t.timings.length > 100) t.timings.shift();
+      end.timing = timing;
+      t.clock = undefined;
+    }
+    const b = t.trace;
+    if (b && b.turnId === turnId) {
+      t.trace = undefined;
+      const trace = b.finish(
+        status ?? "completed",
+        end.timing?.totalMs ?? null,
+      );
+      t.traces.push(trace);
+      if (t.traces.length > traceLimit) t.traces.shift();
+      t.contexts.set(turnId, b.context());
+      if (t.contexts.size > contextTurnLimit)
+        t.contexts.delete(t.contexts.keys().next().value!);
+      end.trace = trace;
+    }
+    return end;
+  }
+  private seeTurn(t: Thread, turnId: string) {
+    if (t.turnOrder.includes(turnId)) return;
+    t.turnOrder.push(turnId);
+    if (t.turnOrder.length > 500) t.turnOrder.shift();
+  }
+  // True when turnId is older than the turn that produced the stored plan.
+  // An unknown turn counts as older once the stored plan's turn is known.
+  private stalePlan(t: Thread, turnId: string) {
+    if (!t.planTurnId || t.planTurnId === turnId) return false;
+    const stored = t.turnOrder.indexOf(t.planTurnId);
+    if (stored < 0) return false;
+    return t.turnOrder.indexOf(turnId) < stored;
+  }
   // A different goal starts a fresh tally.
   private setGoal(t: Thread, goal: any) {
     const key = goalKey(goal);
@@ -945,6 +1216,8 @@ export class ThreadManager {
       "turn.completed",
       "approval.resolved",
       "goal.cleared",
+      // Lets platform keep the plan when no browser is subscribed.
+      "plan.updated",
     ].includes(type);
     if (type === "goal.cleared") this.goalRecords.set(t.id, "cleared");
     // Goal changes are durable; token-only updates are not.
@@ -958,28 +1231,49 @@ export class ThreadManager {
       durable = this.goalRecords.get(t.id) !== key;
       this.goalRecords.set(t.id, key);
     }
+    let lost = false;
     if (durable) {
       const dir = join(this.home, "adapter-records", t.id);
-      mkdirSync(dir, { recursive: true });
       const file = join(
         dir,
         `${this.generation}-${String(event.seq).padStart(12, "0")}.json`,
       );
       try {
+        mkdirSync(dir, { recursive: true });
         writeFileSync(file + ".tmp", JSON.stringify(event));
         renameSync(file + ".tmp", file);
-      } catch {
+      } catch (e) {
+        lost = true;
         this.draining = true;
-        process.stderr.write(
-          "Durable record write failed; stopping admission\n",
-        );
-        for (const sub of t.subscribers) sub.destroy();
+        log("error", "durable record write failed; stopping admission", {
+          threadId: t.id,
+          turnId,
+          eventType: type,
+          seq: event.seq,
+          ...errorFields(e),
+        });
       }
     }
     t.events.push(event);
     if (t.events.length > this.replayLimit) t.events.shift();
     for (const sub of t.subscribers)
       if (!send(sub, this.frame(event))) sub.destroy();
+    if (lost) {
+      // Subscribers learn why the stream ends before it is closed.
+      this.emit(
+        t,
+        "error",
+        {
+          message:
+            "Conversation storage is unavailable, so this update may not be saved. Refresh the conversation later to check its state.",
+          code: "STORAGE_UNAVAILABLE",
+          willRetry: false,
+          ...(turnId ? { turnId } : {}),
+        },
+        turnId,
+      );
+      for (const sub of t.subscribers) sub.destroy();
+    }
     return event;
   }
   private notification(method: string, p: any) {
@@ -987,7 +1281,7 @@ export class ThreadManager {
     p = this.redactor.clean(p);
     if (!inventory.notifications.some((n) => n.method === method)) {
       this.unknownMethods++;
-      process.stderr.write(`Unknown runtime notification: ${method}\n`);
+      log("warn", "unknown runtime notification", { method });
     }
     const id = p.threadId || p.thread?.id;
     if (!id) {
@@ -1033,7 +1327,14 @@ export class ThreadManager {
       if (t.state.kind === "idle" || t.state.kind === "starting")
         t.state = { kind: "running", turnId };
       if (t.clock) t.clock.turnId = turnId;
+      if (turnId) this.seeTurn(t, turnId);
       this.builder(t, turnId);
+    }
+    // Any activity on the thread shows the running turn is alive.
+    this.watch(t);
+    if (method === "turn/completed" && turnId && t.stalledTurn === turnId) {
+      t.stalledTurn = undefined;
+      return;
     }
     if (
       method === "item/reasoning/summaryTextDelta" ||
@@ -1119,7 +1420,12 @@ export class ThreadManager {
       if (t.messages.length > 1000)
         t.messages.splice(0, t.messages.length - 1000);
     }
-    if (method === "turn/plan/updated") t.plan = p.plan;
+    if (method === "turn/plan/updated") {
+      // A replayed or late update from an older turn must not replace a newer plan.
+      if (turnId && this.stalePlan(t, turnId)) return;
+      t.plan = p.plan;
+      t.planTurnId = turnId ?? t.planTurnId;
+    }
     if (method === "turn/started" && turnId) this.trackGoalTurn(t, turnId);
     if (method === "thread/goal/updated") {
       this.setGoal(t, p.goal ?? null);
@@ -1164,49 +1470,13 @@ export class ThreadManager {
     let data = { method, ...p };
     if (method === "turn/completed") {
       for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
-      if (t.clock && t.clock.turnId === turnId) {
-        const c = t.clock,
-          total = begin - c.start,
-          stream = c.first !== null && c.last !== null ? c.last - c.first : 0;
-        const timing: TurnTiming = {
-          turnId,
-          acceptMs: c.accept,
-          ttftMs: c.first === null ? null : c.first - c.start,
-          streamMs: stream,
-          adapterStreamMs: Math.min(stream, c.handler),
-          idleStreamMs: Math.max(0, stream - c.handler),
-          maxGapMs: c.gap,
-          deltaRate: stream > 0 ? c.count / (stream / 1000) : 0,
-          finalizeMs: c.last === null ? total : begin - c.last,
-          totalMs: total,
-          deltaCount: c.count,
-          nonStreaming: c.count === 0,
-          status: p.turn.status,
-        };
-        t.timings.push(timing);
-        if (t.timings.length > 100) t.timings.shift();
-        data = { ...data, timing };
-        t.clock = undefined;
-      }
-      const b = t.trace;
-      if (b && b.turnId === turnId) {
-        t.trace = undefined;
-        const trace = b.finish(
-          p.turn?.status ?? "completed",
-          (data as any).timing?.totalMs ?? null,
-        );
-        t.traces.push(trace);
-        if (t.traces.length > traceLimit) t.traces.shift();
-        t.contexts.set(turnId, b.context());
-        if (t.contexts.size > contextTurnLimit)
-          t.contexts.delete(t.contexts.keys().next().value!);
-        data = { ...data, trace };
-      }
+      data = { ...data, ...this.finishTurn(t, turnId, p.turn?.status, begin) };
       if (
         (t.state.kind === "running" || t.state.kind === "interrupting") &&
         t.state.turnId === turnId
       ) {
         t.state = { kind: "idle" };
+        this.unwatch(t);
         for (const request of [...t.pending.values()])
           this.settle(
             t,
@@ -1216,8 +1486,12 @@ export class ThreadManager {
           );
       }
     }
-    if (["thread/deleted", "thread/archived", "thread/closed"].includes(method))
+    if (
+      ["thread/deleted", "thread/archived", "thread/closed"].includes(method)
+    ) {
       t.loaded = false;
+      this.unwatch(t);
+    }
     this.emit(t, mappings[method] || "runtime.event", data, turnId, itemId);
     if (t.clock?.first !== null && t.clock)
       t.clock.handler += performance.now() - begin;
@@ -1270,15 +1544,28 @@ export class ThreadManager {
       method === "item/tool/call"
     ) {
       const generation = this.generation;
-      void this.runtime.executeTool(msg.params).then((result) => {
-        if (generation === this.generation) {
-          try {
-            this.runtime.respond(msg.id, result);
-          } catch {
-            /* Runtime disconnected. */
+      void this.runtime
+        .executeTool(msg.params)
+        .then((result) => {
+          if (generation === this.generation) {
+            try {
+              this.runtime.respond(msg.id, result);
+            } catch (e) {
+              log("debug", "tool result not delivered; runtime disconnected", {
+                threadId: msg.params?.threadId,
+                tool: msg.params?.tool,
+                ...errorFields(e),
+              });
+            }
           }
-        }
-      });
+        })
+        .catch((e) =>
+          log("error", "tool call failed", {
+            threadId: msg.params?.threadId,
+            tool: msg.params?.tool,
+            ...errorFields(e),
+          }),
+        );
       return;
     }
     if (!Object.hasOwn(defaults, method) || defaults[method] === null) {
@@ -1312,12 +1599,25 @@ export class ThreadManager {
       detail: this.redactor.clean(msg.params),
       expiresAt: new Date(Date.now() + this.requestTimeoutMs).toISOString(),
       responseSchema: responseSchema(method),
-      timer: setTimeout(
-        () => this.settle(t, pending, defaults[method], "expired"),
-        this.requestTimeoutMs,
-      ),
+      timer: setTimeout(() => {
+        // An unanswered question proceeds with its recommended option.
+        const auto =
+          method === "item/tool/requestUserInput"
+            ? autoAnswer(pending.detail)
+            : null;
+        if (auto) this.settle(t, pending, auto, "auto-recommended");
+        else this.settle(t, pending, defaults[method], "expired");
+      }, this.requestTimeoutMs),
     };
     t.pending.set(requestId, pending);
+    this.watch(t);
+    // A chat with an approval mode may answer before anyone is asked.
+    if (method === "item/tool/requestUserInput" && this.modes.has(t.id)) {
+      pending.detail = withChatGrant(pending.detail);
+      pending.hidden = true;
+      void this.review(t, pending);
+      return;
+    }
     const { timer, rawId, ...publicRequest } = pending;
     this.emit(
       t,
@@ -1326,6 +1626,173 @@ export class ThreadManager {
       msg.params.turnId,
       msg.params.itemId,
     );
+  }
+  // Sets a root conversation's approval mode; absent leaves it unchanged.
+  private setMode(id: string, mode: unknown, heuristic: unknown) {
+    if (mode === undefined) return;
+    const next = parseMode(mode);
+    const state = this.modes.get(id);
+    if (!state) {
+      this.modes.set(id, {
+        mode: next,
+        heuristic: heuristic === true,
+        grants: new Set(),
+      });
+      return;
+    }
+    state.mode = next;
+    if (heuristic !== undefined && (heuristic === true) !== state.heuristic) {
+      state.heuristic = heuristic === true;
+      state.tools = undefined;
+    }
+  }
+  setApprovalMode(id: string, mode: unknown) {
+    const t = this.thread(id);
+    if (this.children.has(id))
+      throw new HttpError(409, "Helper agents follow their conversation");
+    const next = parseMode(mode);
+    const state = this.modes.get(id);
+    if (state) state.mode = next;
+    else
+      this.modes.set(id, { mode: next, heuristic: false, grants: new Set() });
+    this.reevaluate(t);
+    return { mode: next };
+  }
+  // Runs the chat's mode again over its waiting questions.
+  private reevaluate(t: Thread) {
+    if (!this.modes.has(t.id)) return;
+    for (const p of [...t.pending.values()])
+      if (p.method === "item/tool/requestUserInput") void this.review(t, p);
+  }
+  // Answers a request under the chat's mode, or shows it to the user.
+  private async review(t: Thread, p: Pending) {
+    const run = (p.reviews = (p.reviews ?? 0) + 1);
+    let decision: { result: any; reason: string } | null = null;
+    try {
+      decision = await this.decide(t.id, p.detail);
+      if (decision) validateResponse(p.method, decision.result);
+    } catch (e) {
+      // A failed lookup or an invalid answer never allows anything.
+      log("debug", "approval mode decision failed; asking the user", {
+        threadId: t.id,
+        requestId: p.requestId,
+        ...errorFields(e),
+      });
+      decision = null;
+    }
+    if (!t.pending.has(p.requestId) || p.reviews !== run) return;
+    if (decision) this.settle(t, p, decision.result, decision.reason);
+    else if (p.hidden) {
+      p.hidden = false;
+      const { timer, rawId, hidden, reviews, ...publicRequest } = p;
+      this.emit(
+        t,
+        "approval.requested",
+        publicRequest,
+        typeof p.detail?.turnId === "string" ? p.detail.turnId : undefined,
+        typeof p.detail?.itemId === "string" ? p.detail.itemId : undefined,
+      );
+    }
+  }
+  // The mode's answer for every question in a request, or null to ask.
+  // Plan approval and secret questions always ask; a chat grant allows its
+  // tool in any mode. Tools are only ever sent "Allow".
+  private async decide(id: string, detail: any) {
+    const state = this.modes.get(id);
+    if (!state) return null;
+    const mode = state.mode;
+    const questions: any[] = Array.isArray(detail?.questions)
+      ? detail.questions
+      : [];
+    if (!questions.length) return null;
+    const answers: Record<string, { answers: string[] }> = {};
+    let granted = true;
+    for (const q of questions) {
+      if (typeof q?.id !== "string" || q.isSecret === true) return null;
+      if (q.id === "plan_approval") return null;
+      if (isToolQuestion(q)) {
+        const ref = parseToolQuestion(q.question);
+        const offered =
+          Array.isArray(q.options) &&
+          q.options.some((o: any) => o?.label === "Allow");
+        if (!ref || !offered) return null;
+        answers[q.id] = { answers: ["Allow"] };
+        if (state.grants.has(grantKey(ref))) continue;
+        granted = false;
+        if (mode === "auto") continue;
+        if (mode === "readOnly" && (await this.readOnly(id, state, ref)))
+          continue;
+        return null;
+      }
+      granted = false;
+      const pick = mode === "auto" ? recommendedOption(q) : null;
+      if (!pick) return null;
+      answers[q.id] = { answers: [pick, AUTO_MODE_NOTE] };
+    }
+    return {
+      result: { answers },
+      reason: AUTO_MODE_REASON + (granted ? GRANT : mode),
+    };
+  }
+  // Only readOnlyHint === true (or the opt-in name heuristic) counts; an
+  // unknown tool refreshes the inventory once, then asks.
+  private async readOnly(id: string, state: ModeState, ref: ToolRef) {
+    const hit =
+      findTool(await this.toolIndex(id, state, false), ref) ??
+      findTool(await this.toolIndex(id, state, true), ref);
+    return hit?.readOnly === true;
+  }
+  private toolIndex(id: string, state: ModeState, refresh: boolean) {
+    if (refresh || !state.tools) {
+      const load = this.listTools(id, state.heuristic);
+      state.tools = load;
+      // A failed lookup is retried by the next request.
+      load.catch(() => {
+        if (state.tools === load) state.tools = undefined;
+      });
+    }
+    return state.tools!;
+  }
+  private async listTools(id: string, heuristic: boolean) {
+    const statuses: any[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < 100; page++) {
+      const result = await this.runtime.request("mcpServerStatus/list", {
+        threadId: id,
+        detail: "toolsAndAuthOnly",
+        ...(cursor ? { cursor } : {}),
+      });
+      if (!Array.isArray(result?.data))
+        throw new Error("Invalid MCP server status");
+      statuses.push(...result.data);
+      cursor = typeof result.nextCursor === "string" ? result.nextCursor : null;
+      if (!cursor) break;
+    }
+    return indexTools(statuses, heuristic);
+  }
+  // "Allow for this chat": remembers the tool and returns what Codex gets
+  // instead ("Allow"), or undefined when the answer grants nothing.
+  private grant(t: Thread, p: Pending, result: any) {
+    const state = this.modes.get(t.id);
+    if (!state || p.method !== "item/tool/requestUserInput") return undefined;
+    let wire: any;
+    for (const q of Array.isArray(p.detail?.questions)
+      ? p.detail.questions
+      : []) {
+      const values = result?.answers?.[q?.id]?.answers;
+      if (!isToolQuestion(q) || !Array.isArray(values)) continue;
+      if (!values.includes(ALLOW_FOR_CHAT)) continue;
+      const ref = parseToolQuestion(q.question);
+      if (!ref) continue;
+      state.grants.add(grantKey(ref));
+      wire ??= structuredClone(result);
+      wire.answers[q.id] = {
+        answers: values.map((v: unknown) =>
+          v === ALLOW_FOR_CHAT ? "Allow" : v,
+        ),
+      };
+    }
+    return wire;
   }
   answer(id: string, requestId: string, result: unknown) {
     const t = this.thread(id),
@@ -1337,7 +1804,10 @@ export class ThreadManager {
         "STALE_REQUEST",
       );
     validateResponse(pending.method, result);
-    this.settle(t, pending, result, "user");
+    const wire = this.grant(t, pending, result);
+    this.settle(t, pending, result, "user", true, wire);
+    // A new grant may cover requests that are still waiting.
+    if (wire !== undefined) this.reevaluate(t);
     return { ok: true };
   }
   private settle(
@@ -1346,17 +1816,20 @@ export class ThreadManager {
     result: any,
     reason: string,
     reply = true,
+    // Sent to the runtime instead of result, which stays the recorded answer.
+    wire?: unknown,
   ) {
     if (!t.pending.has(p.requestId)) return;
     if (reply) {
       try {
-        this.runtime.respond(p.rawId, result);
+        this.runtime.respond(p.rawId, wire === undefined ? result : wire);
       } catch {
         reason = "runtime-unavailable";
       }
     }
     clearTimeout(p.timer);
     t.pending.delete(p.requestId);
+    this.watch(t);
     // The question travels with its answer so the decision can be audited.
     this.emit(
       t,
@@ -1468,18 +1941,22 @@ export class ThreadManager {
         this.dropAgents(id);
         t.contexts.clear();
       }
+      if (method === "thread/delete") this.modes.delete(id);
       if (
         ["thread/archive", "thread/delete", "thread/unsubscribe"].includes(
           method,
         )
-      )
+      ) {
         t.loaded = false;
+        this.unwatch(t);
+      }
       return this.redactor.clean(result);
     });
   }
   close() {
     this.draining = true;
     for (const t of this.threads.values()) {
+      this.unwatch(t);
       for (const p of t.pending.values()) clearTimeout(p.timer);
       for (const res of t.subscribers) res.end();
     }

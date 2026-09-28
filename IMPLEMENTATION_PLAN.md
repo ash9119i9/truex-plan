@@ -41,7 +41,7 @@ Out of scope: authentication, multi-tenancy, message brokers, WebSockets, cross-
 
 ## 3. Delivery order
 
-`0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 → 7 → release gate`
+`0 → 1 → 2 → 3 → 4a → 4b → 5 → 6 → 7 → 8 → release gate`
 
 | Milestone | Phases | Reviewable outcome |
 |---|---|---|
@@ -50,6 +50,7 @@ Out of scope: authentication, multi-tenancy, message brokers, WebSockets, cross-
 | M3: runtime interaction | 4b–5 | Runtime requests answered safely; measured per-turn timings |
 | M4: recoverable sessions | 6 | Persistent runtime storage, restart recovery and transcript reload |
 | M5: full surface | 7 and release gate | Every inventoried capability accounted for and validated |
+| M6: long-task planning | 8 | Agent plans long tasks, user approves, sidebar tracks execution |
 
 Do not estimate dates or process capacity until Phase 0 resolves compatibility and Phase 5 measures load. Record an owner, target date, evidence link and open blockers at each milestone review.
 
@@ -200,6 +201,41 @@ Use the Phase 0 coverage table as the source of truth. The following groups are 
 
 Exit gate: every supported capability at the pinned revision has a completed coverage row. Experimental or unavailable capabilities have explicit visibility rules; nothing is silently omitted. Forking and lifecycle operations are not assumed to be render-only changes.
 
+### Phase 8 — Long-task planning with user approval
+
+Goal: when a request is a long or multi-step task, the agent breaks it into milestones, asks the user to approve the plan, then executes it while the sidebar shows progress. Built entirely on existing Codex tools (`update_plan`, `request_user_input`) in our layers; `vendor/codex` is not modified.
+
+Decisions:
+
+| Topic | Decision |
+|---|---|
+| Who plans | The agent drafts the plan; nothing executes until the user approves it. |
+| Step completion | The model marks steps `completed` via `update_plan`; no separate verification. |
+| Editing | The plan is read-only in the UI; it shows how the task is being executed. Changes happen by rejecting with feedback before approval, or by steering during execution. |
+| Parallel work | The model decides whether to delegate milestones to sub-agents. |
+
+Flow:
+
+1. The model judges the request. Short tasks run as today.
+2. For a long task it calls `update_plan` with every milestone `pending`, then calls `request_user_input` with the choices Approve / Revise (free-text feedback).
+3. Revise: the model reworks the plan and asks again. Approve: it executes step by step, keeping exactly one step `in_progress` and marking each `completed` as it finishes.
+4. If the approval request times out (`REQUEST_TIMEOUT_MS`, default 2 minutes), agent-core answers with the recommended option (Approve for plan approval; a "(Recommended)" label or the first option for other questions) plus a note, and the model proceeds. Tool permission prompts and secret questions still decline on timeout. The approval history records the outcome as `auto`.
+5. The model may delegate independent milestones to sub-agents; the parent plan step stays `in_progress` until their results are integrated.
+
+Tasks:
+
+- [ ] Verify at the pinned revision that `request_user_input` is available in default mode (non-blocking there; blocking only in Plan mode) and that a turn can wait on it for plan approval.
+- [x] Planning instructions in `agent-core/src/business-runtime.ts`: define "long task" (three or more distinct steps, multiple deliverables, or multiple files/systems), require plan → approval → execute, one `in_progress` step, and sub-agent delegation at the model's discretion.
+- [x] Stop wiping the plan at turn start (`agent-core/src/manager.ts:385`, `frontend/app/page.tsx:327`). Keep the latest plan until a new `turn/plan/updated` replaces it, so a plan survives across turns. Fixes the backlog item "Plan is not updating in the sidebar".
+- [x] Plan approval card in chat: render the `request_user_input` approval with the drafted steps, Approve and Revise actions, and a feedback field.
+- [x] Read-only plan panel in the secondary sidebar: step statuses, current step highlighted, progress count, and an "Awaiting approval" state before approval.
+- [x] Persist the latest plan with the session in platform so it survives reload and agent-core restart; include it in the snapshot.
+- [x] Tests: plan survives turn boundaries, approve and revise paths, snapshot/reload restores the plan, and a stale plan update cannot overwrite a newer one.
+
+Later (not in this phase): a "Plan first" composer toggle using Codex Plan mode (`collaborationMode: { mode: "plan" }` on `turn/start`, which is experimental), and an agent-core milestone runner that resumes from checkpoints after a rate limit or crash.
+
+Exit gate: a real multi-step request produces a plan, waits for approval, applies revise feedback, executes with live sidebar progress, and still shows the plan after a browser reload.
+
 ## 5. Release acceptance checklist
 
 These checks validate the agreed deployment scope; they do not expand it to authentication or cross-pod failover.
@@ -231,5 +267,6 @@ For each phase, use this task brief:
 | M3 | Codex | 2026-09-19 | Implemented; partial runtime coverage | Real command-approval denial verified; full variant/load matrix remains |
 | M4 | Codex | 2026-09-19 | Local restart verified | HTTP recovery passes; cluster/PVC validation remains |
 | M5 | Codex | TBD | Acceptance incomplete | Full protocol console available; full capability/deployment matrix pending |
+| M6 | Claude | 2026-09-28 | Implemented; unit tested | agent-core 130, platform 55, frontend 100 tests pass; live approval run pending |
 
 Record changes to architecture decisions alongside their evidence. Keep this checklist and the capability coverage table current as implementation proceeds.

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { api } from "../lib/api.ts";
+import { api, ApiRequestError, errorRef, userMessage } from "../lib/api.ts";
 
 test("API errors retain server detail and metadata", async (t) => {
   t.mock.method(
@@ -56,4 +56,81 @@ test("connection and timeout errors explain uncertain delivery; success is uncha
   await assert.rejects(api("/api/sessions", {}), { code: "REQUEST_TIMEOUT" });
   mocked.mock.mockImplementation(async () => new Response('{"ok":true}'));
   assert.deepEqual(await api("/healthz"), { ok: true });
+});
+
+test("API errors carry the request id from the body, else the header", async (t) => {
+  t.mock.method(console, "warn", () => {});
+  t.mock.method(console, "error", () => {});
+  const mocked = t.mock.method(
+    globalThis,
+    "fetch",
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: "Conflict",
+          code: "CONFLICT",
+          requestId: "req-body",
+        }),
+        { status: 409, headers: { "x-request-id": "req-header" } },
+      ),
+  );
+  await assert.rejects(api("/api/sessions/s1/interrupt", {}), {
+    status: 409,
+    code: "CONFLICT",
+    requestId: "req-body",
+  });
+  mocked.mock.mockImplementation(
+    async () =>
+      new Response("<html>bad gateway</html>", {
+        status: 502,
+        headers: { "x-request-id": "req-header" },
+      }),
+  );
+  await assert.rejects(api("/api/agents"), {
+    code: "HTTP_502",
+    requestId: "req-header",
+  });
+});
+
+test("network failures keep the original error as the cause and are logged", async (t) => {
+  const logged = t.mock.method(console, "error", () => {});
+  const original = new TypeError("fetch failed");
+  t.mock.method(globalThis, "fetch", async () => {
+    throw original;
+  });
+  const error = await api("/api/sessions", {}).catch((e) => e);
+  assert.ok(error instanceof ApiRequestError);
+  assert.equal(error.cause, original);
+  assert.equal(error.requestId, undefined);
+  assert.equal(logged.mock.callCount(), 1);
+  assert.deepEqual(logged.mock.calls[0].arguments[1], {
+    method: "POST",
+    path: "/api/sessions",
+    status: 0,
+    code: "NETWORK_ERROR",
+    requestId: undefined,
+  });
+});
+
+test("userMessage shows API messages and hides unexpected errors", (t) => {
+  const logged = t.mock.method(console, "error", () => {});
+  const apiError = new ApiRequestError(
+    "Not found here",
+    404,
+    "SESSION_NOT_FOUND",
+    {
+      requestId: "r1",
+    },
+  );
+  assert.equal(userMessage(apiError), "Not found here");
+  assert.equal(logged.mock.callCount(), 0);
+  const bug = new TypeError("Cannot read properties of undefined");
+  assert.doesNotMatch(userMessage(bug), /Cannot read/);
+  assert.equal(userMessage(bug, "Fallback"), "Fallback");
+  assert.equal(logged.mock.callCount(), 2);
+  assert.deepEqual(errorRef(apiError), {
+    code: "SESSION_NOT_FOUND",
+    requestId: "r1",
+  });
+  assert.equal(errorRef(bug), null);
 });

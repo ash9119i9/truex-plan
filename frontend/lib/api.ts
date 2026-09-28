@@ -4,12 +4,75 @@ export const base =
 export class ApiRequestError extends Error {
   status: number;
   code: string;
-  constructor(message: string, status: number, code: string) {
-    super(message);
+  // Correlates this failure with platform logs; absent for network failures.
+  requestId?: string;
+  constructor(
+    message: string,
+    status: number,
+    code: string,
+    options?: { requestId?: string; cause?: unknown },
+  ) {
+    super(
+      message,
+      options?.cause === undefined ? undefined : { cause: options.cause },
+    );
     this.name = "ApiRequestError";
     this.status = status;
     this.code = code;
+    if (options?.requestId) this.requestId = options.requestId;
   }
+}
+
+// A message that is safe to show a user. API errors already carry a friendly
+// message; anything else (a TypeError from a bug, say) is logged and replaced.
+export function userMessage(
+  error: unknown,
+  fallback = "Something went wrong. Try again, or refresh the page.",
+): string {
+  if (error instanceof ApiRequestError) return error.message;
+  console.error("[truex] unexpected error", error);
+  return fallback;
+}
+
+// The reference shown under an error so users can quote it to support.
+export interface ErrorRef {
+  code?: string;
+  requestId?: string;
+  // Stream errors have no request; the turn id matches agent-core's logs.
+  turnId?: string;
+}
+export function errorRef(error: unknown): ErrorRef | null {
+  if (!(error instanceof ApiRequestError)) return null;
+  return {
+    code: error.code,
+    ...(error.requestId ? { requestId: error.requestId } : {}),
+  };
+}
+
+// For background loads that fail quietly: records which load failed and the
+// details needed to trace it, without interrupting the user.
+export function warnFailure(tag: string, error: unknown) {
+  if (error instanceof ApiRequestError)
+    console.warn(`[truex] ${tag} failed`, {
+      code: error.code,
+      status: error.status,
+      requestId: error.requestId,
+    });
+  else console.warn(`[truex] ${tag} failed`, error);
+}
+
+// One log line per failed call, keyed by what support needs to find it.
+function logFailure(method: string, path: string, error: ApiRequestError) {
+  const detail = {
+    method,
+    path,
+    status: error.status,
+    code: error.code,
+    requestId: error.requestId,
+  };
+  if (error.status === 0 || error.status >= 500)
+    console.error("[truex] api request failed", detail);
+  else console.warn("[truex] api request failed", detail);
 }
 
 function statusMessage(status: number): string {
@@ -33,44 +96,64 @@ function statusMessage(status: number): string {
 }
 
 export async function api(path: string, body?: unknown) {
+  const method = body === undefined ? "GET" : "POST";
+  const fail = (error: ApiRequestError): never => {
+    logFailure(method, path, error);
+    throw error;
+  };
   let res: Response;
   try {
     res = await fetch(base + path, {
-      method: body === undefined ? "GET" : "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(45000),
     });
   } catch (error) {
     const timeout = error instanceof Error && error.name === "TimeoutError";
-    throw new ApiRequestError(
-      timeout
-        ? "The request timed out. Check the conversation before retrying; the request may have been accepted."
-        : "Unable to connect to Truex. Check your network connection and service availability. If you submitted a message, check the conversation before retrying.",
-      0,
-      timeout ? "REQUEST_TIMEOUT" : "NETWORK_ERROR",
+    return fail(
+      new ApiRequestError(
+        timeout
+          ? "The request timed out. Check the conversation before retrying; the request may have been accepted."
+          : "Unable to connect to Truex. Check your network connection and service availability. If you submitted a message, check the conversation before retrying.",
+        0,
+        timeout ? "REQUEST_TIMEOUT" : "NETWORK_ERROR",
+        { cause: error },
+      ),
     );
   }
+  const headerId = res.headers.get("x-request-id") || undefined;
   if (res.status === 204) return undefined;
   let data: any;
   try {
     data = await res.json();
-  } catch {
-    throw new ApiRequestError(
-      res.ok
-        ? "The service returned an unreadable response. Refresh the conversation to check its current state."
-        : statusMessage(res.status),
-      res.status,
-      res.ok ? "INVALID_RESPONSE" : `HTTP_${res.status}`,
+  } catch (error) {
+    return fail(
+      new ApiRequestError(
+        res.ok
+          ? "The service returned an unreadable response. Refresh the conversation to check its current state."
+          : statusMessage(res.status),
+        res.status,
+        res.ok ? "INVALID_RESPONSE" : `HTTP_${res.status}`,
+        { requestId: headerId, cause: error },
+      ),
     );
   }
   if (!res.ok)
-    throw new ApiRequestError(
-      typeof data?.error === "string" && data.error.trim()
-        ? data.error
-        : statusMessage(res.status),
-      res.status,
-      typeof data?.code === "string" ? data.code : `HTTP_${res.status}`,
+    return fail(
+      new ApiRequestError(
+        typeof data?.error === "string" && data.error.trim()
+          ? data.error
+          : statusMessage(res.status),
+        res.status,
+        typeof data?.code === "string" ? data.code : `HTTP_${res.status}`,
+        {
+          requestId:
+            typeof data?.requestId === "string" && data.requestId
+              ? data.requestId
+              : headerId,
+        },
+      ),
     );
   return data;
 }

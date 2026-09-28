@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ThreadManager } from "../src/manager";
-import { defaults, validateResponse } from "../src/requests";
+import { AUTO_NOTE, defaults, validateResponse } from "../src/requests";
 class Fake extends EventEmitter {
   calls: { method: string; params: any }[] = [];
   replies: any[] = [];
@@ -686,10 +686,13 @@ test("interrupting the root interrupts running helpers; helper routes check owne
   });
   await manager.interruptAgent("thread_1", "child_1");
   // Name lookups may run in between, so find the stop request itself.
-  assert.deepEqual(runtime.calls.filter((c) => c.method === "turn/interrupt").at(-1), {
-    method: "turn/interrupt",
-    params: { threadId: "child_1", turnId: "child_turn" },
-  });
+  assert.deepEqual(
+    runtime.calls.filter((c) => c.method === "turn/interrupt").at(-1),
+    {
+      method: "turn/interrupt",
+      params: { threadId: "child_1", turnId: "child_turn" },
+    },
+  );
   // The helper is then shut down so the main agent's wait ends.
   assert.deepEqual(runtime.calls.at(-1), {
     method: "thread/archive",
@@ -905,11 +908,15 @@ test("a helper runs through spawn, wait and close on the root stream", async (t)
   });
 
   const lifecycle = frames
-    .filter((f) => f.type.startsWith("subagent.") && f.type !== "subagent.event")
+    .filter(
+      (f) => f.type.startsWith("subagent.") && f.type !== "subagent.event",
+    )
     .map((f) => [f.type, f.data.agent.status]);
   assert.deepEqual(lifecycle[0], ["subagent.spawned", "pendingInit"]);
   assert.ok(
-    lifecycle.some(([type, s]) => type === "subagent.status" && s === "running"),
+    lifecycle.some(
+      ([type, s]) => type === "subagent.status" && s === "running",
+    ),
   );
   assert.equal(
     lifecycle.filter(([type]) => type === "subagent.completed").length,
@@ -928,7 +935,7 @@ test("a helper runs through spawn, wait and close on the root stream", async (t)
   assert.equal(agent.task, "Summarise the pricing page");
   assert.equal(agent.lastMessage, "Plans start at $10");
   assert.ok(agent.endedAt);
-  assert.equal(JSON.stringify(frames).includes("\"arguments\""), false);
+  assert.equal(JSON.stringify(frames).includes('"arguments"'), false);
 });
 test("helpers take the nickname Codex gave their thread", async (t) => {
   const { runtime, manager } = fixture(t);
@@ -937,7 +944,11 @@ test("helpers take the nickname Codex gave their thread", async (t) => {
     if (method !== "thread/read") return request(method, params);
     runtime.calls.push({ method, params });
     return {
-      thread: { id: params.threadId, agentNickname: "Hypatia", agentRole: null },
+      thread: {
+        id: params.threadId,
+        agentNickname: "Hypatia",
+        agentRole: null,
+      },
     };
   };
   await manager.create({});
@@ -945,7 +956,9 @@ test("helpers take the nickname Codex gave their thread", async (t) => {
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(manager.agents("thread_1")[0].nickname, "Hypatia");
   assert.deepEqual(
-    runtime.calls.filter((c) => c.method === "thread/read").map((c) => c.params),
+    runtime.calls
+      .filter((c) => c.method === "thread/read")
+      .map((c) => c.params),
     [{ threadId: "child_1", includeTurns: false }],
   );
   const events = (manager.threads.get("thread_1") as any).events;
@@ -988,7 +1001,12 @@ test("token usage is published as turn usage and turn.completed carries a trace"
       threadId: "thread_1",
       turnId: "turn_1",
       startedAtMs: at,
-      item: { type: "commandExecution", id: "c1", command: "ls -la /secret", status: "inProgress" },
+      item: {
+        type: "commandExecution",
+        id: "c1",
+        command: "ls -la /secret",
+        status: "inProgress",
+      },
     },
   });
   runtime.emit("notification", {
@@ -1019,7 +1037,11 @@ test("token usage is published as turn usage and turn.completed carries a trace"
     params: {
       threadId: "thread_1",
       turnId: "turn_1",
-      tokenUsage: { total: breakdown, last: breakdown, modelContextWindow: 200000 },
+      tokenUsage: {
+        total: breakdown,
+        last: breakdown,
+        modelContextWindow: 200000,
+      },
     },
   });
   types.push(thread.events.at(-1)!.type);
@@ -1053,7 +1075,10 @@ test("token usage is published as turn usage and turn.completed carries a trace"
   assert.equal(manager.snapshot("thread_1").rateLimits?.primaryUsedPercent, 12);
   runtime.emit("notification", {
     method: "turn/completed",
-    params: { threadId: "thread_1", turn: { id: "turn_1", status: "completed" } },
+    params: {
+      threadId: "thread_1",
+      turn: { id: "turn_1", status: "completed" },
+    },
   });
   const done = thread.events.at(-1)!;
   assert.equal(done.type, "turn.completed");
@@ -1083,7 +1108,9 @@ test("token usage is published as turn usage and turn.completed carries a trace"
   const context = manager.turnContext("thread_1", "turn_1");
   assert.equal(context.reconstructed, true);
   assert.ok(!JSON.stringify(context).includes("jane.doe@example.com"));
-  assert.ok(!JSON.stringify(manager.records("thread_1")).includes("reconstructed"));
+  assert.ok(
+    !JSON.stringify(manager.records("thread_1")).includes("reconstructed"),
+  );
   assert.throws(
     () => manager.turnContext("thread_1", "turn_unknown"),
     /not available/,
@@ -1139,21 +1166,148 @@ test("helper items and usage join the parent turn's trace", async (t) => {
       params: {
         threadId: "child_1",
         turnId: "ct",
-        tokenUsage: { last: { inputTokens: n, outputTokens: 1, totalTokens: n + 1 } },
+        tokenUsage: {
+          last: { inputTokens: n, outputTokens: 1, totalTokens: n + 1 },
+        },
       },
     });
   // Nothing extra reaches the UI for helper items or usage.
   assert.equal(thread.seq, before);
   runtime.emit("notification", {
     method: "turn/completed",
-    params: { threadId: "thread_1", turn: { id: "turn_1", status: "completed" } },
+    params: {
+      threadId: "thread_1",
+      turn: { id: "turn_1", status: "completed" },
+    },
   });
   const trace = thread.events.at(-1)!.data.trace;
   assert.deepEqual(
-    trace.steps.map((s: any) => [s.label, s.agent, s.agentThreadId, s.durationMs]),
+    trace.steps.map((s: any) => [
+      s.label,
+      s.agent,
+      s.agentThreadId,
+      s.durationMs,
+    ]),
     [["Searched the web", "Scout", "child_1", 20]],
   );
   assert.equal(trace.helperUsage.inputTokens, 25);
   assert.equal(trace.helperUsage.totalTokens, 27);
   assert.equal(trace.usage, null);
+});
+test("the plan survives new turns and ignores stale updates from older turns", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "long task");
+  const first = [{ step: "Draft outline", status: "pending" }];
+  runtime.emit("notification", {
+    method: "turn/plan/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      explanation: "Proposed plan",
+      plan: first,
+    },
+  });
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: {
+      threadId: "thread_1",
+      turn: { id: "turn_1", status: "completed" },
+    },
+  });
+  // The next turn starts with the previous plan still in place.
+  const request = runtime.request.bind(runtime);
+  runtime.request = async (method: string, params: any) => {
+    if (method !== "turn/start") return request(method, params);
+    runtime.calls.push({ method, params });
+    runtime.emit("notification", {
+      method: "turn/started",
+      params: { threadId: "thread_1", turn: { id: "turn_2" } },
+    });
+    return { turn: { id: "turn_2" } };
+  };
+  await manager.message("thread_1", "Approve");
+  assert.deepEqual(manager.snapshot("thread_1").plan, first);
+  const second = [{ step: "Draft outline", status: "in_progress" }];
+  runtime.emit("notification", {
+    method: "turn/plan/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_2",
+      explanation: null,
+      plan: second,
+    },
+  });
+  assert.deepEqual(manager.snapshot("thread_1").plan, second);
+  const before = manager.records("thread_1").length;
+  runtime.emit("notification", {
+    method: "turn/plan/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      explanation: null,
+      plan: [{ step: "Old", status: "pending" }],
+    },
+  });
+  assert.deepEqual(manager.snapshot("thread_1").plan, second);
+  assert.equal(manager.records("thread_1").length, before);
+});
+test("an unanswered question proceeds with its recommended option; tool approvals still decline", async (t) => {
+  const { runtime, manager } = fixture(t, 30);
+  await manager.create({});
+  const question = (id: string, labels: string[]) => ({
+    id,
+    header: "Plan",
+    question: "Approve?",
+    isOther: true,
+    isSecret: false,
+    options: labels.map((label) => ({ label, description: "" })),
+  });
+  runtime.emit("serverRequest", {
+    id: 21,
+    method: "item/tool/requestUserInput",
+    params: {
+      threadId: "thread_1",
+      questions: [question("plan_approval", ["Revise", "Approve"])],
+    },
+  });
+  runtime.emit("serverRequest", {
+    id: 22,
+    method: "item/tool/requestUserInput",
+    params: {
+      threadId: "thread_1",
+      questions: [question("scope", ["Narrow", "Broad (Recommended)"])],
+    },
+  });
+  runtime.emit("serverRequest", {
+    id: 23,
+    method: "item/tool/requestUserInput",
+    params: {
+      threadId: "thread_1",
+      questions: [question("mcp_tool_call_approval_x", ["Allow", "Cancel"])],
+    },
+  });
+  await new Promise((r) => setTimeout(r, 80));
+  assert.equal(manager.snapshot("thread_1").pending.length, 0);
+  const reply = (id: number) => runtime.replies.find((r) => r.id === id);
+  assert.deepEqual(reply(21).result.answers.plan_approval.answers, [
+    "Approve",
+    AUTO_NOTE,
+  ]);
+  assert.equal(
+    reply(22).result.answers.scope.answers[0],
+    "Broad (Recommended)",
+  );
+  assert.deepEqual(reply(23).result, { answers: {} });
+  for (const id of [21, 22])
+    validateResponse("item/tool/requestUserInput", reply(id).result);
+  const reasons = manager
+    .records("thread_1")
+    .map((r) => r.event.data.reason)
+    .filter(Boolean);
+  assert.deepEqual(reasons.sort(), [
+    "auto-recommended",
+    "auto-recommended",
+    "expired",
+  ]);
 });

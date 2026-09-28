@@ -5,6 +5,9 @@ import {
   publicSession,
   publicApproval,
   publicSnapshot,
+  publicPlan,
+  publicStoredPlan,
+  withPlanFallback,
   publicSubAgent,
   publicSubAgentTranscript,
   SUB_AGENT_ID,
@@ -14,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
+import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
 import { isDeepStrictEqual } from "node:util";
 import type {
@@ -22,11 +26,51 @@ import type {
   GoalHistoryEntry,
   GoalReview,
   Message,
+  Project,
   Session,
   SessionGoal,
 } from "../../shared/contracts";
 import { ApiError } from "./errors";
 export { ApiError } from "./errors";
+import { currentRequestId } from "./http";
+import { errorFields, log, REQUEST_ID_HEADER } from "../../shared/logging";
+// Owner failures the platform acts on (failover, orphaned/dead sessions) or
+// that tell the user what to do; they keep their upstream status.
+const OWNER_CODES = new Set([
+  "CAPACITY",
+  "DRAINING",
+  "RUNTIME_UNAVAILABLE",
+  "RUNTIME_OVERLOADED",
+  "RPC_TIMEOUT",
+  "THREAD_LOST",
+]);
+/** An agent-core rejection. 4xx passes through; an unexpected 5xx is a bad
+ * gateway here, with the upstream status and code kept in the cause for logs. */
+export function upstreamError(
+  status: number,
+  detail: any,
+  fallback: string,
+  fallbackCode: string,
+  path?: string,
+) {
+  const message = typeof detail?.error === "string" ? detail.error : fallback;
+  const code = typeof detail?.code === "string" ? detail.code : fallbackCode;
+  if (status < 500 || OWNER_CODES.has(code))
+    return new ApiError(status, message, code);
+  const cause = Object.assign(new Error(message), {
+    name: "UpstreamError",
+    status,
+    code,
+    path,
+  });
+  log("warn", "assistant service failed", {
+    requestId: currentRequestId(),
+    path,
+    upstreamStatus: status,
+    upstreamCode: code,
+  });
+  return new ApiError(502, message, "UPSTREAM_FAILED", { cause });
+}
 import { attachedMcpInstructions, mcpConfig, newMcpProfile } from "./mcp";
 import type { ModelDocument } from "./documents";
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
@@ -128,12 +172,13 @@ const DELEGATION_MODES = ["explicitRequestOnly", "proactive"];
 export function subAgentOptions(value: unknown) {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "object" || Array.isArray(value))
-    throw new ApiError(400, "subAgents must be an object");
+    throw new ApiError(400, "subAgents must be an object", "INVALID_INPUT");
   const { mode, maxConcurrent } = value as Record<string, unknown>;
   if (mode !== undefined && !DELEGATION_MODES.includes(mode as string))
     throw new ApiError(
       400,
       "subAgents.mode must be explicitRequestOnly or proactive",
+      "INVALID_INPUT",
     );
   if (
     maxConcurrent !== undefined &&
@@ -146,6 +191,7 @@ export function subAgentOptions(value: unknown) {
     throw new ApiError(
       400,
       "subAgents.maxConcurrent must be a whole number from 1 to 5",
+      "INVALID_INPUT",
     );
   return {
     ...(mode !== undefined ? { mode: mode as string } : {}),
@@ -156,8 +202,24 @@ export function subAgentOptions(value: unknown) {
 }
 function validAgentId(agentId: string) {
   if (typeof agentId !== "string" || !SUB_AGENT_ID.test(agentId))
-    throw new ApiError(400, "Invalid helper agent id");
+    throw new ApiError(400, "Invalid helper agent id", "INVALID_INPUT");
   return agentId;
+}
+const PROJECT_ID = /^proj_[0-9a-f-]{36}$/;
+function projectIdOf(id: unknown) {
+  if (typeof id !== "string" || !PROJECT_ID.test(id))
+    throw new ApiError(400, "Invalid project id", "INVALID_PROJECT");
+  return id;
+}
+function projectName(name: unknown) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!trimmed || trimmed.length > 80)
+    throw new ApiError(
+      400,
+      "Project name must contain 1–80 characters",
+      "INVALID_PROJECT",
+    );
+  return trimmed;
 }
 export class PlatformService {
   readonly hosts: string[];
@@ -171,6 +233,7 @@ export class PlatformService {
       process.env.AGENT_CORE_URL ||
       "http://127.0.0.1:4100"
     ).split(","),
+    readonly approvalModes = approvalModesConfig(),
   ) {
     this.hosts = hosts.map((x) => x.trim().replace(/\/$/, ""));
   }
@@ -190,7 +253,12 @@ export class PlatformService {
     try {
       response = await fetch(host + path, {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentRequestId()
+            ? { [REQUEST_ID_HEADER]: currentRequestId()! }
+            : {}),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: AbortSignal.timeout(35000),
       });
@@ -200,21 +268,24 @@ export class PlatformService {
           504,
           "The assistant service timed out. Check the conversation before retrying; the request may have been accepted.",
           "OWNER_TIMEOUT",
+          { cause: error },
         );
       throw new ApiError(
         503,
         "The assistant service is unavailable. Try again later or ask your administrator to check the service.",
         "OWNER_UNAVAILABLE",
+        { cause: error },
       );
     }
     let result: any;
     try {
       result = await response.json();
-    } catch {
+    } catch (error) {
       throw new ApiError(
         502,
         `The assistant service returned an unreadable response (HTTP ${response.status}). Check the conversation before retrying.`,
         "INVALID_UPSTREAM_RESPONSE",
+        { cause: error },
       );
     }
     if (!result || typeof result !== "object")
@@ -224,18 +295,19 @@ export class PlatformService {
         "INVALID_UPSTREAM_RESPONSE",
       );
     if (!response.ok)
-      throw new ApiError(
+      throw upstreamError(
         response.status,
-        typeof result.error === "string"
-          ? result.error
-          : `The assistant service rejected the request (HTTP ${response.status}).`,
-        typeof result.code === "string" ? result.code : "UPSTREAM_FAILED",
+        result,
+        `The assistant service rejected the request (HTTP ${response.status}).`,
+        "UPSTREAM_FAILED",
+        path,
       );
     return result;
   }
   async session(id: string) {
     const session = await this.store.sessions.findOne({ _id: id });
-    if (!session) throw new ApiError(404, "Session not found");
+    if (!session)
+      throw new ApiError(404, "Session not found", "SESSION_NOT_FOUND");
     if (session.runtimePolicyVersion !== POLICY_VERSION)
       throw new ApiError(
         409,
@@ -246,14 +318,22 @@ export class PlatformService {
   }
   async configuration(agentId: string, cwd?: string) {
     const agent = await this.store.findAgent(agentId);
-    if (!agent) throw new ApiError(404, "Agent not found");
+    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
     const profile = await this.store.findModel(agent.modelProfileId);
     const apiKey = profile?.apiKey || profile?.apikey;
     if (!profile || !apiKey)
-      throw new ApiError(422, "Agent requires a model profile with an API key");
+      throw new ApiError(
+        422,
+        "Agent requires a model profile with an API key",
+        "MODEL_CONFIGURATION",
+      );
     const { route } = resolveRoute(profile);
     if (!profile.baseUrl || !profile.modelName)
-      throw new ApiError(422, "Model profile requires baseUrl and modelName");
+      throw new ApiError(
+        422,
+        "Model profile requires baseUrl and modelName",
+        "MODEL_CONFIGURATION",
+      );
     const provider =
       "profile_" + String(profile._id).replace(/[^a-zA-Z0-9_]/g, "_");
     const config: Record<string, any> =
@@ -274,9 +354,18 @@ export class PlatformService {
     const names = new Set<string>();
     for (const id of agent.mcpProfileIds || []) {
       const mcp = await this.store.findMcp(id);
-      if (!mcp) throw new ApiError(422, `MCP profile missing: ${String(id)}`);
+      if (!mcp)
+        throw new ApiError(
+          422,
+          `MCP profile missing: ${String(id)}`,
+          "CONNECTOR_CONFIGURATION",
+        );
       if (names.has(mcp.name))
-        throw new ApiError(422, `Duplicate MCP server name: ${mcp.name}`);
+        throw new ApiError(
+          422,
+          `Duplicate MCP server name: ${mcp.name}`,
+          "CONNECTOR_CONFIGURATION",
+        );
       names.add(mcp.name);
       const server = mcpConfig(mcp);
       if (server.command)
@@ -285,6 +374,9 @@ export class PlatformService {
           "Business connectors must use HTTP. Configure this connector on a separate service.",
           "CONNECTOR_POLICY",
         );
+      // Approval modes decide in agent-core, so Codex must ask for each call.
+      if (this.approvalModes.enabled)
+        server.default_tools_approval_mode = "prompt";
       config[`mcp_servers.${mcp.name}`] = server;
     }
     return {
@@ -368,7 +460,7 @@ export class PlatformService {
   }
   async agentMcp(agentId: string) {
     const agent = await this.store.findAgent(agentId);
-    if (!agent) throw new ApiError(404, "Agent not found");
+    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
     const profiles = await this.store.mcp
       .find({}, { projection: { _id: 1, name: 1, enabled: 1, transport: 1 } })
       .toArray();
@@ -384,7 +476,7 @@ export class PlatformService {
   }
   async setAgentMcp(agentId: string, ids: unknown) {
     const agent = await this.store.findAgent(agentId);
-    if (!agent) throw new ApiError(404, "Agent not found");
+    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
     if (
       !Array.isArray(ids) ||
       ids.length > 50 ||
@@ -427,12 +519,16 @@ export class PlatformService {
     await this.store.mcp.insertOne(profile);
     return { id: String(profile._id), name: profile.name };
   }
-  async create(agentId: string, subAgents?: unknown) {
+  async create(agentId: string, subAgents?: unknown, projectId?: unknown) {
     if (typeof agentId !== "string")
-      throw new ApiError(400, "agentId is required");
+      throw new ApiError(400, "agentId is required", "INVALID_INPUT");
     const delegation = subAgentOptions(subAgents);
+    // Checked before the thread exists, so a bad project needs no rollback.
+    if (projectId !== undefined && projectId !== null)
+      await this.project(projectId);
     const config: any = await this.configuration(agentId);
     if (delegation) config.subAgents = delegation;
+    Object.assign(config, this.modeOptions());
     let host = "",
       thread: any;
     for (let n = 0; n < this.hosts.length; n++) {
@@ -461,6 +557,7 @@ export class PlatformService {
       timings: [],
       threadStartMs: thread.threadStartMs,
       runtimeStartup: thread.runtimeStartup,
+      ...(typeof projectId === "string" ? { projectId } : {}),
     };
     try {
       await this.store.sessions.insertOne(session);
@@ -470,7 +567,110 @@ export class PlatformService {
       );
       throw e;
     }
-    return publicSession(session);
+    if (session.projectId) await this.touchProject(session.projectId);
+    return publicSession(session, this.approvalModes);
+  }
+  // Latest 100 sessions, optionally of one project. Untitled ones are named
+  // after their first user message.
+  async sessions(projectId?: unknown) {
+    const filter: Record<string, unknown> = {
+      archived: { $ne: true },
+      runtimePolicyVersion: POLICY_VERSION,
+    };
+    if (projectId !== undefined) filter.projectId = projectIdOf(projectId);
+    const sessions = await this.store.sessions
+      .find(filter, { projection: { approvals: 0, timings: 0 } })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .toArray();
+    const untitled = sessions.filter((s) => !s.title).map((s) => s._id);
+    if (untitled.length) {
+      const firsts = await this.store.messages
+        .aggregate<{ _id: string; text: string }>([
+          { $match: { sessionId: { $in: untitled }, role: "user" } },
+          { $sort: { at: 1, _id: 1 } },
+          { $group: { _id: "$sessionId", text: { $first: "$text" } } },
+        ])
+        .toArray();
+      const titles = new Map(firsts.map((f) => [f._id, f.text]));
+      for (const s of sessions) {
+        const first = titles.get(s._id)?.trim().replace(/\s+/g, " ");
+        if (first)
+          s.title =
+            first.length > 80 ? first.slice(0, 79).trimEnd() + "…" : first;
+      }
+    }
+    return sessions.map((s) => publicSession(s, this.approvalModes));
+  }
+  // --- Projects: named folders; a session belongs to at most one. ---
+  async projects(): Promise<Project[]> {
+    return this.store.projects.find().sort({ updatedAt: -1 }).toArray();
+  }
+  async project(id: unknown) {
+    const project = await this.store.projects.findOne({ _id: projectIdOf(id) });
+    if (!project)
+      throw new ApiError(404, "Project not found", "PROJECT_NOT_FOUND");
+    return project;
+  }
+  async createProject(name: unknown) {
+    const now = new Date().toISOString();
+    const project: Project = {
+      _id: "proj_" + randomUUID(),
+      name: projectName(name),
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.store.projects.insertOne(project);
+    return project;
+  }
+  async renameProject(id: unknown, name: unknown) {
+    const next = projectName(name);
+    const project = await this.store.projects.findOneAndUpdate(
+      { _id: projectIdOf(id) },
+      { $set: { name: next, updatedAt: new Date().toISOString() } },
+      { returnDocument: "after" },
+    );
+    if (!project)
+      throw new ApiError(404, "Project not found", "PROJECT_NOT_FOUND");
+    return project;
+  }
+  // Its sessions stay, as normal conversations.
+  async deleteProject(id: unknown) {
+    const project = await this.project(id);
+    await this.store.sessions.updateMany(
+      { projectId: project._id },
+      { $unset: { projectId: "" } },
+    );
+    await this.store.projects.deleteOne({ _id: project._id });
+    return { ok: true };
+  }
+  // Moves a session into a project, or out of any with null.
+  async setSessionProject(id: string, projectId: unknown) {
+    const session = await this.session(id);
+    if (projectId === null) {
+      await this.store.sessions.updateOne(
+        { _id: id },
+        { $unset: { projectId: "" } },
+      );
+      const { projectId: _, ...rest } = session;
+      return publicSession(rest, this.approvalModes);
+    }
+    const project = await this.project(projectId);
+    await this.store.sessions.updateOne(
+      { _id: id },
+      { $set: { projectId: project._id } },
+    );
+    await this.touchProject(project._id);
+    return publicSession(
+      { ...session, projectId: project._id },
+      this.approvalModes,
+    );
+  }
+  private async touchProject(id: string) {
+    await this.store.projects.updateOne(
+      { _id: id },
+      { $set: { updatedAt: new Date().toISOString() } },
+    );
   }
   async owned(session: Session, path: string, method = "GET", body?: any) {
     if (session.status === "dead")
@@ -521,12 +721,46 @@ export class PlatformService {
     );
     return { ok: true };
   }
+  // Thread fields for agent-core; none at all while the feature is off.
+  private modeOptions(mode?: unknown) {
+    if (!this.approvalModes.enabled) return {};
+    return {
+      approvalMode: effectiveMode(mode, this.approvalModes),
+      approvalNameHeuristic: this.approvalModes.nameHeuristic,
+    };
+  }
+  async setApprovalMode(id: string, mode: unknown) {
+    if (!this.approvalModes.enabled)
+      throw new ApiError(
+        404,
+        "Approval modes are not enabled",
+        "FEATURE_DISABLED",
+      );
+    const next = approvalMode(mode, this.approvalModes);
+    const session = await this.session(id);
+    // Saved first so a later resume applies it even if the live update fails.
+    await this.store.sessions.updateOne(
+      { _id: id },
+      { $set: { approvalMode: next } },
+    );
+    await this.owned(session, "/approval-mode", "POST", { mode: next });
+    return { mode: next };
+  }
   async resume(session: Session) {
-    const config = await this.configuration(session.agentId, session.cwd);
+    const config: any = await this.configuration(session.agentId, session.cwd);
+    Object.assign(config, this.modeOptions(session.approvalMode));
     if (session.settings?.model) config.model = session.settings.model;
     if (session.settings?.effort)
       config.config.model_reasoning_effort = session.settings.effort;
     const snapshot = await this.owned(session, "/resume", "POST", config);
+    // A failed plan save must not block sending the message.
+    await this.rememberSnapshotPlan(session._id, snapshot).catch((error) =>
+      log("warn", "plan save failed", {
+        sessionId: session._id,
+        op: "rememberSnapshotPlan",
+        ...errorFields(error),
+      }),
+    );
     if (session.settings && Object.keys(session.settings).length)
       await this.owned(session, "/capabilities", "POST", {
         method: "thread/settings/update",
@@ -541,9 +775,17 @@ export class PlatformService {
   }
   async message(id: string, text: string, clientId: string) {
     if (typeof text !== "string" || !text.trim() || text.length > 100000)
-      throw new ApiError(400, "Text must contain 1–100000 characters");
+      throw new ApiError(
+        400,
+        "Text must contain 1–100000 characters",
+        "INVALID_INPUT",
+      );
     if (typeof clientId !== "string" || !/^[-\w]{1,100}$/.test(clientId))
-      throw new ApiError(400, "A valid clientId is required for idempotency");
+      throw new ApiError(
+        400,
+        "A valid clientId is required for idempotency",
+        "INVALID_INPUT",
+      );
     const s = await this.session(id);
     await this.resume(s);
     const key = `${id}:user:${clientId}`;
@@ -557,8 +799,8 @@ export class PlatformService {
         delivery: "pending",
         at: new Date().toISOString(),
       });
-    } catch (e: any) {
-      if (e.code !== 11000) throw e;
+    } catch (e) {
+      if ((e as { code?: number }).code !== 11000) throw e;
       const existing = await this.store.messages.findOne({ _id: key });
       if (existing?.delivery === "accepted")
         return {
@@ -674,10 +916,24 @@ export class PlatformService {
       cursor = page.nextCursor;
     } while (cursor);
   }
+  // Saves the live plan from an agent-core snapshot. An empty snapshot plan
+  // usually means agent-core restarted, so it never clears a saved plan.
+  async rememberSnapshotPlan(id: string, snapshot: any) {
+    const steps = publicPlan(snapshot?.plan);
+    if (!steps.length) return;
+    const saved = (await this.store.sessions.findOne({ _id: id }))?.plan;
+    if (saved && isDeepStrictEqual(saved.steps, steps)) return;
+    await this.store.savePlan(id, {
+      plan: steps,
+      cursor: typeof snapshot.cursor === "string" ? snapshot.cursor : undefined,
+      at: new Date().toISOString(),
+    });
+  }
   async history(id: string) {
     const s = await this.session(id);
     let snapshot = null,
-      recoveryError = null;
+      recoveryError = null,
+      recoveryErrorRef: { code: string; requestId?: string } | null = null;
     try {
       snapshot = await this.owned(s, "/snapshot");
       if (snapshot && "goal" in snapshot)
@@ -685,17 +941,31 @@ export class PlatformService {
           ...snapshot,
           goal: await this.rememberGoal(id, publicGoal(snapshot.goal)),
         };
+      await this.rememberSnapshotPlan(id, snapshot);
       await this.ingest(s);
       await this.reconcile(s);
     } catch (e) {
-      recoveryError = httpError(e, "platform").error;
+      const failure = httpError(e, "platform");
+      recoveryError = failure.error;
+      recoveryErrorRef = { code: failure.code, requestId: currentRequestId() };
+      log("warn", "conversation recovery failed", {
+        requestId: currentRequestId(),
+        sessionId: id,
+        code: failure.code,
+        ...errorFields(e),
+      });
     }
+    const saved = (await this.session(id)).plan;
     return {
-      session: publicSession(await this.session(id)),
+      session: publicSession(await this.session(id), this.approvalModes),
       messages: orderConversation(
         await this.store.messages.find({ sessionId: id }).toArray(),
       ),
-      snapshot: snapshot ? publicSnapshot(snapshot) : null,
+      snapshot: snapshot
+        ? withPlanFallback(publicSnapshot(snapshot), saved)
+        : null,
+      // Saved plan, also available when agent-core is unreachable.
+      plan: publicStoredPlan(saved),
       approvals: ((await this.session(id)).approvals || [])
         .map(publicApproval)
         .filter(Boolean),
@@ -704,6 +974,7 @@ export class PlatformService {
       recoveryError: recoveryError
         ? `Conversation recovery: ${recoveryError}`
         : null,
+      recoveryErrorRef,
     };
   }
   async ingest(s: Session) {
@@ -739,10 +1010,12 @@ export class PlatformService {
   }
   startIngestion() {
     this.timer = setInterval(() => {
-      void this.poll().catch(() =>
-        process.stderr.write(
-          "Persistence ingestion failed; unacknowledged records will be retried\n",
-        ),
+      // Unacknowledged records are retried on the next poll.
+      void this.poll().catch((error) =>
+        log("warn", "persistence ingestion failed", {
+          op: "poll",
+          ...errorFields(error),
+        }),
       );
     }, 2000);
     this.timer.unref();
@@ -755,7 +1028,13 @@ export class PlatformService {
         status: { $ne: "dead" },
         runtimePolicyVersion: POLICY_VERSION,
       }))
-        await this.ingest(s).catch(() => {});
+        await this.ingest(s).catch((error) =>
+          log("warn", "persistence ingestion failed", {
+            sessionId: s._id,
+            op: "ingest",
+            ...errorFields(error),
+          }),
+        );
     } finally {
       this.polling = false;
     }
@@ -777,15 +1056,20 @@ export class PlatformService {
       !request.text.trim() ||
       request.text.length > 50000
     )
-      throw new ApiError(400, "A command needs text and a valid clientId");
+      throw new ApiError(
+        400,
+        "A command needs text and a valid clientId",
+        "INVALID_INPUT",
+      );
     if (method !== "help") {
       try {
         businessCapabilityParams(method, params);
-      } catch {
+      } catch (error) {
         throw new ApiError(
           403,
           "This operation or setting is not available in Truex",
           "CAPABILITY_DENIED",
+          { cause: error },
         );
       }
     } else if (
@@ -793,7 +1077,7 @@ export class PlatformService {
       typeof params !== "object" ||
       Object.keys(params).length
     )
-      throw new ApiError(400, "Help takes no arguments");
+      throw new ApiError(400, "Help takes no arguments", "INVALID_INPUT");
     const session = await this.session(id);
     const key = `${id}:command:${request.clientId}`;
     const existing = await this.store.messages.findOne({ _id: key });
@@ -806,6 +1090,7 @@ export class PlatformService {
         throw new ApiError(
           409,
           "This command ID already belongs to another request",
+          "DUPLICATE_COMMAND",
         );
       return { commandMessage: message };
     };
@@ -872,11 +1157,12 @@ export class PlatformService {
   async capability(id: string, method: string, params: unknown) {
     try {
       businessCapabilityParams(method, params);
-    } catch {
+    } catch (error) {
       throw new ApiError(
         403,
         "This operation or setting is not available in Truex",
         "CAPABILITY_DENIED",
+        { cause: error },
       );
     }
     const s = await this.session(id);
@@ -897,7 +1183,7 @@ export class PlatformService {
         archived: false,
       };
       await this.store.sessions.insertOne(fork);
-      return { session: publicSession(fork) };
+      return { session: publicSession(fork, this.approvalModes) };
     }
     if (method === "thread/archive" || method === "thread/unarchive")
       await this.store.sessions.updateOne(

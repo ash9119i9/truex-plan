@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, userMessage } from "@/lib/api";
 import { QuickTools } from "./quick-tools";
 import { Button } from "./ui/button";
 export function Capabilities({
@@ -19,7 +19,7 @@ export function Capabilities({
   useEffect(() => {
     api("/api/capabilities")
       .then((x) => setMethods(x.requests))
-      .catch((e) => setResult(e.message));
+      .catch((e) => setResult(userMessage(e)));
   }, []);
   useEffect(() => {
     const entry = methods.find((x) => x.method === method);
@@ -31,7 +31,7 @@ export function Capabilities({
     if (entry)
       api("/api/schemas/" + entry.params)
         .then(setSchema)
-        .catch((e) => setResult(e.message));
+        .catch((e) => setResult(userMessage(e)));
   }, [method, methods]);
   async function run() {
     setBusy(true);
@@ -43,7 +43,12 @@ export function Capabilities({
       setResult(JSON.stringify(data, null, 2));
       if (data.session) onFork(data.session._id);
     } catch (e) {
-      setResult((e as Error).message);
+      // Invalid JSON in the parameters box is the user's to fix, so say so.
+      setResult(
+        e instanceof SyntaxError
+          ? `The parameters are not valid JSON. ${e.message}`
+          : userMessage(e),
+      );
     } finally {
       setBusy(false);
     }

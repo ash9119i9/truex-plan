@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, userMessage } from "@/lib/api";
 import {
   validWidgetState,
   visualizationDocument,
@@ -52,7 +52,7 @@ export function Visualization({
         if (!cancelled) setVisual(value);
       })
       .catch((error) => {
-        if (!cancelled) setError(error.message);
+        if (!cancelled) setError(userMessage(error));
       });
     return () => {
       cancelled = true;

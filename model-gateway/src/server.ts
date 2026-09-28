@@ -84,7 +84,18 @@ export function createGateway(options: GatewayOptions) {
     try {
       await handle(req, res, url, meta);
     } catch (error) {
-      log(`gateway error: ${(error as Error).message}`);
+      const e = error instanceof Error ? error : new Error(String(error));
+      log(
+        JSON.stringify({
+          ts: new Date().toISOString(),
+          type: "error",
+          requestId: meta.requestId,
+          profileId: meta.profileId,
+          errorName: e.name,
+          error: e.message.slice(0, 500),
+          stack: e.stack?.slice(0, 4000),
+        }),
+      );
       if (!res.headersSent)
         sendError(res, 500, "The model gateway failed.", "server_error");
       else res.end();

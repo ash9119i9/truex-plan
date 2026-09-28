@@ -1,5 +1,5 @@
 import type { Runtime } from "./client";
-import { HttpError } from "./errors";
+import { HttpError, RpcError, rpcText } from "./errors";
 export async function readItems(
   runtime: Runtime,
   threadId: string,
@@ -15,7 +15,7 @@ export async function readItems(
       sortDirection: "asc",
     });
   } catch (e) {
-    if (!(e instanceof HttpError) || e.code !== "-32601") throw e;
+    if (!(e instanceof RpcError) || e.rpcCode !== -32601) throw e;
     return fallback(runtime, threadId, 0);
   }
 }
@@ -29,7 +29,7 @@ async function fallback(runtime: Runtime, threadId: string, offset: number) {
       includeTurns: true,
     });
   } catch (e) {
-    if (e instanceof Error && e.message.includes("not materialized yet"))
+    if (rpcText(e).includes("not materialized yet"))
       return { data: [], nextCursor: null, backwardsCursor: null };
     throw e;
   }

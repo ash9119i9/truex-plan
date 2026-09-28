@@ -4,8 +4,10 @@ export class ApplicationError extends Error {
     public status: number,
     message: string,
     public code = "REQUEST_FAILED",
+    // The original error stays server-side for logs; it is never serialized.
+    options?: { cause?: unknown },
   ) {
-    super(message);
+    super(message, options);
     this.name = "ApplicationError";
   }
 }
@@ -24,6 +26,9 @@ export function safeErrorMessage(message: string): string {
     .replace(/\bsk-[\w-]+/g, "[REDACTED]")
     .slice(0, 1200);
 }
+
+const transientStorage =
+  /^Mongo(Network|NetworkTimeout|ServerSelection|NotConnected|TopologyClosed|PoolClosed|WaitQueueTimeout)Error$/;
 
 export function httpError(error: unknown, layer: "platform" | "agent-core") {
   const e = error as { name?: string; type?: string; status?: number } | null;
@@ -46,7 +51,16 @@ export function httpError(error: unknown, layer: "platform" | "agent-core") {
       error: safeErrorMessage(error.message),
       code: error.code,
     };
-  if (e?.name?.startsWith("Mongo"))
+  if (e?.name?.startsWith("Mongo") && (e as { code?: number }).code === 11000)
+    return {
+      status: 409,
+      error:
+        "This record already exists. Refresh the conversation to see its current state.",
+      code: "CONFLICT",
+    };
+  // Only connection-level failures are worth retrying; other storage errors
+  // (validation, bad queries) would fail again, so they are internal errors.
+  if (e?.name && transientStorage.test(e.name))
     return {
       status: 503,
       error:
@@ -173,10 +187,33 @@ export function runtimeError(data: any): {
       "PROVIDER_CONNECTION_FAILED",
       "The connection to the model provider was interrupted. Check the conversation for a partial response before trying again.",
     );
-  if (data?.code === "RUNTIME_UNAVAILABLE")
+  // agent-core's own codes: `code` on error events, `code`/`error.code` on
+  // failed turns.
+  const own = data?.code ?? data?.error?.code;
+  if (own === "RUNTIME_UNAVAILABLE")
     return result(
       "RUNTIME_UNAVAILABLE",
       "The assistant runtime stopped. Reopen this conversation to resume it.",
+    );
+  if (own === "RUNTIME_OVERLOADED")
+    return result(
+      "RUNTIME_OVERLOADED",
+      "The assistant runtime is busy. Wait a moment, then try again.",
+    );
+  if (own === "TURN_STALLED")
+    return result(
+      "TURN_STALLED",
+      "The assistant stopped responding and this response was cancelled. Check the conversation for a partial response, then send your message again.",
+    );
+  if (own === "ADAPTER_INTERNAL")
+    return result(
+      "ADAPTER_INTERNAL",
+      "The assistant hit an internal error while handling this response. Check the conversation before trying again; contact support if this continues.",
+    );
+  if (own === "STORAGE_UNAVAILABLE")
+    return result(
+      "STORAGE_UNAVAILABLE",
+      "Conversation updates could not be saved, so live updates stopped. Reopen the conversation; if this continues, ask your administrator to check the assistant's storage.",
     );
   return result(
     "RUNTIME_FAILED",
