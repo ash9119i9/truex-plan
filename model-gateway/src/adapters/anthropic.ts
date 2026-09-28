@@ -47,7 +47,12 @@ export function toAnthropicRequest(
     stream: true,
     cache_control: { type: "ephemeral" },
   };
-  if (system) params.system = system;
+  // An explicit breakpoint caches tools + system, the part every request of a
+  // conversation shares. Proxies that drop top-level auto-caching keep it.
+  if (system)
+    params.system = [
+      { type: "text", text: system, cache_control: { type: "ephemeral" } },
+    ];
   if (anthropicTools.length) {
     params.tools = anthropicTools;
     const choice = toolChoice(input);

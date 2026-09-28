@@ -1,6 +1,7 @@
 import { businessCapabilities } from "../../shared/business-capabilities";
 import { BusinessRuntime } from "./business-runtime";
 import { Redactor } from "./redact";
+import { TraceBuilder, rateLimitView } from "./trace";
 import { randomUUID } from "node:crypto";
 import {
   mkdirSync,
@@ -19,12 +20,15 @@ import type {
   DomainType,
   CollabTool,
   PendingRequest,
+  RateLimitView,
   Snapshot,
   SubAgent,
   SubAgentStatus,
   SubAgentTranscript,
+  TurnContext,
   TurnState,
   TurnTiming,
+  TurnTrace,
 } from "../../shared/contracts";
 import { HttpError } from "./errors";
 import { inventory, validateRequest } from "./schema";
@@ -67,6 +71,13 @@ interface Thread {
   diff: string;
   timings: TurnTiming[];
   clock?: Clock;
+  // Observability of the running turn, and of recent finished ones.
+  trace?: TraceBuilder;
+  traces: TurnTrace[];
+  // Masked reconstructions of recent turns; live only, never persisted.
+  contexts: Map<string, TurnContext>;
+  // Text sent with turn/start, for the trace of the turn it starts.
+  input?: string;
   loaded: boolean;
   threadStartMs: number;
 }
@@ -101,6 +112,8 @@ const transcriptLimit = 200;
 const earlyThreadLimit = 20;
 const earlyEventLimit = 500;
 const droppedLimit = 1000;
+const traceLimit = 100;
+const contextTurnLimit = 20;
 const clip = (value: unknown, limit = 2000) =>
   typeof value === "string" && value
     ? value.length > limit
@@ -172,6 +185,8 @@ export class ThreadManager {
   // Last goal written as a durable record, per thread.
   private goalRecords = new Map<string, string>();
   private reservations = 0;
+  // Latest account rate limits, merged from sparse updates.
+  rateLimits: RateLimitView | null = null;
   unknownMethods = 0;
   draining = false;
   constructor(
@@ -197,6 +212,7 @@ export class ThreadManager {
         t.loaded = false;
         t.state = { kind: "idle" };
         t.clock = undefined;
+        t.trace = undefined;
         for (const c of this.agentsOf(t.id)) c.turnId = undefined;
         this.emit(t, "error", {
           message: "Runtime exited; session can be resumed",
@@ -224,6 +240,8 @@ export class ThreadManager {
         goalTokens: { key: null, observed: 0, turns: [] },
         diff: "",
         timings: [],
+        traces: [],
+        contexts: new Map(),
         loaded: false,
         threadStartMs: 0,
       };
@@ -253,18 +271,20 @@ export class ThreadManager {
     this.reservations++;
   }
   async create(params: any = {}) {
-    // Truex's helper settings are not a runtime parameter; the business
-    // runtime turns them into enforced config.
-    const { subAgents, ...start } = params || {};
+    // Truex's helper and persona settings are not runtime parameters; the
+    // business runtime turns them into enforced config and instructions.
+    const { subAgents, persona, scope, ...start } = params || {};
     validateRequest("thread/start", start);
     this.redactor.remember(start);
     this.reserve();
     const started = performance.now();
     try {
-      const result = await this.runtime.request(
-        "thread/start",
-        subAgents === undefined ? start : { ...start, subAgents },
-      );
+      const result = await this.runtime.request("thread/start", {
+        ...start,
+        ...(subAgents === undefined ? {} : { subAgents }),
+        ...(persona === undefined ? {} : { persona }),
+        ...(scope === undefined ? {} : { scope }),
+      });
       const t = this.thread(result.thread.id);
       this.roots.add(t.id);
       t.loaded = true;
@@ -372,6 +392,7 @@ export class ThreadManager {
         gap: 0,
         handler: 0,
       };
+      t.input = text;
       try {
         const result = await this.runtime.request("turn/start", {
           threadId: id,
@@ -391,6 +412,7 @@ export class ThreadManager {
           t.loaded = false;
         }
         if (t.state.kind === "starting") t.state = { kind: "idle" };
+        t.input = undefined;
         throw e;
       }
     });
@@ -436,6 +458,8 @@ export class ThreadManager {
       goal: this.goalView(t),
       diff: t.diff,
       timings: t.timings,
+      traces: t.traces,
+      rateLimits: this.rateLimits,
       subAgents: this.agentsOf(id).map((c) => ({ ...c.agent })),
     };
   }
@@ -552,7 +576,10 @@ export class ThreadManager {
     const id = c.agent.threadId;
     Promise.resolve()
       .then(() =>
-        this.runtime.request("thread/read", { threadId: id, includeTurns: false }),
+        this.runtime.request("thread/read", {
+          threadId: id,
+          includeTurns: false,
+        }),
       )
       .then((result: any) => {
         if (this.children.get(id) !== c) return;
@@ -684,6 +711,7 @@ export class ThreadManager {
       }
       return m;
     };
+    const trace = () => this.builder(root, this.activeTurn(root));
     switch (method) {
       case "thread/started": {
         const s = this.spawnSource(p);
@@ -724,8 +752,20 @@ export class ThreadManager {
         if (typeof p.delta === "string")
           event("reasoning.delta", { delta: p.delta, itemId });
         return;
+      case "thread/tokenUsage/updated":
+        trace()?.onHelperUsage(p.tokenUsage?.last);
+        return;
       case "item/started":
       case "item/completed":
+        trace()?.onItem(
+          method === "item/started" ? "started" : "completed",
+          p.item,
+          method === "item/started" ? p.startedAtMs : p.completedAtMs,
+          {
+            agent: a.nickname ?? a.role ?? "helper",
+            agentThreadId: a.threadId,
+          },
+        );
         if (
           method === "item/completed" &&
           p.item?.type === "agentMessage" &&
@@ -833,6 +873,35 @@ export class ThreadManager {
   private frame(event: DomainEvent) {
     return `id: ${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`;
   }
+  // The running turn's trace; created lazily for a turn resumed mid-way.
+  private builder(t: Thread, turnId?: string) {
+    if (!turnId) return undefined;
+    if (t.trace?.turnId === turnId) return t.trace;
+    if (this.activeTurn(t) !== turnId) return undefined;
+    t.trace = new TraceBuilder(
+      turnId,
+      t.id,
+      Date.now(),
+      this.rateLimits,
+      t.input ?? "",
+    );
+    t.input = undefined;
+    return t.trace;
+  }
+  turnContext(id: string, turnId: string): TurnContext {
+    const t = this.thread(id);
+    const context = /^[\w-]+$/.test(turnId)
+      ? (t.contexts.get(turnId) ??
+        (t.trace?.turnId === turnId ? t.trace.context() : undefined))
+      : undefined;
+    if (!context)
+      throw new HttpError(
+        404,
+        "Turn context is not available",
+        "CONTEXT_NOT_FOUND",
+      );
+    return context;
+  }
   // A different goal starts a fresh tally.
   private setGoal(t: Thread, goal: any) {
     const key = goalKey(goal);
@@ -922,9 +991,18 @@ export class ThreadManager {
     }
     const id = p.threadId || p.thread?.id;
     if (!id) {
+      const limits =
+        method === "account/rateLimits/updated" && p.rateLimits
+          ? (this.rateLimits = rateLimitView(p.rateLimits, this.rateLimits))
+          : null;
       for (const t of this.threads.values())
-        if (t.loaded)
+        if (t.loaded) {
           this.emit(t, mappings[method] || "runtime.event", { method, ...p });
+          if (!limits) continue;
+          const turnId = this.activeTurn(t);
+          this.builder(t, turnId)?.onRateLimits(limits);
+          this.emit(t, "limits.updated", { rateLimits: limits }, turnId);
+        }
       return;
     }
     if (typeof id === "string") {
@@ -955,6 +1033,7 @@ export class ThreadManager {
       if (t.state.kind === "idle" || t.state.kind === "starting")
         t.state = { kind: "running", turnId };
       if (t.clock) t.clock.turnId = turnId;
+      this.builder(t, turnId);
     }
     if (
       method === "item/reasoning/summaryTextDelta" ||
@@ -1060,7 +1139,9 @@ export class ThreadManager {
           this.emit(t, "goal.updated", { goal: this.goalView(t) }, turnId);
         }
       }
-      // Raw usage is internal; only the goal tally is published.
+      // Published as the turn's summed usage, never as the raw notification.
+      const usage = this.builder(t, turnId)?.onUsage(p.tokenUsage);
+      if (usage) this.emit(t, "usage.updated", { usage }, turnId);
       return;
     }
     if (method === "turn/diff/updated") t.diff = p.diff;
@@ -1071,8 +1152,15 @@ export class ThreadManager {
       if (request)
         this.settle(t, request, undefined, "runtime-resolved", false);
     }
-    if (method === "item/started" || method === "item/completed")
+    if (method === "item/started" || method === "item/completed") {
       this.collab(t.id, p.item);
+      this.builder(t, turnId)?.onItem(
+        method === "item/started" ? "started" : "completed",
+        p.item,
+        method === "item/started" ? p.startedAtMs : p.completedAtMs,
+        { agent: "main", agentThreadId: t.id },
+      );
+    }
     let data = { method, ...p };
     if (method === "turn/completed") {
       for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
@@ -1099,6 +1187,20 @@ export class ThreadManager {
         if (t.timings.length > 100) t.timings.shift();
         data = { ...data, timing };
         t.clock = undefined;
+      }
+      const b = t.trace;
+      if (b && b.turnId === turnId) {
+        t.trace = undefined;
+        const trace = b.finish(
+          p.turn?.status ?? "completed",
+          (data as any).timing?.totalMs ?? null,
+        );
+        t.traces.push(trace);
+        if (t.traces.length > traceLimit) t.traces.shift();
+        t.contexts.set(turnId, b.context());
+        if (t.contexts.size > contextTurnLimit)
+          t.contexts.delete(t.contexts.keys().next().value!);
+        data = { ...data, trace };
       }
       if (
         (t.state.kind === "running" || t.state.kind === "interrupting") &&
@@ -1362,8 +1464,10 @@ export class ThreadManager {
       if (method.startsWith("thread/goal/") && t.state.kind === "running")
         result = { ...result, turnId: t.state.turnId };
       if (method === "thread/goal/clear") this.setGoal(t, null);
-      if (method === "thread/delete" || method === "thread/archive")
+      if (method === "thread/delete" || method === "thread/archive") {
         this.dropAgents(id);
+        t.contexts.clear();
+      }
       if (
         ["thread/archive", "thread/delete", "thread/unsubscribe"].includes(
           method,

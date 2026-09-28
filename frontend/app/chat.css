@@ -183,6 +183,81 @@
   color: var(--muted);
 }
 
+/* ---------- Suggested follow-ups ---------- */
+.suggested-questions ul {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 14px 0 4px;
+  padding: 0;
+  list-style: none;
+}
+
+/* Animated link (Skiper UI Link003): underline grows from the center. */
+.animated-link {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: left;
+  transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.animated-link-text {
+  background: linear-gradient(currentColor, currentColor) 50% 100% / 0% 1px
+    no-repeat;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-size 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Keeps the arrow on the same line as the last word. */
+.animated-link-tail {
+  white-space: nowrap;
+}
+.animated-link-arrow {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  margin-left: 0.4em;
+  vertical-align: 0.05em;
+  opacity: 0;
+  transform: translateX(-4px) rotate(45deg);
+  transition:
+    opacity 0.3s,
+    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.animated-link:not(:disabled):hover,
+.animated-link:focus-visible {
+  color: var(--foreground);
+}
+.animated-link:not(:disabled):hover .animated-link-text,
+.animated-link:focus-visible .animated-link-text {
+  background-size: 100% 1px;
+}
+.animated-link:not(:disabled):hover .animated-link-arrow,
+.animated-link:focus-visible .animated-link-arrow {
+  opacity: 1;
+  transform: rotate(45deg);
+}
+/* Touch screens have no hover, so the arrow stays faintly visible. */
+@media (hover: none) {
+  .animated-link-arrow {
+    opacity: 0.6;
+    transform: rotate(45deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .animated-link,
+  .animated-link-text,
+  .animated-link-arrow {
+    transition: none;
+  }
+}
+
 /* ---------- Composer ---------- */
 .composer {
   position: relative;
@@ -780,6 +855,19 @@
   flex-shrink: 0;
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+/* Rolling timer digits (Number Flow). Tabular numbers keep the width steady. */
+.live-duration {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.live-duration-digits {
+  display: inline-flex;
+  align-items: baseline;
+}
+.live-duration number-flow-react {
+  --number-flow-mask-height: 0.2em;
+  line-height: 1.2;
 }
 .helper-rows {
   margin: 0;

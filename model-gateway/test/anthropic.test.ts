@@ -96,7 +96,9 @@ test("toAnthropicRequest: system merge, tools, tool_use/tool_result pairing", ()
   assert.equal(params.max_tokens, 64000);
   assert.equal(params.stream, true);
   assert.deepEqual(params.cache_control, { type: "ephemeral" });
-  assert.equal(params.system, "Base\n\nDev");
+  assert.deepEqual(params.system, [
+    { type: "text", text: "Base\n\nDev", cache_control: { type: "ephemeral" } },
+  ]);
   assert.deepEqual(params.tool_choice, { type: "auto" });
   assert.deepEqual(params.thinking, {
     type: "adaptive",
@@ -468,7 +470,7 @@ test("anthropic: text + thinking + tool_use stream, headers, url and usage", asy
       assert.equal(headers.get("x-api-key"), "anthropic-secret");
       assert.equal(headers.get("authorization"), null);
       const sent = JSON.parse(String(calls[0].init.body));
-      assert.equal(sent.system, "Sys");
+      assert.equal(sent.system[0].text, "Sys");
       assert.equal(sent.stream, true);
 
       const done = events

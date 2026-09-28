@@ -9,6 +9,32 @@ interface Recorded {
   outcome?: string;
   errorCode?: string;
   usage?: Usage;
+  rateLimit?: RateLimit;
+}
+
+// Provider rate-limit headers and retry-after, e.g. x-ratelimit-remaining-tokens
+// -> remainingTokens, anthropic-ratelimit-requests-limit ->
+// anthropicRequestsLimit. Counts become numbers; reset values stay strings
+// ("1s", "6m0s" or an RFC 3339 time) since providers disagree on the format.
+export type RateLimit = Record<string, number | string>;
+const RATE_HEADER = /^(x-ratelimit-|anthropic-ratelimit-)([a-z0-9-]{1,48})$/;
+const camel = (s: string) =>
+  s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
+
+export function rateLimitHeaders(headers: Headers): RateLimit | undefined {
+  const out: RateLimit = {};
+  headers.forEach((value, name) => {
+    const m = RATE_HEADER.exec(name.toLowerCase());
+    if (!m && name.toLowerCase() !== "retry-after") return;
+    const field = m
+      ? camel((m[1] === "anthropic-ratelimit-" ? "anthropic-" : "") + m[2])
+      : "retryAfter";
+    const text = value.trim().slice(0, 64);
+    const n = Number(text);
+    out[field] =
+      text !== "" && Number.isFinite(n) && !/reset/i.test(field) ? n : text;
+  });
+  return Object.keys(out).length ? out : undefined;
 }
 
 const recorded = new WeakMap<ServerResponse, Recorded>();
@@ -59,5 +85,6 @@ export function accessLogLine(
       output_tokens: r.usage.output_tokens,
       total_tokens: r.usage.total_tokens,
     },
+    rateLimit: r.rateLimit,
   });
 }

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Activity } from "lucide-react";
 import { GoalTimeline } from "./goal-timeline";
 import { AgentsPanel } from "./agents-panel";
+import { InsightsPanel } from "./observability/insights-panel";
 import {
   isRunning,
   type DelegationPrefs,
@@ -12,12 +13,20 @@ import type {
   DomainEvent,
   Goal,
   GoalReview,
+  RateLimitView,
+  TraceSummary,
   TurnTiming,
+  TurnTrace,
+  TurnUsage,
 } from "../../shared/contracts";
 export function SessionActivity({
   events,
   plan,
   timings,
+  traces = [],
+  traceSummary = null,
+  rateLimits = null,
+  liveUsage = null,
   sessionId,
   goal,
   goalReview,
@@ -30,6 +39,10 @@ export function SessionActivity({
   events: DomainEvent[];
   plan: { step: string; status: string }[];
   timings: TurnTiming[];
+  traces?: TurnTrace[];
+  traceSummary?: TraceSummary | null;
+  rateLimits?: RateLimitView | null;
+  liveUsage?: TurnUsage | null;
   sessionId?: string;
   goal: Goal | null;
   goalReview: GoalReview | null;
@@ -50,7 +63,7 @@ export function SessionActivity({
         <Activity size={16} /> Session activity
       </div>
       <div className="tabs">
-        {["activity", "agents", "goal", "plan", "timings"].map((p) => (
+        {["activity", "agents", "goal", "plan", "insights"].map((p) => (
           <button
             key={p}
             className={panel === p ? "active" : ""}
@@ -123,53 +136,14 @@ export function SessionActivity({
             )}
           </>
         )}
-        {panel === "timings" && (
-          <>
-            <h3>Response timings</h3>
-            <p className="muted">
-              Average total:{" "}
-              {timings.length
-                ? (
-                    timings.reduce((s, t) => s + t.totalMs, 0) /
-                    timings.length /
-                    1000
-                  ).toFixed(2) + "s"
-                : "—"}
-            </p>
-            {timings.map((t, i) => (
-              <div className="timing" key={t.turnId}>
-                <b>Turn {i + 1}</b>
-                <span>
-                  {" "}
-                  · {t.status}
-                  {t.nonStreaming ? " · non-streaming" : ""}
-                </span>
-                <div className="timing-bar">
-                  <i
-                    style={{
-                      width: `${((t.ttftMs || 0) / (t.totalMs || 1)) * 100}%`,
-                    }}
-                  />
-                  <i
-                    style={{
-                      width: `${(t.streamMs / (t.totalMs || 1)) * 100}%`,
-                    }}
-                  />
-                  <i
-                    style={{
-                      width: `${(t.finalizeMs / (t.totalMs || 1)) * 100}%`,
-                    }}
-                  />
-                </div>
-                <small>
-                  First output{" "}
-                  {t.ttftMs === null ? "—" : (t.ttftMs / 1000).toFixed(2) + "s"}{" "}
-                  · stream {(t.streamMs / 1000).toFixed(2)}s · total{" "}
-                  {(t.totalMs / 1000).toFixed(2)}s
-                </small>
-              </div>
-            ))}
-          </>
+        {panel === "insights" && (
+          <InsightsPanel
+            traces={traces}
+            summary={traceSummary}
+            rateLimits={rateLimits}
+            liveUsage={liveUsage}
+            timings={timings}
+          />
         )}
       </div>
     </aside>

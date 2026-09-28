@@ -16,6 +16,8 @@ Example in mongosh notation; IDs below are illustrative, not existing records.
   name: "My assistant",
   description: "Your description",
   systemPrompt: "Your instructions",
+  persona: "You are Nova, a writing companion.",
+  scope: "general",
   modelProfileId: "000000000000000000000002",
   mcpProfileIds: ["000000000000000000000003"],
   sandbox: "read-only",
@@ -24,7 +26,7 @@ Example in mongosh notation; IDs below are illustrative, not existing records.
 }
 ```
 
-`modelProfileId` and MCP references may be strings or ObjectIds. `description`, `systemPrompt`, `sandbox`, `approvalPolicy` and `mcpProfileIds` may be omitted. Defaults are an empty description, generic helpful-assistant instructions, read-only sandbox, never approvals, and no MCP servers. `enabled: false` hides an agent. Unknown application-specific fields are preserved and ignored; for example, `browserUseCloud` does not itself configure a browser integration.
+`modelProfileId` and MCP references may be strings or ObjectIds. `description`, `systemPrompt`, `sandbox`, `approvalPolicy` and `mcpProfileIds` may be omitted. Defaults are an empty description, generic helpful-assistant instructions, read-only sandbox, never approvals, and no MCP servers. `persona` replaces the default Truex identity line, and `scope: "general"` lifts the business-only framing so the agent helps with any request. Both are optional; omitted means the Truex identity and `scope: "business"`. Platform guardrails (connector policy, data handling, no host access) apply to every agent and are not configurable. `enabled: false` hides an agent. Unknown application-specific fields are preserved and ignored; for example, `browserUseCloud` does not itself configure a browser integration.
 
 ## Model — `truex_models`
 
@@ -80,6 +82,6 @@ These routes share the existing internal-development API's lack of authenticatio
 
 ## Operational data
 
-`truex.sessions` stores routing, status, audit and timing metadata; `truex.messages` stores user messages and authoritative assistant finals. The application does not reuse or migrate existing `truex_runs` or `truex_conversations` schemas.
+`truex.sessions` stores routing, status, audit and timing metadata; `truex.messages` stores user messages and authoritative assistant finals. `truex.traces` stores one observability trace per turn (`_id` `${sessionId}:${turnId}`, index `{ sessionId: 1, startedAt: 1 }`): step timings, token usage, rate limits and masked privacy findings. It never holds prompt text; the masked "what the model saw" view is served live from agent-core and is not persisted. The application does not reuse or migrate existing `truex_runs` or `truex_conversations` schemas.
 
 Public agent summaries project out both credential spellings. No API exposes raw model/MCP documents. Diagnostic events and advanced capability responses pass through credential redaction. Do not commit real sample documents containing credentials; `a.json` is ignored locally for that reason.

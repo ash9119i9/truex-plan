@@ -257,10 +257,14 @@ test("goal token tally counts usage reported after the goal completes and resets
   const before = thread.seq;
   usage("turn_1", 10335, 335, 257);
   usage("turn_1", 9466, 0, 40);
-  const events = thread.events.filter((e) => e.seq > before);
+  const events = thread.events.filter(
+    (e) => e.seq > before && e.type === "goal.updated",
+  );
+  // Each call publishes the tally and the turn's usage.
+  assert.equal(thread.seq - before, 4);
   assert.deepEqual(
-    events.map((e) => e.type),
-    ["goal.updated", "goal.updated"],
+    thread.events.slice(-3).map((e) => e.type),
+    ["usage.updated", "goal.updated", "usage.updated"],
   );
   assert.equal((events.at(-1)!.data as any).goal.tokensObserved, 10257 + 9506);
   assert.equal(
@@ -969,4 +973,187 @@ test("a stopped helper stays stopped after it is shut down", async (t) => {
   });
   spawn(runtime, "notFound");
   assert.equal(manager.agents("thread_1")[0].status, "interrupted");
+});
+
+test("token usage is published as turn usage and turn.completed carries a trace", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "reach me at jane.doe@example.com");
+  const thread = manager.threads.get("thread_1")!;
+  const types: string[] = [];
+  const at = Date.now();
+  runtime.emit("notification", {
+    method: "item/started",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      startedAtMs: at,
+      item: { type: "commandExecution", id: "c1", command: "ls -la /secret", status: "inProgress" },
+    },
+  });
+  runtime.emit("notification", {
+    method: "item/completed",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      completedAtMs: at + 50,
+      item: {
+        type: "commandExecution",
+        id: "c1",
+        command: "ls -la /secret",
+        aggregatedOutput: "card 4111 1111 1111 1111",
+        status: "completed",
+      },
+    },
+  });
+  const breakdown = {
+    totalTokens: 130,
+    inputTokens: 100,
+    cachedInputTokens: 40,
+    cacheWriteInputTokens: 0,
+    outputTokens: 30,
+    reasoningOutputTokens: 10,
+  };
+  runtime.emit("notification", {
+    method: "thread/tokenUsage/updated",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      tokenUsage: { total: breakdown, last: breakdown, modelContextWindow: 200000 },
+    },
+  });
+  types.push(thread.events.at(-1)!.type);
+  assert.deepEqual(types, ["usage.updated"]);
+  assert.deepEqual(thread.events.at(-1)!.data, {
+    usage: {
+      inputTokens: 100,
+      cachedInputTokens: 40,
+      outputTokens: 30,
+      reasoningOutputTokens: 10,
+      totalTokens: 130,
+      contextWindow: 200000,
+      contextUsedTokens: 100,
+    },
+  });
+  runtime.emit("notification", {
+    method: "account/rateLimits/updated",
+    params: {
+      rateLimits: {
+        limitName: "codex",
+        primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: 1 },
+        secondary: null,
+        rateLimitReachedType: null,
+      },
+    },
+  });
+  assert.deepEqual(
+    thread.events.slice(-2).map((e) => e.type),
+    ["runtime.event", "limits.updated"],
+  );
+  assert.equal(manager.snapshot("thread_1").rateLimits?.primaryUsedPercent, 12);
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: { threadId: "thread_1", turn: { id: "turn_1", status: "completed" } },
+  });
+  const done = thread.events.at(-1)!;
+  assert.equal(done.type, "turn.completed");
+  const trace = done.data.trace;
+  assert.equal(trace.turnId, "turn_1");
+  assert.equal(trace.totalMs, done.data.timing.totalMs);
+  assert.deepEqual(
+    trace.steps.map((s: any) => [s.label, s.durationMs, s.status]),
+    [["Ran a command", 50, "completed"]],
+  );
+  assert.equal(trace.usage.totalTokens, 130);
+  assert.equal(trace.rateLimits.primaryUsedPercent, 12);
+  assert.deepEqual(
+    trace.privacy.findings.map((f: any) => `${f.kind}:${f.source}`).sort(),
+    ["card:toolOutput", "email:userMessage"],
+  );
+  // The durable record carries the trace, without raw values or commands.
+  const record = manager
+    .records("thread_1")
+    .map((r) => r.event)
+    .find((e) => e.type === "turn.completed")!;
+  assert.deepEqual(record.data.trace, trace);
+  const json = JSON.stringify(record.data.trace);
+  assert.ok(!/jane|4111|secret/.test(json));
+  assert.deepEqual(manager.snapshot("thread_1").traces, [trace]);
+  // The masked context is live only.
+  const context = manager.turnContext("thread_1", "turn_1");
+  assert.equal(context.reconstructed, true);
+  assert.ok(!JSON.stringify(context).includes("jane.doe@example.com"));
+  assert.ok(!JSON.stringify(manager.records("thread_1")).includes("reconstructed"));
+  assert.throws(
+    () => manager.turnContext("thread_1", "turn_unknown"),
+    /not available/,
+  );
+});
+test("helper items and usage join the parent turn's trace", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  await manager.message("thread_1", "go");
+  runtime.emit("notification", {
+    method: "thread/started",
+    params: {
+      thread: {
+        id: "child_1",
+        source: {
+          subagent: {
+            thread_spawn: {
+              parent_thread_id: "thread_1",
+              depth: 1,
+              agent_path: "/root/scout",
+              agent_nickname: "Scout",
+              agent_role: "explorer",
+            },
+          },
+        },
+      },
+    },
+  });
+  const thread = manager.threads.get("thread_1")!;
+  const before = thread.seq;
+  const at = Date.now();
+  runtime.emit("notification", {
+    method: "item/started",
+    params: {
+      threadId: "child_1",
+      turnId: "ct",
+      startedAtMs: at,
+      item: { type: "webSearch", id: "w1", query: "private" },
+    },
+  });
+  runtime.emit("notification", {
+    method: "item/completed",
+    params: {
+      threadId: "child_1",
+      turnId: "ct",
+      completedAtMs: at + 20,
+      item: { type: "webSearch", id: "w1", query: "private" },
+    },
+  });
+  for (const n of [10, 15])
+    runtime.emit("notification", {
+      method: "thread/tokenUsage/updated",
+      params: {
+        threadId: "child_1",
+        turnId: "ct",
+        tokenUsage: { last: { inputTokens: n, outputTokens: 1, totalTokens: n + 1 } },
+      },
+    });
+  // Nothing extra reaches the UI for helper items or usage.
+  assert.equal(thread.seq, before);
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: { threadId: "thread_1", turn: { id: "turn_1", status: "completed" } },
+  });
+  const trace = thread.events.at(-1)!.data.trace;
+  assert.deepEqual(
+    trace.steps.map((s: any) => [s.label, s.agent, s.agentThreadId, s.durationMs]),
+    [["Searched the web", "Scout", "child_1", 20]],
+  );
+  assert.equal(trace.helperUsage.inputTokens, 25);
+  assert.equal(trace.helperUsage.totalTokens, 27);
+  assert.equal(trace.usage, null);
 });

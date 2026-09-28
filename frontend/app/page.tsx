@@ -40,7 +40,13 @@ import {
   assistantCapabilities,
   type ConversationFile,
 } from "../../shared/assistant-capabilities";
-import { api, ApiRequestError, base, listAgents } from "@/lib/api";
+import {
+  api,
+  ApiRequestError,
+  base,
+  getTraces,
+  listAgents,
+} from "@/lib/api";
 import {
   applySubAgentEvent,
   defaultDelegation,
@@ -54,6 +60,13 @@ import {
 import { AgentsPanel } from "@/components/agents-panel";
 import { HelperChip } from "@/components/helper-chip";
 import { transport } from "@/lib/transport";
+import {
+  applyObservabilityEvent,
+  emptyObservability,
+  mergeTraces,
+  type ObservabilityState,
+} from "@/lib/observability";
+import { PrivacyNote } from "@/components/observability/privacy-note";
 import { parseChatInput, suggestCommands } from "@/lib/slash-commands";
 import type {
   AgentSummary,
@@ -62,6 +75,7 @@ import type {
   Goal,
   GoalReview,
   PendingRequest,
+  TraceSummary,
   TurnTiming,
 } from "../../shared/contracts";
 // Goal starters open the composer in goal mode with a template.
@@ -84,6 +98,9 @@ export default function Home() {
     [pending, setPending] = useState<PendingRequest[]>([]);
   const [plan, setPlan] = useState<{ step: string; status: string }[]>([]);
   const [timings, setTimings] = useState<TurnTiming[]>([]);
+  const [observability, setObservability] =
+      useState<ObservabilityState>(emptyObservability),
+    [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
   const [text, setText] = useState(""),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -173,6 +190,25 @@ export default function Home() {
       setGoalReview(data.goalReview || null);
       setFailure(null);
       setTimings(data.snapshot?.timings || []);
+      setObservability(
+        data.snapshot
+          ? applyObservabilityEvent(emptyObservability, {
+              type: "snapshot",
+              data: data.snapshot,
+            } as DomainEvent)
+          : emptyObservability,
+      );
+      setTraceSummary(null);
+      void getTraces(id)
+        .then((traceData) => {
+          if (token !== generation.current) return;
+          setObservability((old) => ({
+            ...old,
+            traces: mergeTraces(old.traces, traceData?.traces),
+          }));
+          setTraceSummary(traceData?.summary || null);
+        })
+        .catch(() => {});
       void api(`/api/sessions/${id}/timings`)
         .then((timingData) => {
           if (token === generation.current)
@@ -258,6 +294,7 @@ export default function Home() {
         const d = event.data;
         setEntries((old) => applyChatEvent(old, event));
         setSubAgents((old) => applySubAgentEvent(old, event));
+        setObservability((old) => applyObservabilityEvent(old, event));
         switch (event.type) {
           case "snapshot":
             setPending(d.pending);
@@ -375,6 +412,8 @@ export default function Home() {
     setSubAgents(emptySubAgents);
     setPlan([]);
     setTimings([]);
+    setObservability(emptyObservability);
+    setTraceSummary(null);
     setGoal(null);
     setGoalReview(null);
     setFailure(null);
@@ -430,7 +469,7 @@ export default function Home() {
   async function send(value = text) {
     if (
       sending.current ||
-      !text.trim() ||
+      !value.trim() ||
       busy ||
       (!sessionRef.current && !agentId)
     )
@@ -479,6 +518,31 @@ export default function Home() {
       sending.current = false;
       if (token === generation.current) setBusy(false);
     }
+  }
+
+  // A follow-up shows in the composer for a moment, then sends like a typed
+  // message. Any unsent draft comes back afterwards.
+  const suggesting = useRef(false);
+  function askSuggestion(question: string) {
+    if (suggesting.current || sending.current || busy || running) return;
+    suggesting.current = true;
+    const token = generation.current,
+      draft = text;
+    setCommandOpen(false);
+    setNotice("");
+    setText(question);
+    composer.current?.focus();
+    setTimeout(() => {
+      void (async () => {
+        try {
+          if (token !== generation.current) return;
+          await send(question);
+          if (draft.trim() && token === generation.current) setText(draft);
+        } finally {
+          suggesting.current = false;
+        }
+      })();
+    }, 350);
   }
 
   const commandSuggestions = commandOpen ? suggestCommands(text) : [];
@@ -889,10 +953,16 @@ export default function Home() {
                   composer.current?.focus();
                 }}
                 entries={entries}
+                traces={observability.traces}
+                liveUsage={observability.liveUsage}
                 goal={goal}
                 goalReview={goalReview}
                 subAgents={subAgents}
                 onOpenAgent={openAgents}
+                onSuggest={askSuggestion}
+                suggestionsEnabled={
+                  !busy && !goalMode && !failure && !pending.length
+                }
                 agentName={agent?.name || "Assistant"}
                 running={running}
                 onCommand={(command) => {
@@ -941,6 +1011,7 @@ export default function Home() {
               </button>
             </div>
           )}
+          <PrivacyNote draft={text} />
           <SmoothTextarea
             ref={composer}
             aria-label="Message"
@@ -1133,6 +1204,14 @@ export default function Home() {
         events={events}
         plan={plan}
         timings={timings}
+        traces={observability.traces}
+        traceSummary={traceSummary}
+        rateLimits={observability.rateLimits}
+        liveUsage={
+          running
+            ? (Object.values(observability.liveUsage).at(-1) ?? null)
+            : null
+        }
         sessionId={session?._id}
         goal={goal}
         goalReview={goalReview}

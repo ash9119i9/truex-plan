@@ -502,7 +502,10 @@ test("sub-agent events keep allowlisted fields and a readable label", () => {
   assert.equal(bogus.data.tool, undefined);
 
   assert.equal(
-    publicEvent({ type: "subagent.status", data: { agent: { threadId: "../x" } } }),
+    publicEvent({
+      type: "subagent.status",
+      data: { agent: { threadId: "../x" } },
+    }),
     null,
   );
 });
@@ -543,7 +546,10 @@ test("snapshots rebuild sub-agents and tolerate older runtimes", () => {
   });
   assert.equal(snap.data.subAgents.length, 1);
   assert.equal(snap.data.subAgents[0].secret, undefined);
-  assert.deepEqual(publicEvent({ type: "snapshot", data: {} }).data.subAgents, []);
+  assert.deepEqual(
+    publicEvent({ type: "snapshot", data: {} }).data.subAgents,
+    [],
+  );
 });
 
 test("collab labels name the action without prompts", () => {
@@ -575,4 +581,107 @@ test("sub-agent session options are validated", () => {
     { maxConcurrent: 2.5 },
   ])
     assert.throws(() => subAgentOptions(bad), /subAgents/);
+});
+
+test("observability events reach the public stream without internal ids or raw text", () => {
+  const trace = {
+    turnId: "turn-1",
+    threadId: "internal-thread",
+    startedAt: "2026-09-28T08:16:00.000Z",
+    totalMs: 7721,
+    status: "completed",
+    steps: [
+      {
+        id: "s1",
+        kind: "command",
+        label: "Ran a command",
+        agent: "main",
+        agentThreadId: "internal-thread",
+        startMs: 10,
+        durationMs: 50,
+        status: "completed",
+        command: "cat /etc/passwd",
+      },
+      {
+        id: "s2",
+        kind: "tool",
+        label: "Used search",
+        agent: "scout",
+        agentThreadId: "helper-1",
+        startMs: 20,
+        durationMs: null,
+        status: "running",
+      },
+      {
+        id: "s3",
+        kind: "bogus",
+        label: "x",
+        agent: "main",
+        startMs: -5,
+        durationMs: 1,
+        status: "weird",
+      },
+    ],
+    usage: {
+      inputTokens: 100,
+      cachedInputTokens: 40,
+      outputTokens: 20,
+      reasoningOutputTokens: 5,
+      totalTokens: 120,
+      contextWindow: 1000,
+      contextUsedTokens: 100,
+      raw: "prompt text",
+    },
+    helperUsage: null,
+    rateLimits: {
+      primaryUsedPercent: 12,
+      at: "2026-09-28T08:16:00.000Z",
+      secret: "hidden",
+    },
+    privacy: {
+      scannedChars: 50,
+      findings: [
+        {
+          kind: "email",
+          source: "userMessage",
+          count: 1,
+          sample: "j***@***.com",
+          value: "jane@example.com",
+        },
+        { kind: "unknown", source: "userMessage", count: 1, sample: "x" },
+      ],
+    },
+  };
+  const completed = publicEvent({
+    type: "turn.completed",
+    data: { trace, turn: { status: "completed" } },
+  });
+  const t = completed.data.trace;
+  assert.equal(t.threadId, undefined);
+  assert.equal(t.steps.length, 3);
+  assert.equal(t.steps[0].agentThreadId, "main");
+  assert.equal(t.steps[1].agentThreadId, "helper-1");
+  assert.equal(t.steps[2].kind, "other");
+  assert.equal(t.steps[2].startMs, 0);
+  assert.equal(t.steps[2].status, "completed");
+  assert.equal(t.privacy.findings.length, 1);
+  assert.equal(t.usage.cachedInputTokens, 40);
+  assert.doesNotMatch(
+    JSON.stringify(completed),
+    /internal-thread|passwd|prompt text|hidden|jane@example/,
+  );
+
+  const usage = publicEvent({
+    type: "usage.updated",
+    data: { usage: trace.usage },
+  });
+  assert.equal(usage.data.usage.contextWindow, 1000);
+  assert.doesNotMatch(JSON.stringify(usage), /prompt text/);
+  const limits = publicEvent({
+    type: "limits.updated",
+    data: { rateLimits: trace.rateLimits },
+  });
+  assert.equal(limits.data.rateLimits.primaryUsedPercent, 12);
+  assert.doesNotMatch(JSON.stringify(limits), /hidden/);
+  assert.equal(publicEvent({ type: "usage.updated", data: {} }), null);
 });

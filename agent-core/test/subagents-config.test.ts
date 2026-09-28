@@ -67,6 +67,8 @@ test("threads pin the V1 helper backend and helpers inherit the restricted profi
   ])
     assert.equal(c[key], false, key);
   assert.match(start.baseInstructions, /only when the user explicitly asks/);
+  // Instructions are sent once; a developer copy would duplicate them.
+  assert.equal(start.developerInstructions, undefined);
   // Resume keeps the conversation's helper settings.
   await client.request("thread/resume", { threadId: "root_1" });
   const resume = sent[1].params;
@@ -95,7 +97,10 @@ test("helper threads may be interrupted but reach no other operation", async (t)
     params: { threadId: "child_1" },
   });
   // Reading a helper returns its name only, never its history.
-  await client.request("thread/read", { threadId: "child_1", includeTurns: true });
+  await client.request("thread/read", {
+    threadId: "child_1",
+    includeTurns: true,
+  });
   assert.deepEqual(sent.at(-1), {
     method: "thread/read",
     params: { threadId: "child_1", includeTurns: false },

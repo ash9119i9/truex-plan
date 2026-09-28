@@ -8,6 +8,7 @@ import {
   elapsedMs,
   elapsedSeconds,
   emptySubAgents,
+  durationParts,
   formatDuration,
   groupElapsedMs,
   helperName,
@@ -426,13 +427,27 @@ test("previews keep whole lines and never leave an unpaired marker", () => {
   ].join("\n");
   // Short limit: only the last whole line fits, so no marker is split.
   const tail = previewTail(text, 60, 4);
-  assert.equal(tail, "…\n\n3. **Explain why**, not what the diff already shows.");
+  assert.equal(
+    tail,
+    "…\n\n3. **Explain why**, not what the diff already shows.",
+  );
   // A single long line cut mid-bold drops the orphaned marker.
-  const cut = previewTail("intro " + "word ".repeat(40) + "**bold end** done", 30);
+  const cut = previewTail(
+    "intro " + "word ".repeat(40) + "**bold end** done",
+    30,
+  );
   assert.equal((cut.match(/\*\*/g) || []).length % 2, 0);
   assert.equal(previewTail("a **b** `c`"), "a **b** `c`");
   assert.equal(previewTail("text ends in **half"), "text ends in half");
   // A cut heading starts its own line so it still renders as a heading.
   const heading = previewTail("intro line\n## Specificity: point to it", 30);
   assert.equal(heading, "…\n\n## Specificity: point to it");
+});
+
+test("duration parts split whole hours, minutes and seconds", () => {
+  assert.deepEqual(durationParts(59_999), { h: 0, m: 0, s: 59 });
+  assert.deepEqual(durationParts(60_000), { h: 0, m: 1, s: 0 });
+  assert.deepEqual(durationParts(3_723_000), { h: 1, m: 2, s: 3 });
+  assert.deepEqual(durationParts(-5), { h: 0, m: 0, s: 0 });
+  assert.deepEqual(durationParts(Number.NaN), { h: 0, m: 0, s: 0 });
 });

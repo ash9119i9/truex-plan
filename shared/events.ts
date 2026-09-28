@@ -5,4 +5,8 @@ export type {
   PendingRequest,
   TurnState,
   TurnTiming,
+  TurnTrace,
+  TurnUsage,
+  RateLimitView,
+  PrivacyReport,
 } from "./contracts";

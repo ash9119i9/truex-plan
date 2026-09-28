@@ -293,3 +293,102 @@ test("drain: force-closes streams still open after the grace period", async () =
   const line = await access(g.logs);
   assert.equal(line.outcome, "client_closed");
 });
+
+test("access log: records provider rate-limit headers, never bodies or keys", async () => {
+  const g = await start({
+    fetch: (async () =>
+      new Response(
+        sse([
+          { choices: [{ delta: { content: "rate limited reply" } }] },
+          { choices: [{ delta: {}, finish_reason: "stop" }] },
+        ]),
+        {
+          headers: {
+            "x-ratelimit-limit-requests": "500",
+            "x-ratelimit-remaining-requests": "499",
+            "x-ratelimit-limit-tokens": "30000",
+            "x-ratelimit-remaining-tokens": "29000",
+            "x-ratelimit-reset-requests": "120ms",
+            "x-ratelimit-reset-tokens": "6m0s",
+            "x-unrelated": "provider-secret",
+          },
+        },
+      )) as typeof fetch,
+  });
+  try {
+    await (await post(g.base, token)).text();
+    const line = await access(g.logs);
+    assert.deepEqual(line.rateLimit, {
+      limitRequests: 500,
+      remainingRequests: 499,
+      limitTokens: 30000,
+      remainingTokens: 29000,
+      resetRequests: "120ms",
+      resetTokens: "6m0s",
+    });
+    const all = g.logs.join("\n");
+    for (const leak of [
+      "provider-secret",
+      token,
+      "secret prompt text",
+      "rate limited reply",
+    ])
+      assert.ok(!all.includes(leak), `log leaked ${leak.slice(0, 12)}`);
+  } finally {
+    await g.stop();
+  }
+});
+
+test("access log: 429 keeps retry-after and anthropic-style limits", async () => {
+  const g = await start({
+    fetch: (async () =>
+      new Response(
+        JSON.stringify({ error: { message: "secret prompt text too fast" } }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "retry-after": "7",
+            "anthropic-ratelimit-requests-limit": "50",
+            "anthropic-ratelimit-requests-remaining": "0",
+            "anthropic-ratelimit-requests-reset": "2026-09-28T00:00:07Z",
+            "anthropic-ratelimit-input-tokens-remaining": "0",
+          },
+        },
+      )) as typeof fetch,
+  });
+  try {
+    const res = await post(g.base, token);
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get("retry-after"), "7");
+    await res.text();
+    const line = await access(g.logs);
+    assert.deepEqual(line.rateLimit, {
+      retryAfter: 7,
+      anthropicRequestsLimit: 50,
+      anthropicRequestsRemaining: 0,
+      anthropicRequestsReset: "2026-09-28T00:00:07Z",
+      anthropicInputTokensRemaining: 0,
+    });
+    const all = g.logs.join("\n");
+    assert.ok(!all.includes("secret prompt text"));
+    assert.ok(!all.includes("provider-secret"));
+  } finally {
+    await g.stop();
+  }
+});
+
+test("access log: no rateLimit field when the provider sends none", async () => {
+  const g = await start({
+    fetch: (async () =>
+      new Response(
+        sse([{ choices: [{ delta: {}, finish_reason: "stop" }] }]),
+      )) as typeof fetch,
+  });
+  try {
+    await (await post(g.base, token)).text();
+    assert.equal((await access(g.logs)).rateLimit, undefined);
+  } finally {
+    await g.stop();
+  }
+});

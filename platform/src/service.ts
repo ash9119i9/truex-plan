@@ -294,6 +294,12 @@ export class PlatformService {
       baseInstructions:
         (agent.systemPrompt || "You are a helpful assistant.") +
         attachedMcpInstructions([...names]),
+      ...(typeof agent.persona === "string" && agent.persona.trim()
+        ? { persona: agent.persona }
+        : {}),
+      ...(agent.scope === "general" || agent.scope === "business"
+        ? { scope: agent.scope }
+        : {}),
       ...(profile.serviceTier && profile.serviceTier !== "auto"
         ? { serviceTier: profile.serviceTier }
         : {}),

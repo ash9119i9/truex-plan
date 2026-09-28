@@ -170,6 +170,9 @@ app.get("/threads/:id/items", async (req, res) =>
     ),
   ),
 );
+app.get("/threads/:id/turns/:turnId/context", (req, res) =>
+  res.json(manager.turnContext(req.params.id, req.params.turnId)),
+);
 app.get("/threads/:id/agents", (req, res) =>
   res.json(manager.agents(req.params.id)),
 );

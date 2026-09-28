@@ -8,7 +8,12 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { verifyGatewayToken } from "../../shared/gateway-token";
 import { sendError } from "./responses";
-import { accessLogLine, type RequestMeta } from "./logging";
+import {
+  accessLogLine,
+  record,
+  rateLimitHeaders,
+  type RequestMeta,
+} from "./logging";
 import { withTimeouts } from "./upstream";
 import type { Adapter, GatewayProfile } from "./adapter";
 import { proxyChat } from "./adapters/chat";
@@ -158,15 +163,28 @@ export function createGateway(options: GatewayOptions) {
       apiKey,
       input,
       res,
-      fetch: withTimeouts(baseFetch, {
-        firstByteMs: validMs(profile.firstByteTimeoutMs) ?? firstByteMs,
-        idleMs,
-      }),
+      fetch: withRateLimits(
+        withTimeouts(baseFetch, {
+          firstByteMs: validMs(profile.firstByteTimeoutMs) ?? firstByteMs,
+          idleMs,
+        }),
+        res,
+      ),
       signal: abort.signal,
       log,
     });
   }
 }
+
+// Record the provider's rate-limit headers (never bodies) for the access log.
+const withRateLimits =
+  (base: typeof fetch, res: ServerResponse): typeof fetch =>
+  async (input, init) => {
+    const upstream = await base(input, init);
+    const rateLimit = rateLimitHeaders(upstream.headers);
+    if (rateLimit) record(res, { rateLimit });
+    return upstream;
+  };
 
 const validMs = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) && value >= 0

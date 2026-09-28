@@ -6,7 +6,15 @@ import {
   idCandidates,
 } from "./documents";
 import { MongoClient, Db } from "mongodb";
-import type { Session, Message, DomainEvent } from "../../shared/contracts";
+import type {
+  Session,
+  Message,
+  DomainEvent,
+  TurnTrace,
+} from "../../shared/contracts";
+// One document per {sessionId, turnId}. Holds only the TurnTrace, which has no
+// raw text (privacy findings are already masked).
+export type TraceDocument = TurnTrace & { _id: string; sessionId: string };
 export class Store {
   readonly client: MongoClient;
   db!: Db;
@@ -22,6 +30,7 @@ export class Store {
     await Promise.all([
       this.messages.createIndex({ sessionId: 1, at: 1 }),
       this.sessions.createIndex({ status: 1 }),
+      this.traces.createIndex({ sessionId: 1, startedAt: 1 }),
     ]);
     return this;
   }
@@ -54,6 +63,18 @@ export class Store {
   }
   get messages() {
     return this.db.collection<Message>("messages");
+  }
+  get traces() {
+    return this.db.collection<TraceDocument>("traces");
+  }
+  // Last `limit` traces of a session, oldest first.
+  async sessionTraces(sessionId: string, limit = 200): Promise<TurnTrace[]> {
+    const rows = await this.traces
+      .find({ sessionId }, { projection: { _id: 0, sessionId: 0 } })
+      .sort({ startedAt: -1 })
+      .limit(limit)
+      .toArray();
+    return rows.reverse() as TurnTrace[];
   }
   async persist(sessionId: string, event: DomainEvent) {
     if (event.type === "message.final")
@@ -90,6 +111,13 @@ export class Store {
       await this.sessions.updateOne(
         { _id: sessionId, "timings.turnId": { $ne: event.turnId } },
         { $push: { timings: event.data.timing } },
+      );
+    const trace = event.data?.trace as TurnTrace | undefined;
+    if (event.type === "turn.completed" && trace?.turnId)
+      await this.traces.updateOne(
+        { _id: `${sessionId}:${trace.turnId}` },
+        { $set: { ...trace, sessionId } },
+        { upsert: true },
       );
   }
 }

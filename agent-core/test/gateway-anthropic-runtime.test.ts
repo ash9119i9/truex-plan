@@ -189,8 +189,11 @@ test(
     for (const r of requests) assert.equal(r.apiKey, "real-anthropic-key");
     const first = requests[0].body;
     assert.equal(first.model, "claude-opus-5");
-    assert.equal(typeof first.system, "string");
-    assert.ok(first.system.length > 0);
+    // One text block with a cache breakpoint, so tools + system are cached.
+    assert.equal(first.system.length, 1);
+    assert.equal(first.system[0].type, "text");
+    assert.ok(first.system[0].text.length > 0);
+    assert.deepEqual(first.system[0].cache_control, { type: "ephemeral" });
     assert.equal(first.messages[0].role, "user");
     const names = first.tools.map((x: any) => x.name);
     assert.ok(names.includes("conversation_files"));

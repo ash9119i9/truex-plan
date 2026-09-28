@@ -8,9 +8,17 @@ import { ThinkingBlock } from "./thinking-block";
 import { ApprovalRecordView } from "./approval-record";
 import { Visualization } from "./visualization";
 import { splitVisualizations } from "@/lib/visualization";
+import { splitSuggestions } from "@/lib/suggestions";
+import { SuggestedQuestions } from "./suggested-questions";
 import { HelperGroup } from "./helper-group";
 import { emptySubAgents, type SubAgentState } from "@/lib/subagents";
-import type { Goal, GoalReview } from "../../shared/contracts";
+import { LiveUsage, TurnReceipt } from "./observability/receipt";
+import type {
+  Goal,
+  GoalReview,
+  TurnTrace,
+  TurnUsage,
+} from "../../shared/contracts";
 
 export function ChatMessages({
   entries,
@@ -25,6 +33,10 @@ export function ChatMessages({
   goalReview,
   subAgents = emptySubAgents,
   onOpenAgent,
+  onSuggest,
+  suggestionsEnabled = true,
+  traces = [],
+  liveUsage = {},
 }: {
   entries: Entry[];
   agentName: string;
@@ -38,6 +50,10 @@ export function ChatMessages({
   goalReview?: GoalReview | null;
   subAgents?: SubAgentState;
   onOpenAgent?: (threadId: string) => void;
+  onSuggest?: (question: string) => void;
+  suggestionsEnabled?: boolean;
+  traces?: TurnTrace[];
+  liveUsage?: Record<string, TurnUsage>;
 }) {
   const groups: {
     id: string;
@@ -64,6 +80,12 @@ export function ChatMessages({
   }
   const last = groups.at(-1);
   const needsPlaceholder = running && (!last || !!last.user);
+  const traceByTurn = new Map(traces.map((t) => [t.turnId, t]));
+  // A turn's receipt goes under its last response block only.
+  const receiptAt = new Map<string, number>();
+  groups.forEach((g, i) => {
+    if (!g.user && g.turnId) receiptAt.set(g.turnId, i);
+  });
   // Turns with an anchor, so each turn id is used once.
   const anchored = new Set<string>();
   return (
@@ -121,6 +143,19 @@ export function ChatMessages({
             ? `turn-${group.turnId}`
             : undefined;
         if (group.turnId) anchored.add(group.turnId);
+        // Follow-ups come from the last answer of the latest finished turn.
+        const lastAnswer = content.findLast(
+          (e) => e.kind === "message" && !!e.text,
+        );
+        const suggestions =
+          onSuggest &&
+          suggestionsEnabled &&
+          !running &&
+          index === groups.length - 1 &&
+          lastAnswer?.kind === "message" &&
+          lastAnswer.final
+            ? splitSuggestions(lastAnswer.text).suggestions
+            : [];
         return (
           <article
             className="assistant-turn"
@@ -156,26 +191,28 @@ export function ChatMessages({
               ) : e.kind === "message" && e.text ? (
                 <div className="message assistant" key={e.id}>
                   <div className="message-text markdown">
-                    {splitVisualizations(e.text, !e.final && !e.done).map(
-                      (part, i) =>
-                        part.type === "visualization" ? (
-                          sessionId ? (
-                            <Visualization
-                              key={part.id + ":" + i}
-                              sessionId={sessionId}
-                              id={part.id}
-                              onPrompt={onPrompt}
-                            />
-                          ) : (
-                            <p key={i}>
-                              Open this conversation to view the visualization.
-                            </p>
-                          )
+                    {splitVisualizations(
+                      splitSuggestions(e.text, !e.final && !e.done).body,
+                      !e.final && !e.done,
+                    ).map((part, i) =>
+                      part.type === "visualization" ? (
+                        sessionId ? (
+                          <Visualization
+                            key={part.id + ":" + i}
+                            sessionId={sessionId}
+                            id={part.id}
+                            onPrompt={onPrompt}
+                          />
                         ) : (
-                          <Markdown key={i} remarkPlugins={[remarkGfm]}>
-                            {part.text}
-                          </Markdown>
-                        ),
+                          <p key={i}>
+                            Open this conversation to view the visualization.
+                          </p>
+                        )
+                      ) : (
+                        <Markdown key={i} remarkPlugins={[remarkGfm]}>
+                          {part.text}
+                        </Markdown>
+                      ),
                     )}
                     {active && !e.final && !e.done && (
                       <span className="cursor" aria-hidden="true" />
@@ -183,6 +220,22 @@ export function ChatMessages({
                   </div>
                 </div>
               ) : null,
+            )}
+            {group.turnId &&
+              receiptAt.get(group.turnId) === index &&
+              (traceByTurn.has(group.turnId) && !active ? (
+                <TurnReceipt
+                  trace={traceByTurn.get(group.turnId)!}
+                  sessionId={sessionId}
+                />
+              ) : active && liveUsage[group.turnId] ? (
+                <LiveUsage usage={liveUsage[group.turnId]} />
+              ) : null)}
+            {!!suggestions.length && (
+              <SuggestedQuestions
+                questions={suggestions}
+                onSelect={onSuggest!}
+              />
             )}
             {active && !answering && !thinking.some((e) => !e.done) && (
               <p className="chat-working" role="status">

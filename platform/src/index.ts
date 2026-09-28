@@ -9,11 +9,14 @@ import { assistantCapabilities } from "../../shared/assistant-capabilities";
 import {
   publicSession,
   publicTiming,
+  publicTrace,
   PublicEventStream,
   POLICY_VERSION,
   relay,
 } from "./public";
 import { Store } from "./store";
+import { sessionTraces } from "./traces";
+import type { TurnTrace } from "../../shared/contracts";
 import { PlatformService, ApiError } from "./service";
 @Module({})
 class AppModule {}
@@ -364,6 +367,35 @@ async function main() {
     }),
   );
   http.get(
+    "/api/sessions/:id/traces",
+    route(async (req, res) => {
+      const s = await service.session(String(req.params.id));
+      // Stored traces stay readable while the assistant service is down.
+      await service.ingest(s).catch(() => undefined);
+      res.json(
+        sessionTraces(
+          (await store.sessionTraces(s._id))
+            .map(publicTrace)
+            .filter((t): t is TurnTrace => t !== null),
+        ),
+      );
+    }),
+  );
+  // Live-only masked context; never persisted or logged here.
+  http.get(
+    "/api/sessions/:id/turns/:turnId/context",
+    route(async (req, res) => {
+      const s = await service.session(String(req.params.id));
+      res.set("Cache-Control", "no-store");
+      res.json(
+        await service.owned(
+          s,
+          `/turns/${encodeURIComponent(String(req.params.turnId))}/context`,
+        ),
+      );
+    }),
+  );
+  http.get(
     "/api/sessions/:id/events",
     route(async (req, res) => {
       const s = await service.session(String(req.params.id));
@@ -417,7 +449,10 @@ async function main() {
         // Highest token count seen for the current goal on this stream, so a
         // restarted assistant service never shows a smaller count.
         let counted = s.goal ?? null;
-        const remember = (goal: any, event?: { turnId?: string; at?: string }) => {
+        const remember = (
+          goal: any,
+          event?: { turnId?: string; at?: string },
+        ) => {
           if (goal) {
             const same =
               !!counted &&

@@ -6,6 +6,10 @@ export interface Agent {
   description: string;
   modelProfileId: string;
   systemPrompt: string;
+  /** Replaces the default Truex identity line; platform guardrails still apply. */
+  persona?: string;
+  /** "general" lifts the business-only framing. Defaults to "business". */
+  scope?: "business" | "general";
   sandbox: SandboxMode;
   approvalPolicy: AskForApproval;
   mcpProfileIds: string[];
@@ -230,6 +234,8 @@ export type DomainType =
   | "subagent.completed"
   | "subagent.event"
   | "runtime.event"
+  | "usage.updated"
+  | "limits.updated"
   | "snapshot"
   | "resync.required";
 export interface DomainEvent {
@@ -264,6 +270,9 @@ export interface Snapshot {
   goal?: unknown;
   diff: string;
   timings: TurnTiming[];
+  // Observability traces of recent completed turns, oldest first.
+  traces?: TurnTrace[];
+  rateLimits?: RateLimitView | null;
   subAgents?: SubAgent[];
 }
 
@@ -296,13 +305,125 @@ export interface SubAgentTranscript {
   messages: { id: string; text: string; final: boolean }[];
 }
 export type CollabTool =
-  | "spawnAgent"
-  | "sendInput"
-  | "resumeAgent"
-  | "wait"
-  | "closeAgent";
+  "spawnAgent" | "sendInput" | "resumeAgent" | "wait" | "closeAgent";
 
 export type PublicSession = Pick<
   Session,
   "_id" | "agentId" | "title" | "status" | "createdAt" | "goal"
 >;
+
+// --- Observability -------------------------------------------------------
+// One timed step of a turn, in plain words. Built from Codex item events.
+export type StepKind =
+  | "thinking"
+  | "message"
+  | "command"
+  | "tool"
+  | "fileChange"
+  | "webSearch"
+  | "agent"
+  | "other";
+export interface StepSpan {
+  id: string;
+  kind: StepKind;
+  // Plain-words label, e.g. "Ran a command", "Read 3 files". Never raw args.
+  label: string;
+  // "main" for the session's agent, else the helper's nickname or role.
+  agent: string;
+  agentThreadId: string;
+  // Offset from the turn's start.
+  startMs: number;
+  durationMs: number | null;
+  status: "running" | "completed" | "failed" | "declined";
+}
+// Token counts as Codex reports them (TokenUsageBreakdown).
+export interface TokenCounts {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  totalTokens: number;
+}
+export interface TurnUsage extends TokenCounts {
+  contextWindow: number | null;
+  // Input tokens of the latest model request: how full the context window is.
+  contextUsedTokens: number | null;
+}
+export interface RateLimitView {
+  limitName: string | null;
+  primaryUsedPercent: number | null;
+  primaryWindowMins: number | null;
+  primaryResetsAt: number | null;
+  secondaryUsedPercent: number | null;
+  secondaryWindowMins: number | null;
+  secondaryResetsAt: number | null;
+  reached: string | null;
+  at: string;
+}
+export type PrivacyKind =
+  | "email"
+  | "phone"
+  | "card"
+  | "iban"
+  | "ssn"
+  | "aadhaar"
+  | "pan"
+  | "ip"
+  | "secret";
+export type PrivacySource =
+  "userMessage" | "toolOutput" | "command" | "fileContent" | "assistant";
+// Never holds a raw value: only the kind, where, how many and a masked sample.
+export interface PrivacyFinding {
+  kind: PrivacyKind;
+  source: PrivacySource;
+  count: number;
+  sample: string;
+}
+export interface PrivacyReport {
+  scannedChars: number;
+  findings: PrivacyFinding[];
+}
+export interface TurnTrace {
+  turnId: string;
+  // Internal runtime id; stripped from public API responses.
+  threadId?: string;
+  startedAt: string;
+  totalMs: number | null;
+  status: string;
+  model?: string;
+  steps: StepSpan[];
+  // Main agent usage for this turn ("last" breakdown), null if not reported.
+  usage: TurnUsage | null;
+  // Summed usage of helper agents that ran during this turn.
+  helperUsage: TokenCounts | null;
+  rateLimits: RateLimitView | null;
+  privacy: PrivacyReport;
+}
+// Live-only, never persisted: masked reconstruction of what the model was fed.
+export interface TurnContext {
+  turnId: string;
+  reconstructed: true;
+  sections: {
+    kind: "user" | "toolOutput" | "command" | "fileContent" | "assistant";
+    label: string;
+    text: string;
+    chars: number;
+  }[];
+  truncated: boolean;
+}
+// GET /api/sessions/:id/traces response.
+export interface TraceSummary {
+  turns: number;
+  avgTotalMs: number | null;
+  p95TotalMs: number | null;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+  helperTokens: number;
+  privacyFindings: number;
+}
+export interface SessionTraces {
+  traces: TurnTrace[];
+  summary: TraceSummary;
+}

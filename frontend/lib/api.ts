@@ -84,3 +84,12 @@ export const getAgentTranscript = (sessionId: string, agentId: string) =>
   api(agentsPath(sessionId, agentId));
 export const interruptAgent = (sessionId: string, agentId: string) =>
   api(agentsPath(sessionId, agentId) + "/interrupt", {});
+
+// Observability: traces of completed turns and, while the session is live,
+// a masked reconstruction of what the model saw for one turn.
+const sessionPath = (sessionId: string) =>
+  `/api/sessions/${encodeURIComponent(sessionId)}`;
+export const getTraces = (sessionId: string) =>
+  api(sessionPath(sessionId) + "/traces");
+export const getTurnContext = (sessionId: string, turnId: string) =>
+  api(sessionPath(sessionId) + `/turns/${encodeURIComponent(turnId)}/context`);

@@ -2,6 +2,7 @@
 @import "./shell.css";
 @import "./chat.css";
 @import "./panels.css";
+@import "./observability.css";
 @import "./responsive.css";
 
 /* Light-mode design tokens. Every area stylesheet reads from these. */

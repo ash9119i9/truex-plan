@@ -1,11 +1,7 @@
 "use client";
-import {
-  formatDuration,
-  groupElapsedMs,
-  isRunning,
-  type SubAgentState,
-} from "@/lib/subagents";
+import { groupElapsedMs, isRunning, type SubAgentState } from "@/lib/subagents";
 import { useClock } from "./use-clock";
+import { LiveDuration } from "./live-duration";
 
 // Sits above the composer while helpers run, so the count and time stay in
 // view after their block scrolls away.
@@ -29,9 +25,7 @@ export function HelperChip({
       <span className="helper-chip-dot" aria-hidden />
       <span aria-hidden>
         {label} ·{" "}
-        <time>
-          {formatDuration(groupElapsedMs(running, now, state.skewMs))}
-        </time>
+        <LiveDuration ms={groupElapsedMs(running, now, state.skewMs)} />
       </span>
       <button type="button" className="link-button" onClick={onView}>
         View

@@ -2,11 +2,11 @@
 import { useMemo, useState } from "react";
 import { Check, ChevronDown, CircleDot, Square, X } from "lucide-react";
 import Markdown from "react-markdown";
+import { stripSuggestions } from "@/lib/suggestions";
 import remarkGfm from "remark-gfm";
 import { interruptAgent } from "@/lib/api";
 import {
   elapsedMs,
-  formatDuration,
   groupElapsedMs,
   helperName,
   isRunning,
@@ -17,6 +17,7 @@ import {
 } from "@/lib/subagents";
 import type { SubAgent } from "../../shared/contracts";
 import { useClock } from "./use-clock";
+import { LiveDuration } from "./live-duration";
 
 // The helper agents one turn started, shown inline where the user is reading.
 export function HelperGroup({
@@ -59,9 +60,10 @@ export function HelperGroup({
     >
       <header className="helper-group-head">
         <span className="helper-group-summary">{summary}</span>
-        <time className="helper-time">
-          {formatDuration(groupElapsedMs(agents, now, state.skewMs))}
-        </time>
+        <LiveDuration
+          className="helper-time"
+          ms={groupElapsedMs(agents, now, state.skewMs)}
+        />
       </header>
       {/* Announces count and status changes, never timer ticks. */}
       <p className="visually-hidden" aria-live="polite">
@@ -149,14 +151,16 @@ function HelperRow({
         <span className="helper-status">
           {statusLabels[agent.status] || agent.status}
         </span>
-        <time className="helper-time">{formatDuration(elapsed)}</time>
+        <LiveDuration className="helper-time" ms={elapsed} />
         <ChevronDown size={14} className="helper-chevron" aria-hidden />
       </button>
       {open && (
         <div className="helper-detail" id={detailId}>
           {output ? (
             <div className="helper-output markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>{output}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]}>
+                {stripSuggestions(output, running)}
+              </Markdown>
             </div>
           ) : (
             <p className="muted">

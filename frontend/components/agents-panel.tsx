@@ -1,11 +1,11 @@
 "use client";
 import { useState } from "react";
 import Markdown from "react-markdown";
+import { stripSuggestions } from "@/lib/suggestions";
 import remarkGfm from "remark-gfm";
 import { getAgentTranscript, interruptAgent } from "@/lib/api";
 import {
   elapsedMs,
-  formatDuration,
   helperName,
   isRunning,
   previewTail,
@@ -13,6 +13,7 @@ import {
   taskTitle,
 } from "@/lib/subagents";
 import { useClock } from "./use-clock";
+import { LiveDuration } from "./live-duration";
 import type { SubAgent, SubAgentTranscript } from "../../shared/contracts";
 
 export function AgentsPanel({
@@ -124,7 +125,7 @@ function AgentCard({
       <div className="agent-meta">
         {agent.role && agent.nickname && <span>{agent.role} · </span>}
         {agent.depth > 1 && <span>Level {agent.depth} · </span>}
-        <time>{formatDuration(elapsed)}</time>
+        <LiveDuration ms={elapsed} />
       </div>
       {task && (
         <p className="agent-task">
@@ -144,7 +145,10 @@ function AgentCard({
       {!open && (running ? preview : agent.lastMessage) && (
         <div className="agent-preview markdown">
           <Markdown remarkPlugins={[remarkGfm]}>
-            {previewTail(running ? preview : agent.lastMessage || "")}
+            {stripSuggestions(
+              previewTail(running ? preview : agent.lastMessage || ""),
+              running,
+            )}
           </Markdown>
         </div>
       )}
@@ -181,7 +185,9 @@ function AgentCard({
           {loading && !transcript && <p className="muted">Loading…</p>}
           {transcript?.messages.map((m) => (
             <div key={m.id} className="markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>{m.text}</Markdown>
+              <Markdown remarkPlugins={[remarkGfm]}>
+                {stripSuggestions(m.text)}
+              </Markdown>
             </div>
           ))}
           {live && <pre aria-live="polite">{live}</pre>}

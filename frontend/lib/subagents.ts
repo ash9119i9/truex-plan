@@ -268,11 +268,18 @@ export function groupElapsedMs(
     : 0;
 }
 // "0:38", "1:12", "1:02:03".
-export function formatDuration(ms: number): string {
+// Whole hours, minutes and seconds of a duration, for rolling timers.
+export function durationParts(ms: number) {
   const total = Math.max(0, Math.floor((Number.isFinite(ms) ? ms : 0) / 1000));
-  const h = Math.floor(total / 3600),
-    m = Math.floor((total % 3600) / 60),
-    s = total % 60;
+  return {
+    h: Math.floor(total / 3600),
+    m: Math.floor((total % 3600) / 60),
+    s: total % 60,
+  };
+}
+
+export function formatDuration(ms: number): string {
+  const { h, m, s } = durationParts(ms);
   const pad = (n: number) => String(n).padStart(2, "0");
   return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
 }

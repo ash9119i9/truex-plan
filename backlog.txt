@@ -4,7 +4,8 @@ first message can be goal -> completed
 Implement sub-agents feature 
 plan feature
 conversation export
-Observability feature 
+Observability feature
+Observability: cost in dollars per turn/session (needs per-model price table)
 Ui Enhancement -> Partially Done
 Error handling Detailed Error 
 Build a Todo for a long running tasks and usecase
@@ -27,11 +28,39 @@ Document Attaching in the Chat
 Model backup for an agent 
 Font size and Font style 
 Color Palatte 
-
-
+Model selection (Auto)
+Reasoning Levels (Auto)
+Common Database for the Models and Skills
+Document Preview
+Token efficiency -> Highly concentrate and needs more attention
+   "Hi" costs ~10,400 input tokens (measured 28/09, after removing the duplicated developer instructions).
+   0. FIRST: get prompt caching working. cachedInputTokens is 0 on every turn. Our gateway sends cache_control
+      (top-level + system block), so check the proxy ashok-kiro-gw.duckdns.org forwards cache_control and returns
+      cache_read_input_tokens / cache_creation_input_tokens. Saves ~90% on the repeated setup.
+   1. Turn off Codex permissions instructions (include_permissions_instructions=false): shell is already off. ~970 tokens
+   2. Turn off Codex skills list (skills.include_instructions=false): dev skills, also leaks local paths. ~725 tokens
+   3. Shorten the 8 workspace file tool descriptions (400-550 chars each). ~700-900 tokens
+   4. Send workspace file tools only to agents that use them (per-agent setting). ~1,500 tokens
+   5. Measure the unlogged ~4,100 tokens (Codex helper/plan/goal/ask-user tools + qlik/btp connector tools)
+   6. Receipt/token bar: split "Setup (instructions + tools)" vs "Conversation" so "Hi" doesn't look like 10k
+Agent persona + scope per agent (DB configurable) --> Completed (28/09)
+   Set in Mongo, collection truex_agents. Both fields optional; omitted = Truex identity + business scope.
+   - persona: replaces the "You are a Truex assistant" identity line (trimmed, max 4000 chars, blank = default)
+   - scope: "business" (default) | "general". general = helps with any request (creative writing, coding,
+     general knowledge), writes very long outputs to a workspace file in parts, default role "Help with any request."
+   - systemPrompt still goes under "Agent role:". Guardrails (connectors, data handling, no host access) stay fixed.
+   Example:
+     db.truex_agents.updateOne(
+       { name: "ashok-agents" },
+       { $set: { scope: "general", persona: "You are a helpful general-purpose assistant." } }
+     )
+   Takes effect on new conversations (resume also rebuilds the prompt).
+   Code: agent-core/src/business-runtime.ts (personaOptions, defaultPersona), platform/src/service.ts,
+         agent-core/src/manager.ts (strips persona/scope before Codex), shared/contracts.ts, docs/mongodb.md
+   Next: admin UI editor for systemPrompt / persona / scope (today it's Mongo only)
 
 // small small features 
-1. Implmenting skiper UI chat code 
+1. Implmenting skiper UI chat code --> Completed
 2. In the sidebar showing the running and completed chats kind of differentiate 
 3. At the end of the convo ask a related Question from the user Previous message and it should be clickable 
 4. Dark Mode implementation
@@ -56,8 +85,6 @@ sub-agents needs to be faster response
 
 
 
-
-
 // Usecases
 Say "fan out subagents" and Claude sends a team.
 Each one digs deep so nothing gets missed.
@@ -66,9 +93,10 @@ Each one digs deep so nothing gets missed.
 // Tomorrow things to be covered 
 1. Vimal questions
 2. Pravin for agent Arabic Agent
-3. Mail for veeeradevi
+3. Mail for veeeradevi. --> Done
 
 
 //Testing Plan for this 
 1. Each one login with their Credentails and test with thier Own 
 2. Give them as a Excel Sheet(To track the users)
+3. Implement caching in the AWS KIRO 
