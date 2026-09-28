@@ -23,6 +23,10 @@ SAP push bridge: push_workspace_file,
 so the model sends a path instead of re-sending 5,000 lines 
 to your SAP MCP tool. I need that tool's name and arguments to build it.
 Auto Accepts / Accept Read Only / Ask me Everytime
+Document Attaching in the Chat
+Model backup for an agent 
+Font size and Font style 
+Color Palatte 
 
 
 
@@ -63,3 +67,8 @@ Each one digs deep so nothing gets missed.
 1. Vimal questions
 2. Pravin for agent Arabic Agent
 3. Mail for veeeradevi
+
+
+//Testing Plan for this 
+1. Each one login with their Credentails and test with thier Own 
+2. Give them as a Excel Sheet(To track the users)

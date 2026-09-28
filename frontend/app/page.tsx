@@ -34,6 +34,7 @@ import {
   goalStatus,
 } from "@/lib/goal";
 import { BudgetField } from "@/components/budget-field";
+import { SmoothTextarea } from "@/components/smooth-textarea";
 import { turnFailure, type TurnFailure } from "@/lib/goal-errors";
 import {
   assistantCapabilities,
@@ -940,7 +941,7 @@ export default function Home() {
               </button>
             </div>
           )}
-          <textarea
+          <SmoothTextarea
             ref={composer}
             aria-label="Message"
             aria-describedby="composer-hint"

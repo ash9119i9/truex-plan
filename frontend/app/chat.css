@@ -228,6 +228,34 @@
 .composer textarea:disabled {
   cursor: not-allowed;
 }
+/* Spring caret (Skiper 106): the native caret is hidden and a measured,
+   spring-animated bar follows the insertion point instead. */
+.smooth-field {
+  position: relative;
+}
+.composer .smooth-field textarea {
+  caret-color: transparent;
+}
+.smooth-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.smooth-caret {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
+  will-change: transform;
+}
 .composer-footer {
   display: flex;
   gap: 8px;
