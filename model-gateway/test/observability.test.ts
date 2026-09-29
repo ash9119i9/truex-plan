@@ -82,6 +82,7 @@ test("access log: completed stream records model, usage and timings, no secrets"
     const line = await access(g.logs);
     assert.equal(line.requestId, "req-abc.1");
     assert.equal(line.profileId, "chat");
+    assert.ok(!("tenantId" in line), "no tenant in the token, none logged");
     assert.equal(line.wireApi, "chat");
     assert.equal(line.model, "llama-4");
     assert.equal(line.status, 200);
@@ -101,6 +102,27 @@ test("access log: completed stream records model, usage and timings, no secrets"
       "hello",
     ])
       assert.ok(!all.includes(leak), `log leaked ${leak.slice(0, 12)}`);
+  } finally {
+    await g.stop();
+  }
+});
+
+test("access log: records the token's tenant, which grants nothing", async () => {
+  const g = await start({
+    fetch: (async () =>
+      new Response(
+        sse([{ choices: [{ delta: {}, finish_reason: "stop" }] }]),
+      )) as typeof fetch,
+  });
+  try {
+    const tenantToken = signGatewayToken("chat", secret, "acme");
+    const res = await post(g.base, tenantToken);
+    assert.equal(res.status, 200);
+    await res.text();
+    const line = await access(g.logs);
+    assert.equal(line.profileId, "chat");
+    assert.equal(line.tenantId, "acme");
+    assert.ok(!g.logs.join("\n").includes(tenantToken));
   } finally {
     await g.stop();
   }

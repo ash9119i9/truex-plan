@@ -51,6 +51,8 @@ export function record(res: ServerResponse, facts: Recorded) {
 export interface RequestMeta {
   requestId: string;
   profileId?: string;
+  // From the token, for per-tenant usage only; it grants nothing.
+  tenantId?: string;
   wireApi?: string;
   model?: string;
 }
@@ -68,6 +70,7 @@ export function accessLogLine(
     type: "access",
     requestId: meta.requestId,
     profileId: meta.profileId,
+    tenantId: meta.tenantId,
     wireApi: meta.wireApi,
     model: meta.model,
     status: res.statusCode,

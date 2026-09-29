@@ -155,8 +155,10 @@ test(
     assert.equal(p.wire_api, "responses");
     assert.deepEqual(
       verifyGatewayToken(p.experimental_bearer_token, "hmac-secret"),
+      // Outside a registered tenant the thread belongs to "default".
       {
         profileId: "claude",
+        tenantId: "default",
       },
     );
     assert.equal(gw.config.web_search, "disabled");

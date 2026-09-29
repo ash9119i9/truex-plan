@@ -51,7 +51,7 @@ Font size and Font style
 Color Palatte 
 Model selection (Auto)
 Reasoning Levels (Auto)
-Common Database for the Models and Skills
+Common Database for the Models and Skills --> Done
 Document Preview
 Token efficiency -> Highly concentrate and needs more attention
    "Hi" costs ~10,400 input tokens (measured 28/09, after removing the duplicated developer instructions).
@@ -82,9 +82,13 @@ Agent persona + scope per agent (DB configurable) --> Completed (28/09)
 
 Migrating the Code for local MCP 
 
+user invitation 
 
-
-
+for Now we will only allowed user to see only thier Created chat if role is user if admin means we will allow to see the chats of everyone
+Adding Auth
+Allowing People to Connect with thier Enterprise APP (MCP)
+Configuring their Skills
+When the Goal / subAgent / plan is Runnning we need to focus that on the sidebar 
 
 
 // small small features 

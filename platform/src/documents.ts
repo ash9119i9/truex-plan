@@ -3,12 +3,14 @@ import type { Agent } from "../../shared/contracts";
 export type DatabaseId = string | ObjectId;
 export interface AgentDocument extends Omit<
   Partial<Agent>,
-  "_id" | "modelProfileId" | "mcpProfileIds"
+  "_id" | "modelProfileId" | "mcpProfileIds" | "skillIds"
 > {
   _id: DatabaseId;
   name: string;
   modelProfileId: DatabaseId;
   mcpProfileIds?: DatabaseId[];
+  /** Catalog skills (truex_skills) given to the agent's threads. */
+  skillIds?: DatabaseId[];
   enabled?: boolean;
 }
 export interface ModelDocument {

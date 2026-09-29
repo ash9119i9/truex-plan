@@ -5,7 +5,9 @@ import { createProfileStore, type StoredProfile } from "./profiles";
 
 // The gateway is its own service with its own model-gateway/.env. It shares
 // only MODEL_GATEWAY_SECRET with the platform (which signs the tokens) and
-// the truex_models collection (which holds the provider keys).
+// the truex_models collection (which holds the provider keys). Models live in
+// the shared catalog database (CATALOG_MONGO_DB), common to all tenants; it
+// falls back to MONGO_DB and then "truex" for single-database setups.
 const secret = process.env.MODEL_GATEWAY_SECRET || "";
 if (secret.length < 32) {
   console.error("MODEL_GATEWAY_SECRET must be set to at least 32 characters.");
@@ -21,7 +23,9 @@ async function main() {
   await client.connect();
   const log = (line: string) => console.log(line);
   const ttl = Number(process.env.PROFILE_CACHE_TTL_MS ?? 30000);
-  const db = client.db(process.env.MONGO_DB || "truex");
+  const db = client.db(
+    process.env.CATALOG_MONGO_DB || process.env.MONGO_DB || "truex",
+  );
   const profiles = createProfileStore({
     collection: db.collection<StoredProfile>("truex_models"),
     ttlMs: Number.isFinite(ttl) && ttl >= 0 ? ttl : 30000,

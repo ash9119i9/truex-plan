@@ -13,6 +13,8 @@ export interface Agent {
   sandbox: SandboxMode;
   approvalPolicy: AskForApproval;
   mcpProfileIds: string[];
+  /** Catalog skill ids; shared across tenants, subject to allowedSkillIds. */
+  skillIds?: string[];
 }
 /** How a provider is spoken to. Only "responses" is native to Codex. */
 export const WIRE_APIS = ["responses", "chat", "anthropic", "gemini"] as const;

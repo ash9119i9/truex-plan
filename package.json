@@ -10,6 +10,8 @@
     "codex:setup": "node scripts/codex.mjs --build",
     "codex:verify": "node scripts/codex.mjs",
     "demo": "node scripts/demo.mjs",
+    "tenant": "node scripts/tenant.mjs",
+    "migrate:tenancy": "node scripts/migrate-tenancy.mjs",
     "format": "prettier --write \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\"",
     "format:check": "prettier --check \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\""
   },

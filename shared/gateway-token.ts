@@ -7,17 +7,23 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 // thread's lifetime, so an expiring token would break long conversations.
 // Revoke access by disabling or deleting the profile (checked per request) or
 // by rotating MODEL_GATEWAY_SECRET.
-export function signGatewayToken(profileId: string, secret: string): string {
-  const payload = Buffer.from(JSON.stringify({ p: profileId })).toString(
-    "base64url",
-  );
+// `t` is the tenant the thread belongs to, for per-tenant usage logs only;
+// it grants nothing, since models are shared across tenants.
+export function signGatewayToken(
+  profileId: string,
+  secret: string,
+  tenantId?: string,
+): string {
+  const payload = Buffer.from(
+    JSON.stringify(tenantId ? { p: profileId, t: tenantId } : { p: profileId }),
+  ).toString("base64url");
   return `${payload}.${sign(payload, secret)}`;
 }
 
 export function verifyGatewayToken(
   token: string,
   secret: string,
-): { profileId: string } | null {
+): { profileId: string; tenantId?: string } | null {
   const [payload, signature, extra] = token.split(".");
   if (!payload || !signature || extra !== undefined) return null;
   const expected = Buffer.from(sign(payload, secret));
@@ -27,8 +33,11 @@ export function verifyGatewayToken(
   try {
     // Tokens issued before this change also carry `exp`; it is ignored so
     // threads started with them keep working.
-    const { p } = JSON.parse(Buffer.from(payload, "base64url").toString());
-    return typeof p === "string" && p ? { profileId: p } : null;
+    const { p, t } = JSON.parse(Buffer.from(payload, "base64url").toString());
+    if (typeof p !== "string" || !p) return null;
+    return typeof t === "string" && t
+      ? { profileId: p, tenantId: t }
+      : { profileId: p };
   } catch {
     return null;
   }

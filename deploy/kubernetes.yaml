@@ -60,7 +60,14 @@ spec:
           ports: [{containerPort: 4000}]
           env:
             - {name: MONGO_URI, valueFrom: {secretKeyRef: {name: platform-config, key: MONGO_URI}}}
-            - {name: MONGO_DB, value: truex}
+            - {name: MONGO_DB, value: truex}  # default tenant database
+            - {name: CATALOG_MONGO_DB, value: truex_catalog}  # shared models, skills, tenant registry
+            # Development tenant resolver: authentication is not implemented yet, so every request
+            # runs as DEV_TENANT_ID. The resolver refuses to start when NODE_ENV=production.
+            - {name: DEV_TENANT_ID, value: default}
+            # PLACEHOLDER, deliberately not set: only uncomment to knowingly run the dev resolver
+            # with NODE_ENV=production. Keep DEV_TENANT_HEADER unset in any shared cluster.
+            # - {name: ALLOW_DEV_TENANT, value: "on"}
             - {name: AGENT_CORE_URLS, value: "http://agent-core-0.agent-core.agent-platform.svc.cluster.local:4100,http://agent-core-1.agent-core.agent-platform.svc.cluster.local:4100"}
             - {name: AGENT_WORKSPACE, value: /data/workspace}
             - {name: FRONTEND_ORIGIN, value: "http://localhost:3000"}
@@ -124,6 +131,7 @@ spec:
             - {name: DRAIN_GRACE_MS, value: "45000"}
             - {name: MONGO_URI, valueFrom: {secretKeyRef: {name: platform-config, key: MONGO_URI}}}
             - {name: MONGO_DB, value: truex}
+            - {name: CATALOG_MONGO_DB, value: truex_catalog}  # truex_models is read from here
             - {name: MODEL_GATEWAY_SECRET, valueFrom: {secretKeyRef: {name: platform-config, key: MODEL_GATEWAY_SECRET}}}
           readinessProbe: {httpGet: {path: /ready, port: 4200}, periodSeconds: 5}
           livenessProbe: {httpGet: {path: /health, port: 4200}, periodSeconds: 10}

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
+import { createHmac } from "node:crypto";
 import { createGateway, type GatewayProfile } from "../src/server";
 import { signGatewayToken } from "../../shared/gateway-token";
 
@@ -85,6 +86,39 @@ test("gateway: token must be valid and bound to the requested profile", async ()
         calls.length,
         0,
         "Rejected requests never reach the provider",
+      );
+    },
+  );
+});
+
+// Tokens signed before tenancy: `{ p }` or `{ p, exp }`, signed the same way.
+function legacyToken(claims: object) {
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const sig = createHmac("sha256", secret).update(payload).digest("base64url");
+  return `${payload}.${sig}`;
+}
+
+test("gateway: old tokens and tenant tokens both verify; profile still binds", async () => {
+  await withGateway(
+    { chat, other: { ...chat, _id: "other" } },
+    () => new Response(""),
+    async (base) => {
+      for (const token of [
+        legacyToken({ p: "chat" }),
+        legacyToken({ p: "chat", exp: Math.floor(Date.now() / 1000) - 60 }),
+        signGatewayToken("chat", secret),
+        signGatewayToken("chat", secret, "acme"),
+      ])
+        assert.notEqual((await post(base, "chat", token)).status, 401);
+      // The tenant grants nothing: another profile's token is still refused.
+      assert.equal(
+        (await post(base, "chat", signGatewayToken("other", secret, "acme")))
+          .status,
+        401,
+      );
+      assert.equal(
+        (await post(base, "chat", legacyToken({ t: "acme" }))).status,
+        401,
       );
     },
   );

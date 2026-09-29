@@ -16,7 +16,11 @@ services:
     ports: ["127.0.0.1:4000:4000"]
     environment:
       MONGO_URI: mongodb://mongo:27017
-      MONGO_DB: truex
+      MONGO_DB: truex  # default tenant: agents, MCP, sessions, messages, traces
+      CATALOG_MONGO_DB: truex_catalog  # shared models, skills and the tenant registry
+      # Development tenant resolver (no authentication yet). DEV_TENANT_HEADER=on lets the
+      # X-Truex-Tenant header pick a tenant; never enable it where untrusted clients can reach.
+      DEV_TENANT_ID: ${DEV_TENANT_ID:-default}
       AGENT_CORE_URLS: http://agent-core:4100
       AGENT_WORKSPACE: /data/workspace
       FRONTEND_ORIGIN: http://localhost:3000
@@ -32,6 +36,7 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017
       MONGO_DB: truex
+      CATALOG_MONGO_DB: truex_catalog  # truex_models is read from here
       MODEL_GATEWAY_SECRET: ${MODEL_GATEWAY_SECRET:-}  # gateway exits unless >= 32 chars
     stop_grace_period: 60s  # let in-flight model streams finish
     depends_on: [mongo]

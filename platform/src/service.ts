@@ -72,8 +72,9 @@ export function upstreamError(
   return new ApiError(502, message, "UPSTREAM_FAILED", { cause });
 }
 import { attachedMcpInstructions, mcpConfig, newMcpProfile } from "./mcp";
-import type { ModelDocument } from "./documents";
+import type { DatabaseId, ModelDocument } from "./documents";
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
+import { currentTenantId } from "./tenant";
 // Codex edits an objective in place, so the creation time identifies a goal.
 function sameGoal(saved: SessionGoal | undefined, goal: Goal) {
   return !!saved && (saved.createdAt ?? null) === (goal.createdAt ?? null);
@@ -379,7 +380,9 @@ export class PlatformService {
         server.default_tools_approval_mode = "prompt";
       config[`mcp_servers.${mcp.name}`] = server;
     }
+    const skills = await this.skills(agent.skillIds || []);
     return {
+      tenantId: currentTenantId(),
       model: profile.modelName,
       modelProvider: provider,
       config,
@@ -399,7 +402,29 @@ export class PlatformService {
         cwd || resolve(process.env.AGENT_WORKSPACE || "../.runtime/workspace"),
       sandbox: "read-only",
       approvalPolicy: "on-request",
+      ...(skills.length ? { skills } : {}),
     };
+  }
+  // Catalog skills of an agent, in the agent's order. A missing, disabled or
+  // not-allowed skill fails the configuration, like a missing MCP profile.
+  private async skills(ids: DatabaseId[]) {
+    if (!ids.length) return [];
+    const found = await this.store.findSkills(ids);
+    return ids.map((id) => {
+      const skill = found.find((s) => String(s._id) === String(id));
+      if (!skill)
+        throw new ApiError(
+          422,
+          `Skill missing: ${String(id)}`,
+          "SKILL_CONFIGURATION",
+        );
+      return {
+        name: skill.name,
+        description: skill.description,
+        body: skill.body,
+        version: skill.version,
+      };
+    });
   }
   // Codex sees an ordinary Responses provider; the gateway holds the real key.
   private gatewayConfig(profile: ModelDocument, provider: string) {
@@ -421,7 +446,11 @@ export class PlatformService {
         name: profile.provider,
         base_url: `${gateway.url}/p/${encodeURIComponent(id)}/v1`,
         wire_api: "responses",
-        experimental_bearer_token: signGatewayToken(id, gateway.secret),
+        experimental_bearer_token: signGatewayToken(
+          id,
+          gateway.secret,
+          currentTenantId(),
+        ),
       },
       ...(profile.reasoningEffort
         ? { model_reasoning_effort: profile.reasoningEffort }
@@ -1024,17 +1053,23 @@ export class PlatformService {
     if (this.polling || !this.store.db) return;
     this.polling = true;
     try {
-      for await (const s of this.store.sessions.find({
-        status: { $ne: "dead" },
-        runtimePolicyVersion: POLICY_VERSION,
-      }))
-        await this.ingest(s).catch((error) =>
-          log("warn", "persistence ingestion failed", {
-            sessionId: s._id,
-            op: "ingest",
-            ...errorFields(error),
-          }),
-        );
+      // Each tenant's sessions are ingested inside that tenant's context, so
+      // every read and write lands in its own database.
+      for (const tenant of await this.store.activeTenants())
+        await this.store.withTenant(tenant, async () => {
+          for await (const s of this.store.sessions.find({
+            status: { $ne: "dead" },
+            runtimePolicyVersion: POLICY_VERSION,
+          }))
+            await this.ingest(s).catch((error) =>
+              log("warn", "persistence ingestion failed", {
+                sessionId: s._id,
+                tenantId: tenant.id,
+                op: "ingest",
+                ...errorFields(error),
+              }),
+            );
+        });
     } finally {
       this.polling = false;
     }

@@ -49,6 +49,7 @@ import {
   type ToolRef,
 } from "./approval-modes";
 import { HttpError, rpcText } from "./errors";
+import { skillSet, tenantId as parseTenant } from "./tenancy";
 import { errorFields, log } from "../../shared/logging";
 import { inventory, validateRequest } from "./schema";
 import {
@@ -120,6 +121,8 @@ interface Thread {
   // Text sent with turn/start, for the trace of the turn it starts.
   input?: string;
   loaded: boolean;
+  // Owning tenant; also kept in the runtime's thread record for restarts.
+  tenantId?: string;
   threadStartMs: number;
   // Inactivity watchdog of the running turn; paused while a request waits.
   stall?: NodeJS.Timeout;
@@ -453,9 +456,13 @@ export class ThreadManager {
       scope,
       approvalMode,
       approvalNameHeuristic,
+      tenantId,
+      skills,
       ...start
     } = params || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
+    const tenant = parseTenant(tenantId);
+    skillSet(skills);
     validateRequest("thread/start", start);
     this.redactor.remember(start);
     this.reserve();
@@ -466,8 +473,11 @@ export class ThreadManager {
         ...(subAgents === undefined ? {} : { subAgents }),
         ...(persona === undefined ? {} : { persona }),
         ...(scope === undefined ? {} : { scope }),
+        ...(tenantId === undefined ? {} : { tenantId: tenant }),
+        ...(skills === undefined ? {} : { skills }),
       });
       const t = this.thread(result.thread.id);
+      t.tenantId = tenant;
       this.roots.add(t.id);
       this.setMode(t.id, approvalMode, approvalNameHeuristic);
       t.loaded = true;
@@ -481,8 +491,11 @@ export class ThreadManager {
     // Approval mode fields are Truex settings, not runtime parameters.
     const { approvalMode, approvalNameHeuristic, ...params } = input || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
+    if (params.tenantId !== undefined) parseTenant(params.tenantId);
+    if (params.skills !== undefined) skillSet(params.skills);
     return this.serial(id, async () => {
       const t = this.thread(id);
+      this.ownedBy(t, params.tenantId);
       const moded = this.modes.has(id) || approvalMode !== undefined;
       this.setMode(id, approvalMode, approvalNameHeuristic);
       if (moded) this.reevaluate(t);
@@ -539,6 +552,15 @@ export class ThreadManager {
         this.reservations--;
       }
     });
+  }
+  // A conversation is visible only to its own tenant; another tenant's id
+  // reads as missing. Callers that send no tenant keep today's behaviour.
+  private ownedBy(t: Thread, tenant: unknown) {
+    if (tenant === undefined) return;
+    if (t.tenantId === undefined && this.runtime instanceof BusinessRuntime)
+      t.tenantId = this.runtime.tenant(t.id);
+    if ((t.tenantId ?? "default") !== parseTenant(tenant))
+      throw new HttpError(404, "Conversation not found", "THREAD_NOT_FOUND");
   }
   async message(
     id: string,

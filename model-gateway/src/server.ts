@@ -134,6 +134,7 @@ export function createGateway(options: GatewayOptions) {
       return sendError(res, 401, "Invalid gateway token.", "invalid_api_key");
 
     meta.profileId = profileId;
+    if (claims.tenantId) meta.tenantId = claims.tenantId;
     const profile = await options.findProfile(profileId);
     meta.wireApi = profile?.wireApi;
     meta.model = profile?.modelName;

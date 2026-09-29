@@ -2,6 +2,8 @@ import { lstat, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Tenant folders hold workspaces; at most 32 characters, so never a UUID.
+const TENANT = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const HOUR = 3_600_000;
 // Tolerated clock skew before a future mtime is treated as bogus.
 const SKEW_MS = 60_000;
@@ -48,10 +50,20 @@ async function directory(path: string) {
   }
 }
 
+type SweepOptions = {
+  tempTtlMs: number;
+  workspaceTtlMs?: number;
+  now?: number;
+};
+type SweepResult = { tempCleared: number; workspacesRemoved: number };
+
+// Root layout: <tenant>/<uuid> workspaces, plus flat <uuid> workspaces of
+// threads created before tenancy. Tenant folders themselves are never removed;
+// only the workspaces inside them age out. Symlinks are never followed.
 export async function sweepWorkspaces(
   root: string,
-  opts: { tempTtlMs: number; workspaceTtlMs?: number; now?: number },
-): Promise<{ tempCleared: number; workspacesRemoved: number }> {
+  opts: SweepOptions,
+): Promise<SweepResult> {
   const now = opts.now ?? Date.now(),
     result = { tempCleared: 0, workspacesRemoved: 0 };
   let entries;
@@ -61,8 +73,48 @@ export async function sweepWorkspaces(
     if (missing(error)) return result;
     throw error;
   }
+  await sweepLevel(
+    root,
+    entries.filter((e) => e.isDirectory() && UUID.test(e.name)),
+    opts,
+    now,
+    result,
+  );
   for (const entry of entries) {
-    if (!entry.isDirectory() || !UUID.test(entry.name)) continue;
+    if (
+      !entry.isDirectory() ||
+      UUID.test(entry.name) ||
+      !TENANT.test(entry.name)
+    )
+      continue;
+    const tenant = join(root, entry.name);
+    let workspaces;
+    try {
+      workspaces = await readdir(tenant, { withFileTypes: true });
+    } catch (error) {
+      if (!missing(error))
+        console.error(`Workspace sweep failed for tenant ${entry.name}`, error);
+      continue;
+    }
+    await sweepLevel(
+      tenant,
+      workspaces.filter((e) => e.isDirectory() && UUID.test(e.name)),
+      opts,
+      now,
+      result,
+    );
+  }
+  return result;
+}
+
+async function sweepLevel(
+  root: string,
+  entries: { name: string }[],
+  opts: SweepOptions,
+  now: number,
+  result: SweepResult,
+) {
+  for (const entry of entries) {
     const workspace = join(root, entry.name);
     try {
       if (
@@ -87,7 +139,6 @@ export async function sweepWorkspaces(
         console.error(`Workspace sweep failed for ${entry.name}`, error);
     }
   }
-  return result;
 }
 
 const positive = (value: string | undefined) => {

@@ -25,7 +25,9 @@ import {
   failStream,
   requestIdMiddleware,
   route,
+  tenantMiddleware,
 } from "./http";
+import { devTenantResolver } from "./tenant";
 @Module({})
 class AppModule {}
 async function main() {
@@ -67,7 +69,7 @@ async function main() {
       let mongo = false,
         agentCore: { ok: boolean; code?: string };
       try {
-        await store.db.command({ ping: 1 });
+        await store.catalog.command({ ping: 1 });
         mongo = true;
       } catch (error) {
         connected = false;
@@ -101,6 +103,11 @@ async function main() {
       );
     next();
   });
+  // Every API request works on exactly one tenant's database.
+  http.use(
+    "/api",
+    tenantMiddleware(devTenantResolver(), (id) => store.resolveTenant(id)),
+  );
   // Raw schema/configuration and host capabilities are not a product API.
   http.use("/api", (req: Request, _res: Response, next: NextFunction) => {
     if (/^\/(capabilities|schemas)(\/|$)/.test(req.path))

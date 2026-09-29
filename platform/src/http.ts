@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Request, Response, NextFunction } from "express";
 import { httpError } from "../../shared/errors";
+import { tenantContext, type TenantRef, type TenantResolver } from "./tenant";
 import {
   errorFields,
   log,
@@ -24,6 +25,25 @@ export function requestIdMiddleware(
   next();
 }
 
+// Resolves the request's tenant once, before any handler touches storage.
+export function tenantMiddleware(
+  resolver: TenantResolver,
+  lookup: (id: string) => Promise<TenantRef>,
+) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    let id: string;
+    try {
+      id = resolver.resolve(req);
+    } catch (error) {
+      return next(error);
+    }
+    lookup(id).then((tenant) => {
+      res.locals.tenant = tenant;
+      next();
+    }, next);
+  };
+}
+
 // Runs a handler inside its request context. Set per handler because async
 // context does not survive the body parser's stream events.
 export const route =
@@ -31,11 +51,14 @@ export const route =
   (req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api/sessions/"))
       res.locals.sessionId = req.params.id;
-    return requestContext.run({ requestId: res.locals.requestId }, () =>
-      Promise.resolve()
-        .then(() => fn(req, res))
-        .catch(next),
-    );
+    const run = () =>
+      requestContext.run({ requestId: res.locals.requestId }, () =>
+        Promise.resolve()
+          .then(() => fn(req, res))
+          .catch(next),
+      );
+    const tenant: TenantRef | undefined = res.locals.tenant;
+    return tenant ? tenantContext.run(tenant, run) : run();
   };
 
 export function errorHandler(
@@ -51,6 +74,7 @@ export function errorHandler(
     method: req.method,
     path: req.path,
     sessionId: res.locals.sessionId,
+    tenantId: res.locals.tenant?.id,
     status,
     code: body.code,
   };

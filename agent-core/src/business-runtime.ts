@@ -19,6 +19,14 @@ import {
 } from "./script-runner";
 import { visualizationInstructions } from "../../shared/visualizations";
 import { suggestionInstructions } from "../../shared/suggestions";
+import {
+  DEFAULT_TENANT,
+  skillInstructions,
+  skillSet,
+  tenantId,
+  tenantWorkspaces,
+  type Skill,
+} from "./tenancy";
 
 export const defaultPersona =
   "You are a Truex assistant. Present your identity and capabilities as Truex.";
@@ -217,6 +225,25 @@ export class BusinessRuntime extends CodexClient {
       );
     }
   }
+  private record(id: string): any {
+    try {
+      return JSON.parse(readFileSync(this.marker(id), "utf8"));
+    } catch {
+      return {};
+    }
+  }
+  // Threads created before tenancy belong to the default tenant.
+  tenant(id: string): string {
+    const value = this.record(id).tenantId;
+    return typeof value === "string" ? value : DEFAULT_TENANT;
+  }
+  private skills(id: string): Skill[] {
+    try {
+      return skillSet(this.record(id).skills);
+    } catch {
+      return [];
+    }
+  }
   private helperSettings(id: string): SubAgentOptions {
     try {
       return subAgentOptions(
@@ -229,6 +256,7 @@ export class BusinessRuntime extends CodexClient {
   private configuration(params: any, cwd: string) {
     const helpers = subAgentOptions(params.subAgents);
     const { persona, scope } = personaOptions(params);
+    const skills = skillSet(params.skills);
     const instructions =
       persona +
       "\n\n" +
@@ -281,6 +309,14 @@ export class BusinessRuntime extends CodexClient {
       "features.hooks": false,
       "features.plugin_hooks": false,
       "features.skill_mcp_dependency_install": false,
+      // Only skills passed with the thread config reach the model, through the
+      // base instructions. Codex skill discovery (bundled system skills, the
+      // catalog, skill search, repo .agents/skills above cwd) stays off.
+      "skills.bundled.enabled": false,
+      "skills.include_instructions": false,
+      "orchestrator.skills.enabled": false,
+      "features.skill_search": false,
+      project_root_markers: [],
       project_doc_max_bytes: 0,
       include_environment_context: false,
     });
@@ -297,7 +333,8 @@ export class BusinessRuntime extends CodexClient {
         visualizationInstructions +
         suggestionInstructions +
         "\n\nAgent role:\n" +
-        (params.baseInstructions || defaultRoles[scope]),
+        (params.baseInstructions || defaultRoles[scope]) +
+        skillInstructions(skills),
       // Base instructions already carry these and helpers inherit them, so a
       // developer copy would resend ~1.5k tokens on every model request.
       config,
@@ -320,9 +357,11 @@ export class BusinessRuntime extends CodexClient {
         includeTurns: false,
       });
     if (method === "thread/start") {
-      const cwd = join(this.home, "business-workspaces", randomUUID());
-      mkdirSync(cwd, { recursive: true, mode: 0o700 });
+      const tenant = tenantId(params.tenantId),
+        skills = skillSet(params.skills);
+      const cwd = join(tenantWorkspaces(this.home, tenant), randomUUID());
       const profile = this.configuration(params, cwd);
+      mkdirSync(cwd, { recursive: true, mode: 0o700 });
       const result = await super.request(method, {
         ...profile,
         dynamicTools: this.dynamicTools(),
@@ -339,9 +378,11 @@ export class BusinessRuntime extends CodexClient {
         this.marker(result.thread.id),
         JSON.stringify({
           cwd,
+          tenantId: tenant,
           documentTools: 1,
           visualizationTools: 1,
           subAgents: subAgentOptions(params.subAgents),
+          skills,
         }),
         {
           mode: 0o600,
@@ -350,12 +391,20 @@ export class BusinessRuntime extends CodexClient {
       return result;
     }
     if (method === "thread/resume") {
+      const cwd = this.workspace(params.threadId);
+      // A thread is only ever resumed by the tenant that created it.
+      if (
+        params.tenantId !== undefined &&
+        tenantId(params.tenantId) !== this.tenant(params.threadId)
+      )
+        throw new HttpError(404, "Conversation not found", "THREAD_NOT_FOUND");
       const profile = this.configuration(
         {
           ...params,
           subAgents: params.subAgents ?? this.helperSettings(params.threadId),
+          skills: params.skills ?? this.skills(params.threadId),
         },
-        this.workspace(params.threadId),
+        cwd,
       );
       const result = await super.request(method, {
         ...profile,
@@ -389,7 +438,8 @@ export class BusinessRuntime extends CodexClient {
         const source = this.profiles.get(params.threadId);
         if (!source)
           throw new HttpError(409, "Resume the conversation before forking");
-        const cwd = join(this.home, "business-workspaces", randomUUID());
+        const tenant = this.tenant(params.threadId);
+        const cwd = join(tenantWorkspaces(this.home, tenant), randomUUID());
         mkdirSync(cwd, { recursive: true, mode: 0o700 });
         const result = await super.request(method, {
           ...source,
@@ -404,6 +454,7 @@ export class BusinessRuntime extends CodexClient {
           this.marker(result.thread.id),
           JSON.stringify({
             cwd,
+            tenantId: tenant,
             documentTools: this.documentToolsAvailable(params.threadId) ? 1 : 0,
             visualizationTools: this.visualizationToolsAvailable(
               params.threadId,
@@ -411,6 +462,7 @@ export class BusinessRuntime extends CodexClient {
               ? 1
               : 0,
             subAgents: this.helperSettings(params.threadId),
+            skills: this.skills(params.threadId),
           }),
           {
             mode: 0o600,

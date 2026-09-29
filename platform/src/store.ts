@@ -7,6 +7,15 @@ import {
 } from "./documents";
 import { MongoClient, Db } from "mongodb";
 import { publicPlan, type PlanStep } from "./public";
+import { ApiError } from "./errors";
+import { errorFields, log } from "../../shared/logging";
+import {
+  currentTenant,
+  DEFAULT_TENANT_ID,
+  tenantContext,
+  type TenantDocument,
+  type TenantRef,
+} from "./tenant";
 import type {
   Session,
   Message,
@@ -58,34 +67,147 @@ export function newerPlan(saved: StoredPlan | undefined, next: PlanUpdate) {
   if (Number.isNaN(savedAt) || Number.isNaN(nextAt)) return true;
   return nextAt >= savedAt;
 }
+export interface SkillDocument {
+  _id: DatabaseId;
+  /** Folder name Codex sees; [a-z0-9-], unique in the catalog. */
+  name: string;
+  description: string;
+  /** SKILL.md body (markdown, without front matter). */
+  body: string;
+  version: number;
+  enabled?: boolean;
+}
+const TENANT_CACHE_MS = 5_000;
 export class Store {
   readonly client: MongoClient;
-  db!: Db;
+  /** Models, skills and the tenant registry, shared by every tenant. */
+  catalog!: Db;
+  private connected = false;
+  private indexed = new Map<string, Promise<unknown>>();
+  private tenants = new Map<string, { ref: TenantRef; expires: number }>();
   constructor(
     uri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017",
+    /** Database of the default tenant (the pre-tenancy database). */
     readonly database = process.env.MONGO_DB || "truex",
+    // Unset keeps the catalog in the default tenant's database, which is
+    // how data was laid out before tenancy.
+    readonly catalogDatabase = process.env.CATALOG_MONGO_DB || database,
   ) {
     this.client = new MongoClient(uri, { serverSelectionTimeoutMS: 3000 });
   }
   async connect() {
     await this.client.connect();
-    this.db = this.client.db(this.database);
+    this.catalog = this.client.db(this.catalogDatabase);
+    this.connected = true;
     await Promise.all([
-      this.messages.createIndex({ sessionId: 1, at: 1 }),
-      this.sessions.createIndex({ status: 1 }),
-      this.traces.createIndex({ sessionId: 1, startedAt: 1 }),
-      this.sessions.createIndex({ projectId: 1, createdAt: -1 }),
+      this.tenantIndexes(this.database),
+      this.catalog
+        .collection("tenants")
+        .createIndex({ dbName: 1 }, { unique: true }),
+      this.catalog
+        .collection("truex_skills")
+        .createIndex({ name: 1 }, { unique: true }),
     ]);
     return this;
   }
+  // Database of the tenant in context; the default tenant outside any.
+  get db(): Db {
+    if (!this.connected) return undefined as unknown as Db;
+    const dbName = currentTenant()?.dbName ?? this.database;
+    // Background: a failure (or shutdown mid-build) is logged and retried on
+    // the next use, never left as an unhandled rejection.
+    this.tenantIndexes(dbName).catch((error) =>
+      log("warn", "tenant index creation failed", {
+        op: "indexes",
+        dbName,
+        ...errorFields(error),
+      }),
+    );
+    return this.client.db(dbName);
+  }
+  private tenantIndexes(dbName: string) {
+    let done = this.indexed.get(dbName);
+    if (!done) {
+      const db = this.client.db(dbName);
+      done = Promise.all([
+        db.collection("messages").createIndex({ sessionId: 1, at: 1 }),
+        db.collection("sessions").createIndex({ status: 1 }),
+        db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
+        db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
+      ]).catch((error) => {
+        this.indexed.delete(dbName);
+        throw error;
+      });
+      this.indexed.set(dbName, done);
+    }
+    return done;
+  }
+  get tenantRegistry() {
+    return this.catalog.collection<TenantDocument>("tenants");
+  }
+  private defaultRef(doc?: TenantDocument | null): TenantRef {
+    return {
+      id: DEFAULT_TENANT_ID,
+      dbName: this.database,
+      ...(doc?.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
+      ...(doc?.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
+    };
+  }
+  private toRef(doc: TenantDocument): TenantRef {
+    return {
+      id: doc._id,
+      dbName: doc.dbName,
+      ...(doc.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
+      ...(doc.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
+    };
+  }
+  // The default tenant always exists (its database is MONGO_DB); others must
+  // be registered and active. Briefly cached: every request resolves one.
+  async resolveTenant(id: string): Promise<TenantRef> {
+    const hit = this.tenants.get(id);
+    if (hit && hit.expires > Date.now()) return hit.ref;
+    const doc = await this.tenantRegistry.findOne({ _id: id });
+    if (doc?.status === "disabled")
+      throw new ApiError(403, "This workspace is disabled", "TENANT_DISABLED");
+    let ref: TenantRef;
+    if (id === DEFAULT_TENANT_ID) ref = this.defaultRef(doc);
+    else if (doc && doc.dbName) ref = this.toRef(doc);
+    else throw new ApiError(403, "Unknown workspace", "TENANT_NOT_FOUND");
+    this.tenants.set(id, { ref, expires: Date.now() + TENANT_CACHE_MS });
+    return ref;
+  }
+  /** Every tenant whose sessions need background ingestion. */
+  async activeTenants(): Promise<TenantRef[]> {
+    const docs = await this.tenantRegistry.find({ status: "active" }).toArray();
+    const def = docs.find((d) => d._id === DEFAULT_TENANT_ID);
+    const disabledDefault = await this.tenantRegistry.findOne({
+      _id: DEFAULT_TENANT_ID,
+      status: "disabled",
+    });
+    return [
+      ...(disabledDefault ? [] : [this.defaultRef(def)]),
+      ...docs
+        .filter((d) => d._id !== DEFAULT_TENANT_ID)
+        .map((d) => this.toRef(d)),
+    ];
+  }
+  /** Runs fn with the given tenant as context. */
+  withTenant<T>(tenant: TenantRef, fn: () => T): T {
+    return tenantContext.run(tenant, fn);
+  }
+  // Tenant-owned configuration.
   get agents() {
     return this.db.collection<AgentDocument>("truex_agents");
   }
-  get profiles() {
-    return this.db.collection<ModelDocument>("truex_models");
-  }
   get mcp() {
     return this.db.collection<McpDocument>("truex_mcp");
+  }
+  // Shared catalog.
+  get profiles() {
+    return this.catalog.collection<ModelDocument>("truex_models");
+  }
+  get skills() {
+    return this.catalog.collection<SkillDocument>("truex_skills");
   }
   findAgent(id: DatabaseId) {
     return this.agents.findOne({
@@ -93,11 +215,25 @@ export class Store {
       enabled: { $ne: false },
     });
   }
+  // A tenant with an allow-list sees only those models; others are "missing".
   findModel(id: DatabaseId) {
+    const allowed = currentTenant()?.allowedModelIds;
+    if (allowed && !allowed.includes(String(id))) return Promise.resolve(null);
     return this.profiles.findOne({
       _id: { $in: idCandidates(id) },
       enabled: { $ne: false },
     });
+  }
+  async findSkills(ids: DatabaseId[]) {
+    const allowed = currentTenant()?.allowedSkillIds;
+    const wanted = ids.filter((id) => !allowed || allowed.includes(String(id)));
+    if (!wanted.length) return [];
+    return this.skills
+      .find({
+        _id: { $in: wanted.flatMap(idCandidates) },
+        enabled: { $ne: false },
+      })
+      .toArray();
   }
   findMcp(id: DatabaseId) {
     return this.mcp.findOne({ _id: { $in: idCandidates(id) } });
