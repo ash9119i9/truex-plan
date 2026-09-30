@@ -1,92 +1,21 @@
 @import "tailwindcss";
+/* Legacy area styles (phase 1 replaces shell/chat; the rest read tokens via aliases in base.css). */
 @import "./shell.css";
 @import "./chat.css";
 @import "./panels.css";
 @import "./observability.css";
 @import "./responsive.css";
+/* Design spec v2 (docs/truex-design-spec.html). Imported last so spec rules win on shared class names. */
+@import "../styles/v2/tokens.css";
+@import "../styles/v2/base.css";
+@import "../styles/v2/shell.css";
+@import "../styles/v2/dock.css";
+@import "../styles/v2/chat.css";
+@import "../styles/v2/session.css";
+@import "../styles/v2/agent-dialog.css";
 
-/* Light-mode design tokens. Every area stylesheet reads from these. */
-:root {
-  color-scheme: light;
-
-  /* Surfaces */
-  --background: #fbfbf9;
-  --surface: #ffffff;
-  --surface-2: #f6f6f3;
-  --surface-3: #efefea;
-  --surface-hover: #f1f1ec;
-
-  /* Text */
-  --foreground: #1b1c19;
-  --fg-2: #44463f;
-  --muted: #6f7268;
-  --subtle: #9a9d93;
-
-  /* Lines */
-  --border: #e8e8e3;
-  --border-strong: #d9d9d2;
-
-  /* Brand */
-  --accent: #3e5a35;
-  --accent-hover: #32492b;
-  --accent-soft: #eef3ea;
-  --accent-soft-2: #e2eadb;
-  --accent-fg: #2f4428;
-  --ring: #8fa883;
-
-  /* Status */
-  --good: #5f8a52;
-  --warn: #c0934f;
-  --warn-bg: #fdf6ec;
-  --warn-fg: #8a5a2e;
-  --warn-border: #efdcc3;
-  --danger: #b0513a;
-
-  /* Shape and depth */
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 14px;
-  --shadow-sm: 0 1px 2px rgb(24 26 20 / 0.05);
-  --shadow-md: 0 1px 2px rgb(24 26 20 / 0.04), 0 6px 20px rgb(24 26 20 / 0.06);
-  --shadow-lg: 0 12px 40px rgb(24 26 20 / 0.12);
-
-  --font-sans:
-    ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
-    "Helvetica Neue", sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  background: var(--background);
-  color: var(--foreground);
-  font: 14px/1.55 var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-button,
-input,
-textarea,
-select {
-  font: inherit;
-}
 button {
   cursor: pointer;
-}
-button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-button:focus-visible,
-a:focus-visible,
-summary:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 ::selection {
   background: var(--accent-soft-2);

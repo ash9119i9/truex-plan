@@ -1,0 +1,346 @@
+<title>Truex Artifact Storage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column (~72ch) with wide tables/code in their own scrollers; a sticky contents rail on wide screens. */
+:root {
+  --bg: #f6f8f8;
+  --surface: #ffffff;
+  --fg: #16201f;
+  --muted: #56615f;
+  --line: #d9e1df;
+  --accent: #17666c;
+  --accent-soft: #e2f0ef;
+  --warn: #9a5b00;
+  --warn-soft: #fbf0dc;
+  --code-bg: #eef3f2;
+  --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1514; --surface: #161e1d; --fg: #e3ebe9; --muted: #9aa9a6; --line: #2a3634;
+    --accent: #6cc3c6; --accent-soft: #1b3232; --warn: #f0b35a; --warn-soft: #33281a; --code-bg: #1b2524;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1514; --surface: #161e1d; --fg: #e3ebe9; --muted: #9aa9a6; --line: #2a3634;
+  --accent: #6cc3c6; --accent-soft: #1b3232; --warn: #f0b35a; --warn-soft: #33281a; --code-bg: #1b2524;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 17px/1.6 var(--body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 80px; display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 48px; }
+@media (max-width: 860px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 0; padding-inline: 16px; } nav.toc { display: none; } }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 14px; }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+nav.toc a { color: var(--muted); text-decoration: none; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); }
+main { min-width: 0; }
+header { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 8px; }
+.eyebrow { font: 500 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; }
+h1 { font-size: clamp(32px, 5vw, 44px); margin: 12px 0 12px; }
+h2 { font-size: 26px; margin: 56px 0 12px; scroll-margin-top: 24px; }
+h3 { font-size: 19px; margin: 28px 0 8px; }
+p, li { max-width: 72ch; }
+.lede { font-size: 19px; color: var(--fg); }
+.meta { color: var(--muted); font-size: 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; }
+code { font: 0.86em var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+pre { font: 13.5px/1.55 var(--mono); background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; padding: 0; font-size: inherit; }
+.scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); margin: 12px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+th { font: 600 12px/1.3 var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); background: var(--code-bg); }
+tr:last-child td { border-bottom: 0; }
+td.nw { white-space: nowrap; }
+.decisions { background: var(--accent-soft); border-radius: 10px; padding: 18px 22px; margin: 24px 0; }
+.decisions h3 { margin-top: 0; }
+.decisions ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.note { background: var(--warn-soft); border-left: 3px solid var(--warn); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+.note strong { color: var(--warn); }
+.pill { display: inline-block; font: 500 11px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase; padding: 4px 7px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.dep { border-color: var(--warn); color: var(--warn); }
+.pill.user { border-color: var(--accent); color: var(--accent); }
+.journeys { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 16px 0; }
+.journey { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+.journey h3 { margin: 0 0 6px; font-size: 17px; }
+.journey p { margin: 0 0 8px; font-size: 15.5px; color: var(--muted); }
+.journey .pill { margin-right: 4px; }
+pre.mermaid { background: var(--surface); text-align: center; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+ol.phases > li { margin-bottom: 14px; }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Contents">
+  <ol>
+    <li><a href="#summary">Summary</a></li>
+    <li><a href="#today">Where we are today</a></li>
+    <li><a href="#users">What users get</a></li>
+    <li><a href="#arch">Architecture</a></li>
+    <li><a href="#layout">Bucket and keys</a></li>
+    <li><a href="#model">Data model</a></li>
+    <li><a href="#api">API</a></li>
+    <li><a href="#security">Security and tenancy</a></li>
+    <li><a href="#lifecycle">Lifecycle, quotas, cost</a></li>
+    <li><a href="#rollout">Phased rollout</a></li>
+    <li><a href="#testing">Testing</a></li>
+    <li><a href="#open">Open decisions</a></li>
+    <li><a href="#risks">Risks</a></li>
+  </ol>
+</nav>
+
+<main>
+<header>
+  <div class="eyebrow">Plan · Draft for review</div>
+  <h1>Truex Artifact Storage</h1>
+  <p class="lede">Move every file a conversation touches (uploads, generated documents, visualizations, exports) from agent-core's pod disk into S3, with metadata in each tenant's Mongo database, and build the attach, preview, library and share features on top.</p>
+  <div class="meta"><span>30 Sep 2026</span><span>Branch feat/design-v2</span><span>Covers backlog: document attaching, document preview, document enrichment, conversation export, Knowledge, Share, SAP push bridge, AWS use case</span></div>
+</header>
+
+<section id="summary">
+<h2>Summary</h2>
+<p>Today files live in <code>business-workspaces/&lt;tenant&gt;/&lt;uuid&gt;/files/</code> on a single agent-core pod's volume. They are capped at 1 MB, moved between services as base64 JSON, invisible to Mongo, and deleted together with the workspace. S3 becomes the durable copy. agent-core keeps its local folder as a cache so the agent's tools stay fast and unchanged. Platform owns metadata, permissions and short-lived signed URLs, so the browser uploads to and downloads from S3 directly.</p>
+<div class="decisions">
+  <h3>Recommended decisions</h3>
+  <ul>
+    <li>One private bucket per environment, tenant-first key prefix, SSE-KMS, versioning on, public access blocked.</li>
+    <li>agent-core writes through to S3 behind an <code>ArtifactStore</code> interface (<code>local</code> | <code>s3</code>). Keys are built from the thread's tenant marker, never from model input.</li>
+    <li>New <code>artifacts</code> collection in each tenant DB. Platform learns about agent-created files from the existing records ingestion loop.</li>
+    <li>Browser uploads use a presigned POST with a size range. Downloads use a 302 to a 5-minute presigned GET, so existing <code>&lt;a href&gt;</code> links keep working after auth lands.</li>
+    <li>Flag-gated with <code>ARTIFACT_STORE=local|s3</code>, following the <code>features.ts</code> pattern. The old <code>/documents</code> routes stay as shims.</li>
+  </ul>
+</div>
+</section>
+
+<section id="today">
+<h2>Where we are today</h2>
+<p>These findings come from reading the codebase, not from running it.</p>
+<div class="scroll"><table>
+<thead><tr><th>Area</th><th>Current state</th><th>Where</th></tr></thead>
+<tbody>
+<tr><td>Producers</td><td><code>create_document</code> (docx/pdf/xlsx/pptx), <code>create_visualization</code>, <code>export_workspace_file</code>, and user upload all go through <code>ConversationFiles.save</code>. Codex itself writes nothing (read-only sandbox, shell off).</td><td><code>agent-core/src/file-tools.ts</code></td></tr>
+<tr><td>Disk layout</td><td><code>&lt;home&gt;/business-workspaces/&lt;tenant&gt;/&lt;uuid&gt;/files/&lt;id&gt;.bin|.json|.source</code>; scratch lives in <code>work/</code>. There is no user level.</td><td><code>tenancy.ts</code>, <code>business-runtime.ts</code></td></tr>
+<tr><td>Limits</td><td>1 MB per conversation file, 50 files / 25 MB per conversation, 2 MB per workspace file. Exporting a workspace file over 1 MB fails.</td><td><code>file-tools.ts:22</code>, <code>workspace-tools.ts:21</code></td></tr>
+<tr><td>Transport</td><td>Upload is JSON <code>{name, base64}</code> under the 2 MB body limit. Download buffers base64 JSON from agent-core in platform memory.</td><td><code>platform/src/index.ts:146-207</code></td></tr>
+<tr><td>Durability</td><td>A 20 Gi ReadWriteOnce PVC per agent-core pod in k8s. Files can't move between pods. The sweeper removes whole workspaces (documents included) when <code>WORKSPACE_TTL_DAYS</code> is set.</td><td><code>deploy/kubernetes.yaml</code>, <code>workspace-sweeper.ts</code></td></tr>
+<tr><td>Metadata</td><td>Not in Mongo. The UI polls <code>/documents</code>, and visualizations are found through a <code>[truex-visualization:id]</code> text token.</td><td><code>shared/assistant-capabilities.ts:52</code></td></tr>
+<tr><td>Frontend</td><td>The upload list only appears in a sheet opened by slash command. There is no composer attach, no preview, no delete, and Share is inert.</td><td><code>assistant-tools.tsx</code>, <code>v2/topbar.tsx:65</code></td></tr>
+<tr><td>Identity</td><td>No auth. Sessions have no owner. The tenant comes from the dev resolver or a header.</td><td><code>platform/src/tenant.ts</code>, <code>USER_SCOPED_MCP_PLAN.md</code></td></tr>
+<tr><td>AWS</td><td>No S3 code, IAM, region or IaC. The only AWS usage is the Secrets Manager lookup in model-gateway.</td><td><code>model-gateway/src/profiles.ts</code></td></tr>
+</tbody></table></div>
+</section>
+
+<section id="users">
+<h2>What users get</h2>
+<p>These are the end-user journeys the storage work unlocks. The pills show the phase and whether the feature waits on auth.</p>
+<div class="journeys">
+  <div class="journey"><h3>My files don't disappear</h3><p>A generated report is still there next week, after a restart or a pod move. Downloads are fast and not size-capped by JSON.</p><span class="pill user">Phase 1</span></div>
+  <div class="journey"><h3>Files show up in the chat</h3><p>When the agent creates a deck, a file card appears in its reply with name, type, size, version, Download and Preview. The session sidebar gets a Files tab.</p><span class="pill user">Phase 1</span></div>
+  <div class="journey"><h3>Attach while typing</h3><p>A paperclip, drag and drop onto the composer, or paste. Each file shows a pill with progress and can be removed before sending. Files up to 25 MB. The sent message shows its attachments.</p><span class="pill user">Phase 2</span></div>
+  <div class="journey"><h3>Look before downloading</h3><p>Images, PDF, Markdown, CSV and plain text preview in place. Word, Excel and PowerPoint preview as a rendered PDF in a later phase, with extracted text meanwhile.</p><span class="pill user">Phase 3</span></div>
+  <div class="journey"><h3>One place for everything</h3><p>The Knowledge page lists my files across chats and projects. Search by name, filter by type, rename, delete, see versions, and attach an existing file to a new chat without re-uploading.</p><span class="pill user">Phase 4</span><span class="pill dep">Needs auth</span></div>
+  <div class="journey"><h3>Export and share</h3><p>Export a conversation as Markdown, PDF or Word. Share a chat or a file with people in my tenant via the topbar Share button, with expiry and revoke.</p><span class="pill user">Phase 5</span><span class="pill dep">Needs auth</span></div>
+  <div class="journey"><h3>Admins see and control usage</h3><p>Storage used per tenant and per user, retention period, max upload size, and allowed file types in tenant settings.</p><span class="pill user">Phase 6</span><span class="pill dep">Needs auth</span></div>
+  <div class="journey"><h3>Send big files to SAP</h3><p>The agent passes a file reference to the SAP MCP tool instead of re-sending 5,000 lines. The bridge reads the bytes from the store.</p><span class="pill user">Phase 5</span><span class="pill dep">Needs SAP tool spec</span></div>
+</div>
+<h3>UX details that matter</h3>
+<ul>
+  <li>Upload states: queued, uploading (percent), scanning, ready, failed with a reason such as "Too large, max 25 MB" or "File type .exe isn't supported". Send waits until all pills are ready.</li>
+  <li>The existing auto-prompt "Read the uploaded document and summarize" becomes optional. Attachments ride on the message, so the user writes their own ask.</li>
+  <li>Revisions reuse the existing <code>sourceId</code> chain. The card shows "v3" and a version menu. Old versions stay downloadable.</li>
+  <li>Deleting a file removes it from the list at once, with an Undo toast. The bytes are hard-deleted after 30 days.</li>
+  <li>If S3 is unreachable, generated files still work from the local cache, and the card shows "Saving…" until the sync catches up.</li>
+</ul>
+</section>
+
+<section id="arch">
+<h2>Architecture</h2>
+<p>Each service keeps the job it already has. agent-core produces and reads bytes, platform owns who may see what, and the browser talks to S3 only through URLs that platform signs.</p>
+<pre class="mermaid">
+flowchart LR
+  B[Browser] -- "1 request upload" --> P[Platform]
+  P -- "presigned POST" --> B
+  B -- "2 upload bytes" --> S[(S3 bucket)]
+  B -- "3 complete" --> P
+  P -- "import artifactId" --> A[agent-core]
+  A -- "GetObject to cache" --> S
+  A -- "tool writes: local + PutObject" --> S
+  A -- "artifact record" --> P
+  P -- "metadata" --> M[(Tenant Mongo: artifacts)]
+  B -- "download" --> P
+  P -- "302 presigned GET" --> B
+</pre>
+<h3>agent-core</h3>
+<ul>
+  <li>Add an <code>ArtifactStore</code> interface (<code>put</code>, <code>get</code>, <code>head</code>, <code>delete</code>, <code>copy</code>) with <code>LocalStore</code> (today's behavior) and <code>S3Store</code>. <code>ConversationFiles.save</code> writes locally first, then does a <code>PutObject</code> with a SHA-256 checksum. On failure it retries through a small on-disk outbox, so a tool call never fails because of S3.</li>
+  <li><code>read_conversation_file</code> and <code>export_workspace_file</code> hydrate from S3 on a local miss. The pod folder becomes a cache the sweeper can evict safely, which removes the "workspace deleted = documents lost" problem.</li>
+  <li>Emit an <code>artifact</code> record (id, key, size, sha256, mediaType, sourceId, turnId, toolCallId) into the existing <code>/threads/:id/records</code> stream. Emit a matching SSE event so the chat can render a file card without polling.</li>
+  <li>New route <code>POST /threads/:id/documents/import</code> copies a browser-uploaded object into the conversation's cache and registers it with the agent.</li>
+  <li>Fork does a <code>CopyObject</code> into the new conversation's prefix, matching today's copy behavior.</li>
+  <li>Workspace <code>work/</code> stays local scratch until Phase 6. Only exported or final deliverables go to S3.</li>
+</ul>
+<h3>Platform</h3>
+<ul>
+  <li><code>artifactConfig(env)</code> in <code>features.ts</code> style: <code>ARTIFACT_STORE</code>, <code>ARTIFACTS_S3_BUCKET</code>, <code>AWS_REGION</code>, <code>ARTIFACT_MAX_UPLOAD_MB</code>, <code>ARTIFACT_URL_TTL_S</code>. It is injected into <code>PlatformService</code>, with the non-secret parts exposed on <code>/api/features</code>.</li>
+  <li>Ingestion (<code>service.ts:1119</code>) upserts <code>artifact</code> records into the tenant DB, the same way it persists messages and traces.</li>
+  <li>Every artifact route checks the tenant, and once auth ships also the owner or chat visibility, before signing a URL.</li>
+  <li>Messages gain <code>attachmentIds</code>. Platform checks that each belongs to the session, then passes the file references to agent-core with the turn.</li>
+</ul>
+<h3>Frontend</h3>
+<ul>
+  <li><code>lib/artifacts.ts</code>: upload with XHR progress to the presigned POST, then complete, list, rename, delete. It keeps the <code>api()</code> error model and <code>node:test</code> coverage.</li>
+  <li>Composer: an attach chip in the <code>chips</code> slot, pending pills in <code>above</code>, and a drop and paste target on <code>.composer</code>.</li>
+  <li><code>FileCard</code> in <code>chat-messages.tsx</code>, driven by message attachments and <code>artifact</code> events. The visualization token path stays as it is.</li>
+  <li>A Files tab in <code>session-activity.tsx</code>, the Knowledge page in the v2 side nav, and the Share dialog wired to the topbar button.</li>
+</ul>
+</section>
+
+<section id="layout">
+<h2>Bucket and keys</h2>
+<pre><code>s3://truex-artifacts-&lt;env&gt;-&lt;region&gt;/
+  t/&lt;tenantId&gt;/s/&lt;sessionId&gt;/a/&lt;artifactId&gt;/&lt;versionNo&gt;   bytes (no user filename in the key)
+  t/&lt;tenantId&gt;/s/&lt;sessionId&gt;/a/&lt;artifactId&gt;/&lt;versionNo&gt;.txt   extracted text for the agent
+  t/&lt;tenantId&gt;/s/&lt;sessionId&gt;/a/&lt;artifactId&gt;/&lt;versionNo&gt;.pdf   rendered preview (Phase 3)
+  t/&lt;tenantId&gt;/uploads/&lt;uploadId&gt;                         staging, expires after 1 day
+  t/&lt;tenantId&gt;/exports/&lt;exportId&gt;                         conversation exports, expire after 7 days</code></pre>
+<ul>
+  <li>The filename lives in Mongo and is applied through <code>ResponseContentDisposition</code> at signing time. Renames are metadata-only, and user text never reaches key paths.</li>
+  <li>The tenant-first prefix makes it cheap to delete a tenant, report usage, and write per-tenant IAM or STS session-tag conditions later.</li>
+  <li>Bucket settings: Block Public Access on, BucketOwnerEnforced, SSE-KMS with a bucket key, versioning on, a TLS-only bucket policy, and CORS restricted to <code>FRONTEND_ORIGIN</code> for POST and GET.</li>
+</ul>
+</section>
+
+<section id="model">
+<h2>Data model</h2>
+<p>New collection <code>artifacts</code> in each tenant DB (<code>truex_t_&lt;id&gt;</code>). It extends the existing <code>ConversationFile</code> shape, so the current UI types keep working.</p>
+<pre><code>{
+  _id: "art_&lt;uuid&gt;",
+  sessionId, projectId?, ownerId?,            // ownerId filled once auth ships
+  kind: "upload" | "generated" | "visualization" | "export",
+  name, mediaType, size, sha256,
+  rootId, version, sourceId?,                 // version chain (existing sourceId)
+  storage: { key, versionId? },
+  status: "pending" | "ready" | "failed" | "deleted",
+  createdBy: "user" | "agent", turnId?, toolCallId?,
+  text?: { key, chars }, preview?: { key, status },
+  title?, description?, mode?,                // visualization fields kept
+  createdAt, updatedAt, deletedAt?
+}
+indexes: {sessionId, createdAt}, {ownerId, createdAt}, {rootId, version},
+         {status, deletedAt}, {kind, createdAt}
+
+uploads   { _id, sessionId, ownerId?, key, name, maxBytes, expiresAt }   TTL index on expiresAt
+tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allowedTypes[] } }</code></pre>
+<p>The write order keeps Mongo and S3 consistent: create the row as <code>pending</code>, put the object, mark it <code>ready</code>. A reconciler job fails stale <code>pending</code> rows and removes unreferenced objects.</p>
+</section>
+
+<section id="api">
+<h2>API</h2>
+<p>These routes follow the existing convention of POST for mutations. Each is wrapped in <code>route()</code> so it runs inside tenant context.</p>
+<div class="scroll"><table>
+<thead><tr><th>Route</th><th>Purpose</th><th>Phase</th></tr></thead>
+<tbody>
+<tr><td class="nw"><code>GET /api/sessions/:id/artifacts</code></td><td>Files in a chat, newest version per root</td><td>1</td></tr>
+<tr><td class="nw"><code>GET /api/artifacts/:id</code></td><td>Metadata plus version list</td><td>1</td></tr>
+<tr><td class="nw"><code>GET /api/artifacts/:id/content?disposition=</code></td><td>302 to a presigned GET. <code>inline</code> is allowed only for safe types (images, PDF, text); HTML and SVG are always served as attachments.</td><td>1</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/uploads</code></td><td>Returns a presigned POST (url, fields, maxBytes, expiresAt)</td><td>2</td></tr>
+<tr><td class="nw"><code>POST /api/uploads/:id/complete</code></td><td>Verify size and magic bytes, create the artifact, import it into agent-core</td><td>2</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/messages</code></td><td>Adds <code>attachmentIds[]</code> to the existing body</td><td>2</td></tr>
+<tr><td class="nw"><code>GET /api/artifacts/:id/preview</code></td><td>Preview descriptor (kind, url, or text excerpt)</td><td>3</td></tr>
+<tr><td class="nw"><code>GET /api/artifacts?scope=&amp;type=&amp;q=</code></td><td>Knowledge library across chats</td><td>4</td></tr>
+<tr><td class="nw"><code>POST /api/artifacts/:id/rename</code>, <code>/delete</code>, <code>/restore</code></td><td>Manage files</td><td>4</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/attach</code></td><td>Reuse a library file in another chat (CopyObject)</td><td>4</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/export</code></td><td>Export as <code>md</code>, <code>pdf</code> or <code>docx</code>, stored as an <code>export</code> artifact</td><td>5</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/share</code>, <code>/api/artifacts/:id/share</code></td><td>Tenant-internal share link with expiry and revoke</td><td>5</td></tr>
+<tr><td class="nw"><code>/api/sessions/:id/documents*</code></td><td>Kept as shims over the new store until the frontend migrates</td><td>1</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="security">
+<h2>Security and tenancy</h2>
+<ul>
+  <li><strong>Key construction is server-only.</strong> Tenant and session in a key come from the thread marker (agent-core) or the resolved tenant context (platform). Model output and user filenames never shape a key.</li>
+  <li><strong>Least-privilege IAM.</strong> agent-core's role gets Get, Put and Copy on <code>t/*/s/*</code>. Platform's role gets presign rights (Get, and Put through the POST policy) plus Delete. Neither role gets bucket-wide List. Both use IRSA or a task role, with no static keys in <code>.env</code>.</li>
+  <li><strong>Signed URLs.</strong> GET URLs last 5 minutes and uploads 15 minutes. Uploads carry <code>content-length-range</code> and a fixed key. Responses use <code>no-store</code> and <code>nosniff</code>. HTML and SVG are always served as attachments, and visualizations keep rendering in the sandboxed iframe.</li>
+  <li><strong>Content checks on upload complete.</strong> Check the extension allow-list, sniff magic bytes against the claimed type, and optionally scan with GuardDuty Malware Protection for S3 before <code>ready</code>.</li>
+  <li><strong>Auth dependency.</strong> Until <code>USER_SCOPED_MCP_PLAN</code> lands, anyone who can reach platform can fetch any tenant file by id, same as every other <code>/api</code> route today. Phases 1 to 3 are fine for the internal team. Library, share and anything for outside users waits for auth, and <code>ownerId</code> plus <code>chatVisibility</code> enforcement is added then.</li>
+  <li><strong>Audit.</strong> Turn on S3 server access logs or CloudTrail data events for the bucket. Platform logs every signed URL with request id, tenant and artifact.</li>
+  <li><strong>Deletion.</strong> Member removal (already specified to delete that user's sessions) and <code>scripts/tenant.mjs drop</code> must also queue prefix deletes.</li>
+</ul>
+</section>
+
+<section id="lifecycle">
+<h2>Lifecycle, quotas, cost</h2>
+<div class="scroll"><table>
+<thead><tr><th>Object</th><th>Rule</th></tr></thead>
+<tbody>
+<tr><td>Conversation files</td><td>Standard, then Intelligent-Tiering after 30 days. Kept until deleted or the tenant's <code>retentionDays</code> passes.</td></tr>
+<tr><td>Deleted files</td><td>Soft delete in Mongo, object removed after 30 days. Noncurrent S3 versions expire after 30 days.</td></tr>
+<tr><td>Upload staging</td><td>Expire after 1 day. Abort incomplete multipart uploads after 1 day.</td></tr>
+<tr><td>Exports</td><td>Expire after 7 days (regenerate on demand).</td></tr>
+<tr><td>Local cache on pods</td><td>The sweeper evicts <code>files/</code> by LRU once the S3 copy is confirmed, so <code>WORKSPACE_TTL_DAYS</code> can finally be set safely.</td></tr>
+</tbody></table></div>
+<p>Proposed limits: 25 MB per upload (a presigned POST allows more if needed), 500 MB per conversation, and a tenant quota set by admins. Agent context stays protected because the agent reads extracted text through the existing size-limited <code>read_conversation_file</code>.</p>
+<p>Cost is small at this scale. S3 Standard is roughly $0.023 per GB-month in us-east-1, so 100 GB is a few dollars a month before requests and transfer. Please check current pricing for the chosen region. KMS requests are the one line to watch, which is why bucket keys are on.</p>
+</section>
+
+<section id="rollout">
+<h2>Phased rollout</h2>
+<p>Each phase ships behind <code>ARTIFACT_STORE=s3</code> and can be turned off without data loss, because the local copy is always written first.</p>
+<ol class="phases">
+  <li><strong>Foundations.</strong> Bucket, KMS and IAM (IaC, Terraform or CDK to be decided). <code>ArtifactStore</code> interface, MinIO service in <code>deploy/compose.yaml</code> for dev, <code>artifactConfig</code>, <code>artifacts</code> collection, and pinned <code>@aws-sdk/client-s3</code>, <code>s3-presigned-post</code> and <code>s3-request-presigner</code> on the same release as the existing Secrets Manager client. No user-visible change.</li>
+  <li><strong>Durable files and downloads.</strong> Write-through for all producers, artifact records into Mongo, 302 downloads, file cards in chat, Files tab. Fixes the 1 MB export mismatch. Backfill script uploads existing <code>business-workspaces/*/*/files</code>.</li>
+  <li><strong>Attach in chat.</strong> Presigned POST, composer attach, drag and drop, paste, <code>attachmentIds</code> on messages, attachment chips on user messages. Backlog: "Document Attaching in the Chat".</li>
+  <li><strong>Preview.</strong> Images, PDF (pdf.js), Markdown, CSV and text. Office files first show extracted text, then a LibreOffice worker renders PDF previews. Backlog: "Document Preview", "Chat Rich Preview".</li>
+  <li><strong>Knowledge library.</strong> Cross-chat list, search, rename, delete with undo, versions, attach from library, project scoping. Needs auth for "mine". Backlog: v2 "Knowledge nav + page".</li>
+  <li><strong>Export, share, SAP bridge.</strong> Conversation export (md, pdf, docx through the existing document libraries), topbar Share, and <code>push_workspace_file</code> reading from the store once the SAP tool's name and arguments are known. Backlog: "conversation export", "Share button", "SAP push bridge".</li>
+  <li><strong>Admin and workspace durability.</strong> Usage and retention settings in the admin UI, quota enforcement, and snapshots of <code>work/</code> on <code>turn/completed</code> so a lost pod or a second replica can resume a conversation. Backlog: "implementing the AWS usecase".</li>
+</ol>
+</section>
+
+<section id="testing">
+<h2>Testing</h2>
+<ul>
+  <li>Unit tests: an in-memory <code>ArtifactStore</code> for agent-core and platform. Key builder tests confirm tenant and session can't be escaped (<code>../</code>, unicode, very long names).</li>
+  <li>Integration: add MinIO beside <code>mongodb-memory-server</code> in <code>platform/test/http.test.ts</code>. Cover upload, complete, message with attachment, the agent reading the file, download redirect, delete, and a cold-cache hydrate after wiping the local folder.</li>
+  <li>Failure cases: S3 down during a tool call (outbox drains later), expired upload URL, oversize upload rejected by the policy, type mismatch rejected at complete.</li>
+  <li>Frontend: <code>node:test</code> for <code>lib/artifacts.ts</code> (fetch and XHR mocked) and attachment state reducers. Manual browser pass on drag, drop, paste and preview until a DOM test setup exists.</li>
+  <li>Tenant isolation: tenant A can't list, sign or import tenant B's artifact ids.</li>
+</ul>
+</section>
+
+<section id="open">
+<h2>Open decisions</h2>
+<div class="scroll"><table>
+<thead><tr><th>Question</th><th>Recommendation</th></tr></thead>
+<tbody>
+<tr><td>AWS account, region, and where the services run (EKS, ECS, AgentCore)</td><td>Same region as users and the model gateway. This drives IAM style (IRSA vs task role).</td></tr>
+<tr><td>Should agent-core hold S3 credentials, or only presigned URLs from platform?</td><td>Scoped role on agent-core. Presigned-only is possible but adds a platform round trip on every tool write.</td></tr>
+<tr><td>Max upload size and allowed types</td><td>25 MB, today's allow-list plus png, jpg, gif and webp.</td></tr>
+<tr><td>Default retention</td><td>Keep until deleted, with a tenant-level override.</td></tr>
+<tr><td>Office preview via a LibreOffice worker</td><td>Yes in Phase 3b. It is a separate container with no network.</td></tr>
+<tr><td>Share scope</td><td>Tenant-internal only at first. Public links later with expiry.</td></tr>
+<tr><td>Per-tenant KMS keys</td><td>One key per environment now. Per-tenant keys only if an enterprise customer asks.</td></tr>
+<tr><td>IaC tool</td><td>Terraform or CDK. The repo has none today.</td></tr>
+</tbody></table></div>
+</section>
+
+<section id="risks">
+<h2>Risks</h2>
+<div class="note"><strong>No auth yet.</strong> S3 makes files durable and shareable, which raises the cost of the existing open <code>/api</code> surface. Keep the rollout internal until user-scoped auth ships.</div>
+<ul>
+  <li>The Mongo row and S3 object can drift. The pending, then put, then ready order plus a reconciler handles it.</li>
+  <li>The outbox on agent-core disk is lost if the pod dies before it drains. This is acceptable because the window is small and the next turn re-syncs. Phase 6 snapshots close it fully.</li>
+  <li>Changes to <code>ConversationFile</code> touch the goal-completion and assistant-tools UI. The shims keep them working during migration.</li>
+  <li>No changes are needed in <code>vendor/codex</code>. All file tools are agent-core dynamic tools.</li>
+</ul>
+</section>
+</main>
+</div>

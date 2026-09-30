@@ -15,6 +15,34 @@ export interface Agent {
   mcpProfileIds: string[];
   /** Catalog skill ids; shared across tenants, subject to allowedSkillIds. */
   skillIds?: string[];
+  /** Mention handle without "@"; unique per tenant. See agentHandle(). */
+  handle?: string;
+  /** Robot look index, 0 to AGENT_LOOK_COUNT - 1. */
+  look?: number;
+  tint?: AgentTint;
+  /** Seeded by the Truex team; never set through the API. */
+  builtin?: boolean;
+}
+export const AGENT_TINTS = ["ice", "mint", "butter", "peach", "lilac"] as const;
+export type AgentTint = (typeof AGENT_TINTS)[number];
+export const AGENT_LOOK_COUNT = 12;
+export const DEFAULT_AGENT_LOOK = 2;
+export const DEFAULT_AGENT_TINT: AgentTint = "ice";
+export const AGENT_NAME_MAX = 40;
+export const AGENT_PURPOSE_MAX = 80;
+export const AGENT_INSTRUCTIONS_MAX = 20000;
+/** "Research Scout" → "researchscout" (design spec, app.tsx:83). */
+export function agentHandle(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 20);
+}
+/** A model the agent dialog can offer; never carries credentials. */
+export interface ModelOption {
+  id: string;
+  name: string;
+  provider: string;
 }
 /** How a provider is spoken to. Only "responses" is native to Codex. */
 export const WIRE_APIS = ["responses", "chat", "anthropic", "gemini"] as const;
@@ -45,6 +73,10 @@ export interface AgentSummary {
   provider: string;
   model: string;
   sandbox: string;
+  handle?: string;
+  look: number;
+  tint: AgentTint;
+  builtin: boolean;
 }
 export interface Session {
   runtimePolicyVersion?: number;

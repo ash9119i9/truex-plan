@@ -1,21 +1,16 @@
-import {
-  FileCode,
-  FileSpreadsheet,
-  FileText,
-  Presentation,
-} from "lucide-react";
 import { documentKind } from "@/lib/document-kind";
+import { Icon, type IconName } from "./v2/icon";
 
-const icons = {
-  code: FileCode,
-  sheet: FileSpreadsheet,
-  slides: Presentation,
-  text: FileText,
-  document: FileText,
+// Closest v2 icons (Foundations §5): sheets → table, slides → chart, else doc.
+const icons: Record<string, IconName> = {
+  code: "doc",
+  sheet: "table",
+  slides: "chart",
+  text: "doc",
+  document: "doc",
 };
 
 // Decorative: the row's text already names the file and its type.
 export function DocumentIcon({ name, size }: { name: string; size: number }) {
-  const Icon = icons[documentKind(name).kind];
-  return <Icon size={size} aria-hidden="true" />;
+  return <Icon name={icons[documentKind(name).kind] ?? "doc"} size={size} />;
 }

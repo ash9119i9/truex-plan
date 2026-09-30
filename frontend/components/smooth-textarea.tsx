@@ -1,5 +1,11 @@
 "use client";
-import { useCallback, useEffect, useRef, type ComponentProps } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  type ComponentProps,
+} from "react";
 import {
   animate,
   motion,
@@ -10,7 +16,12 @@ import {
 
 // Spring caret for a multi-line textarea (adapted from Skiper 106). A hidden
 // mirror lays the text out identically so the caret's position can be read.
-const SPRING = { type: "spring", stiffness: 500, damping: 30, mass: 0.5 } as const;
+const SPRING = {
+  type: "spring",
+  stiffness: 500,
+  damping: 30,
+  mass: 0.5,
+} as const;
 // On a line change a horizontal move wider than this snaps instead of
 // sweeping diagonally across the text (Enter, wrapping, Home/End jumps).
 const SWEEP_LIMIT = 48;
@@ -50,8 +61,12 @@ export function SmoothTextarea({
   ref,
   onFocus,
   onBlur,
+  autoGrow,
   ...props
-}: ComponentProps<"textarea">) {
+}: ComponentProps<"textarea"> & {
+  /** Grow with the text up to this many px (spec composer: 240). Off by default. */
+  autoGrow?: number;
+}) {
   const input = useRef<HTMLTextAreaElement | null>(null),
     mirror = useRef<HTMLDivElement>(null),
     last = useRef<Target | null>(null);
@@ -114,7 +129,8 @@ export function SmoothTextarea({
       el.offsetLeft + el.clientLeft + tail.offsetLeft - el.scrollLeft - 1,
       el.offsetLeft + el.clientLeft + el.clientWidth - 2,
     );
-    const top = el.offsetTop + el.clientTop + tail.offsetTop + (glyph - size) / 2;
+    const top =
+      el.offsetTop + el.clientTop + tail.offsetTop + (glyph - size) / 2;
     const width = el.clientWidth;
 
     const inView =
@@ -139,6 +155,14 @@ export function SmoothTextarea({
     else if (left !== prev.x) animate(x, left, SPRING);
     if (lineChanged) animate(line, top, SPRING);
   }, [hide, reduced, x, line, scroll, height, opacity]);
+
+  // Spec composer (Core §2): height = auto, then min(scrollHeight, cap).
+  useLayoutEffect(() => {
+    const el = input.current;
+    if (!autoGrow || !el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, autoGrow)}px`;
+  }, [props.value, autoGrow]);
 
   // Measure after the commit settles, so the parent's auto-resize has run.
   useEffect(() => {

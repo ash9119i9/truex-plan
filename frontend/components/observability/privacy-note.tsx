@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { ShieldAlert, X } from "lucide-react";
+// No shield in the v2 icon set, so lucide stays for the warning mark.
+import { ShieldAlert } from "lucide-react";
+import { Icon } from "../v2/icon";
 import { scanText } from "../../../shared/privacy.ts";
 import { draftNote } from "@/lib/observability";
 
@@ -23,16 +25,16 @@ export function PrivacyNote({ draft }: { draft: string }) {
   }, [draft]);
   if (!note || note === dismissed) return null;
   return (
-    <div className="obs-draft-note" role="status">
+    <div className="composer-note is-warn" role="status">
       <ShieldAlert size={14} aria-hidden="true" />
       <span>{note}</span>
       <button
         type="button"
-        className="icon-button"
+        className="icon-btn ghost"
         aria-label="Dismiss privacy note"
         onClick={() => setDismissed(note)}
       >
-        <X size={13} />
+        <Icon name="x" size={13} />
       </button>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
-// Tiny chart primitives. Every chart carries a text alternative; colour is
-// never the only carrier of meaning (legends always show values).
+// Tiny chart primitives, styled with the spec's Insights parts (styles/v2/session.css).
+// Every chart carries a text alternative; colour is never the only carrier of
+// meaning (legends always show values).
 
 export interface Segment {
   key: string;
@@ -26,22 +27,22 @@ export function StackedBar({
     ? `${label}: ${visible.map((s) => `${s.label} ${format(s.value)}`).join(", ")}`
     : `${label}: none`;
   return (
-    <div className="obs-stacked">
-      <div className="obs-stacked-bar" role="img" aria-label={alt}>
+    <div className="in-meter-block">
+      <div className="in-stack" role="img" aria-label={alt}>
         {visible.map((s) => (
           <i
             key={s.key}
-            className={`obs-seg ${s.tone}`}
-            style={{ flexGrow: s.value, flexBasis: 0 }}
+            className={`in-seg ${s.tone}`}
+            style={{ flexGrow: s.value }}
             title={`${s.label}: ${format(s.value)}`}
           />
         ))}
-        {!total && <i className="obs-seg obs-seg-empty" />}
+        {!total && <i className="in-seg is-empty" />}
       </div>
-      <ul className="obs-legend" aria-hidden="true">
+      <ul className="in-keys" aria-hidden="true">
         {segments.map((s) => (
-          <li key={s.key} className={s.value ? "" : "zero"}>
-            <i className={`obs-swatch ${s.tone}`} />
+          <li key={s.key} className={s.value ? "" : "is-zero"}>
+            <i className={`in-key ${s.tone}`} />
             <span>{s.label}</span>
             <b>{format(s.value)}</b>
           </li>
@@ -51,30 +52,33 @@ export function StackedBar({
   );
 }
 
-// A single 0–1 gauge with a plain caption.
+// A single 0–1 gauge with a plain caption. Spec context meter: warn at 75%,
+// critical at 90%.
 export function Meter({
   value,
   label,
   caption,
   detail,
-  high = 0.8,
+  high = 0.75,
+  critical = 0.9,
 }: {
   value: number;
   label: string;
   caption: string;
   detail?: string | null;
-  // At or above this fraction the fill switches to the attention colour.
   high?: number;
+  critical?: number;
 }) {
   const v = Math.min(1, Math.max(0, value));
+  const state = v >= critical ? " is-crit" : v >= high ? " is-warn" : "";
   return (
-    <div className="obs-meter">
-      <div className="obs-meter-head">
+    <div className="in-meter-block">
+      <div className="in-meter-head">
         <span>{label}</span>
         <b>{caption}</b>
       </div>
       <div
-        className="obs-meter-track"
+        className={`in-meter${state}`}
         role="meter"
         aria-label={label}
         aria-valuemin={0}
@@ -82,12 +86,9 @@ export function Meter({
         aria-valuenow={Math.round(v * 100)}
         aria-valuetext={[caption, detail].filter(Boolean).join(", ")}
       >
-        <i
-          className={v >= high ? "attention" : ""}
-          style={{ width: `${v * 100}%` }}
-        />
+        <span style={{ width: `${v * 100}%` }} />
       </div>
-      {detail && <small>{detail}</small>}
+      {detail && <span className="muted sm">{detail}</span>}
     </div>
   );
 }
@@ -122,7 +123,7 @@ export function ColumnChart({
   const width = Math.max(1, columns.length) * slot;
   return (
     <svg
-      className="obs-columns"
+      className="in-cols"
       viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
       role="img"
@@ -130,7 +131,7 @@ export function ColumnChart({
       style={{ height }}
     >
       <title>{`${title}. ${summary}`}</title>
-      <line className="obs-baseline" x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} />
+      <line className="in-base" x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} />
       {columns.map((c, i) => {
         let y = height;
         const x = i * slot + (slot - bar) / 2;
@@ -140,10 +141,10 @@ export function ColumnChart({
             : ""
         }`;
         return (
-          <g key={c.id} className={c.highlight ? "highlight" : undefined}>
+          <g key={c.id} className={c.highlight ? "is-high" : undefined}>
             <title>{tip}</title>
             {/* Full-height hit target, bigger than the mark. */}
-            <rect className="obs-hit" x={i * slot} y={0} width={slot} height={height} />
+            <rect className="in-hit" x={i * slot} y={0} width={slot} height={height} />
             {c.segments.map((s, j) => {
               const h = (s.value / max) * (height - 2);
               if (h <= 0) return null;
@@ -153,11 +154,12 @@ export function ColumnChart({
               return (
                 <rect
                   key={j}
-                  className={`obs-col ${s.tone}`}
+                  className={`in-col ${s.tone}`}
                   x={x}
                   y={y}
                   width={bar}
                   height={Math.max(0.5, h - gap)}
+                  rx={1}
                 />
               );
             })}

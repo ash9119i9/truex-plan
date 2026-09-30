@@ -132,3 +132,11 @@ Each one digs deep so nothing gets missed.
 1. Each one login with their Credentails and test with thier Own 
 2. Give them as a Excel Sheet(To track the users)
 3. Implement caching in the AWS KIRO 
+4. Here when the sub-agent is failed and main agent complete the task the plan is not updated
+
+
+
+// Frontend redesign v2 (docs/truex-design-spec.html) - held for later phases
+1. Projects: bring back the project tree / Projects nav + page (removed from sidebar in phase 1)
+2. Knowledge: Knowledge nav + page
+3. Share button (topbar): placed in phase 1 with no action, wire up sharing a conversation link

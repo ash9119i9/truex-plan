@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Check, Copy, Code2 } from "lucide-react";
+import { Code2 } from "lucide-react";
+import { Icon } from "../v2/icon";
 import { getTurnContext, ApiRequestError } from "@/lib/api";
 import { formatDuration } from "@/lib/observability";
 import type { TurnContext, TurnTrace } from "../../../shared/contracts";
@@ -22,26 +23,26 @@ export function TraceCard({
 }) {
   const [developer, setDeveloper] = useDeveloperMode();
   return (
-    <section className="obs-card" id={id} aria-label="Turn details">
-      <div className="obs-section">
+    <section className="tc" id={id} aria-label="Turn details">
+      <div className="tc-section">
         <h4>
           Where the time went
           <span>{formatDuration(trace.totalMs)} total</span>
         </h4>
         <StepTimeline trace={trace} />
       </div>
-      <div className="obs-section">
+      <div className="tc-section">
         <h4>
           What it used
           {trace.model && <span>{trace.model}</span>}
         </h4>
         <TokenBar usage={trace.usage} helperUsage={trace.helperUsage} />
       </div>
-      <div className="obs-section">
+      <div className="tc-section">
         <h4>Your data</h4>
         <PrivacyCard report={trace.privacy} />
       </div>
-      <label className="obs-dev-toggle">
+      <label className="tc-dev-toggle">
         <input
           type="checkbox"
           checked={developer}
@@ -100,8 +101,8 @@ function DeveloperDetails({
     }
   }
   return (
-    <div className="obs-dev">
-      <dl className="obs-ids">
+    <div className="tc-dev">
+      <dl className="tc-ids">
         <dt>Turn</dt>
         <dd>
           <code>{trace.turnId}</code>
@@ -113,10 +114,10 @@ function DeveloperDetails({
         <dt>Status</dt>
         <dd>{trace.status}</dd>
       </dl>
-      <div className="obs-dev-actions">
+      <div className="tc-dev-actions">
         <button
           type="button"
-          className="obs-link"
+          className="link"
           onClick={() => void loadContext()}
           disabled={context.state === "loading"}
           aria-expanded={context.state === "ready"}
@@ -125,43 +126,43 @@ function DeveloperDetails({
         </button>
         <button
           type="button"
-          className="obs-link"
+          className="link"
           aria-expanded={showRaw}
           onClick={() => setShowRaw((v) => !v)}
         >
           {showRaw ? "Hide trace JSON" : "Show trace JSON"}
         </button>
-        <button type="button" className="obs-link" onClick={() => void copy()}>
+        <button type="button" className="link" onClick={() => void copy()}>
           {copied ? (
-            <Check size={12} aria-hidden="true" />
+            <Icon name="check" size={12} />
           ) : (
-            <Copy size={12} aria-hidden="true" />
+            <Icon name="doc" size={12} />
           )}
           {copied ? "Copied" : "Copy trace JSON"}
         </button>
-        <span className="visually-hidden" role="status">
+        <span className="sr-only" role="status">
           {copied ? "Trace JSON copied" : ""}
         </span>
       </div>
       {context.state === "gone" && (
-        <p className="obs-note" role="status">
+        <p className="tc-note" role="status">
           No longer available, context is kept only while the session is live.
         </p>
       )}
       {context.state === "error" && (
-        <p className="obs-note" role="status">
+        <p className="tc-note" role="status">
           {context.message}
         </p>
       )}
       {context.state === "ready" && (
-        <div className="obs-context">
-          <p className="obs-note">
-            <span className="obs-tag">Reconstructed</span> Rebuilt from the
+        <div className="tc-context">
+          <p className="tc-note">
+            <span className="tc-tag">Reconstructed</span> Rebuilt from the
             turn’s events with personal data masked. It may differ from the
             exact prompt.
           </p>
           {context.context.sections.map((s, i) => (
-            <details key={i} className="obs-context-section">
+            <details key={i} className="tc-context-section">
               <summary>
                 {s.label}
                 <span>{s.chars.toLocaleString()} chars</span>
@@ -170,15 +171,15 @@ function DeveloperDetails({
             </details>
           ))}
           {!context.context.sections.length && (
-            <p className="obs-note">Nothing was recorded for this turn.</p>
+            <p className="tc-note">Nothing was recorded for this turn.</p>
           )}
           {context.context.truncated && (
-            <p className="obs-note">Long sections were shortened.</p>
+            <p className="tc-note">Long sections were shortened.</p>
           )}
         </div>
       )}
       {showRaw && (
-        <pre className="obs-json" tabIndex={0} aria-label="Trace JSON">
+        <pre className="tc-json" tabIndex={0} aria-label="Trace JSON">
           {json}
         </pre>
       )}

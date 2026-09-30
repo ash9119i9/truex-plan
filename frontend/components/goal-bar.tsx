@@ -1,19 +1,9 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
-import {
-  Check,
-  CircleCheck,
-  Ellipsis,
-  Gauge,
-  Pause,
-  Pencil,
-  Play,
-  RotateCcw,
-  Target,
-  X,
-} from "lucide-react";
+// Ellipsis, gauge and rotate have no v2 equivalent, so lucide stays for those.
+import { Ellipsis, Gauge, RotateCcw } from "lucide-react";
+import { Icon } from "./v2/icon";
 import { api } from "@/lib/api";
-import { Button } from "./ui/button";
 import { BudgetField, type BudgetValue } from "./budget-field";
 import {
   awaitingReview,
@@ -156,7 +146,11 @@ export function GoalBar({
       });
     });
   const clear = () => {
-    if (!window.confirm("Clear this goal? Its progress will no longer be tracked."))
+    if (
+      !window.confirm(
+        "Clear this goal? Its progress will no longer be tracked.",
+      )
+    )
       return;
     void run(async () => {
       await api(`/api/sessions/${sessionId}/capabilities`, {
@@ -240,9 +234,8 @@ export function GoalBar({
   }
   useEffect(() => {
     if (!menuOpen) return;
-    const items = menu.current?.querySelectorAll<HTMLButtonElement>(
-      '[role="menuitem"]',
-    );
+    const items =
+      menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]');
     (focusLast.current ? items?.[items.length - 1] : items?.[0])?.focus();
     const outside = (e: MouseEvent) => {
       const target = e.target as Node;
@@ -284,66 +277,85 @@ export function GoalBar({
     }
   };
 
+  // Spec .goal-status has four variants; warnings reuse the paused (warn) dot.
+  const tone =
+    accepted || goal.status === "complete"
+      ? "s-done"
+      : goal.status === "active"
+        ? "s-running"
+        : status.tone === "warn" || reviewing || goal.status === "paused"
+          ? "s-paused"
+          : "s-ended";
   return (
     <section
       className="goal-bar"
       data-tone={accepted ? "good" : reviewing ? "review" : status.tone}
       aria-label="Conversation goal"
     >
-      <div className="goal-row">
-        <Target size={15} className="goal-icon" aria-hidden="true" />
-        <div className="goal-text">
-          <span className="goal-status" title={status.hint}>
-            {goalStateLabel(goal, review)}
-          </span>
-          <p className="goal-objective" title={goal.objective}>
-            {goal.objective}
-          </p>
-        </div>
-        <span className="goal-meta">
+      <div className="goal-strip">
+        <Icon name="target" size={14} />
+        <p className="goal-strip-text" title={goal.objective}>
+          {goal.objective}
+        </p>
+        <span
+          className="goal-strip-meta mono sm"
+          title={
+            goal.tokenBudget
+              ? `${goal.tokensUsed.toLocaleString()} of ${goal.tokenBudget.toLocaleString()} budget tokens used; ${total.toLocaleString()} tokens in total`
+              : undefined
+          }
+        >
           {formatDuration(goal.timeUsedSeconds)} ·{" "}
-          {goal.tokenBudget ? (
-            <span
-              title={`${goal.tokensUsed.toLocaleString()} of ${goal.tokenBudget.toLocaleString()} budget tokens used; ${total.toLocaleString()} tokens in total`}
-            >
-              {formatTokens(goal.tokensUsed)} / {formatTokens(goal.tokenBudget)}{" "}
-              budget
-              {total > goal.tokensUsed && ` · ${formatTokens(total)} total`}
-            </span>
-          ) : (
-            `${formatTokens(total)} tokens`
-          )}
+          {goal.tokenBudget
+            ? `${formatTokens(goal.tokensUsed)} / ${formatTokens(goal.tokenBudget)}`
+            : `${formatTokens(total)} tokens`}
         </span>
-        <div className="goal-actions">
+        {used !== null && (
+          <div
+            className="bar"
+            role="progressbar"
+            aria-label="Token budget used"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={used}
+          >
+            <span style={{ width: `${used}%` }} />
+          </div>
+        )}
+        <span className={`goal-status ${tone}`} title={status.hint}>
+          <span className="pulse" aria-hidden="true" />
+          {goalStateLabel(goal, review)}
+        </span>
+        <div className="goal-strip-actions">
           {goal.status === "active" && (
             <button
               type="button"
-              className="icon-button"
+              className="icon-btn ghost"
               disabled={busy}
               onClick={() => void setStatus("paused")}
               aria-label={running ? "Pause after this turn" : "Pause goal"}
               title={running ? "Pause after this turn" : "Pause goal"}
             >
-              <Pause size={14} />
+              <Icon name="pause" size={14} />
             </button>
           )}
           {goal.status === "paused" && (
             <button
               type="button"
-              className="icon-button"
+              className="icon-btn ghost"
               disabled={busy}
               onClick={() => void setStatus("active")}
               aria-label="Resume goal"
               title="Resume goal"
             >
-              <Play size={14} />
+              <Icon name="play" size={14} />
             </button>
           )}
           {editable && (
             <button
               ref={trigger}
               type="button"
-              className="icon-button"
+              className="icon-btn ghost"
               disabled={busy}
               aria-label="More goal actions"
               title="More goal actions"
@@ -363,13 +375,13 @@ export function GoalBar({
           )}
           <button
             type="button"
-            className="icon-button"
+            className="icon-btn ghost"
             disabled={busy}
             onClick={clear}
             aria-label="Clear goal"
             title="Clear goal"
           >
-            <X size={14} />
+            <Icon name="x" size={14} />
           </button>
           {menuOpen && (
             <div
@@ -377,13 +389,14 @@ export function GoalBar({
               id={menuId}
               role="menu"
               aria-label="Goal actions"
-              className="goal-menu"
+              className="goal-menu menu"
               style={{ top: menuPos.top, right: menuPos.right }}
               onKeyDown={onMenuKey}
             >
               <button
                 type="button"
                 role="menuitem"
+                className="menu-item"
                 tabIndex={-1}
                 onClick={() =>
                   choose(() => {
@@ -392,11 +405,12 @@ export function GoalBar({
                   })
                 }
               >
-                <Pencil size={14} aria-hidden="true" /> Edit objective
+                <Icon name="pencil" size={14} /> Edit objective
               </button>
               <button
                 type="button"
                 role="menuitem"
+                className="menu-item"
                 tabIndex={-1}
                 onClick={() => choose(() => setPanel("budget"))}
               >
@@ -405,34 +419,19 @@ export function GoalBar({
               <button
                 type="button"
                 role="menuitem"
+                className="menu-item"
                 tabIndex={-1}
                 onClick={() => choose(markComplete)}
               >
-                <CircleCheck size={14} aria-hidden="true" /> Mark complete
+                <Icon name="check" size={14} /> Mark complete
               </button>
             </div>
           )}
         </div>
       </div>
-      {used !== null && (
-        <div
-          className="goal-progress"
-          role="progressbar"
-          aria-label="Token budget used"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={used}
-        >
-          <i style={{ width: `${used}%` }} />
-        </div>
-      )}
       {(working || finishing) && (
         <div className="goal-run">
-          <span className="thinking-dots" aria-hidden="true">
-            <i />
-            <i />
-            <i />
-          </span>
+          <span className="spinner" aria-hidden="true" />
           <span role="status">
             {working
               ? `Working on the goal${turns >= 2 ? ` · turn ${turns}` : ""}. Stop pauses it now.`
@@ -441,7 +440,7 @@ export function GoalBar({
           {working && (
             <button
               type="button"
-              className="goal-run-action"
+              className="text-btn"
               disabled={busy}
               onClick={() => void setStatus("paused")}
             >
@@ -451,7 +450,7 @@ export function GoalBar({
           {finishing && (
             <button
               type="button"
-              className="goal-run-action"
+              className="text-btn"
               disabled={busy}
               onClick={() => void setStatus("active")}
             >
@@ -462,9 +461,9 @@ export function GoalBar({
       )}
       {accepted && (
         <div className="goal-stuck-actions">
-          <Button type="button" variant="outline" onClick={onFollowUp}>
-            <Target size={14} /> Start a follow-up goal
-          </Button>
+          <button className="btn-soft" type="button" onClick={onFollowUp}>
+            <Icon name="target" size={14} /> Start a follow-up goal
+          </button>
         </div>
       )}
       {!accepted && status.tone === "warn" && (
@@ -473,45 +472,46 @@ export function GoalBar({
           {stoppedBy && <GoalReason failure={stoppedBy} provider={provider} />}
           <div className="goal-stuck-actions">
             {stoppedBy?.reason === "contextWindow" && (
-              <Button
+              <button
+                className="btn-soft"
                 type="button"
-                variant="outline"
                 disabled={busy}
                 onClick={() => void compact()}
               >
                 Compact conversation
-              </Button>
+              </button>
             )}
             {goal.status === "budgetLimited" &&
               budgetExtensions.map((extra) => (
-                <Button
+                <button
+                  className="btn-soft"
                   key={extra}
                   type="button"
-                  variant="outline"
                   disabled={busy}
                   onClick={() => void extend(extra)}
                 >
                   Extend by {formatTokens(extra)}
-                </Button>
+                </button>
               ))}
             {goal.status === "blocked" && (
-              <Button
+              <button
+                className="btn-soft"
                 type="button"
-                variant="outline"
                 disabled={busy}
                 onClick={onProvideInput}
               >
                 Provide input
-              </Button>
+              </button>
             )}
             {(goal.status === "blocked" || goal.status === "usageLimited") && (
-              <Button
+              <button
+                className="btn-solid"
                 type="button"
                 disabled={busy}
                 onClick={() => void setStatus("active")}
               >
-                <Play size={14} /> Resume goal
-              </Button>
+                <Icon name="play" size={14} /> Resume goal
+              </button>
             )}
           </div>
         </>
@@ -539,12 +539,16 @@ export function GoalBar({
             picks up the change.
           </p>
           <div className="goal-review-actions">
-            <Button type="button" variant="ghost" onClick={closePanel}>
+            <button className="btn-ghost" type="button" onClick={closePanel}>
               Cancel
-            </Button>
-            <Button type="submit" disabled={busy || !draft.trim()}>
+            </button>
+            <button
+              className="btn-solid"
+              type="submit"
+              disabled={busy || !draft.trim()}
+            >
               Save objective
-            </Button>
+            </button>
           </div>
         </form>
       )}
@@ -564,16 +568,20 @@ export function GoalBar({
           />
           <p className="goal-panel-note">
             Counted toward the budget so far: {formatTokens(goal.tokensUsed)}{" "}
-            tokens ({formatTokens(total)} in total). The assistant stops when
-            it reaches the budget.
+            tokens ({formatTokens(total)} in total). The assistant stops when it
+            reaches the budget.
           </p>
           <div className="goal-review-actions">
-            <Button type="button" variant="ghost" onClick={closePanel}>
+            <button className="btn-ghost" type="button" onClick={closePanel}>
               Cancel
-            </Button>
-            <Button type="submit" disabled={busy || !budget.valid}>
+            </button>
+            <button
+              className="btn-solid"
+              type="submit"
+              disabled={busy || !budget.valid}
+            >
               Save budget
-            </Button>
+            </button>
           </div>
         </form>
       )}
@@ -611,35 +619,36 @@ export function GoalBar({
                 autoFocus
               />
               <div className="goal-review-actions">
-                <Button
+                <button
+                  className="btn-ghost"
                   type="button"
-                  variant="ghost"
                   onClick={() => setReopening(false)}
                 >
                   Cancel
-                </Button>
-                <Button type="submit" disabled={busy}>
-                  <RotateCcw size={14} /> Reopen goal
-                </Button>
+                </button>
+                <button className="btn-solid" type="submit" disabled={busy}>
+                  <RotateCcw size={14} aria-hidden="true" /> Reopen goal
+                </button>
               </div>
             </form>
           ) : (
             <div className="goal-review-actions">
-              <Button
+              <button
+                className="btn-soft"
                 type="button"
-                variant="outline"
                 disabled={busy}
                 onClick={() => setReopening(true)}
               >
                 Not yet
-              </Button>
-              <Button
+              </button>
+              <button
+                className="btn-solid"
                 type="button"
                 disabled={busy}
                 onClick={() => void submitReview("accepted")}
               >
-                <Check size={14} /> Accept result
-              </Button>
+                <Icon name="check" size={14} /> Accept result
+              </button>
             </div>
           )}
         </div>

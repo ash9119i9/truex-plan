@@ -17,17 +17,17 @@ export function HelperChip({
   if (!running.length) return null;
   const label = `${running.length} ${running.length === 1 ? "helper" : "helpers"} running`;
   return (
-    <div className="helper-chip">
+    <div className="helper-chip status-pill">
       {/* Announces the count only; the ticking timer stays silent. */}
       <span className="visually-hidden" aria-live="polite">
         {label}
       </span>
-      <span className="helper-chip-dot" aria-hidden />
+      <span className="pulse" aria-hidden />
       <span aria-hidden>
         {label} ·{" "}
         <LiveDuration ms={groupElapsedMs(running, now, state.skewMs)} />
       </span>
-      <button type="button" className="link-button" onClick={onView}>
+      <button type="button" className="link helper-chip-view" onClick={onView}>
         View
       </button>
     </div>

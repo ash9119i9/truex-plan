@@ -17,6 +17,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
+import { newAgent } from "./agents";
 import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
 import { isDeepStrictEqual } from "node:util";
@@ -29,6 +30,14 @@ import type {
   Project,
   Session,
   SessionGoal,
+  AgentSummary,
+  ModelOption,
+} from "../../shared/contracts";
+import {
+  AGENT_LOOK_COUNT,
+  AGENT_TINTS,
+  DEFAULT_AGENT_LOOK,
+  DEFAULT_AGENT_TINT,
 } from "../../shared/contracts";
 import { ApiError } from "./errors";
 export { ApiError } from "./errors";
@@ -74,7 +83,7 @@ export function upstreamError(
 import { attachedMcpInstructions, mcpConfig, newMcpProfile } from "./mcp";
 import type { DatabaseId, ModelDocument } from "./documents";
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
-import { currentTenantId } from "./tenant";
+import { currentTenant, currentTenantId } from "./tenant";
 // Codex edits an objective in place, so the creation time identifies a goal.
 function sameGoal(saved: SessionGoal | undefined, goal: Goal) {
   return !!saved && (saved.createdAt ?? null) === (goal.createdAt ?? null);
@@ -463,7 +472,7 @@ export class PlatformService {
         : {}),
     };
   }
-  async agents() {
+  async agents(): Promise<AgentSummary[]> {
     const [agents, profiles] = await Promise.all([
       this.store.agents.find({ enabled: { $ne: false } }).toArray(),
       this.store.profiles
@@ -484,8 +493,78 @@ export class PlatformService {
         provider: p?.provider || "unknown",
         model: p?.modelName || "unknown",
         sandbox: a.sandbox || "read-only",
+        ...(a.handle ? { handle: a.handle } : {}),
+        look:
+          Number.isInteger(a.look) && a.look! >= 0 && a.look! < AGENT_LOOK_COUNT
+            ? a.look!
+            : DEFAULT_AGENT_LOOK,
+        tint: AGENT_TINTS.includes(a.tint!) ? a.tint! : DEFAULT_AGENT_TINT,
+        builtin: a.builtin === true,
       };
     });
+  }
+  /** Models the agent dialog may offer: enabled, allowed, and usable. */
+  async models(): Promise<ModelOption[]> {
+    const allowed = currentTenant()?.allowedModelIds;
+    const rows = await this.store.profiles
+      .find(
+        {
+          enabled: { $ne: false },
+          baseUrl: { $type: "string", $ne: "" },
+          modelName: { $type: "string", $ne: "" },
+          $or: [
+            { apiKey: { $type: "string", $ne: "" } },
+            { apikey: { $type: "string", $ne: "" } },
+          ],
+        },
+        { projection: { _id: 1, displayName: 1, modelName: 1, provider: 1 } },
+      )
+      .toArray();
+    return rows
+      .filter((m) => !allowed || allowed.includes(String(m._id)))
+      .map((m) => ({
+        id: String(m._id),
+        name: m.displayName || m.modelName,
+        provider: m.provider,
+      }));
+  }
+  async createAgent(body: unknown): Promise<AgentSummary> {
+    const agent = newAgent(body);
+    const profile = await this.store.findModel(agent.modelProfileId);
+    if (!profile || !(profile.apiKey || profile.apikey))
+      throw new ApiError(
+        422,
+        "That model is not available. Pick another model.",
+        "MODEL_UNAVAILABLE",
+      );
+    agent.modelProfileId = profile._id;
+    const taken = () =>
+      new ApiError(
+        409,
+        `@${agent.handle} is taken. Choose a different name.`,
+        "AGENT_HANDLE_TAKEN",
+      );
+    if (await this.store.agents.findOne({ handle: agent.handle }, { projection: { _id: 1 } }))
+      throw taken();
+    try {
+      await this.store.agents.insertOne(agent);
+    } catch (error: any) {
+      // The unique index catches a race between two creates.
+      if (error?.code === 11000) throw taken();
+      throw error;
+    }
+    return {
+      id: String(agent._id),
+      name: agent.name,
+      description: agent.description || "",
+      provider: profile.provider,
+      model: profile.modelName,
+      sandbox: agent.sandbox!,
+      handle: agent.handle,
+      look: agent.look!,
+      tint: agent.tint!,
+      builtin: false,
+    };
   }
   async agentMcp(agentId: string) {
     const agent = await this.store.findAgent(agentId);

@@ -1,3 +1,4 @@
+// Terminal/diff/wrench have no v2 equivalent, so lucide stays here.
 import { Terminal, FileDiff, Wrench } from "lucide-react";
 export function RuntimeItem({ item }: { item: any }) {
   if (

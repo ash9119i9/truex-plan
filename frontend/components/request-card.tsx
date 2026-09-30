@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ListChecks } from "lucide-react";
+import { Icon } from "./v2/icon";
 import { LiveDuration } from "./live-duration";
 import { useClock } from "./use-clock";
 import type { PendingRequest } from "../../shared/contracts";
@@ -24,7 +24,6 @@ import {
   type PlanStep,
 } from "../lib/plan";
 import { errorRef, type ErrorRef as Ref } from "../lib/api";
-import { Button } from "./ui/button";
 import { ErrorRef } from "./error-ref";
 import { PlanSteps } from "./plan-steps";
 
@@ -120,7 +119,7 @@ function PlanApprovalCard({
     >
       <header className="request-card-head">
         <span className="request-card-icon" aria-hidden="true">
-          <ListChecks size={16} />
+          <Icon name="check" size={16} />
         </span>
         <h3 id={`${request.requestId}-title`}>
           {question.header || "Plan"} ready for review
@@ -163,30 +162,34 @@ function PlanApprovalCard({
         <div className="request-approval-actions plan-approval-actions">
           {revising ? (
             <>
-              <Button type="submit" disabled={locked || !feedback.trim()}>
+              <button
+                className="btn-solid"
+                type="submit"
+                disabled={locked || !feedback.trim()}
+              >
                 {sending === REVISE ? "Sending…" : "Send feedback"}
-              </Button>
-              <Button
+              </button>
+              <button
+                className="btn-ghost"
                 type="button"
-                variant="ghost"
                 onClick={() => setRevising(false)}
               >
                 Cancel
-              </Button>
+              </button>
             </>
           ) : (
             <>
-              <Button type="submit">
+              <button className="btn-solid" type="submit">
                 {sending === APPROVE ? "Sending…" : "Approve plan"}
-              </Button>
-              <Button
+              </button>
+              <button
+                className="btn-soft"
                 type="button"
-                variant="outline"
                 aria-expanded={false}
                 onClick={() => setRevising(true)}
               >
                 Revise
-              </Button>
+              </button>
             </>
           )}
         </div>
@@ -372,15 +375,15 @@ function QuestionCard({
               (approvalQuestion ? (
                 <div className="request-approval-actions">
                   {q.options.map((option, i) => (
-                    <Button
+                    <button
                       key={option.label}
                       type="button"
-                      variant={
+                      className={
                         i === 0
-                          ? "default"
+                          ? "btn-solid"
                           : isDecline(q, option)
-                            ? "ghost"
-                            : "outline"
+                            ? "btn-ghost"
+                            : "btn-soft"
                       }
                       title={option.description}
                       onClick={() => choose(q, option.label)}
@@ -388,7 +391,7 @@ function QuestionCard({
                       {sending === option.label
                         ? "Sending…"
                         : optionLabel(q, option)}
-                    </Button>
+                    </button>
                   ))}
                 </div>
               ) : (
@@ -495,23 +498,27 @@ function QuestionCard({
       {!expired && (at > 0 || showPrimary) && (
         <div className="request-submit">
           {at > 0 && (
-            <Button
+            <button
+              className="btn-ghost"
               type="button"
-              variant="ghost"
               disabled={locked}
               onClick={() => setStep(at - 1)}
             >
               Back
-            </Button>
+            </button>
           )}
           {showPrimary && (
-            <Button type="submit" disabled={locked || !currentDone}>
+            <button
+              className="btn-solid"
+              type="submit"
+              disabled={locked || !currentDone}
+            >
               {at < last
                 ? "Next"
                 : sending === "submit"
                   ? "Sending…"
                   : "Send answer"}
-            </Button>
+            </button>
           )}
         </div>
       )}

@@ -13,6 +13,7 @@ import { SuggestedQuestions } from "./suggested-questions";
 import { HelperGroup } from "./helper-group";
 import { emptySubAgents, type SubAgentState } from "@/lib/subagents";
 import { LiveUsage, TurnReceipt } from "./observability/receipt";
+import { Icon } from "./v2/icon";
 import type {
   Goal,
   GoalReview,
@@ -23,6 +24,7 @@ import type {
 export function ChatMessages({
   entries,
   agentName,
+  agentHue,
   running,
   onCommand,
   onOpen,
@@ -40,6 +42,8 @@ export function ChatMessages({
 }: {
   entries: Entry[];
   agentName: string;
+  /** Agent colour for the avatar; defaults to --accent-soft-2. */
+  agentHue?: string;
   running: boolean;
   onCommand?: (text: string) => void;
   onOpen?: (id: string) => void;
@@ -88,37 +92,58 @@ export function ChatMessages({
   });
   // Turns with an anchor, so each turn id is used once.
   const anchored = new Set<string>();
+  const avatar = (
+    <span
+      className="agent-avatar"
+      style={{ background: agentHue || "var(--accent-soft-2)" }}
+      aria-hidden="true"
+    >
+      <Icon name="spark" size={13} stroke={2} />
+    </span>
+  );
+  const working = (
+    <ul className="steps" role="status">
+      <li>
+        <span className="spinner" aria-hidden="true" />
+        Working
+      </li>
+    </ul>
+  );
   return (
     <div className="chat-messages">
       {groups.map((group, index) => {
         if (group.user) {
           const user = group.user;
+          const isGoal = user.command?.method.startsWith("thread/goal/");
+          const notes = [
+            user.steer && "Follow-up",
+            user.delivery &&
+              user.delivery !== "accepted" &&
+              (user.delivery === "pending"
+                ? "Sending…"
+                : "Delivery unconfirmed"),
+          ].filter(Boolean);
           return (
             <Fragment key={`user:${group.id}`}>
               <article
                 id={`request-${user.id}`}
-                className="message user"
+                className="msg user"
                 aria-label="Your message"
               >
-                <div className="message-label">
-                  You
+                <div className="bubble-wrap">
                   {user.command && (
-                    <span className="command-badge">
+                    <span className="goal-tag">
+                      {isGoal && <Icon name="target" size={12} />}
                       {commandLabel(user.command.method)}
                     </span>
                   )}
-                  {user.steer && <span> · Follow-up</span>}
-                  {user.delivery && user.delivery !== "accepted" && (
-                    <span>
-                      {" "}
-                      ·{" "}
-                      {user.delivery === "pending"
-                        ? "Sending…"
-                        : "Delivery unconfirmed"}
+                  <div className="bubble">{user.text}</div>
+                  {!!notes.length && (
+                    <span className="msg-note muted sm">
+                      {notes.join(" · ")}
                     </span>
                   )}
                 </div>
-                <div className="message-text">{user.text}</div>
               </article>
               {user.command && (
                 <CommandResult
@@ -158,39 +183,49 @@ export function ChatMessages({
             : [];
         return (
           <article
-            className="assistant-turn"
+            className="msg agent"
             key={`assistant:${group.id}`}
             id={anchor}
             tabIndex={anchor ? -1 : undefined}
             aria-label={`${agentName} response`}
           >
-            <div className="message-label">{agentName}</div>
-            {!!thinking.length && (
-              <ThinkingBlock
-                text={thinking
-                  .map((e) => e.text)
-                  .filter(Boolean)
-                  .join("\n\n")}
-                streaming={
-                  active && !answering && thinking.some((e) => !e.done)
-                }
-              />
-            )}
-            {content.map((e) =>
-              e.kind === "approval" ? (
-                <ApprovalRecordView key={e.id} record={e.record} />
-              ) : e.kind === "agents" ? (
-                <HelperGroup
-                  key={e.id}
-                  id={e.id.replace(/[^\w-]/g, "-")}
-                  threadIds={e.threadIds}
-                  state={subAgents}
-                  sessionId={sessionId}
-                  onOpenAgent={onOpenAgent}
+            {avatar}
+            <div className="grow">
+              <div className="msg-meta">
+                <span className="strong">{agentName}</span>
+                {active && !answering && (
+                  <span className="muted sm">thinking…</span>
+                )}
+              </div>
+              {!!thinking.length && (
+                <ThinkingBlock
+                  text={thinking
+                    .map((e) => e.text)
+                    .filter(Boolean)
+                    .join("\n\n")}
+                  streaming={
+                    active && !answering && thinking.some((e) => !e.done)
+                  }
                 />
-              ) : e.kind === "message" && e.text ? (
-                <div className="message assistant" key={e.id}>
-                  <div className="message-text markdown">
+              )}
+              {active &&
+                !answering &&
+                !thinking.some((e) => !e.done) &&
+                working}
+              {content.map((e) =>
+                e.kind === "approval" ? (
+                  <ApprovalRecordView key={e.id} record={e.record} />
+                ) : e.kind === "agents" ? (
+                  <HelperGroup
+                    key={e.id}
+                    id={e.id.replace(/[^\w-]/g, "-")}
+                    threadIds={e.threadIds}
+                    state={subAgents}
+                    sessionId={sessionId}
+                    onOpenAgent={onOpenAgent}
+                  />
+                ) : e.kind === "message" && e.text ? (
+                  <div className="answer markdown" key={e.id}>
                     {splitVisualizations(
                       splitSuggestions(e.text, !e.final && !e.done).body,
                       !e.final && !e.done,
@@ -215,52 +250,41 @@ export function ChatMessages({
                       ),
                     )}
                     {active && !e.final && !e.done && (
-                      <span className="cursor" aria-hidden="true" />
+                      <span className="caret" aria-hidden="true" />
                     )}
                   </div>
-                </div>
-              ) : null,
-            )}
-            {group.turnId &&
-              receiptAt.get(group.turnId) === index &&
-              (traceByTurn.has(group.turnId) && !active ? (
-                <TurnReceipt
-                  trace={traceByTurn.get(group.turnId)!}
-                  sessionId={sessionId}
+                ) : null,
+              )}
+              {group.turnId &&
+                receiptAt.get(group.turnId) === index &&
+                (traceByTurn.has(group.turnId) && !active ? (
+                  <TurnReceipt
+                    trace={traceByTurn.get(group.turnId)!}
+                    sessionId={sessionId}
+                  />
+                ) : active && liveUsage[group.turnId] ? (
+                  <LiveUsage usage={liveUsage[group.turnId]} />
+                ) : null)}
+              {!!suggestions.length && (
+                <SuggestedQuestions
+                  questions={suggestions}
+                  onSelect={onSuggest!}
                 />
-              ) : active && liveUsage[group.turnId] ? (
-                <LiveUsage usage={liveUsage[group.turnId]} />
-              ) : null)}
-            {!!suggestions.length && (
-              <SuggestedQuestions
-                questions={suggestions}
-                onSelect={onSuggest!}
-              />
-            )}
-            {active && !answering && !thinking.some((e) => !e.done) && (
-              <p className="chat-working" role="status">
-                Working
-                <span className="thinking-dots" aria-hidden="true">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              </p>
-            )}
+              )}
+            </div>
           </article>
         );
       })}
       {needsPlaceholder && (
-        <div className="assistant-turn" role="status">
-          <div className="message-label">{agentName}</div>
-          <p className="chat-working">
-            Working
-            <span className="thinking-dots" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          </p>
+        <div className="msg agent" aria-label={`${agentName} response`}>
+          {avatar}
+          <div className="grow">
+            <div className="msg-meta">
+              <span className="strong">{agentName}</span>
+              <span className="muted sm">thinking…</span>
+            </div>
+            {working}
+          </div>
         </div>
       )}
     </div>

@@ -4,7 +4,6 @@ import type { Goal } from "../../shared/contracts";
 import type { ConversationFile } from "../../shared/assistant-capabilities";
 import type { Entry } from "@/lib/chat";
 import { closingSummary, goalDocuments } from "@/lib/goal-completion";
-import { Button } from "./ui/button";
 import { DocumentIcon } from "./document-icon";
 
 // Shows what a completed goal produced, inside the goal bar's review panel.
@@ -43,16 +42,15 @@ export function GoalCompletion({
             {expanded ? summary.text : summary.preview}
           </p>
           {summary.truncated && (
-            <Button
+            <button
               type="button"
-              variant="ghost"
-              className="goal-completion-toggle"
+              className="btn-ghost goal-completion-toggle"
               aria-expanded={expanded}
               aria-controls={summaryId}
               onClick={() => setExpanded((open) => !open)}
             >
               {expanded ? "Show less" : "Show more"}
-            </Button>
+            </button>
           )}
         </section>
       )}
@@ -76,7 +74,7 @@ export function GoalCompletion({
                 {href && (
                   // The documents route serves files as attachments.
                   <a
-                    className="button button-outline"
+                    className="btn-soft"
                     href={href(file.id)}
                     download={file.name}
                     aria-label={`Download ${file.name}`}

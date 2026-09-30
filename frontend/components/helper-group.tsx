@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Check, ChevronDown, CircleDot, Square, X } from "lucide-react";
+import { Icon } from "./v2/icon";
 import Markdown from "react-markdown";
 import { stripSuggestions } from "@/lib/suggestions";
 import remarkGfm from "remark-gfm";
@@ -53,15 +53,15 @@ export function HelperGroup({
     .join(" · ");
   return (
     <section
-      className="helper-group"
+      className="hcard"
       id={`helpers-${id}`}
       tabIndex={-1}
       aria-label="Helper agents"
     >
-      <header className="helper-group-head">
-        <span className="helper-group-summary">{summary}</span>
+      <header className="hcard-head">
+        <span>{summary}</span>
         <LiveDuration
-          className="helper-time"
+          className="mono sm muted"
           ms={groupElapsedMs(agents, now, state.skewMs)}
         />
       </header>
@@ -69,11 +69,12 @@ export function HelperGroup({
       <p className="visually-hidden" aria-live="polite">
         {summary}
       </p>
-      <ul className="helper-rows">
-        {agents.map((a) => (
+      <ul className="hcard-rows">
+        {agents.map((a, i) => (
           <HelperRow
             key={a.threadId}
             agent={a}
+            tone={i % 3}
             name={helperName(a, state.agents)}
             preview={state.previews[a.threadId] || ""}
             elapsed={elapsedMs(a, now, state.skewMs)}
@@ -86,18 +87,17 @@ export function HelperGroup({
   );
 }
 
-function StatusIcon({ agent }: { agent: SubAgent }) {
-  if (isRunning(agent))
-    return <CircleDot size={14} className="helper-icon running" aria-hidden />;
-  if (agent.status === "completed")
-    return <Check size={14} className="helper-icon done" aria-hidden />;
-  if (agent.status === "errored")
-    return <X size={14} className="helper-icon failed" aria-hidden />;
-  return <Square size={12} className="helper-icon stopped" aria-hidden />;
+// Spec .ag-chip variants for finished states; running shows a spinner.
+function chipClass(agent: SubAgent) {
+  if (agent.status === "completed") return "is-done";
+  if (agent.status === "errored" || agent.status === "notFound")
+    return "is-warn";
+  return "is-stopped";
 }
 
 function HelperRow({
   agent,
+  tone,
   name,
   preview,
   elapsed,
@@ -105,6 +105,7 @@ function HelperRow({
   onOpenAgent,
 }: {
   agent: SubAgent;
+  tone: number;
   name: string;
   preview: string;
   elapsed: number;
@@ -132,32 +133,41 @@ function HelperRow({
     }
   }
 
+  const label = statusLabels[agent.status] || agent.status;
   return (
-    <li className={`helper-row ${agent.status}`}>
+    <li className={`hcard-item ${agent.status}`}>
       <button
         type="button"
-        className="helper-row-main"
+        className={`hcard-row tone-${tone}`}
         aria-expanded={open}
         aria-controls={detailId}
         onClick={() => setOpen(!open)}
       >
-        <StatusIcon agent={agent} />
-        <span className="helper-label">
-          <span className="helper-title" title={agent.task || title}>
-            {title}
+        <span className="h-av xs" aria-hidden="true">
+          {name.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="hcard-name" title={agent.task || title}>
+          <span className="strong">{name}</span>
+          <span className="muted"> · {title}</span>
+        </span>
+        {running ? (
+          <span className="ag-chip is-running">
+            <span className="spinner" aria-label="running" />
+            {label}
           </span>
-          <span className="helper-name">{name}</span>
+        ) : (
+          <span className={`ag-chip ${chipClass(agent)}`}>{label}</span>
+        )}
+        <LiveDuration className="hcard-time mono sm muted" ms={elapsed} />
+        <span className="hcard-go" aria-hidden="true">
+          {open ? "Hide" : "Open"}
+          <Icon name={open ? "chevron" : "chevronR"} size={13} />
         </span>
-        <span className="helper-status">
-          {statusLabels[agent.status] || agent.status}
-        </span>
-        <LiveDuration className="helper-time" ms={elapsed} />
-        <ChevronDown size={14} className="helper-chevron" aria-hidden />
       </button>
       {open && (
-        <div className="helper-detail" id={detailId}>
+        <div className="hcard-detail" id={detailId}>
           {output ? (
-            <div className="helper-output markdown">
+            <div className="hcard-output markdown">
               <Markdown remarkPlugins={[remarkGfm]}>
                 {stripSuggestions(output, running)}
               </Markdown>
@@ -167,17 +177,17 @@ function HelperRow({
               {running ? "No output yet." : "No output was shared."}
             </p>
           )}
-          {agent.task && <p className="helper-task">{agent.task}</p>}
+          {agent.task && <p className="hcard-task">{agent.task}</p>}
           {error && (
-            <p role="alert" className="error-banner">
+            <p role="alert" className="hcard-error">
               {error}
             </p>
           )}
-          <div className="helper-actions">
+          <div className="hcard-actions">
             {onOpenAgent && (
               <button
                 type="button"
-                className="link-button"
+                className="btn-soft"
                 onClick={() => onOpenAgent(agent.threadId)}
               >
                 Open transcript
@@ -186,7 +196,7 @@ function HelperRow({
             {running && (
               <button
                 type="button"
-                className="agent-stop"
+                className="btn-ghost danger"
                 onClick={stop}
                 disabled={stopping || !sessionId}
                 aria-label={`Stop ${name}`}

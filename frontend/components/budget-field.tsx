@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useId, useState } from "react";
 import { budgetHelp, budgetOptions, parseTokenBudget } from "@/lib/goal";
+import { Icon } from "./v2/icon";
 
 export type BudgetValue = { tokens: number | null; valid: boolean };
 
@@ -26,6 +27,7 @@ export function BudgetField({
   const [custom, setCustom] = useState(preset ? "" : String(initial));
   const [touched, setTouched] = useState(false);
   const errorId = useId();
+  const selectId = useId();
   const invalid = choice === "custom" && parseTokenBudget(custom) === null;
   const described = showError && touched && invalid;
 
@@ -43,29 +45,35 @@ export function BudgetField({
 
   return (
     <span className="budget-field">
-      <select
-        className={selectClassName}
-        aria-label="Token budget"
-        value={choice}
-        autoFocus={autoFocus}
-        onChange={(e) => {
-          setChoice(e.target.value);
-          setTouched(false);
-          report(e.target.value, custom);
-        }}
-      >
-        {budgetOptions.map((option) => (
-          <option key={option.label} value={option.value ?? ""}>
-            {option.label}
-          </option>
-        ))}
-        <option value="custom">Custom…</option>
-      </select>
+      <span className="select">
+        <label className="sr-only" htmlFor={selectId}>
+          Budget
+        </label>
+        <select
+          id={selectId}
+          className={selectClassName}
+          value={choice}
+          autoFocus={autoFocus}
+          onChange={(e) => {
+            setChoice(e.target.value);
+            setTouched(false);
+            report(e.target.value, custom);
+          }}
+        >
+          {budgetOptions.map((option) => (
+            <option key={option.label} value={option.value ?? ""}>
+              {option.label}
+            </option>
+          ))}
+          <option value="custom">Custom…</option>
+        </select>
+        <Icon name="upDown" size={13} />
+      </span>
       {choice === "custom" && (
         <input
           type="text"
           inputMode="numeric"
-          className="budget-custom"
+          className="input budget-custom"
           aria-label="Custom token budget"
           aria-invalid={touched && invalid}
           aria-describedby={described ? errorId : undefined}

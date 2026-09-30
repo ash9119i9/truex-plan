@@ -7,32 +7,32 @@ import type { TurnTrace } from "../../../shared/contracts";
 export function StepTimeline({ trace }: { trace: TurnTrace }) {
   const layout = timelineLayout(trace);
   if (!layout.lanes.length)
-    return <p className="obs-empty">No steps were recorded for this turn.</p>;
+    return <p className="tc-empty">No steps were recorded for this turn.</p>;
   const steps = layout.lanes
     .flatMap((lane) => lane.steps.map((s) => ({ ...s, lane })))
     .sort((a, b) => a.startMs - b.startMs);
   return (
-    <div className="obs-timeline">
-      <div className="obs-timeline-chart" aria-hidden="true">
+    <div className="tc-section">
+      <div className="tc-lanes" aria-hidden="true">
         {layout.lanes.map((lane) => (
-          <div className="obs-lane" key={lane.id}>
-            <span className="obs-lane-label" title={lane.label}>
+          <div className="tc-lane" key={lane.id}>
+            <span className="tc-lane-name" title={lane.label}>
               {lane.label}
             </span>
             <div
-              className="obs-lane-track"
+              className="tc-track"
               style={{ height: lane.rows * 14 + (lane.rows - 1) * 4 }}
             >
               {lane.steps.map((s) => (
                 <i
                   key={s.id}
                   className={[
-                    "obs-step",
-                    lane.helper ? "helper" : "",
-                    s.slowest ? "slowest" : "",
-                    s.status === "running" ? "running" : "",
+                    "tc-step",
+                    lane.helper ? "is-helper" : "",
+                    s.slowest ? "is-slowest" : "",
+                    s.status === "running" ? "is-running" : "",
                     s.status === "failed" || s.status === "declined"
-                      ? "failed"
+                      ? "is-failed"
                       : "",
                   ]
                     .filter(Boolean)
@@ -48,24 +48,24 @@ export function StepTimeline({ trace }: { trace: TurnTrace }) {
             </div>
           </div>
         ))}
-        <div className="obs-lane">
+        <div className="tc-lane">
           <span />
-          <div className="obs-axis">
-            <span>0</span>
+          <div className="tc-axis">
+            <span>0s</span>
             <span>{formatDuration(layout.spanMs)}</span>
           </div>
         </div>
       </div>
-      <ol className="obs-steps" aria-label="Steps in order">
+      <ol className="tc-steps" aria-label="Steps in order">
         {steps.map((s) => (
-          <li key={s.id} className={s.slowest ? "slowest" : ""}>
-            <span className="obs-step-name">
+          <li key={s.id} className={s.slowest ? "is-slowest" : ""}>
+            <span className="tc-step-name">
               {s.label}
               {s.lane.helper && (
-                <span className="obs-step-agent"> · {s.lane.label}</span>
+                <span className="tc-step-agent"> · {s.lane.label}</span>
               )}
             </span>
-            <span className="obs-step-time">
+            <span className="tc-step-time">
               {s.status === "running"
                 ? "Running…"
                 : s.status === "failed"
@@ -73,7 +73,7 @@ export function StepTimeline({ trace }: { trace: TurnTrace }) {
                   : s.status === "declined"
                     ? "Declined"
                     : formatDuration(s.durationMs)}
-              {s.slowest && <span className="obs-tag">Slowest</span>}
+              {s.slowest && <span className="tc-tag">Slowest</span>}
             </span>
           </li>
         ))}

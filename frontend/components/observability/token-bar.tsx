@@ -26,11 +26,11 @@ export function TokenBar({
   helperUsage?: TokenCounts | null;
 }) {
   if (!usage)
-    return <p className="obs-empty">Token usage was not reported for this turn.</p>;
+    return <p className="tc-empty">Token usage was not reported for this turn.</p>;
   const split = splitTokens(usage);
   const context = contextFraction(usage);
   return (
-    <div className="obs-tokens">
+    <div className="tc-section">
       <StackedBar
         label="Tokens this turn"
         format={formatTokens}
@@ -42,7 +42,7 @@ export function TokenBar({
         }))}
       />
       {!!helperUsage?.totalTokens && (
-        <p className="obs-note">
+        <p className="tc-note">
           Helpers used another {formatTokens(helperUsage.totalTokens)} tokens.
         </p>
       )}

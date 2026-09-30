@@ -1,18 +1,26 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Icon } from "@/components/v2/icon";
+import { Shell, Panel } from "@/components/v2/shell";
+import { Sidebar, convoTime } from "@/components/v2/sidebar";
+import { Topbar } from "@/components/v2/topbar";
+import { Hero } from "@/components/v2/hero";
+import { SearchPalette } from "@/components/v2/search-palette";
 import {
-  ArrowUp,
-  Plus,
-  Square,
-  MessageSquare,
-  Layers,
-  Sparkles,
-  Target,
-  X,
-  Folder,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Select } from "@/components/ui/select";
+  Composer,
+  PLACEHOLDERS,
+  useRotatingPlaceholder,
+} from "@/components/v2/composer";
+import { FloatingDock } from "@/components/v2/floating-dock";
+import { Popover } from "@/components/v2/popover";
+import { AgentMenu } from "@/components/v2/agent-menu";
+import { AgentDialog } from "@/components/v2/agent-dialog";
+import { tintOf } from "@/lib/agent-look";
+import { UserMenu } from "@/components/v2/user-menu";
+import { fitPanel, PANEL_W, CHAT_MIN, type PanelSize } from "@/lib/fit-panel";
+import { useFollowActivity } from "@/lib/use-follow-activity";
+import { useHotkeys } from "@/lib/use-hotkeys";
+import { useTheme } from "@/lib/use-theme";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatMessages } from "@/components/chat-messages";
 import {
   applyChatEvent,
@@ -27,21 +35,12 @@ import { AssistantTools } from "@/components/assistant-tools";
 import { RequestCard } from "@/components/request-card";
 import { applyPlanEvent, awaitingApproval, type PlanStep } from "@/lib/plan";
 import { Sheet } from "@/components/sheet";
-import { ConnectedTools } from "@/components/connected-tools";
 import { GoalBar } from "@/components/goal-bar";
-import {
-  awaitingReview,
-  budgetHelp,
-  goalCommand,
-  goalStatus,
-} from "@/lib/goal";
+import { awaitingReview, budgetHelp, goalCommand } from "@/lib/goal";
 import { BudgetField } from "@/components/budget-field";
 import { SmoothTextarea } from "@/components/smooth-textarea";
 import { turnFailure, type TurnFailure } from "@/lib/goal-errors";
-import {
-  assistantCapabilities,
-  type ConversationFile,
-} from "../../shared/assistant-capabilities";
+import { type ConversationFile } from "../../shared/assistant-capabilities";
 import {
   api,
   ApiRequestError,
@@ -65,11 +64,7 @@ import {
   type SubAgentState,
 } from "@/lib/subagents";
 import { AgentsPanel } from "@/components/agents-panel";
-import {
-  ProjectSidebar,
-  SessionMenu,
-  useProjects,
-} from "@/components/project-sidebar";
+import { SessionMenu, useProjects } from "@/components/project-sidebar";
 import { createSessionBody, draftProject } from "@/lib/projects";
 import { HelperChip } from "@/components/helper-chip";
 import { transport } from "@/lib/transport";
@@ -100,18 +95,9 @@ import type {
   TraceSummary,
   TurnTiming,
 } from "../../shared/contracts";
+import { agentHandle } from "../../shared/contracts";
 // The public payload includes the alpha approval mode when it is enabled.
 type Session = PublicSession;
-// Goal starters open the composer in goal mode with a template.
-const goalStarters = [
-  { label: "Research report", text: "Research and write a cited report on " },
-  { label: "Spreadsheet model", text: "Build a spreadsheet model that " },
-  { label: "Project plan", text: "Create a complete project plan for " },
-];
-// Starter prompts shown on an empty conversation.
-const starters = assistantCapabilities.filter((c) =>
-  ["explain", "web", "documents", "visualize"].includes(c.id),
-);
 export default function Home() {
   const [agents, setAgents] = useState<AgentSummary[]>([]),
     [agentId, setAgentId] = useState(""),
@@ -163,9 +149,53 @@ export default function Home() {
     [goalMode, setGoalMode] = useState(false),
     [goalBudget, setGoalBudget] = useState<number | null>(null),
     [goalBudgetValid, setGoalBudgetValid] = useState(true),
-    [goalsOnly, setGoalsOnly] = useState(false),
     // The project a new chat will be created in (from a project's "+").
     [draftProjectId, setDraftProjectId] = useState<string | null>(null);
+  // Both panels start collapsed; the user opens them from the header.
+  const [panels, setPanels] = useState({ sidebar: false, activity: false }),
+    [panelSizes, setPanelSizes] = useState<
+      Record<"list" | "detail", PanelSize>
+    >({ list: "min", detail: "max" }),
+    [helperOpen, setHelperOpen] = useState(false),
+    [vw, setVw] = useState(1440),
+    [paletteOpen, setPaletteOpen] = useState(false),
+    [pop, setPop] = useState<null | "agent" | "user">(null),
+    [agentDialogOpen, setAgentDialogOpen] = useState(false),
+    [composerFocused, setComposerFocused] = useState(false),
+    [shellReady, setShellReady] = useState(false);
+  const agentBtn = useRef<HTMLButtonElement>(null),
+    userBtn = useRef<HTMLButtonElement>(null);
+  // Follow activity: a new goal, plan or helper brings its tab forward.
+  // Auto-opening uses the list size and never pushes an open sidebar out.
+  const follow = useFollowActivity({
+    panelOpen: panels.activity,
+    vw,
+    fitsOpen:
+      !panels.sidebar ||
+      fitPanel(vw, PANEL_W[panelSizes.list], CHAT_MIN[panelSizes.list], true, true)
+        .sidebar,
+    tab: inspectorTab,
+    showTab: (tab, open) => {
+      setInspectorTab(tab);
+      if (open) setPanels((p) => ({ ...p, activity: true }));
+    },
+  });
+  useEffect(() => {
+    // Crossing into drawer widths (≤900) closes both panels, as on first load,
+    // so shrinking the window doesn't leave a drawer covering the chat.
+    let wide = innerWidth > 900;
+    const onResize = () => {
+      setVw(innerWidth);
+      if (wide && innerWidth <= 900)
+        setPanels({ sidebar: false, activity: false });
+      wide = innerWidth > 900;
+    };
+    setVw(innerWidth);
+    // Enable panel transitions only after the first fit, so load doesn't animate.
+    requestAnimationFrame(() => setShellReady(true));
+    addEventListener("resize", onResize);
+    return () => removeEventListener("resize", onResize);
+  }, []);
   const scroll = useRef<HTMLDivElement>(null),
     composer = useRef<HTMLTextAreaElement>(null),
     following = useRef(true),
@@ -328,6 +358,7 @@ export default function Home() {
   useEffect(() => {
     if (!session) return;
     const id = session._id;
+    follow.reset();
     const reloadTranscript = () => {
       const token = generation.current;
       void api("/api/sessions/" + id)
@@ -366,6 +397,7 @@ export default function Home() {
           if (seen.current.size > 2000)
             seen.current.delete(seen.current.values().next().value!);
         }
+        follow.onEvent(event);
         if (
           [
             "activity.updated",
@@ -540,12 +572,12 @@ export default function Home() {
     history.replaceState(null, "", location.pathname);
     composer.current?.focus();
   }
-  // The inspector is hidden on narrow screens; show agents in a sheet there.
-  // With a helper given, its card is brought into view once rendered.
+  // Opens the session panel on the Agents tab; with a helper given, its card
+  // is brought into view once rendered.
   function openAgents(threadId?: string) {
-    if (!window.matchMedia("(max-width: 1100px)").matches)
-      setInspectorTab("agents");
-    else setPanel("agents");
+    follow.manual();
+    setInspectorTab("agents");
+    setPanels((p) => ({ ...p, activity: true }));
     if (threadId)
       setTimeout(() => {
         const card = document.getElementById(`agent-card-${threadId}`);
@@ -910,198 +942,324 @@ export default function Home() {
     setCommandOpen(prompt.startsWith("/"));
     setTimeout(() => composer.current?.focus(), 0);
   }
-  return (
-    <main className="workspace">
-      <aside className="sidebar">
-        <a className="brand" href="/">
-          truex<span> / agents</span>
-        </a>
-        <div className="eyebrow">WORKSPACE</div>
-        <Button variant="outline" onClick={() => startDraft()} disabled={busy}>
-          <Plus size={16} /> New conversation
-        </Button>
-        <ProjectSidebar
-          state={projects}
-          sessions={sessions}
-          currentSessionId={session?._id}
-          busy={busy}
-          onOpen={(id) => void open(id)}
-          onNewChat={(id) => startDraft(id)}
-          onDeleted={(id) =>
-            setDraftProjectId((old) => (old === id ? null : old))
+  const empty = !session && !entries.length;
+  const { isDark, toggle: toggleTheme } = useTheme();
+  const rotatingPlaceholder = useRotatingPlaceholder(
+    empty && !composerFocused && !text && !goalMode,
+  );
+  // Session panel sizing (spec Layout §2): each mode remembers its own size.
+  const panelMode = inspectorTab === "agents" && helperOpen ? "detail" : "list";
+  const panelSize = panelSizes[panelMode];
+  const fit = fitPanel(
+    vw,
+    PANEL_W[panelSize],
+    CHAT_MIN[panelSize],
+    panels.sidebar,
+    panels.activity,
+  );
+  const sidebarShown = panels.sidebar && fit.sidebar;
+  // Opening the sidebar wins: the panel shrinks to min if that fits, else closes.
+  function toggleSidebar() {
+    if (sidebarShown) return setPanels((p) => ({ ...p, sidebar: false }));
+    const fits = (s: PanelSize) =>
+      fitPanel(vw, PANEL_W[s], CHAT_MIN[s], true, true).sidebar;
+    if (panels.activity && !fits(panelSize)) {
+      if (panelSize === "max" && fits("min"))
+        setPanelSizes((s) => ({ ...s, [panelMode]: "min" }));
+      else setPanels((p) => ({ ...p, activity: false }));
+    }
+    setPanels((p) => ({ ...p, sidebar: true }));
+  }
+  function toggleActivity() {
+    if (panels.activity) follow.dismiss();
+    setPanels((p) => ({ ...p, activity: !p.activity }));
+  }
+  function newChat() {
+    if (!busy) startDraft();
+  }
+  useHotkeys({
+    "mod+k": () => setPaletteOpen((o) => !o),
+    "mod+b": toggleSidebar,
+    "mod+.": toggleActivity,
+    "mod+j": newChat,
+  });
+  const togglePop = (next: "agent" | "user") =>
+    setPop((cur) => (cur === next ? null : next));
+  // The list refreshes with the server-generated title; the open session may not.
+  const crumbTitle = session
+    ? sessions.find((s) => s._id === session._id)?.title ||
+      session.title ||
+      "Untitled conversation"
+    : entries.length
+      ? "New conversation"
+      : "";
+  const stateText =
+    session && status === "Reconnecting"
+      ? slowReconnect
+        ? "still reconnecting…"
+        : "reconnecting…"
+      : session && status === "Disconnected"
+        ? "disconnected"
+        : retrying
+          ? "retrying…"
+          : running
+            ? goal?.status === "active"
+              ? "working on goal"
+              : "working"
+            : "ready";
+  function stopTurn() {
+    void (async () => {
+      const id = session!._id;
+      try {
+        // An active goal restarts on its own once the thread is
+        // idle, so pause it before stopping the turn.
+        if (goal?.status === "active") {
+          const data = await api(`/api/sessions/${id}/capabilities`, {
+            method: "thread/goal/set",
+            params: { status: "paused" },
+          });
+          setGoal(data.goal);
+          syncSessionGoal(id, data.goal);
+        }
+        await transport.interrupt(id).catch((e) => {
+          // The turn already ended, so there is nothing to stop.
+          if (!(e instanceof ApiRequestError && e.status === 409)) throw e;
+        });
+      } catch (e) {
+        reportError(e);
+      }
+    })();
+  }
+  const composerForm = (
+    <form
+      className="composer-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submitInput();
+      }}
+    >
+      <Composer
+        hero={empty}
+        goalMode={goalMode}
+        onGoalToggle={() => (goalMode ? setGoalMode(false) : startGoal(text))}
+        onGoalCancel={() => setGoalMode(false)}
+        busy={running}
+        canSend={!!text.trim() && !busy && (!!session || !!agentId)}
+        onStop={stopTurn}
+        stopTitle={
+          goal?.status === "active"
+            ? "Pause the goal and stop the current response"
+            : "Stop the current response"
+        }
+        onFocusChange={setComposerFocused}
+        above={
+          <>
+            {pendingProject && (
+              <div className="composer-project" role="status">
+                <Icon name="folder" size={13} />
+                <span>
+                  New chat in <strong>{pendingProject.name}</strong>
+                </span>
+                <button
+                  type="button"
+                  className="icon-btn ghost"
+                  onClick={() => setDraftProjectId(null)}
+                  aria-label={`Don't add to ${pendingProject.name}`}
+                >
+                  <Icon name="x" size={13} />
+                </button>
+              </div>
+            )}
+            <PrivacyNote draft={text} />
+          </>
+        }
+        below={
+          <>
+            <span id="composer-hint" className="sr-only">
+              Type / for commands. Enter to send, Shift + Enter for a new line.
+            </span>
+            {commandSuggestions.length > 0 && (
+              <div
+                id="chat-commands"
+                className="slash-menu"
+                role="listbox"
+                aria-label="Chat commands"
+              >
+                {commandSuggestions.map((command, index) => (
+                  <button
+                    id={`chat-command-${index}`}
+                    type="button"
+                    role="option"
+                    aria-selected={index === commandIndex}
+                    className={index === commandIndex ? "selected" : ""}
+                    key={command.name}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => selectCommand(command.name)}
+                  >
+                    <strong>{command.name}</strong>
+                    <span>{command.description}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {notice && (
+              <div className="composer-notice" role="status">
+                {notice}
+              </div>
+            )}
+            {modeError && (
+              <div
+                id="approval-mode-error"
+                className="composer-notice approval-mode-error"
+                role="alert"
+              >
+                {modeError}
+              </div>
+            )}
+          </>
+        }
+        budget={
+          <BudgetField
+            initial={goalBudget}
+            onChange={({ tokens, valid }) => {
+              setGoalBudget(tokens);
+              setGoalBudgetValid(valid);
+            }}
+          />
+        }
+        chips={
+          <>
+            {picker && (
+              <ApprovalModePicker
+                picker={picker}
+                errorId={modeError ? "approval-mode-error" : undefined}
+                onChange={(mode) => void changeApprovalMode(mode)}
+              />
+            )}
+          </>
+        }
+      >
+        <SmoothTextarea
+          ref={composer}
+          aria-label={goalMode ? "Goal" : "Message"}
+          aria-describedby="composer-hint"
+          aria-controls={
+            commandSuggestions.length ? "chat-commands" : undefined
           }
-          onSessionUpdated={updateCurrentProject}
+          aria-haspopup="listbox"
+          aria-expanded={commandSuggestions.length > 0}
+          aria-activedescendant={
+            commandSuggestions.length
+              ? `chat-command-${commandIndex}`
+              : undefined
+          }
+          placeholder={
+            goalMode
+              ? "Describe the outcome you want. The assistant works until it’s done."
+              : running
+                ? "Add a thought to steer the current turn…"
+                : empty
+                  ? rotatingPlaceholder
+                  : PLACEHOLDERS[0]
+          }
+          value={text}
+          disabled={busy || (!session && !agentId)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setCommandOpen(!goalMode && e.target.value.startsWith("/"));
+            setCommandIndex(0);
+            if (notice) setNotice("");
+          }}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === "Escape") {
+              if (goalMode && !commandSuggestions.length) setGoalMode(false);
+              setCommandOpen(false);
+              return;
+            }
+            if (
+              commandSuggestions.length &&
+              !e.shiftKey &&
+              !e.altKey &&
+              !e.ctrlKey &&
+              !e.metaKey
+            ) {
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault();
+                const direction = e.key === "ArrowDown" ? 1 : -1;
+                setCommandIndex(
+                  (index) =>
+                    (index + direction + commandSuggestions.length) %
+                    commandSuggestions.length,
+                );
+                return;
+              }
+              if (e.key === "Tab") {
+                e.preventDefault();
+                selectCommand(commandSuggestions[commandIndex].name);
+                return;
+              }
+            }
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void submitInput();
+            }
+          }}
         />
-        <div className="sidebar-label">
-          Recent conversations
-          <button
-            type="button"
-            className="sidebar-filter"
-            aria-pressed={goalsOnly}
-            onClick={() => setGoalsOnly((on) => !on)}
-            title="Show only conversations with a goal"
-          >
-            Goals
-          </button>
-        </div>
-        <nav>
-          {sessionsFailed && (
-            <p className="sidebar-refresh-error" role="alert">
-              Couldn’t refresh ·{" "}
+      </Composer>
+    </form>
+  );
+  return (
+    <Shell className={shellReady ? "is-ready" : undefined}>
+      <Panel kind="sidebar" open={sidebarShown} label="Conversations">
+        <Sidebar
+          sessions={sessions}
+          activeId={session?._id}
+          onOpen={(id) => void open(id)}
+          onNew={newChat}
+          onSearch={() => setPaletteOpen(true)}
+          onAgents={() => setPop("agent")}
+          onSettings={() => setPanel("mcp")}
+          busy={busy}
+          loadError={sessionsFailed ? "Couldn’t refresh" : null}
+          onRetry={() => void refreshSessions()}
+          renderRowMenu={(s) => (
+            <SessionMenu
+              session={s}
+              state={projects}
+              disabled={busy}
+              onUpdated={updateCurrentProject}
+            />
+          )}
+        />
+      </Panel>
+      <main className="stage">
+        <Topbar
+          sidebarShown={sidebarShown}
+          title={crumbTitle}
+          agentName={loading ? "Loading agents…" : agent?.name || "No agent"}
+          stateText={stateText}
+          busy={running}
+          onStatusClick={() => setPop("agent")}
+          isDark={isDark}
+          onToggleTheme={toggleTheme}
+          actions={
+            session && status === "Disconnected" ? (
               <button
                 type="button"
-                className="inline-retry"
-                onClick={() => void refreshSessions()}
+                className="text-btn"
+                onClick={() => {
+                  setStatus("Reconnecting");
+                  setStreamKey((k) => k + 1);
+                }}
               >
-                Retry
+                Reconnect
               </button>
-            </p>
-          )}
-          {goalsOnly && !sessions.some((s) => s.goal) && (
-            <p className="sidebar-empty">No conversations with goals yet.</p>
-          )}
-          {(goalsOnly ? sessions.filter((s) => s.goal) : sessions).map((s) => (
-            <div key={s._id} className="session-row">
-              <button
-                className={
-                  session?._id === s._id
-                    ? "session-link selected"
-                    : "session-link"
-                }
-                disabled={busy}
-                onClick={() => void open(s._id)}
-              >
-                {s.goal ? (
-                  <Target
-                    size={14}
-                    className="session-goal"
-                    data-tone={goalStatus[s.goal.status]?.tone}
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <MessageSquare size={14} />
-                )}
-                <span>
-                  <b>{s.title || "New conversation"}</b>
-                  <small>
-                    {s.goal &&
-                      `Goal ${goalStatus[s.goal.status]?.label.toLowerCase() || ""} · `}
-                    {agents.find((a) => a.id === s.agentId)?.name || s.agentId}{" "}
-                    · {new Date(s.createdAt).toLocaleString()}
-                  </small>
-                </span>
-              </button>
-              <SessionMenu
-                session={s}
-                state={projects}
-                disabled={busy}
-                onUpdated={updateCurrentProject}
-              />
-            </div>
-          ))}
-        </nav>
-        <div className="health">
-          <span className={health?.ok ? "dot good" : "dot"} />
-          {health?.ok ? "All systems connected" : "Connection needs attention"}
-        </div>
-      </aside>
-      <section className="conversation">
-        <header className="topbar">
-          <h1>
-            {session
-              ? session.title || "Untitled conversation"
-              : "New conversation"}
-          </h1>
-          <div className="topbar-actions">
-            {session && (
-              <span className="connection" role="status">
-                <span className={status === "Connected" ? "dot good" : "dot"} />
-                {retrying && status === "Connected" ? "Retrying…" : status}
-                {status === "Reconnecting" && slowReconnect && (
-                  <span className="connection-hint">
-                    Still trying. Check your network.
-                  </span>
-                )}
-                {status === "Disconnected" && (
-                  <button
-                    type="button"
-                    className="connection-retry"
-                    onClick={() => {
-                      setStatus("Reconnecting");
-                      setStreamKey((k) => k + 1);
-                    }}
-                  >
-                    Retry
-                  </button>
-                )}
-              </span>
-            )}
-            <Select
-              value={agentId}
-              onValueChange={setAgentId}
-              options={agents.map((a) => ({
-                value: a.id,
-                label: a.name,
-              }))}
-              placeholder={loading ? "Loading agents…" : "Select an agent"}
-            />
-            <button
-              type="button"
-              className="icon-button"
-              onClick={() => setPanel("tools")}
-              aria-label="Capabilities, documents & visuals"
-              title="Capabilities, documents & visuals (/tools)"
-            >
-              <Sparkles size={16} />
-            </button>
-          </div>
-        </header>
-        {session && goal && (
-          <GoalBar
-            key={session._id}
-            sessionId={session._id}
-            goal={goal}
-            review={goalReview}
-            onChange={(next, review) => {
-              setGoal(next);
-              setGoalReview(review);
-              syncSessionGoal(session._id, next);
-            }}
-            onReopen={(feedback) =>
-              applyPrompt(
-                feedback
-                  ? `The goal isn’t complete yet: ${feedback}`
-                  : "The goal isn’t complete yet. Please keep working on it.",
-              )
-            }
-            onProvideInput={() => {
-              setPanel(null);
-              setTimeout(() => composer.current?.focus(), 0);
-            }}
-            onFollowUp={() => startGoal()}
-            running={running}
-            entries={entries}
-            documents={documents}
-            documentHref={(id) =>
-              `${base}/api/sessions/${session._id}/documents/${encodeURIComponent(id)}`
-            }
-            failure={failure}
-            provider={agents.find((a) => a.id === session.agentId)?.provider}
-          />
-        )}
-        {error && (
-          <div role="alert" className="error-banner">
-            <span className="error-banner-body">
-              {error}
-              <ErrorRef value={errorDetail} />
-            </span>
-            <button onClick={() => setError("")} aria-label="Dismiss error">
-              ×
-            </button>
-          </div>
-        )}
+            ) : null
+          }
+        />
         <div
-          className="transcript"
+          className="scroll"
           role="log"
           aria-label="Conversation"
           aria-live="off"
@@ -1113,51 +1271,17 @@ export default function Home() {
                 el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           }}
         >
-          {!session && !entries.length ? (
-            <div className="empty">
-              <div className="empty-icon">
-                <Layers size={22} />
-              </div>
-              <h2>How can I help today?</h2>
-              <p>
-                {agent
-                  ? `Ask ${agent.name} anything, or type / for commands and tools.`
-                  : "Choose an agent to start a conversation."}
-              </p>
-              <div className="starters" aria-label="Suggestions">
-                {starters.map((c) => (
-                  <button
-                    type="button"
-                    key={c.id}
-                    disabled={!agentId}
-                    onClick={() => applyPrompt(c.prompt)}
-                  >
-                    <strong>{c.name}</strong>
-                    <span>{c.description}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="goal-starters" aria-label="Start with a goal">
-                <span>Or start with a goal the assistant works through</span>
-                {goalStarters.map((g) => (
-                  <button
-                    type="button"
-                    key={g.label}
-                    disabled={!agentId}
-                    onClick={() => startGoal(g.text)}
-                  >
-                    <Target size={13} aria-hidden="true" /> {g.label}
-                  </button>
-                ))}
-              </div>
+          {empty ? (
+            <Hero>
+              {composerForm}
               {!loading && !agents.length && (
-                <p className="empty-note">
+                <p className="muted sm">
                   No agents are available. Contact your Truex administrator.
                 </p>
               )}
-            </div>
+            </Hero>
           ) : (
-            <>
+            <div className="thread">
               <ChatMessages
                 sessionId={session?._id}
                 onPrompt={(prompt) => {
@@ -1197,290 +1321,232 @@ export default function Home() {
                     }}
                   />
                 ))}
-            </>
+            </div>
           )}
         </div>
-        <HelperChip state={subAgents} onView={viewHelpers} />
-        <form
-          className={goalMode ? "composer goal-mode" : "composer"}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submitInput();
-          }}
-        >
-          {goalMode && (
-            <div className="composer-goal-head">
-              <Target size={14} aria-hidden="true" />
-              <span>
-                <strong>New goal</strong> The assistant keeps working until the
-                goal is done, paused or out of budget.
+        <div className="bottom">
+          {error && (
+            <div role="alert" className="error-banner">
+              <span className="error-banner-body">
+                {error}
+                <ErrorRef value={errorDetail} />
               </span>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={() => setGoalMode(false)}
-                aria-label="Cancel goal"
-              >
-                <X size={14} />
+              <button onClick={() => setError("")} aria-label="Dismiss error">
+                ×
               </button>
             </div>
           )}
-          {pendingProject && (
-            <div className="composer-project" role="status">
-              <Folder size={13} aria-hidden="true" />
-              <span>
-                New chat in <strong>{pendingProject.name}</strong>
-              </span>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={() => setDraftProjectId(null)}
-                aria-label={`Don't add to ${pendingProject.name}`}
-              >
-                <X size={13} />
-              </button>
-            </div>
-          )}
-          <PrivacyNote draft={text} />
-          <SmoothTextarea
-            ref={composer}
-            aria-label="Message"
-            aria-describedby="composer-hint"
-            aria-controls={
-              commandSuggestions.length ? "chat-commands" : undefined
-            }
-            aria-haspopup="listbox"
-            aria-expanded={commandSuggestions.length > 0}
-            aria-activedescendant={
-              commandSuggestions.length
-                ? `chat-command-${commandIndex}`
-                : undefined
-            }
-            placeholder={
-              goalMode
-                ? "Describe the outcome you want. The assistant works until it’s done."
-                : running
-                  ? "Add a thought to steer the current turn…"
-                  : "Ask a question or type / for commands"
-            }
-            value={text}
-            disabled={busy || (!session && !agentId)}
-            onChange={(e) => {
-              setText(e.target.value);
-              setCommandOpen(!goalMode && e.target.value.startsWith("/"));
-              setCommandIndex(0);
-              if (notice) setNotice("");
-            }}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-              if (e.key === "Escape") {
-                if (goalMode && !commandSuggestions.length) setGoalMode(false);
-                setCommandOpen(false);
-                return;
+          {session && goal && (
+            <GoalBar
+              key={session._id}
+              sessionId={session._id}
+              goal={goal}
+              review={goalReview}
+              onChange={(next, review) => {
+                setGoal(next);
+                setGoalReview(review);
+                syncSessionGoal(session._id, next);
+              }}
+              onReopen={(feedback) =>
+                applyPrompt(
+                  feedback
+                    ? `The goal isn’t complete yet: ${feedback}`
+                    : "The goal isn’t complete yet. Please keep working on it.",
+                )
               }
-              if (
-                commandSuggestions.length &&
-                !e.shiftKey &&
-                !e.altKey &&
-                !e.ctrlKey &&
-                !e.metaKey
-              ) {
-                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-                  e.preventDefault();
-                  const direction = e.key === "ArrowDown" ? 1 : -1;
-                  setCommandIndex(
-                    (index) =>
-                      (index + direction + commandSuggestions.length) %
-                      commandSuggestions.length,
-                  );
-                  return;
-                }
-                if (e.key === "Tab") {
-                  e.preventDefault();
-                  selectCommand(commandSuggestions[commandIndex].name);
-                  return;
-                }
+              onProvideInput={() => {
+                setPanel(null);
+                setTimeout(() => composer.current?.focus(), 0);
+              }}
+              onFollowUp={() => startGoal()}
+              running={running}
+              entries={entries}
+              documents={documents}
+              documentHref={(id) =>
+                `${base}/api/sessions/${session._id}/documents/${encodeURIComponent(id)}`
               }
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void submitInput();
-              }
-            }}
-          />
-          {commandSuggestions.length > 0 && (
-            <div
-              id="chat-commands"
-              className="slash-menu"
-              role="listbox"
-              aria-label="Chat commands"
-            >
-              {commandSuggestions.map((command, index) => (
-                <button
-                  id={`chat-command-${index}`}
-                  type="button"
-                  role="option"
-                  aria-selected={index === commandIndex}
-                  className={index === commandIndex ? "selected" : ""}
-                  key={command.name}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => selectCommand(command.name)}
-                >
-                  <strong>{command.name}</strong>
-                  <span>{command.description}</span>
-                </button>
-              ))}
-            </div>
+              failure={failure}
+              provider={agents.find((a) => a.id === session.agentId)?.provider}
+            />
           )}
-          {notice && (
-            <div className="composer-notice" role="status">
-              {notice}
-            </div>
-          )}
-          {modeError && (
-            <div
-              id="approval-mode-error"
-              className="composer-notice approval-mode-error"
-              role="alert"
+          {!empty && <HelperChip state={subAgents} onView={viewHelpers} />}
+          {!empty && composerForm}
+          <div className="dock-wrap">
+            <Popover
+              open={pop === "agent"}
+              onClose={() => setPop(null)}
+              className="pop-agent"
+              ignoreRef={agentBtn}
+              aria-label="Choose agent"
             >
-              {modeError}
-            </div>
-          )}
-          <div className="composer-footer">
-            <span id="composer-hint" className="visually-hidden">
-              Type / for commands. Enter to send, Shift + Enter for a new line.
-            </span>
-            <div className="composer-tools">
-              <button
-                type="button"
-                className="composer-chip"
-                aria-pressed={goalMode}
-                onClick={() =>
-                  goalMode ? setGoalMode(false) : startGoal(text)
-                }
-                title="Set this message as the conversation goal"
-              >
-                <Target size={14} aria-hidden="true" /> Goal
-              </button>
-              {goalMode && (
-                <BudgetField
-                  initial={goalBudget}
-                  selectClassName="composer-select"
-                  onChange={({ tokens, valid }) => {
-                    setGoalBudget(tokens);
-                    setGoalBudgetValid(valid);
-                  }}
-                />
-              )}
-              <button
-                type="button"
-                className="composer-chip"
-                onClick={() => setPanel("tools")}
-                title="Capabilities, documents & visuals (/tools)"
-              >
-                <Sparkles size={14} aria-hidden="true" /> Tools
-              </button>
-              {agentId && (
-                <ConnectedTools
-                  key={agentId}
-                  agentId={agentId}
-                  refreshKey={mcpVersion}
-                  onManage={() => setPanel("mcp")}
-                />
-              )}
-              {picker && (
-                <ApprovalModePicker
-                  picker={picker}
-                  errorId={modeError ? "approval-mode-error" : undefined}
-                  onChange={(mode) => void changeApprovalMode(mode)}
-                />
-              )}
-            </div>
-            {running && (
-              <Button
-                type="button"
-                variant="outline"
-                title={
-                  goal?.status === "active"
-                    ? "Pause the goal and stop the current response"
-                    : "Stop the current response"
-                }
-                onClick={() =>
-                  void (async () => {
-                    const id = session!._id;
-                    try {
-                      // An active goal restarts on its own once the thread is
-                      // idle, so pause it before stopping the turn.
-                      if (goal?.status === "active") {
-                        const data = await api(
-                          `/api/sessions/${id}/capabilities`,
-                          {
-                            method: "thread/goal/set",
-                            params: { status: "paused" },
-                          },
-                        );
-                        setGoal(data.goal);
-                        syncSessionGoal(id, data.goal);
-                      }
-                      await transport.interrupt(id).catch((e) => {
-                        // The turn already ended, so there is nothing to stop.
-                        if (!(e instanceof ApiRequestError && e.status === 409))
-                          throw e;
-                      });
-                    } catch (e) {
-                      reportError(e);
-                    }
-                  })()
-                }
-              >
-                <Square size={12} />
-                Stop
-              </Button>
-            )}
-            <Button
-              type="submit"
-              disabled={!text.trim() || busy || (!session && !agentId)}
-              aria-label={goalMode ? "Set goal" : "Send message"}
+              <AgentMenu
+                agents={agents.map((a) => ({
+                  id: a.id,
+                  name: a.name,
+                  description: a.description,
+                  hue: tintOf(a.tint).dot,
+                }))}
+                currentId={agentId}
+                onPick={(id) => {
+                  setAgentId(id);
+                  setPop(null);
+                }}
+                onNew={() => {
+                  setPop(null);
+                  setAgentDialogOpen(true);
+                }}
+              />
+            </Popover>
+            <Popover
+              open={pop === "user"}
+              onClose={() => setPop(null)}
+              className="pop-user"
+              ignoreRef={userBtn}
+              aria-label="Account"
             >
-              <ArrowUp size={18} />
-            </Button>
+              <UserMenu
+                onSettings={() => {
+                  setPop(null);
+                  setPanel("mcp");
+                }}
+              />
+            </Popover>
+            <FloatingDock
+              groups={[3, 5]}
+              items={[
+                {
+                  id: "sidebar",
+                  label: "Sidebar",
+                  icon: "sidebar",
+                  kbd: "⌘B",
+                  active: sidebarShown,
+                  onClick: toggleSidebar,
+                },
+                {
+                  id: "search",
+                  label: "Search",
+                  icon: "search",
+                  kbd: "⌘K",
+                  onClick: () => setPaletteOpen(true),
+                },
+                {
+                  id: "new",
+                  label: "New chat",
+                  icon: "plus",
+                  kbd: "⌘J",
+                  onClick: newChat,
+                },
+                {
+                  id: "agent",
+                  label: "Agent",
+                  icon: "bot",
+                  active: pop === "agent",
+                  onClick: () => togglePop("agent"),
+                  buttonRef: agentBtn,
+                },
+                {
+                  id: "activity",
+                  label: "Activity",
+                  icon: "activity",
+                  kbd: "⌘.",
+                  active: panels.activity,
+                  badge: running && !panels.activity,
+                  onClick: toggleActivity,
+                },
+                {
+                  id: "user",
+                  label: "Account",
+                  icon: "user",
+                  active: pop === "user",
+                  onClick: () => togglePop("user"),
+                  buttonRef: userBtn,
+                },
+              ]}
+            />
           </div>
-        </form>
-      </section>
-      <SessionActivity
-        events={events}
-        plan={plan}
-        awaitingApproval={awaitingApproval(pending)}
-        timings={timings}
-        traces={observability.traces}
-        traceSummary={traceSummary}
-        rateLimits={observability.rateLimits}
-        liveUsage={
-          running
-            ? (Object.values(observability.liveUsage).at(-1) ?? null)
-            : null
-        }
-        sessionId={session?._id}
-        goal={goal}
-        goalReview={goalReview}
-        tab={inspectorTab}
-        onTab={setInspectorTab}
-        subAgents={subAgents}
-        delegation={delegation}
-        onDelegation={changeDelegation}
-      />
-      <Sheet
-        open={panel === "agents"}
-        title="Helper agents"
-        description="Agents your assistant started for parts of this task."
-        onClose={() => setPanel(null)}
+        </div>
+      </main>
+      <p className="sr-only" role="status" aria-live="polite">
+        {follow.announce}
+      </p>
+      <Panel
+        kind="activity"
+        open={panels.activity}
+        overlay={fit.overlay}
+        width={fit.width}
+        label="Session activity"
       >
-        <AgentsPanel
+        <SessionActivity
+          events={events}
+          plan={plan}
+          awaitingApproval={awaitingApproval(pending)}
+          timings={timings}
+          traces={observability.traces}
+          traceSummary={traceSummary}
+          rateLimits={observability.rateLimits}
+          liveUsage={
+            running
+              ? (Object.values(observability.liveUsage).at(-1) ?? null)
+              : null
+          }
           sessionId={session?._id}
-          agents={subAgents.agents}
-          previews={subAgents.previews}
-          skewMs={subAgents.skewMs}
+          goal={goal}
+          goalReview={goalReview}
+          tab={inspectorTab}
+          onTab={(t) => {
+            follow.manual();
+            setInspectorTab(t);
+          }}
+          follow={follow.enabled}
+          onFollow={follow.setEnabled}
+          subAgents={subAgents}
+          delegation={delegation}
+          onDelegation={changeDelegation}
+          agentName={agent?.name}
+          open={panels.activity}
+          wide={panelSize === "max"}
+          onToggleWide={() =>
+            setPanelSizes((s) => ({
+              ...s,
+              [panelMode]: s[panelMode] === "max" ? "min" : "max",
+            }))
+          }
+          onClose={() => {
+            follow.dismiss();
+            setPanels((p) => ({ ...p, activity: false }));
+          }}
+          onDetailChange={setHelperOpen}
         />
-      </Sheet>
+      </Panel>
+      <SearchPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        items={sessions.map((s) => ({
+          id: s._id,
+          title: s.title || "New conversation",
+          time: convoTime(s.createdAt),
+        }))}
+        onPick={(id) => void open(id)}
+      />
+      <AgentDialog
+        open={agentDialogOpen}
+        agents={agents}
+        onClose={() => setAgentDialogOpen(false)}
+        onCreated={(a) => setAgents((list) => [...list, a])}
+        // Source: close, start a new chat with the agent, pre-fill "@handle hi, ".
+        onSayHi={(a) => {
+          setAgentDialogOpen(false);
+          newChat();
+          setAgentId(a.id);
+          const t = `@${a.handle || agentHandle(a.name)} hi, `;
+          setText(t);
+          setTimeout(() => {
+            const el = composer.current;
+            el?.focus();
+            el?.setSelectionRange(t.length, t.length);
+          }, 0);
+        }}
+      />
       <Sheet
         open={panel === "tools"}
         title="Capabilities, documents & visuals"
@@ -1516,6 +1582,6 @@ export default function Home() {
           <p className="muted">Select an agent to manage its tools.</p>
         )}
       </Sheet>
-    </main>
+    </Shell>
   );
 }

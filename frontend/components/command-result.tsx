@@ -73,8 +73,24 @@ export function CommandResult({
       aria-label={`${commandLabel(command.method)} result`}
     >
       <header>
-        <strong>{commandLabel(command.method)}</strong>
-        <span role="status">{status}</span>
+        <span className="eyebrow">{commandLabel(command.method)}</span>
+        <span
+          role="status"
+          className={`ag-chip ${
+            command.state === "succeeded"
+              ? "is-done"
+              : command.state === "running"
+                ? "is-running"
+                : command.state === "failed"
+                  ? "is-warn"
+                  : "is-stopped"
+          }`}
+        >
+          {command.state === "running" && (
+            <span className="spinner" aria-hidden="true" />
+          )}
+          {status}
+        </span>
       </header>
       {summary && <p>{summary}</p>}
       {command.error && <p role="alert">{command.error}</p>}
@@ -128,10 +144,18 @@ export function CommandResult({
       <div className="command-actions">
         {succeeded && live && onCommand && (
           <>
-            <button type="button" onClick={() => onCommand("/goal show")}>
+            <button
+              type="button"
+              className="btn-soft"
+              onClick={() => onCommand("/goal show")}
+            >
               Check goal status
             </button>
-            <button type="button" onClick={() => onCommand("/goal clear")}>
+            <button
+              type="button"
+              className="btn-soft"
+              onClick={() => onCommand("/goal clear")}
+            >
               Clear goal…
             </button>
           </>
@@ -139,6 +163,7 @@ export function CommandResult({
         {command.result?.sessionId && onOpen && (
           <button
             type="button"
+            className="btn-soft"
             onClick={() => onOpen(command.result!.sessionId!)}
           >
             Open conversation branch
@@ -146,7 +171,7 @@ export function CommandResult({
         )}
         {(command.state === "unknown" || command.state === "running") &&
           onRefresh && (
-            <button type="button" onClick={onRefresh}>
+            <button type="button" className="btn-soft" onClick={onRefresh}>
               Check saved result
             </button>
           )}

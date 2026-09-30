@@ -124,6 +124,17 @@ async function main() {
     "/api/agents",
     route(async (_req, res) => res.json(await service.agents())),
   );
+  // No role check yet: any user of the tenant may create agents (alpha).
+  http.post(
+    "/api/agents",
+    route(async (req, res) =>
+      res.status(201).json(await service.createAgent(req.body)),
+    ),
+  );
+  http.get(
+    "/api/models",
+    route(async (_req, res) => res.json(await service.models())),
+  );
   http.get(
     "/api/features",
     route((_req, res) => res.json({ approvalModes: service.approvalModes })),

@@ -1,6 +1,9 @@
 "use client";
 import { useId, useState } from "react";
-import { Brain, ChevronRight } from "lucide-react";
+import { Icon } from "./v2/icon";
+
+// Reasoning as one row of the spec's .steps list (Core §4): spinner while it
+// streams, a done mark after. The row expands to show the full text.
 export function ThinkingBlock({
   text,
   streaming,
@@ -14,32 +17,34 @@ export function ThinkingBlock({
   if (!value && !streaming) return null;
   const words = value.split(/\s+/).length;
   return (
-    <section className="thinking" data-open={open} data-streaming={streaming}>
-      <button
-        type="button"
-        className="thinking-head"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-controls={contentId}
-      >
-        <Brain size={13} />
-        <b>{streaming ? "Thinking" : "Thinking"}</b>
-        {streaming ? (
-          <span className="thinking-dots" aria-hidden>
-            <i />
-            <i />
-            <i />
-          </span>
-        ) : (
-          <span>
-            {words} word{words === 1 ? "" : "s"}
-          </span>
-        )}
-        <ChevronRight size={13} className="thinking-caret" />
-      </button>
-      <div id={contentId} className="thinking-body" hidden={!open}>
+    <ul className="steps thinking" data-open={open}>
+      <li className={streaming ? undefined : "is-done"}>
+        <button
+          type="button"
+          className="step-toggle"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-controls={contentId}
+        >
+          {streaming ? (
+            <span className="spinner" aria-hidden="true" />
+          ) : (
+            <span className="step-mark" aria-hidden="true">
+              <Icon name="check" size={11} stroke={2.5} />
+            </span>
+          )}
+          <span className="grow">Thinking</span>
+          {!streaming && (
+            <span className="mono sm muted">
+              {words} word{words === 1 ? "" : "s"}
+            </span>
+          )}
+          <Icon name="chevronR" size={13} className="step-caret" />
+        </button>
+      </li>
+      <li id={contentId} className="thinking-body" hidden={!open}>
         {value || "Thinking…"}
-      </div>
-    </section>
+      </li>
+    </ul>
   );
 }

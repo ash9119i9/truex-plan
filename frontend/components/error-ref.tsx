@@ -26,10 +26,10 @@ export function ErrorRef({ value }: { value: Ref | null | undefined }) {
   }
   return (
     <span className="error-ref">
-      <span className="error-ref-text">Ref: {text}</span>
+      <span className="error-ref-text mono">Ref: {text}</span>
       <button
         type="button"
-        className="error-ref-copy"
+        className="link error-ref-copy"
         onClick={() => void copy()}
         aria-label={`Copy error reference ${text}`}
       >

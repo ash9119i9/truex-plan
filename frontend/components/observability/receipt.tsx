@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { ChevronDown, ShieldAlert, ShieldCheck } from "lucide-react";
+// No shield in the v2 icon set, so lucide stays for the privacy mark.
+import { ShieldAlert, ShieldCheck } from "lucide-react";
+import { Icon } from "../v2/icon";
 import { formatTokens, receipt, turnTokens } from "@/lib/observability";
 import type { TurnTrace, TurnUsage } from "../../../shared/contracts";
 import { TraceCard } from "./trace-card";
@@ -20,25 +22,24 @@ export function TurnReceipt({
   const cardId = `trace-${trace.turnId.replace(/[^\w-]/g, "-")}`;
   const Shield = r.privacy.tone === "warn" ? ShieldAlert : ShieldCheck;
   return (
-    <div className="obs-receipt-wrap">
+    <div className="msg-foot">
       <button
         type="button"
-        className={`obs-receipt${r.privacy.tone === "warn" ? " warn" : ""}`}
+        className={`msg-foot-btn${r.privacy.tone === "warn" ? " warn" : ""}`}
         aria-expanded={open}
         aria-controls={open ? cardId : undefined}
         aria-label={`${r.label}. ${open ? "Hide" : "Show"} details`}
         onClick={() => setOpen((v) => !v)}
       >
-        {r.duration && <span>{r.duration}</span>}
-        {r.tokens && <span>{r.tokens}</span>}
-        <span className="obs-receipt-privacy">
+        <span>{[r.duration, r.tokens].filter(Boolean).join(" · ")}</span>
+        <span className="msg-foot-privacy">
           <Shield size={12} aria-hidden="true" />
           {r.privacy.text}
         </span>
-        <ChevronDown
+        <Icon
+          name="chevron"
           size={12}
-          aria-hidden="true"
-          className={open ? "obs-chevron open" : "obs-chevron"}
+          className={open ? "msg-foot-chevron open" : "msg-foot-chevron"}
         />
       </button>
       <AnimatePresence initial={false}>
@@ -64,7 +65,7 @@ export function LiveUsage({ usage }: { usage: TurnUsage }) {
   const total = turnTokens({ usage, helperUsage: null } as TurnTrace);
   if (!total) return null;
   return (
-    <p className="obs-receipt live" aria-live="off">
+    <p className="msg-foot live" aria-live="off">
       <span>{formatTokens(total)} tokens so far</span>
     </p>
   );

@@ -1,81 +1,12 @@
 /* App shell: 3-column workspace, sidebar, conversation header, agent bar,
    empty state and error banner. All colors come from tokens in globals.css. */
 
-.workspace {
-  display: grid;
-  grid-template-columns: 238px minmax(420px, 1fr) 340px;
-  height: 100dvh;
-  background: var(--background);
-}
-
 /* ---------- Sidebar (original look, restored) ---------- */
-.sidebar {
-  border-right: 1px solid var(--border);
-  padding: 30px 20px;
-  display: flex;
-  flex-direction: column;
-  background: #f1f1eb;
-  min-height: 0;
-  overflow: hidden;
-}
-.brand {
-  font-weight: 750;
-  letter-spacing: -1px;
-  font-size: 28px;
-  text-decoration: none;
-  color: inherit;
-  margin-bottom: 56px;
-}
-.brand span {
-  font-weight: 400;
-  letter-spacing: 0;
-  font-size: 13px;
-  color: var(--muted);
-}
 /* Global eyebrow used by the header, empty state and panels. */
-.eyebrow {
-  font-size: 11px;
-  line-height: 1.4;
-  letter-spacing: 0.08em;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 8px;
-}
-.sidebar > .eyebrow {
-  font-size: 10px;
-  letter-spacing: 1.6px;
-  font-weight: 650;
-  color: #82867c;
-  margin-bottom: 12px;
-}
-.sidebar > .button {
-  border-radius: 7px;
-  padding: 10px 14px;
-  min-height: 0;
-  font-size: 12px;
-  font-weight: 600;
-  box-shadow: none;
-}
-.sidebar > .button-outline {
-  background: transparent;
-  border-color: #d4d6cc;
-  color: #282a25;
-}
-.sidebar > .button-outline:hover:not(:disabled) {
-  background: #e9ebe3;
-}
 .sidebar-label {
   font-size: 11px;
   color: #82867c;
   margin: 35px 0 13px;
-}
-.sidebar nav {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #c3c7b8 transparent;
 }
 .session-link {
   display: flex;
@@ -129,34 +60,8 @@
   white-space: nowrap;
 }
 /* Bottom padding keeps the status clear of the Next.js dev indicator. */
-.health {
-  font-size: 10px;
-  color: #74796b;
-  padding: 20px 0 36px;
-  border-top: 1px solid var(--border);
-}
-.health details {
-  margin-top: 8px;
-}
-.health pre {
-  max-width: 190px;
-}
-.dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #bf9959;
-  margin-right: 7px;
-}
-.dot.good {
-  background: #749267;
-}
 
 /* Darker ring in shell areas so focus clears 3:1 on off-white surfaces. */
-.sidebar :focus-visible,
-.topbar :focus-visible,
-.empty :focus-visible,
 .error-banner :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -210,57 +115,6 @@
 }
 
 /* ---------- Conversation top bar ---------- */
-.conversation {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
-  background: var(--surface);
-}
-.topbar {
-  flex: none;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 56px;
-  padding: 0 16px 0 24px;
-  border-bottom: 1px solid var(--border);
-  background: rgb(255 255 255 / 0.85);
-  backdrop-filter: saturate(180%) blur(12px);
-}
-.topbar h1 {
-  min-width: 0;
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1.3;
-  letter-spacing: -0.1px;
-  color: var(--foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.topbar-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-}
-.connection {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.connection .dot {
-  width: 6px;
-  height: 6px;
-  margin-right: 6px;
-  box-shadow: none;
-}
 .icon-button {
   display: grid;
   place-items: center;
@@ -336,7 +190,7 @@
   padding: 4px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg);
 }
 .select-item {
@@ -361,103 +215,13 @@
 .select-item[data-state="checked"] svg {
   color: var(--accent);
 }
-.muted {
-  color: var(--muted);
-  font-size: 12px;
-}
 
 /* ---------- Session meta ---------- */
-.session-meta {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 0 32px 8px;
-  color: var(--muted);
-  font: 11px/1.5 var(--font-mono);
-}
 
 /* ---------- Transcript + empty state ---------- */
 .transcript {
   flex: 1;
   overflow: auto;
-}
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  padding: 24px 0 48px;
-  text-align: center;
-}
-.empty-icon {
-  display: grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  margin-bottom: 20px;
-  border-radius: 12px;
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.empty h2 {
-  margin: 0 0 8px;
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1.15;
-  letter-spacing: -0.9px;
-  color: var(--foreground);
-}
-.empty > p {
-  max-width: 420px;
-  margin: 0 0 32px;
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--muted);
-}
-.empty > .empty-note {
-  margin: 24px 0 0;
-  font-size: 13px;
-}
-.starters {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  width: 100%;
-  max-width: 600px;
-}
-.starters button {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  color: var(--foreground);
-  text-align: left;
-  transition:
-    background 0.12s,
-    border-color 0.12s,
-    box-shadow 0.12s;
-}
-.starters button:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-}
-.starters strong {
-  font-size: 13px;
-  font-weight: 600;
-}
-.starters span {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--muted);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
 }
 
 /* ---------- Error banner ---------- */
@@ -499,27 +263,9 @@
   max-width: 760px;
   margin: 12px auto 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--surface-2);
   overflow: hidden;
-}
-.goal-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 6px 6px 6px 12px;
-}
-.goal-icon {
-  flex: none;
-  color: var(--accent);
-}
-.goal-text {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
 }
 .goal-status {
   flex: none;
@@ -538,16 +284,6 @@
 .goal-bar[data-tone="review"] .goal-status {
   background: var(--warn-bg);
   color: var(--warn-fg);
-}
-.goal-objective {
-  min-width: 0;
-  margin: 0;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--foreground);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .goal-meta {
   flex: none;
@@ -588,28 +324,6 @@
   font-size: 12px;
   color: var(--fg-2);
   flex-wrap: wrap;
-}
-.goal-run-action {
-  margin-left: auto;
-  padding: 2px 8px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  font: inherit;
-  font-weight: 500;
-  color: var(--accent);
-  cursor: pointer;
-}
-.goal-run-action:hover:not(:disabled) {
-  background: var(--accent-soft);
-}
-.goal-run-action:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-.goal-run-action:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .goal-stuck-actions {
   display: flex;
@@ -661,7 +375,7 @@
   min-width: 188px;
   padding: 4px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-lg);
 }
@@ -766,73 +480,14 @@
   justify-content: space-between;
   gap: 8px;
 }
-.sidebar-filter {
-  padding: 2px 8px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: #6a6f62;
-  font-size: 11px;
-}
-.sidebar-filter:hover {
-  background: #e9ebe3;
-}
-.sidebar-filter[aria-pressed="true"] {
-  background: #e3e7da;
-  color: #2f3d27;
-  font-weight: 600;
-}
 .sidebar-empty {
   margin: 0;
   padding: 10px 9px;
   font-size: 11px;
   color: #74796b;
 }
-.session-link svg.session-goal {
-  opacity: 1;
-  color: var(--good);
-}
-.session-link svg.session-goal[data-tone="warn"] {
-  color: var(--warn);
-}
-.session-link svg.session-goal[data-tone="neutral"] {
-  color: #82867c;
-}
 
 /* ---------- Goal starters on the empty state ---------- */
-.goal-starters {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  max-width: 600px;
-  margin-top: 24px;
-}
-.goal-starters > span {
-  width: 100%;
-  font-size: 12px;
-  color: var(--muted);
-}
-.goal-starters button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--fg-2);
-  font-size: 12px;
-  font-weight: 500;
-}
-.goal-starters button:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-}
-.goal-starters svg {
-  color: var(--accent);
-}
 .goal-reason {
   margin: 0 12px 8px 37px;
   font-size: 12px;
@@ -1070,7 +725,6 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.connection-retry,
 .inline-retry {
   margin-left: 6px;
   padding: 0 4px;
@@ -1081,14 +735,9 @@
   text-decoration: underline;
   cursor: pointer;
 }
-.connection-retry:focus-visible,
 .inline-retry:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-.connection-hint {
-  margin-left: 6px;
-  color: var(--subtle);
 }
 .sidebar-refresh-error {
   padding: 0 9px 6px;
@@ -1116,7 +765,7 @@
   max-width: 440px;
   padding: 24px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }

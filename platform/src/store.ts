@@ -134,6 +134,10 @@ export class Store {
         db.collection("sessions").createIndex({ status: 1 }),
         db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
         db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
+        // Sparse: agents seeded before handles existed have none.
+        db
+          .collection("truex_agents")
+          .createIndex({ handle: 1 }, { unique: true, sparse: true }),
       ]).catch((error) => {
         this.indexed.delete(dbName);
         throw error;

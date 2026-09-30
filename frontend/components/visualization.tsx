@@ -10,7 +10,6 @@ import type {
   Visualization as Visual,
   VisualizationState,
 } from "../../shared/visualizations";
-import { Button } from "./ui/button";
 
 export function Visualization({
   sessionId,
@@ -156,34 +155,34 @@ export function Visualization({
   );
   const controls = (
     <div className="visualization-controls">
-      <Button
+      <button
+        className="btn-soft"
         type="button"
-        variant="outline"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? "Close expanded view" : "Expand"}
-      </Button>
-      <Button
+      </button>
+      <button
+        className="btn-soft"
         type="button"
-        variant="outline"
         onClick={() => setReload((x) => x + 1)}
       >
         Reload visual
-      </Button>
-      <Button type="button" variant="outline" onClick={download}>
+      </button>
+      <button className="btn-soft" type="button" onClick={download}>
         Download HTML
-      </Button>
+      </button>
       {onPrompt && (
-        <Button
+        <button
+          className="btn-soft"
           type="button"
-          variant="outline"
           onClick={() => {
             onPrompt(context("Explain the current view and selected values."));
             setExpanded(false);
           }}
         >
           Ask about this visual
-        </Button>
+        </button>
       )}
     </div>
   );
@@ -191,7 +190,8 @@ export function Visualization({
     <div className="visualization-question">
       <strong>{question.title}</strong>
       <p>{question.prompt}</p>
-      <Button
+      <button
+        className="btn-solid"
         type="button"
         disabled={!onPrompt}
         onClick={() => {
@@ -201,10 +201,14 @@ export function Visualization({
         }}
       >
         Add to my message
-      </Button>
-      <Button type="button" variant="outline" onClick={() => setQuestion(null)}>
+      </button>
+      <button
+        className="btn-soft"
+        type="button"
+        onClick={() => setQuestion(null)}
+      >
         Dismiss
-      </Button>
+      </button>
     </div>
   );
   const status = (
