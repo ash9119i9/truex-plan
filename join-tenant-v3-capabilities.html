@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex Join Invite</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@1,6..72,400..500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: split screen.
+   Left  = the invitation: (1) who invited you, (2) your name + progress checkup + join.
+   Right = "capabilities board": a dotted specimen sheet (after the Water Lily reference) where each
+           numbered specimen is one truex capability, redrawn with truex tokens and agent tints.
+   Tokens are copied from truex-design-spec.html (appendix: tokens, dark theme). */
+:root {
+  --bg: #FFFFFF; --surface: #FFFFFF; --surface-3: #F6F9FA;
+  --line: #E3ECEF; --line-strong: #D8E0E4; --border-control: #D8E0E4;
+  --ink: #1F2A30; --ink-2: #5F6D73; --ink-3: #849198; --ink-disabled: #B4BEC3;
+  --accent: #3691CD; --accent-2: #2A7DB4; --accent-hover: #2A7DB4; --accent-pressed: #226A9B;
+  --accent-soft: #EAF5F8; --accent-soft-2: #BCDEE8; --accent-fg: #2A72A3; --on-accent: #FFFFFF;
+  --success-bg: #E7F4ED; --success-text: #35624E;
+  --warning-bg: #FFF3D9; --warning-text: #7D5D1D;
+  --error-bg: #FBE7E7; --error-text: #8D4545;
+  --glow-1: rgb(188 222 232 / 60%); --glow-2: rgb(234 245 248 / 90%);
+  --shadow-sm: 0 1px 2px rgb(31 42 48 / 5%);
+  --shadow-md: 0 1px 2px rgb(31 42 48 / 4%), 0 8px 24px -8px rgb(31 42 48 / 10%);
+  --shadow-lg: 0 2px 4px rgb(31 42 48 / 4%), 0 10px 35px rgb(31 42 48 / 8%);
+  /* board-only tokens */
+  --board-bg: #F6F9FA; --board-dot: rgb(31 42 48 / 11%);
+  --glass: rgb(255 255 255 / 38%); --glass-hi: rgb(255 255 255 / 78%); --glass-line: rgb(31 42 48 / 9%); --sheen: rgb(255 255 255 / 85%);
+  --obj-shadow: 0 1px 1px rgb(31 42 48 / 5%), 0 14px 30px -12px rgb(31 42 48 / 24%);
+  --obj-drop: drop-shadow(0 12px 16px rgb(31 42 48 / 14%));
+  --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .7 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-accent: "Newsreader", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #171717; --surface: #171717; --surface-3: #242424;
+  --line: #2A2A2A; --line-strong: #363636; --border-control: #404040;
+  --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F; --ink-disabled: #4E5C62;
+  --accent: #3691CD; --accent-2: #5AA8DC; --accent-hover: #2A7DB4; --accent-pressed: #226A9B;
+  --accent-soft: #14283A; --accent-soft-2: #1F4461; --accent-fg: #BCDEE8; --on-accent: #FFFFFF;
+  --success-bg: #16291F; --success-text: #A8D8BE; --warning-bg: #2E2512; --warning-text: #E6C27A;
+  --error-bg: #2F1A1A; --error-text: #EDB0B0;
+  --glow-1: rgb(54 145 205 / 16%); --glow-2: rgb(188 222 232 / 6%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -8px rgb(0 0 0 / 50%);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 30%), 0 24px 48px -16px rgb(0 0 0 / 70%);
+  --board-bg: #1C1C1C; --board-dot: rgb(238 244 246 / 9%);
+  --glass: rgb(255 255 255 / 4%); --glass-hi: rgb(255 255 255 / 13%); --glass-line: rgb(255 255 255 / 11%); --sheen: rgb(255 255 255 / 22%);
+  --obj-shadow: 0 1px 1px rgb(0 0 0 / 40%), 0 18px 36px -12px rgb(0 0 0 / 75%);
+  --obj-drop: drop-shadow(0 16px 20px rgb(0 0 0 / 55%));
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #171717; --surface: #171717; --surface-3: #242424;
+  --line: #2A2A2A; --line-strong: #363636; --border-control: #404040;
+  --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F; --ink-disabled: #4E5C62;
+  --accent: #3691CD; --accent-2: #5AA8DC; --accent-hover: #2A7DB4; --accent-pressed: #226A9B;
+  --accent-soft: #14283A; --accent-soft-2: #1F4461; --accent-fg: #BCDEE8; --on-accent: #FFFFFF;
+  --success-bg: #16291F; --success-text: #A8D8BE; --warning-bg: #2E2512; --warning-text: #E6C27A;
+  --error-bg: #2F1A1A; --error-text: #EDB0B0;
+  --glow-1: rgb(54 145 205 / 16%); --glow-2: rgb(188 222 232 / 6%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-md: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -8px rgb(0 0 0 / 50%);
+  --shadow-lg: 0 2px 4px rgb(0 0 0 / 30%), 0 24px 48px -16px rgb(0 0 0 / 70%);
+  --board-bg: #1C1C1C; --board-dot: rgb(238 244 246 / 9%);
+  --glass: rgb(255 255 255 / 4%); --glass-hi: rgb(255 255 255 / 13%); --glass-line: rgb(255 255 255 / 11%); --sheen: rgb(255 255 255 / 22%);
+  --obj-shadow: 0 1px 1px rgb(0 0 0 / 40%), 0 18px 36px -12px rgb(0 0 0 / 75%);
+  --obj-drop: drop-shadow(0 16px 20px rgb(0 0 0 / 55%));
+  color-scheme: dark; }
+
+/* Agent tints (spec §3): fixed hex, no dark variant */
+:root { --ice: #EAF5F8; --ice-dot: #3691CD; --mint: #E7F4ED; --mint-dot: #A9D5BE; --butter: #FFF3D9; --butter-dot: #EBCB8B; --peach: #FBE9DD; --peach-dot: #F0B999; --lilac: #EFEDF8; --lilac-dot: #C4BDE3; --tint-ink: #1F2A30; }
+
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font-sans); -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 8px; }
+.mono { font-family: var(--font-mono); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- frame ---------- */
+.split { height: 100vh; height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 12px; padding: 12px; }
+@media (max-width: 960px) { .split { height: auto; min-height: 100vh; grid-template-columns: minmax(0, 1fr); padding: 0 0 16px; } }
+
+.left { position: relative; display: flex; flex-direction: column; padding: 8px 28px 20px; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+.left > * { position: relative; }
+@media (max-width: 960px) { .left { padding: 8px 16px 12px; } }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; }
+.brand { display: flex; align-items: center; gap: 6px; }
+.brand-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--ink); color: var(--bg); }
+.brand-word { font-weight: 700; font-size: 17px; letter-spacing: -.03em; }
+.brand-slash { color: var(--line-strong); font-size: 16px; }
+.brand-sub { color: var(--ink-2); font-weight: 500; }
+
+.seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--surface-3); border: 1px solid var(--line); flex-wrap: wrap; }
+.seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 500; }
+
+.invite { flex: 1; width: 100%; max-width: 460px; margin: 0 auto; padding-block: clamp(20px, 7vh, 72px) 20px; display: flex; flex-direction: column; justify-content: flex-start; gap: 20px; animation: rise .35s ease-out; }
+
+.eyebrow { font: 500 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); display: flex; align-items: center; gap: 8px; }
+.eyebrow .n { color: var(--accent-fg); }
+h1 { margin: 0; font-size: clamp(30px, 4vw, 42px); line-height: 1.06; font-weight: 600; letter-spacing: -.035em; text-wrap: balance; }
+h1 em { font-family: var(--font-accent); font-style: italic; font-weight: 400; font-size: 1.04em; letter-spacing: -.01em; color: var(--accent-fg); padding-right: .04em; }
+
+/* ---------- who invited you: one compact line above the headline ---------- */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-md); }
+.from { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; }
+.from-pair { position: relative; width: 52px; height: 42px; flex: none; }
+.av { display: grid; place-items: center; border-radius: 50%; font-weight: 700; color: var(--tint-ink); flex: none; }
+.av.md { width: 38px; height: 38px; font-size: 13px; }
+.from-pair .av { position: absolute; left: 0; top: 0; }
+.from-pair .ws-logo { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; border-radius: 6px; font-size: 10px; box-shadow: 0 0 0 2px var(--bg); }
+.from-text { flex: 1; min-width: 0; }
+.from-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 14px; color: var(--ink-2); }
+.from-line b { color: var(--ink); font-weight: 600; }
+.from-sub { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 520px) { .from-text { flex-basis: calc(100% - 64px); } .exp { margin-left: 64px; } }
+.verified { color: var(--accent-fg); display: inline-grid; }
+.role-pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-fg); font-size: 12px; font-weight: 600; }
+.exp { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; flex: none; }
+.exp .tick { width: 6px; height: 6px; border-radius: 50%; background: var(--success-text); }
+.exp.bad { background: var(--error-bg); color: var(--error-text); }
+.exp.bad .tick { background: var(--error-text); }
+.ws-logo { width: 18px; height: 18px; border-radius: 5px; background: var(--ink); color: var(--bg); display: grid; place-items: center; font-weight: 800; font-size: 10px; flex: none; }
+
+/* ---------- section 2: name + progress + join ---------- */
+.join { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+
+.check-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; font-weight: 500; color: var(--ink-2); }
+.check-h .mono { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.bar { height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; margin-top: 8px; }
+.bar span { display: block; height: 100%; width: 33.34%; border-radius: 4px; background: var(--accent); transition: width .45s cubic-bezier(.2,.8,.2,1), background .2s; }
+.bar.bad span { background: var(--error-text); }
+.steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.steps li { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-3); min-width: 0; transition: color .2s; }
+.steps li span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; flex: none; transition: all .2s; font: 600 10px var(--font-mono); }
+.steps li.is-on { color: var(--ink); font-weight: 500; }
+.steps li.is-on .dot { border-color: var(--accent-2); color: var(--accent-fg); }
+.steps li.is-busy .dot { border-color: var(--accent-2); border-top-color: transparent; animation: spin .8s linear infinite; }
+.steps li.is-done { color: var(--ink-2); }
+.steps li.is-done .dot { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.steps li.is-bad { color: var(--error-text); }
+.steps li.is-bad .dot { background: var(--error-bg); border-color: var(--error-text); color: var(--error-text); }
+@media (max-width: 420px) { .steps { grid-template-columns: minmax(0, 1fr); } }
+
+.field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.field-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--ink-2); }
+.field-hint { font-size: 12px; font-family: var(--font-mono); color: var(--ink-3); display: inline-flex; gap: 4px; align-items: center; }
+.field-hint.ok { color: var(--success-text); }
+.input-wrap { position: relative; }
+.input { width: 100%; height: 40px; padding: 0 12px 0 44px; border: 1px solid var(--border-control); border-radius: 10px; background: var(--surface); font-size: 14px; transition: border-color .15s, box-shadow .15s; }
+.input::placeholder { color: var(--ink-3); }
+.input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.input[readonly] { background: var(--surface-3); color: var(--ink-2); cursor: not-allowed; }
+.input[aria-invalid="true"] { border-color: var(--error-text); }
+.input-av { position: absolute; left: 8px; top: 8px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; border: 1.5px dashed var(--accent-2); color: var(--accent-fg); transition: all .25s; pointer-events: none; }
+.input-av.is-set { border: 0; background: var(--ice-dot); color: var(--on-accent); }
+.input-lock { position: absolute; left: 14px; top: 12px; color: var(--ink-3); }
+.err { font-size: 12px; color: var(--error-text); }
+
+.btn-join { height: 44px; border: 0; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; transition: background .15s, transform .12s; }
+.btn-join:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-join:active:not(:disabled) { background: var(--accent-pressed); transform: scale(.985); }
+.btn-join:disabled { cursor: progress; }
+.btn-join .spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgb(255 255 255 / 35%); border-top-color: var(--on-accent); animation: spin .7s linear infinite; }
+
+.banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; font-size: 13px; }
+.banner.warn { background: var(--warning-bg); color: var(--warning-text); }
+.banner.ok { background: var(--success-bg); color: var(--success-text); }
+.banner svg { flex: none; margin-top: 2px; }
+.banner b { font-weight: 600; }
+
+.fine { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 14px; font-size: 12.5px; color: var(--ink-3); }
+.fine a { color: var(--accent-fg); text-decoration: none; }
+.fine a:hover { text-decoration: underline; }
+
+.foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--ink-3); max-width: 460px; width: 100%; margin: 0 auto; }
+
+/* ---------- right: capabilities board ---------- */
+.right { border-radius: 24px; background-color: var(--board-bg); background-image: radial-gradient(var(--board-dot) 1px, transparent 1.2px); background-size: 14px 14px; border: 1px solid var(--line); display: flex; flex-direction: column; padding: 22px 24px 20px; min-width: 0; min-height: 0; overflow: hidden; animation: rise .5s .08s ease-out both; }
+@media (max-width: 960px) { .right { margin: 0 12px; border-radius: 20px; padding: 18px 16px 16px; } }
+.right-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.right-head h2 { margin: 0; font-size: 20px; font-weight: 600; letter-spacing: -.02em; line-height: 1.2; }
+.right-head h2 em { font-family: var(--font-accent); font-style: italic; font-weight: 400; color: var(--accent-fg); }
+.right-head p { margin: 4px 0 0; font-size: 13px; color: var(--ink-3); max-width: 40ch; }
+.right-head .mono { font-size: 11px; color: var(--ink-3); letter-spacing: .04em; white-space: nowrap; }
+
+.board-wrap { flex: 1; min-height: 0; margin-top: 8px; container-type: size; display: grid; place-items: center; }
+@media (max-width: 960px) { .board-wrap { flex: none; container-type: inline-size; } }
+.board { position: relative; width: min(100cqw, 560px, 100cqh * 5 / 5.4); aspect-ratio: 5 / 5.4; container-type: inline-size; }
+.sp { position: absolute; --d: 1; transform: translate3d(calc(var(--px, 0) * var(--d) * 1px), calc(var(--py, 0) * var(--d) * 1px), 0); transition: transform .8s cubic-bezier(.2,.8,.2,1), scale .35s cubic-bezier(.2,.8,.2,1), opacity .3s; animation: float var(--fd, 9s) ease-in-out var(--fdl, 0s) infinite alternate; }
+@keyframes float { to { translate: 0 -4px; } }
+.sp .idx { position: absolute; font: 400 max(10px, 1.9cqw) var(--font-mono); color: var(--ink-3); top: -.4cqw; right: -4.6cqw; }
+.board.has-hot .sp:not(.is-hot) { opacity: .3; }
+.sp.is-hot { scale: 1.04; }
+.clover { clip-path: url(#clover); position: relative; overflow: hidden; }
+.drop { filter: var(--obj-drop); }
+
+/* film grain: makes flat fills read as material */
+.grain::after { content: ""; position: absolute; inset: 0; background: var(--noise); mix-blend-mode: overlay; opacity: .55; pointer-events: none; border-radius: inherit; z-index: 3; }
+/* soft top-left light on any lit object */
+.lit::before { content: ""; position: absolute; inset: 0; background: radial-gradient(120% 90% at 22% 12%, rgb(255 255 255 / 55%), transparent 45%); mix-blend-mode: soft-light; pointer-events: none; z-index: 2; }
+
+/* frosted glass */
+.glass { position: relative; overflow: hidden; background: linear-gradient(150deg, var(--glass-hi), var(--glass) 70%); border: 1px solid var(--glass-line); -webkit-backdrop-filter: blur(18px) saturate(150%); backdrop-filter: blur(18px) saturate(150%); box-shadow: inset 0 1px 0 var(--sheen), inset 0 -12px 22px -14px rgb(0 0 0 / 22%), var(--obj-shadow); }
+.glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: linear-gradient(112deg, transparent 38%, rgb(255 255 255 / 28%) 50%, transparent 62%); translate: -130% 0; animation: sweep 11s ease-in-out var(--sw, 0s) infinite; pointer-events: none; }
+@keyframes sweep { 0%, 72% { translate: -130% 0; } 100% { translate: 130% 0; } }
+
+/* bars: lit, grained columns */
+.bar-a, .bar-b { border-radius: 2.6cqw; overflow: hidden; box-shadow: inset 1.5px 0 0 rgb(255 255 255 / 38%), inset -8px 0 14px -8px rgb(0 0 0 / 22%), var(--obj-shadow); }
+.bar-a { left: 47%; top: 24%; width: 10.5cqw; height: 44%; background: linear-gradient(180deg, color-mix(in srgb, var(--mint-dot) 75%, #fff), var(--mint-dot) 32%, color-mix(in srgb, var(--mint-dot) 62%, #2E4A3A) 100%); }
+.bar-b { left: 37.5%; top: 40%; width: 10.5cqw; height: 20%; background: linear-gradient(180deg, color-mix(in srgb, var(--peach) 70%, #fff), var(--peach-dot) 70%, color-mix(in srgb, var(--peach-dot) 80%, #9C5A3C) 100%); }
+
+/* 01 agent: a living aurora */
+.s1 { left: 36%; top: 6%; width: 19cqw; height: 19cqw; }
+.s1 .clover { width: 100%; height: 100%; background: var(--ice); }
+.aurora { position: absolute; inset: -30%; background:
+  radial-gradient(circle at 30% 30%, var(--peach-dot), transparent 42%),
+  radial-gradient(circle at 72% 32%, var(--ice-dot), transparent 44%),
+  radial-gradient(circle at 55% 78%, var(--lilac-dot), transparent 46%),
+  radial-gradient(circle at 24% 72%, var(--mint-dot), transparent 42%), var(--lilac);
+  filter: blur(12px) saturate(115%); animation: spin 24s linear infinite; }
+.s1 .core { position: absolute; left: 50%; top: 50%; width: 34%; height: 34%; translate: -50% -50%; border-radius: 50%; z-index: 1;
+  background: radial-gradient(circle at 38% 32%, rgb(255 255 255 / 95%), rgb(255 255 255 / 35%) 42%, transparent 72%); filter: blur(1.5px); animation: breathe 5s ease-in-out infinite; }
+@keyframes breathe { 50% { scale: .8; opacity: .75; } }
+
+/* 02 live timer */
+.s2 { left: 63%; top: 18%; }
+.s2 .pill { height: max(30px, 6.6cqw); padding: 0 2.6cqw 0 1.3cqw; border-radius: 999px; display: inline-flex; align-items: center; gap: 1.6cqw; font: 500 max(12px, 2.8cqw) var(--font-mono); color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.s2 .live { position: relative; z-index: 1; width: max(12px, 2.8cqw); height: max(12px, 2.8cqw); border-radius: 50%;
+  background: radial-gradient(circle at 36% 30%, #fff 0 10%, color-mix(in srgb, var(--mint-dot) 70%, #fff) 28%, var(--mint-dot) 55%, color-mix(in srgb, var(--mint-dot) 55%, #2E4A3A) 100%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mint-dot) 22%, transparent), 0 0 12px color-mix(in srgb, var(--mint-dot) 60%, transparent); animation: glow 2.6s ease-in-out infinite; }
+@keyframes glow { 50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--mint-dot) 6%, transparent), 0 0 20px color-mix(in srgb, var(--mint-dot) 80%, transparent); } }
+.s2 .pill > span:last-child { position: relative; z-index: 1; }
+
+/* 03 goals: layered lotus in a glass tile */
+.s3 { left: 12%; top: 26%; width: 17cqw; height: 17cqw; }
+.s3 .tile { width: 100%; height: 100%; border-radius: 4.6cqw; display: grid; place-items: center; }
+.lotus { position: relative; z-index: 1; width: 76%; height: 76%; }
+.lotus i { position: absolute; clip-path: url(#clover);
+  background: radial-gradient(circle, color-mix(in srgb, var(--lilac-dot) 55%, #3B3160) 18%, var(--lilac-dot) 58%, color-mix(in srgb, var(--lilac) 60%, #fff) 100%); }
+.lotus i:nth-child(1) { inset: 0; }
+.lotus i:nth-child(2) { inset: 14%; animation: bloom 6s ease-in-out infinite; }
+.lotus i:nth-child(3) { inset: 28%; animation: bloom 6s ease-in-out -1s infinite; }
+.lotus i:nth-child(4) { inset: 40%; background: radial-gradient(circle at 40% 35%, #fff, color-mix(in srgb, var(--lilac) 70%, #fff) 60%); animation: bloom 6s ease-in-out -2s infinite; }
+@keyframes bloom { 50% { scale: .93; } }
+
+/* 04 search: a glass lens resting on the bar */
+.s4 { left: 53%; top: 27%; width: 12.6cqw; height: 12.6cqw; --sw: 3s; }
+.s4 .orb { width: 100%; height: 100%; border-radius: 50%; display: grid; place-items: center; color: var(--ink); background: radial-gradient(circle at 30% 24%, var(--glass-hi), var(--glass) 62%); -webkit-backdrop-filter: blur(5px) saturate(170%) brightness(1.06); backdrop-filter: blur(5px) saturate(170%) brightness(1.06); }
+.s4 .orb svg { position: relative; z-index: 1; width: 40%; height: 40%; }
+.s4 kbd { position: absolute; left: 50%; bottom: -4.4cqw; transform: translateX(-50%); font: 500 max(10px, 1.8cqw) var(--font-mono); color: var(--ink-3); padding: 1px 6px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-3); white-space: nowrap; }
+
+/* 05 start session: hairline pill with a travelling edge light */
+.s5 { left: 3%; top: 47%; }
+.s5 .ghost-pill { height: max(34px, 8.2cqw); padding: 0 4.4cqw; border-radius: 999px; border: 1px solid transparent; display: inline-flex; align-items: center; font: 400 max(12px, 2.6cqw) var(--font-mono); color: var(--ink); white-space: nowrap;
+  background: linear-gradient(color-mix(in srgb, var(--board-bg) 88%, transparent), color-mix(in srgb, var(--board-bg) 88%, transparent)) padding-box,
+              linear-gradient(100deg, var(--line-strong) 40%, var(--accent-2) 50%, var(--line-strong) 60%) border-box;
+  background-size: 100% 100%, 320% 100%; animation: edge 7s linear infinite; }
+@keyframes edge { from { background-position: 0 0, 100% 0; } to { background-position: 0 0, -120% 0; } }
+
+/* 06 teammate: an out-of-focus portrait */
+.s6 { left: 57%; top: 42%; width: 25cqw; }
+.s6 .frame { position: relative; width: 25cqw; height: 25cqw; }
+.s6 .clover { width: 100%; height: 100%; background: #C9CCBF; }
+.photo { position: absolute; inset: -10%; filter: blur(4px) saturate(108%); background:
+  radial-gradient(ellipse 11% 13% at 55% 40%, #B98468 0 55%, transparent 72%),
+  radial-gradient(ellipse 12% 6% at 55% 29%, #2F2622 0 50%, transparent 75%),
+  radial-gradient(ellipse 30% 26% at 55% 88%, #B4552F 0 55%, transparent 74%),
+  radial-gradient(ellipse 8% 18% at 55% 90%, #2E2A28 0 50%, transparent 72%),
+  radial-gradient(ellipse 30% 60% at 10% 35%, rgb(255 246 228 / 90%), transparent 70%),
+  radial-gradient(ellipse 34% 70% at 92% 30%, #5E7C58, transparent 72%),
+  radial-gradient(ellipse 40% 40% at 80% 80%, #7E9A6E, transparent 70%),
+  linear-gradient(180deg, #D8CEBF, #A3A596); }
+.s6 .vign { position: absolute; inset: 0; z-index: 1; background: radial-gradient(circle at 50% 45%, transparent 55%, rgb(20 24 26 / 28%)); }
+.s6 .plus { position: absolute; right: 9%; bottom: 17%; z-index: 4; width: 7.6cqw; height: 7.6cqw; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: rgb(96 40 22 / 50%); border: 1px solid rgb(255 255 255 / 28%); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: inset 0 1px 0 rgb(255 255 255 / 30%), 0 6px 14px -6px rgb(0 0 0 / 45%); }
+.s6 .plus svg { width: 42%; height: 42%; }
+.s6 .who, .s7 .who { margin-top: 1.4cqw; font: 500 max(12px, 2.3cqw) var(--font-mono); color: var(--ink); display: flex; justify-content: center; align-items: center; gap: 5px; white-space: nowrap; }
+.s6 .who svg, .s7 .who svg { color: var(--accent-fg); flex: none; }
+.s6 .sub, .s7 .sub { text-align: center; font: 400 max(10.5px, 2cqw) var(--font-mono); color: var(--ink-3); white-space: nowrap; }
+
+/* 07 you: frosted seat that blooms into your aura */
+.s7 { left: 17%; top: 62%; width: 16cqw; text-align: center; }
+.s7 .clover { width: 16cqw; height: 16cqw; display: grid; place-items: center; background: linear-gradient(150deg, var(--glass-hi), color-mix(in srgb, var(--ink) 6%, transparent)); }
+.s7 .aura { position: absolute; inset: -25%; opacity: 1; transition: opacity .7s ease;
+  background: radial-gradient(circle at 30% 28%, var(--a1, var(--butter-dot)), transparent 50%), radial-gradient(circle at 74% 72%, var(--a2, var(--peach-dot)), transparent 52%), var(--a3, var(--butter));
+  filter: blur(10px) saturate(115%); animation: spin 30s linear infinite reverse; }
+.s7 .clover.is-empty .aura { opacity: 0; }
+.s7 .clover.is-empty::before { content: ""; position: absolute; inset: 0; background: linear-gradient(112deg, transparent 35%, rgb(255 255 255 / 35%) 50%, transparent 65%); translate: -130% 0; animation: sweep 5s ease-in-out infinite; }
+.s7 .me { position: relative; z-index: 4; font: 600 4.2cqw var(--font-sans); letter-spacing: -.02em; color: #fff; text-shadow: 0 1px 8px rgb(31 42 48 / 35%); transition: color .4s; }
+.s7 .clover.is-empty .me { color: var(--ink-3); text-shadow: none; font: 500 max(10px, 2cqw) var(--font-mono); letter-spacing: .08em; }
+
+/* 08 agents: glossy pearls in a glass tray */
+.s8 { left: 56%; top: 77%; width: 12.6cqw; height: 12.6cqw; --sw: 6s; }
+.s8 .tile { width: 100%; height: 100%; border-radius: 3.8cqw; display: grid; grid-template-columns: 1fr 1fr; gap: 1.1cqw; padding: 1.9cqw; }
+.pearl { position: relative; z-index: 1; border-radius: 50%; display: grid; place-items: center; color: #fff;
+  background: radial-gradient(circle at 34% 28%, #fff 0 7%, color-mix(in srgb, var(--c) 55%, #fff) 24%, var(--c) 58%, color-mix(in srgb, var(--c) 62%, #1F2A30) 100%);
+  box-shadow: 0 3px 6px -2px rgb(0 0 0 / 30%), inset 0 -2px 4px rgb(0 0 0 / 12%); }
+.pearl svg { width: 48%; height: 48%; }
+.pearl.add { background: radial-gradient(circle at 34% 26%, #5A6770, #2B353B 70%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 22%), 0 3px 6px -2px rgb(0 0 0 / 35%); }
+.pearl.add svg { width: 52%; height: 52%; }
+.board-foot { position: absolute; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.board-foot .mono { font-size: max(9.5px, 1.7cqw); line-height: 1.6; color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.board-foot .sig { font-family: var(--font-accent); font-style: italic; font-size: max(15px, 3.4cqw); color: var(--ink); }
+
+/* legend: the readable version of the board */
+.legend { flex: none; list-style: none; margin: 14px 0 0; padding: 10px 0 0; border-top: 1px dashed var(--line-strong); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 8px; }
+@media (min-width: 1400px) { .legend { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .legend { grid-template-columns: minmax(0, 1fr); } .board { aspect-ratio: 5 / 6.4; } }
+.legend li { display: grid; align-content: start; grid-template-columns: 18px minmax(0, 1fr); gap: 1px 4px; padding: 6px; border-radius: 9px; cursor: default; transition: background .15s; }
+.legend li:hover, .legend li:focus-visible { background: color-mix(in srgb, var(--surface) 70%, transparent); }
+.legend .n { font: 400 10.5px/18px var(--font-mono); color: var(--ink-3); }
+.legend b { font-size: 12.5px; line-height: 18px; font-weight: 600; letter-spacing: -.005em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.legend .d { grid-column: 2; font-size: 11.5px; line-height: 1.4; color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+</style>
+</head>
+<body>
+
+<!-- Shared clover (water-lily) shape, in object-bounding-box units -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <clipPath id="clover" clipPathUnits="objectBoundingBox">
+    <path d="M.5,.1 C.82,-.1 1.1,.18 .9,.5 C1.1,.82 .82,1.1 .5,.9 C.18,1.1 -.1,.82 .1,.5 C-.1,.18 .18,-.1 .5,.1Z"/>
+  </clipPath>
+</svg>
+
+<div class="split">
+  <!-- ================= LEFT: the invitation ================= -->
+  <div class="left">
+    <header class="top">
+      <div class="brand" aria-label="truex agents">
+        <span class="brand-mark"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg></span>
+        <span class="brand-word">truex</span><span class="brand-slash">/</span><span class="brand-sub">agents</span>
+      </div>
+      <div class="seg" id="themeSeg" role="group" aria-label="Theme">
+        <button type="button" data-t="" aria-pressed="true">Auto</button>
+        <button type="button" data-t="light" aria-pressed="false">Light</button>
+        <button type="button" data-t="dark" aria-pressed="false">Dark</button>
+      </div>
+    </header>
+
+    <main class="invite">
+      <div class="from" aria-label="Invitation">
+        <span class="from-pair" aria-hidden="true"><span class="av md" style="background:var(--lilac-dot)">MC</span><span class="ws-logo">N</span></span>
+        <div class="from-text">
+          <div class="from-line"><b>Maya Chen</b><span class="verified" title="Workspace admin"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-label="Verified admin"><path d="M12 2l2.4 2.1 3.2-.3.9 3.1 2.8 1.6-1.2 3 1.2 3-2.8 1.6-.9 3.1-3.2-.3L12 22l-2.4-2.1-3.2.3-.9-3.1-2.8-1.6 1.2-3-1.2-3 2.8-1.6.9-3.1 3.2.3z"/><path d="M8 12.2l2.6 2.6L16 9.4" fill="none" stroke="var(--bg)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>invited you as <span class="role-pill">Member</span></div>
+          <div class="from-sub">Head of Research · sent Sep 24</div>
+        </div>
+        <span class="exp" id="expPill"><span class="tick"></span><span id="expires">Expires in 6 days</span></span>
+      </div>
+
+      <h1 id="join-h">Take your seat at <em>Northwind Labs</em></h1>
+
+
+      <!-- Section 2: your name, progress checkup, join -->
+      <form class="card join" id="joinForm" novalidate aria-labelledby="join-sec-h">
+        <div class="eyebrow" id="join-sec-h">Set up your seat</div>
+
+        <div>
+          <div class="check-h"><span>Progress checkup</span><span class="mono" id="checkCount">1 of 3</span></div>
+          <div class="bar" id="bar" role="progressbar" aria-label="Join progress" aria-valuemin="0" aria-valuemax="3" aria-valuenow="1"><span></span></div>
+          <ol class="steps" id="steps">
+            <li class="is-done"><span class="dot">✓</span><span>Invite verified</span></li>
+            <li class="is-on"><span class="dot">2</span><span>Add your name</span></li>
+            <li><span class="dot">3</span><span>Join workspace</span></li>
+          </ol>
+        </div>
+
+        <div id="stateBanner" hidden></div>
+
+        <div id="fields" style="display:flex;flex-direction:column;gap:14px">
+          <div class="field">
+            <label class="field-label" for="email">Work email <span class="field-hint">from invite</span></label>
+            <div class="input-wrap">
+              <svg class="input-lock" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+              <input class="input" id="email" type="email" value="alex@northwind.dev" readonly>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="name">Your name <span class="field-hint" id="nameHint">shown to teammates</span></label>
+            <div class="input-wrap">
+              <span class="input-av" id="nameAv" aria-hidden="true">?</span>
+              <input class="input" id="name" type="text" placeholder="e.g. Alex Rivera" autocomplete="name" maxlength="60" aria-describedby="nameErr" required>
+            </div>
+            <div class="err" id="nameErr" hidden>Add your full name so teammates know who joined.</div>
+          </div>
+        </div>
+
+        <button class="btn-join" id="joinBtn" type="submit">
+          <span id="joinLabel">Join Northwind Labs</span>
+          <span id="joinIcon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        </button>
+        <p class="sr" aria-live="polite" id="live"></p>
+
+        <div class="fine">
+          <span id="terms">By joining you accept the <a href="#">workspace terms</a></span>
+          <span>Not you? <a href="#" id="notYou">Switch account</a></span>
+        </div>
+      </form>
+    </main>
+
+    <div class="foot" role="group" aria-label="Preview state">
+      <span>Preview state</span>
+      <div class="seg" id="stateSeg">
+        <button type="button" data-s="valid" aria-pressed="true">Valid invite</button>
+        <button type="button" data-s="expired" aria-pressed="false">Expired</button>
+        <button type="button" data-s="member" aria-pressed="false">Already a member</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= RIGHT: capabilities board ================= -->
+  <aside class="right" aria-labelledby="cap-h">
+    <div class="right-head">
+      <div>
+        <h2 id="cap-h">What you can do in <em>truex</em></h2>
+        <p>Eight things waiting on the other side of that button.</p>
+      </div>
+      <span class="mono">NORTHWIND · 04 AGENTS</span>
+    </div>
+
+    <div class="board-wrap"><div class="board" id="board" aria-hidden="true">
+      <div class="sp bar-a grain" style="--d:.4;--fd:12s"></div>
+      <div class="sp bar-b grain" style="--d:.6;--fd:10s;--fdl:-3s"></div>
+
+      <div class="sp s1 drop" data-c="1" style="--d:.9;--fd:9s;--fdl:-1s"><div class="clover grain lit"><span class="aurora"></span><span class="core"></span></div><span class="idx">01</span></div>
+
+      <div class="sp s2" data-c="2" style="--d:1.3;--fd:8s;--fdl:-4s"><div class="pill glass"><span class="live"></span><span id="timer">00:31:23</span></div><span class="idx" style="right:-5cqw;top:0">02</span></div>
+
+      <div class="sp s3" data-c="3" style="--d:1.1;--fd:11s;--fdl:-2s"><div class="tile glass grain"><div class="lotus"><i></i><i></i><i></i><i></i></div></div><span class="idx">03</span></div>
+
+      <div class="sp s4" data-c="4" style="--d:1.6;--fd:7s;--fdl:-5s"><div class="orb glass"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg></div><kbd>⌘ K</kbd><span class="idx">04</span></div>
+
+      <div class="sp s5" data-c="5" style="--d:.7;--fd:10s;--fdl:-6s"><div class="ghost-pill">Start session</div><span class="idx" style="right:-4.6cqw">05</span></div>
+
+      <div class="sp s6" data-c="6" style="--d:1.2;--fd:12s;--fdl:-3s">
+        <div class="frame drop"><div class="clover grain"><span class="photo"></span><span class="vign"></span></div>
+          <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></div>
+        <div class="who">Jon Okafor<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.2l3 3 6-6" fill="none" stroke="var(--board-bg)" stroke-width="2.4" stroke-linecap="round"/></svg></div>
+        <div class="sub">+11 teammates</div>
+        <span class="idx" style="top:0">06</span></div>
+
+      <div class="sp s7" data-c="7" style="--d:.9;--fd:10s;--fdl:-2s"><div class="drop"><div class="clover grain is-empty" id="meClover"><span class="aura"></span><span class="me" id="meInitials">YOU</span></div></div>
+        <div class="who"><span id="meName">Your name</span><svg id="meCheck" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" style="display:none"><circle cx="12" cy="12" r="10"/><path d="M7.5 12.2l3 3 6-6" fill="none" stroke="var(--board-bg)" stroke-width="2.4" stroke-linecap="round"/></svg></div>
+        <div class="sub" id="meSub">seat open</div>
+        <span class="idx" style="right:-2.6cqw">07</span></div>
+
+      <div class="sp s8" data-c="8" style="--d:1.4;--fd:9s;--fdl:-7s"><div class="tile glass"><span class="pearl" style="--c:var(--mint-dot)"></span><span class="pearl add"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span><span class="pearl" style="--c:var(--butter-dot)"></span><span class="pearl" style="--c:var(--lilac-dot)"></span></div><span class="idx">08</span></div>
+
+      <div class="board-foot">
+        <div class="mono">truex-invite-v3<br>agents · sessions<br>goals · search</div>
+        <div class="sig">Capabilities</div>
+      </div>
+    </div></div>
+
+    <ol class="legend" id="legend">
+      <li tabindex="0" data-c="1"><span class="n">01</span><b>Named agents</b><span class="d">@mention an agent and it picks up work.</span></li>
+      <li tabindex="0" data-c="2"><span class="n">02</span><b>Live sessions</b><span class="d">Agents keep working in the background.</span></li>
+      <li tabindex="0" data-c="3"><span class="n">03</span><b>Goals and plans</b><span class="d">Turn a goal into a plan you can edit.</span></li>
+      <li tabindex="0" data-c="4"><span class="n">04</span><b>Search everything</b><span class="d">⌘K finds chats, files and agents.</span></li>
+      <li tabindex="0" data-c="5"><span class="n">05</span><b>One-click sessions</b><span class="d">Start a chat from any project or thread.</span></li>
+      <li tabindex="0" data-c="6"><span class="n">06</span><b>Team in the loop</b><span class="d">12 teammates share threads and files.</span></li>
+      <li tabindex="0" data-c="7"><span class="n">07</span><b>Your profile</b><span class="d">How teammates see you, live as you type.</span></li>
+      <li tabindex="0" data-c="8"><span class="n">08</span><b>Custom agents</b><span class="d">Pick a look, skills and tone.</span></li>
+    </ol>
+  </aside>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const root = document.documentElement;
+
+  /* ---------- theme (mirrors useTheme(): localStorage["truex-theme"]) ---------- */
+  const applyTheme = (t) => {
+    if (t) root.dataset.theme = t; else root.removeAttribute("data-theme");
+    document.querySelectorAll("#themeSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.t === t)));
+    try { localStorage.setItem("truex-theme", t); } catch (e) {}
+  };
+  let saved = "";
+  try { saved = localStorage.getItem("truex-theme") || ""; } catch (e) {}
+  const q = new URLSearchParams(location.search).get("theme");
+  if (q === "light" || q === "dark") saved = q;
+  applyTheme(saved);
+  $("themeSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) applyTheme(b.dataset.t); });
+
+  /* ---------- board: live timer + legend highlight ---------- */
+  let secs = 31 * 60 + 23;
+  const pad = (n) => String(n).padStart(2, "0");
+  setInterval(() => { secs++; $("timer").textContent = pad(Math.floor(secs / 3600)) + ":" + pad(Math.floor(secs / 60) % 60) + ":" + pad(secs % 60); }, 1000);
+
+  const board = $("board");
+  const hot = (c) => {
+    board.classList.toggle("has-hot", !!c);
+    board.querySelectorAll(".sp[data-c]").forEach(s => s.classList.toggle("is-hot", s.dataset.c === c));
+  };
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    board.closest(".right").addEventListener("pointermove", (e) => {
+      const r = board.getBoundingClientRect();
+      board.style.setProperty("--px", (((e.clientX - r.left) / r.width) - .5) * -10);
+      board.style.setProperty("--py", (((e.clientY - r.top) / r.height) - .5) * -10);
+    });
+    board.closest(".right").addEventListener("pointerleave", () => { board.style.setProperty("--px", 0); board.style.setProperty("--py", 0); });
+  }
+  $("legend").querySelectorAll("li").forEach(li => {
+    li.addEventListener("mouseenter", () => hot(li.dataset.c));
+    li.addEventListener("focus", () => hot(li.dataset.c));
+    li.addEventListener("mouseleave", () => hot(null));
+    li.addEventListener("blur", () => hot(null));
+  });
+
+  /* ---------- form ---------- */
+  const form = $("joinForm"), btn = $("joinBtn"), label = $("joinLabel"), icon = $("joinIcon");
+  const nameEl = $("name"), nameErr = $("nameErr"), nameAv = $("nameAv"), nameHint = $("nameHint");
+  const steps = [...$("steps").children], bar = $("bar"), count = $("checkCount");
+  const banner = $("stateBanner"), fields = $("fields");
+  const ARROW = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+  const TICK = "✓";
+  let state = "valid", busy = false, joined = false;
+
+  const clean = (s) => s.trim().replace(/\s+/g, " ");
+  const initials = (n) => n.split(" ").filter(Boolean).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+  const isValid = (n) => n.length >= 2 && /\p{L}/u.test(n);
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function setStep(i, cls, dot, label) {
+    const li = steps[i];
+    li.className = cls;
+    li.querySelector(".dot").textContent = dot;
+    if (label) li.lastElementChild.textContent = label;
+  }
+  function setProgress(n, bad) {
+    bar.querySelector("span").style.width = Math.max(n, bad ? 1 : 0) / 3 * 100 + "%";
+    bar.classList.toggle("bad", !!bad);
+    bar.setAttribute("aria-valuenow", String(n));
+    count.textContent = n + " of 3";
+  }
+
+  const AURA = ["--ice-dot", "--mint-dot", "--butter-dot", "--peach-dot", "--lilac-dot"];
+  const AURA_SOFT = ["--ice", "--mint", "--butter", "--peach", "--lilac"];
+  function paintProfile(name, sub) {
+    const has = !!name;
+    const clover = $("meClover");
+    clover.classList.toggle("is-empty", !has);
+    if (has) {
+      const h = [...name].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+      const a = h % 5, b = (a + 1 + (h >> 4) % 4) % 5;
+      clover.style.setProperty("--a1", "var(" + AURA[a] + ")");
+      clover.style.setProperty("--a2", "var(" + AURA[b] + ")");
+      clover.style.setProperty("--a3", "var(" + AURA_SOFT[a] + ")");
+    }
+    $("meInitials").textContent = has ? initials(name) : "YOU";
+    $("meName").textContent = has ? name : "Your name";
+    $("meCheck").style.display = joined ? "" : "none";
+    $("meSub").textContent = sub || (has ? "member · northwind" : "seat open");
+    nameAv.textContent = has ? initials(name) : "?";
+    nameAv.classList.toggle("is-set", has);
+  }
+
+  nameEl.addEventListener("input", () => {
+    if (state !== "valid" || busy || joined) return;
+    const n = clean(nameEl.value);
+    nameEl.removeAttribute("aria-invalid"); nameErr.hidden = true;
+    const ok = isValid(n);
+    setStep(1, ok ? "is-done" : "is-on", ok ? TICK : "2");
+    setStep(2, ok ? "is-on" : "", "3");
+    setProgress(ok ? 2 : 1);
+    nameHint.textContent = ok ? "looks good" : "shown to teammates";
+    nameHint.classList.toggle("ok", ok);
+    paintProfile(n);
+  });
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    if (state === "expired") {
+      banner.innerHTML = bannerHTML("ok", "<b>Request sent.</b> We let Maya Chen know. A fresh invite will land in alex@northwind.dev.");
+      label.textContent = "Request sent"; btn.disabled = true; return;
+    }
+    if (state === "member" || joined) { say("Opening Northwind Labs"); label.textContent = "Opening…"; return; }
+
+    const name = clean(nameEl.value);
+    if (!isValid(name)) {
+      nameEl.setAttribute("aria-invalid", "true"); nameErr.hidden = false; nameEl.focus(); return;
+    }
+
+    busy = true; btn.disabled = true; nameEl.readOnly = true;
+    icon.innerHTML = '<span class="spin"></span>';
+    setStep(2, "is-on is-busy", "");
+    const phases = ["Verifying your invite", "Setting up your seat", "Opening your first conversation"];
+    for (const p of phases) { label.textContent = p; say(p); await sleep(700); }
+
+    joined = true; busy = false; btn.disabled = false; $("terms").hidden = true;
+    setStep(2, "is-done", TICK); setProgress(3);
+    fields.style.display = "none";
+    banner.hidden = false;
+    banner.innerHTML = bannerHTML("ok", "<b>You're in, " + escapeHTML(name.split(" ")[0]) + ".</b> Your seat in Northwind Labs is ready and Maya has been notified.");
+    label.textContent = "Open Northwind Labs"; icon.innerHTML = ARROW;
+    paintProfile(name, "joined just now");
+    say("Joined Northwind Labs");
+  });
+
+  $("notYou").addEventListener("click", (e) => e.preventDefault());
+
+  function say(t) { $("live").textContent = t; }
+  function bannerHTML(kind, html) {
+    const svg = kind === "warn"
+      ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5v.5"/></svg>'
+      : '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12l5 5 9-10"/></svg>';
+    return '<div class="banner ' + kind + '">' + svg + '<div>' + html + '</div></div>';
+  }
+  function escapeHTML(s) { return s.replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+
+  function setState(s) {
+    state = s; busy = false; joined = false; btn.disabled = false; nameEl.readOnly = false;
+    document.querySelectorAll("#stateSeg button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.s === s)));
+    icon.innerHTML = ARROW;
+    nameEl.value = ""; nameEl.removeAttribute("aria-invalid"); nameErr.hidden = true;
+    nameHint.textContent = "shown to teammates"; nameHint.classList.remove("ok");
+    $("expires").textContent = "Expires in 6 days"; $("expPill").classList.remove("bad");
+    banner.hidden = s === "valid"; banner.innerHTML = "";
+    $("terms").hidden = s !== "valid";
+    fields.style.display = s === "valid" ? "flex" : "none";
+    paintProfile("");
+
+    if (s === "valid") {
+      setStep(0, "is-done", TICK, "Invite verified"); setStep(1, "is-on", "2"); setStep(2, "", "3"); setProgress(1);
+      label.textContent = "Join Northwind Labs";
+    }
+    if (s === "expired") {
+      setStep(0, "is-bad", "!", "Invite expired"); setStep(1, "", "2"); setStep(2, "", "3"); setProgress(0, true);
+      $("expires").textContent = "Expired Sep 23"; $("expPill").classList.add("bad");
+      banner.innerHTML = bannerHTML("warn", "<b>This invite expired on Sep 23.</b> Invites last 7 days. Ask Maya Chen for a new one and we'll email it to you.");
+      label.textContent = "Request a new invite";
+    }
+    if (s === "member") {
+      joined = true;
+      steps.forEach((_, i) => setStep(i, "is-done", TICK, i ? "" : "Invite verified")); setProgress(3);
+      banner.innerHTML = bannerHTML("ok", "<b>You're already in Northwind Labs.</b> Signed in as alex@northwind.dev.");
+      label.textContent = "Open Northwind Labs";
+      paintProfile("Alex Rivera", "member since Aug");
+    }
+  }
+  $("stateSeg").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setState(b.dataset.s); });
+  setState("valid");
+})();
+</script>
+</body>
+</html>

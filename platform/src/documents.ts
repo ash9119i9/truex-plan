@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import type { Agent } from "../../shared/contracts";
+import type { EncryptedSecret } from "./secrets";
 export type DatabaseId = string | ObjectId;
 export interface AgentDocument extends Omit<
   Partial<Agent>,
@@ -8,6 +9,8 @@ export interface AgentDocument extends Omit<
   _id: DatabaseId;
   name: string;
   modelProfileId: DatabaseId;
+  /** Legacy: no longer read. MCP attachments live in McpDocument.agentIds
+   * (scripts/migrate-mcp-scopes.mjs moved them there). */
   mcpProfileIds?: DatabaseId[];
   /** Catalog skills (truex_skills) given to the agent's threads. */
   skillIds?: DatabaseId[];
@@ -32,20 +35,42 @@ export interface ModelDocument {
   webSearch?: "disabled" | "cached" | "live";
   enabled?: boolean;
 }
+export type McpScope = "tenant" | "user";
 export interface McpDocument {
   _id: DatabaseId;
   name: string;
+  /** "tenant": managed by tenant admins, loads in every chat of an attached
+   * agent. "user": owned by ownerId, loads only in that person's chats.
+   * Unset only on profiles the migration has not reached (never loaded). */
+  scope?: McpScope;
+  ownerId?: string;
+  /** Agents this MCP loads for, as String(agent._id). */
+  agentIds?: string[];
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
   enabled?: boolean;
   transport?: "http" | "sse" | "stdio";
   url?: string;
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  // Legacy plain keys (read until the Phase 4 migration encrypts them).
   apiKey?: string;
   apikey?: string;
-  auth?: { kind: "header" | "bearer" | "none"; headerName?: string };
-  capabilities?: { connectTimeoutMs?: number; requestTimeoutMs?: number };
+  apiKeyEnc?: EncryptedSecret;
+  auth?: McpAuth;
+  capabilities?: McpCapabilities;
+  // Written by scripts only; the API never sets it.
   config?: Record<string, unknown>;
+}
+export interface McpAuth {
+  kind: "header" | "bearer" | "none";
+  headerName?: string;
+}
+export interface McpCapabilities {
+  connectTimeoutMs?: number;
+  requestTimeoutMs?: number;
 }
 export function idCandidates(id: DatabaseId): DatabaseId[] {
   const text = String(id);

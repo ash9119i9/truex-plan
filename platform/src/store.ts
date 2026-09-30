@@ -13,9 +13,17 @@ import {
   currentTenant,
   DEFAULT_TENANT_ID,
   tenantContext,
+  chatVisibilityOf,
   type TenantDocument,
   type TenantRef,
 } from "./tenant";
+import type {
+  AuthFlowDocument,
+  AuthSessionDocument,
+  InviteDocument,
+  MembershipDocument,
+  UserDocument,
+} from "./auth";
 import type {
   Session,
   Message,
@@ -78,12 +86,43 @@ export interface SkillDocument {
   enabled?: boolean;
 }
 const TENANT_CACHE_MS = 5_000;
+// Tenant MCP names are unique per tenant, user MCP names per owner; the
+// cross-scope rule (a tenant name is reserved) is enforced in the service.
+// Same definitions as scripts/tenant.mjs and scripts/migrate-mcp-scopes.mjs.
+export function mcpIndexes(db: Db) {
+  const mcp = db.collection("truex_mcp");
+  return [
+    mcp.createIndex(
+      { scope: 1, name: 1 },
+      {
+        name: "tenant_mcp_name",
+        unique: true,
+        partialFilterExpression: { scope: "tenant" },
+      },
+    ),
+    mcp.createIndex(
+      { ownerId: 1, name: 1 },
+      {
+        name: "user_mcp_name",
+        unique: true,
+        partialFilterExpression: { scope: "user" },
+      },
+    ),
+    mcp.createIndex({ agentIds: 1, scope: 1 }),
+  ];
+}
+// Carried only when set; a missing value means "all".
+function visibility(doc?: TenantDocument | null) {
+  const chatVisibility = chatVisibilityOf(doc?.chatVisibility);
+  return chatVisibility ? { chatVisibility } : {};
+}
 export class Store {
   readonly client: MongoClient;
   /** Models, skills and the tenant registry, shared by every tenant. */
   catalog!: Db;
   private connected = false;
   private indexed = new Map<string, Promise<unknown>>();
+  private mcpIndexed = new Map<string, Promise<unknown>>();
   private tenants = new Map<string, { ref: TenantRef; expires: number }>();
   constructor(
     uri = process.env.MONGO_URI || "mongodb://127.0.0.1:27017",
@@ -107,6 +146,7 @@ export class Store {
       this.catalog
         .collection("truex_skills")
         .createIndex({ name: 1 }, { unique: true }),
+      ...this.authIndexes(),
     ]);
     return this;
   }
@@ -125,6 +165,10 @@ export class Store {
     );
     return this.client.db(dbName);
   }
+  /** Builds a tenant database's indexes now, e.g. right after creating it. */
+  ensureTenantIndexes(dbName: string) {
+    return this.tenantIndexes(dbName);
+  }
   private tenantIndexes(dbName: string) {
     let done = this.indexed.get(dbName);
     if (!done) {
@@ -134,10 +178,12 @@ export class Store {
         db.collection("sessions").createIndex({ status: 1 }),
         db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
         db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
+        db.collection("sessions").createIndex({ userId: 1, createdAt: -1 }),
         // Sparse: agents seeded before handles existed have none.
         db
           .collection("truex_agents")
           .createIndex({ handle: 1 }, { unique: true, sparse: true }),
+        ...mcpIndexes(db),
       ]).catch((error) => {
         this.indexed.delete(dbName);
         throw error;
@@ -145,6 +191,60 @@ export class Store {
       this.indexed.set(dbName, done);
     }
     return done;
+  }
+  // Tenant indexes are built in the background on first use. MCP names rely
+  // on unique indexes, so MCP writes wait for these first: a duplicate written
+  // before the build would slip through and then make the build itself fail.
+  mcpReady() {
+    const dbName = currentTenant()?.dbName ?? this.database;
+    let done = this.mcpIndexed.get(dbName);
+    if (!done) {
+      done = Promise.all(mcpIndexes(this.client.db(dbName))).catch((error) => {
+        this.mcpIndexed.delete(dbName);
+        throw error;
+      });
+      this.mcpIndexed.set(dbName, done);
+    }
+    return done;
+  }
+  // Sign-in lives in the catalog: it has to find a user's tenants before any
+  // tenant database is opened.
+  private authIndexes() {
+    return [
+      this.users.createIndex({ googleSub: 1 }, { unique: true }),
+      this.users.createIndex({ emailKey: 1 }, { unique: true }),
+      this.memberships.createIndex({ userId: 1, tenantId: 1 }, { unique: true }),
+      this.memberships.createIndex({ tenantId: 1, role: 1 }),
+      this.invites.createIndex({ tokenHash: 1 }, { unique: true }),
+      // One pending invite per address and tenant. Partial filters cannot
+      // express "$exists: false", so this keys on a status field instead;
+      // accepting or revoking sets status next to acceptedAt/revokedAt.
+      this.invites.createIndex(
+        { tenantId: 1, emailKey: 1 },
+        { unique: true, partialFilterExpression: { status: "pending" } },
+      ),
+      // TTL indexes only expire Date values, so these fields are Dates.
+      this.authSessions.createIndex(
+        { absoluteExpiresAt: 1 },
+        { expireAfterSeconds: 0 },
+      ),
+      this.authFlows.createIndex({ createdAt: 1 }, { expireAfterSeconds: 600 }),
+    ];
+  }
+  get users() {
+    return this.catalog.collection<UserDocument>("users");
+  }
+  get memberships() {
+    return this.catalog.collection<MembershipDocument>("memberships");
+  }
+  get invites() {
+    return this.catalog.collection<InviteDocument>("invites");
+  }
+  get authSessions() {
+    return this.catalog.collection<AuthSessionDocument>("auth_sessions");
+  }
+  get authFlows() {
+    return this.catalog.collection<AuthFlowDocument>("auth_flows");
   }
   get tenantRegistry() {
     return this.catalog.collection<TenantDocument>("tenants");
@@ -155,6 +255,7 @@ export class Store {
       dbName: this.database,
       ...(doc?.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
       ...(doc?.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
+      ...visibility(doc),
     };
   }
   private toRef(doc: TenantDocument): TenantRef {
@@ -163,6 +264,7 @@ export class Store {
       dbName: doc.dbName,
       ...(doc.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
       ...(doc.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
+      ...visibility(doc),
     };
   }
   // The default tenant always exists (its database is MONGO_DB); others must

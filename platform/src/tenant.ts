@@ -2,6 +2,12 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Request } from "express";
 import { ApiError } from "./errors";
 
+// Who may see a tenant's conversations: "own" shows each user only their
+// chats (admins still read all); "all" lets everyone read every chat.
+export type ChatVisibility = "own" | "all";
+export const chatVisibilityOf = (value: unknown): ChatVisibility | undefined =>
+  value === "own" || value === "all" ? value : undefined;
+
 // A tenant owns its agents, MCP profiles and conversations, all in its own
 // database. Models and skills are shared and live in the catalog database.
 export interface TenantDocument {
@@ -13,6 +19,8 @@ export interface TenantDocument {
   /** When set, agents of this tenant may only use these catalog entries. */
   allowedModelIds?: string[];
   allowedSkillIds?: string[];
+  /** Missing means "all". */
+  chatVisibility?: ChatVisibility;
   createdAt: string;
   updatedAt: string;
 }
@@ -21,6 +29,8 @@ export interface TenantRef {
   dbName: string;
   allowedModelIds?: string[];
   allowedSkillIds?: string[];
+  /** Missing means "all". */
+  chatVisibility?: ChatVisibility;
 }
 
 export const DEFAULT_TENANT_ID = "default";

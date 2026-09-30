@@ -14,6 +14,7 @@ import { FloatingDock } from "@/components/v2/floating-dock";
 import { Popover } from "@/components/v2/popover";
 import { AgentMenu } from "@/components/v2/agent-menu";
 import { AgentDialog } from "@/components/v2/agent-dialog";
+import { AgentsView } from "@/components/v2/agents-view";
 import { tintOf } from "@/lib/agent-look";
 import { UserMenu } from "@/components/v2/user-menu";
 import { fitPanel, PANEL_W, CHAT_MIN, type PanelSize } from "@/lib/fit-panel";
@@ -161,6 +162,8 @@ export default function Home() {
     [paletteOpen, setPaletteOpen] = useState(false),
     [pop, setPop] = useState<null | "agent" | "user">(null),
     [agentDialogOpen, setAgentDialogOpen] = useState(false),
+    // The stage shows the conversation or the agents board.
+    [view, setView] = useState<"chat" | "agents">("chat"),
     [composerFocused, setComposerFocused] = useState(false),
     [shellReady, setShellReady] = useState(false);
   const agentBtn = useRef<HTMLButtonElement>(null),
@@ -245,6 +248,7 @@ export default function Home() {
     );
   const open = useCallback(async (id: string) => {
     const token = ++generation.current;
+    setView("chat");
     setBusy(true);
     setError("");
     setNotice("");
@@ -541,6 +545,7 @@ export default function Home() {
   // A plain new chat clears any project; a project's "+" passes its id.
   function startDraft(projectId: string | null = null) {
     generation.current++;
+    setView("chat");
     setDraftProjectId(projectId);
     setText("");
     setNotice("");
@@ -983,6 +988,15 @@ export default function Home() {
     "mod+.": toggleActivity,
     "mod+j": newChat,
   });
+  // Board "Chat": back to the conversation with that agent, fresh if the
+  // open session belongs to another one.
+  function chatWith(a: AgentSummary) {
+    if (session && session.agentId !== a.id) newChat();
+    setAgentId(a.id);
+    setView("chat");
+    setNotice("");
+    setTimeout(() => composer.current?.focus(), 0);
+  }
   const togglePop = (next: "agent" | "user") =>
     setPop((cur) => (cur === next ? null : next));
   // The list refreshes with the server-generated title; the open session may not.
@@ -1218,7 +1232,8 @@ export default function Home() {
           onOpen={(id) => void open(id)}
           onNew={newChat}
           onSearch={() => setPaletteOpen(true)}
-          onAgents={() => setPop("agent")}
+          onAgents={() => setView("agents")}
+          agentsActive={view === "agents"}
           onSettings={() => setPanel("mcp")}
           busy={busy}
           loadError={sessionsFailed ? "Couldn’t refresh" : null}
@@ -1236,7 +1251,7 @@ export default function Home() {
       <main className="stage">
         <Topbar
           sidebarShown={sidebarShown}
-          title={crumbTitle}
+          title={view === "agents" ? "Agents" : crumbTitle}
           agentName={loading ? "Loading agents…" : agent?.name || "No agent"}
           stateText={stateText}
           busy={running}
@@ -1260,9 +1275,10 @@ export default function Home() {
         />
         <div
           className="scroll"
-          role="log"
-          aria-label="Conversation"
-          aria-live="off"
+          // The board is a plain labelled region, not a live log.
+          role={view === "agents" ? "region" : "log"}
+          aria-label={view === "agents" ? "Agents" : "Conversation"}
+          aria-live={view === "agents" ? undefined : "off"}
           ref={scroll}
           onScroll={() => {
             const el = scroll.current;
@@ -1271,7 +1287,18 @@ export default function Home() {
                 el.scrollHeight - el.scrollTop - el.clientHeight < 80;
           }}
         >
-          {empty ? (
+          {view === "agents" ? (
+            <AgentsView
+              agents={agents}
+              currentId={session?.agentId || agentId}
+              // Waits on an agent edit endpoint; AgentDialog is create-only.
+              onEdit={(a: AgentSummary) =>
+                setNotice(`Editing ${a.name} isn’t available yet.`)
+              }
+              onChat={chatWith}
+              onNew={() => setAgentDialogOpen(true)}
+            />
+          ) : empty ? (
             <Hero>
               {composerForm}
               {!loading && !agents.length && (
@@ -1336,7 +1363,13 @@ export default function Home() {
               </button>
             </div>
           )}
-          {session && goal && (
+          {/* The composer (and its notice) is hidden on the board. */}
+          {view === "agents" && notice && (
+            <div className="composer-notice" role="status">
+              {notice}
+            </div>
+          )}
+          {view === "chat" && session && goal && (
             <GoalBar
               key={session._id}
               sessionId={session._id}
@@ -1369,8 +1402,10 @@ export default function Home() {
               provider={agents.find((a) => a.id === session.agentId)?.provider}
             />
           )}
-          {!empty && <HelperChip state={subAgents} onView={viewHelpers} />}
-          {!empty && composerForm}
+          {view === "chat" && !empty && (
+            <HelperChip state={subAgents} onView={viewHelpers} />
+          )}
+          {view === "chat" && !empty && composerForm}
           <div className="dock-wrap">
             <Popover
               open={pop === "agent"}
@@ -1390,6 +1425,11 @@ export default function Home() {
                 onPick={(id) => {
                   setAgentId(id);
                   setPop(null);
+                  setView("chat");
+                }}
+                onAll={() => {
+                  setPop(null);
+                  setView("agents");
                 }}
                 onNew={() => {
                   setPop(null);
@@ -1538,6 +1578,7 @@ export default function Home() {
           setAgentDialogOpen(false);
           newChat();
           setAgentId(a.id);
+          setView("chat");
           const t = `@${a.handle || agentHandle(a.name)} hi, `;
           setText(t);
           setTimeout(() => {

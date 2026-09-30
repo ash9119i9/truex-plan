@@ -7,6 +7,7 @@ import { POLICY_VERSION } from "../src/public";
 import { verifyGatewayToken } from "../src/model-route";
 import { DEFAULT_TENANT_ID, tenantDbName, type TenantRef } from "../src/tenant";
 import type { Session } from "../../shared/contracts";
+import { userContext } from "../src/user";
 
 const HOST = "http://core";
 
@@ -181,10 +182,14 @@ test(
         status: 404,
         code: "AGENT_NOT_FOUND",
       });
-      await assert.rejects(service.agentMcp("assistant"), {
-        status: 404,
-        code: "AGENT_NOT_FOUND",
-      });
+      // MCP settings need a signed-in person; the agent is still missing.
+      await assert.rejects(
+        userContext.run(
+          { id: "ashok", email: "ashok@dev.local", role: "user" },
+          () => service.agentMcp("assistant"),
+        ),
+        { status: 404, code: "AGENT_NOT_FOUND" },
+      );
       await assert.rejects(service.project(created.project._id), {
         status: 404,
         code: "PROJECT_NOT_FOUND",

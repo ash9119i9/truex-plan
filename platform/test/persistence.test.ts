@@ -94,6 +94,8 @@ test(
     await store.mcp.insertOne({
       _id: mcpId,
       name: "qlik",
+      scope: "tenant",
+      agentIds: [agentId.toHexString()],
       transport: "http",
       url: "https://mcp.example/mcp",
       apiKey: "database-mcp-secret",

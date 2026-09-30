@@ -11,7 +11,10 @@
     "codex:verify": "node scripts/codex.mjs",
     "demo": "node scripts/demo.mjs",
     "tenant": "node scripts/tenant.mjs",
+    "admin": "node scripts/admin.mjs",
     "migrate:tenancy": "node scripts/migrate-tenancy.mjs",
+    "migrate:mcp-scopes": "node scripts/migrate-mcp-scopes.mjs",
+    "purge:chats": "node scripts/purge-chats.mjs",
     "format": "prettier --write \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\"",
     "format:check": "prettier --check \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\""
   },

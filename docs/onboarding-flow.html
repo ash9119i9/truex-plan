@@ -1,0 +1,407 @@
+<title>Truex Onboarding Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Newsreader:ital,wght@1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column (~880px), sections stacked, diagrams full-width in their own scroll boxes. Tokens follow frontend/styles/v2/tokens.css. */
+:root {
+  --bg: #FFFFFF; --surface: #F6F9FA; --line: #E3ECEF; --line-strong: #D8E0E4;
+  --ink: #1F2A30; --ink-2: #5F6D73; --ink-3: #849198;
+  --accent: #3691CD; --accent-fg: #2A72A3; --accent-soft: #EAF5F8; --signature: #BCDEE8; --on-accent: #FFFFFF;
+  --ok-bg: #E7F4ED; --ok: #35624E; --warn-bg: #FFF3D9; --warn: #7D5D1D; --err-bg: #FBE7E7; --err: #8D4545;
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-accent: "Newsreader", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --radius: 14px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #171717; --surface: #212324; --line: #2A2A2A; --line-strong: #3A3D3F;
+  --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F;
+  --accent: #3691CD; --accent-fg: #BCDEE8; --accent-soft: #14283A; --signature: #1F4461; --on-accent: #FFFFFF;
+  --ok-bg: #16291F; --ok: #A8D8BE; --warn-bg: #2E2512; --warn: #E6C27A; --err-bg: #2F1A1A; --err: #EDB0B0;
+  color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #171717; --surface: #212324; --line: #2A2A2A; --line-strong: #3A3D3F;
+  --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F;
+  --accent: #3691CD; --accent-fg: #BCDEE8; --accent-soft: #14283A; --signature: #1F4461; --on-accent: #FFFFFF;
+  --ok-bg: #16291F; --ok: #A8D8BE; --warn-bg: #2E2512; --warn: #E6C27A; --err-bg: #2F1A1A; --err: #EDB0B0;
+  color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: 15px; line-height: 1.6; }
+.wrap { max-width: 880px; margin: 0 auto; padding-inline: 20px; padding-block: 48px 80px; display: grid; gap: 56px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; line-height: 1.2; }
+h1 { font-size: clamp(30px, 5vw, 42px); font-weight: 600; letter-spacing: -.035em; }
+h1 em, h2 em { font-family: var(--font-accent); font-style: italic; font-weight: 400; letter-spacing: 0; color: var(--accent-fg); }
+h2 { font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+h3 { font-size: 16px; font-weight: 600; }
+p { margin: 0; max-width: 66ch; color: var(--ink-2); }
+code, .mono { font-family: var(--font-mono); font-size: .86em; }
+code { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1px 5px; color: var(--ink); overflow-wrap: anywhere; }
+.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+section { display: grid; gap: 18px; }
+section > header { display: grid; gap: 6px; }
+
+.hero { display: grid; gap: 14px; }
+.status { display: inline-flex; gap: 8px; align-items: center; width: fit-content; font-size: 13px; padding: 4px 12px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); font-weight: 500; }
+.status::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* roles */
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.role { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.role .where { font-size: 12.5px; color: var(--accent-fg); font-weight: 600; }
+.role ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 14px; display: grid; gap: 4px; }
+.role .not { font-size: 13px; color: var(--ink-3); border-top: 1px dashed var(--line-strong); padding-top: 10px; }
+
+/* timeline */
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 40px 1fr; gap: 14px; position: relative; padding-bottom: 22px; counter-increment: s; }
+.steps li::before { content: counter(s); width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 600; font-size: 14px; grid-row: 1 / span 2; }
+.steps li::after { content: ""; position: absolute; left: 15.5px; top: 36px; bottom: 4px; width: 1px; background: var(--line-strong); }
+.steps li:last-child::after { display: none; }
+.steps li:last-child { padding-bottom: 0; }
+.steps .body { display: grid; gap: 6px; min-width: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; font-weight: 500; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-fg); }
+.chip.app { background: var(--surface); color: var(--ink-2); border: 1px solid var(--line); }
+
+/* figures */
+figure { margin: 0; display: grid; gap: 10px; }
+.canvas { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); padding: 16px; overflow-x: auto; }
+.canvas svg { display: block; width: 100%; min-width: 620px; height: auto; color: var(--ink); font-family: var(--font-sans); }
+figcaption { font-size: 13.5px; color: var(--ink-3); max-width: 70ch; }
+
+/* tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 520px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 600; background: var(--surface); }
+tbody tr:last-child td { border-bottom: 0; }
+td { color: var(--ink-2); }
+td:first-child { color: var(--ink); font-weight: 500; }
+.pill { display: inline-block; font-size: 12.5px; font-weight: 500; padding: 1px 9px; border-radius: 999px; white-space: nowrap; }
+.pill.rw { background: var(--ok-bg); color: var(--ok); }
+.pill.ro { background: var(--accent-soft); color: var(--accent-fg); }
+.pill.no { background: var(--err-bg); color: var(--err); }
+
+/* flows */
+.flows { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.flow { border: 1px solid var(--line); border-radius: var(--radius); padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.flow ol { margin: 0; padding-left: 20px; color: var(--ink-2); font-size: 14px; display: grid; gap: 5px; }
+.flow .note { font-size: 13px; color: var(--ink-3); }
+
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.kv div { background: var(--surface); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; }
+.kv b { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.kv span { font-size: 13px; color: var(--ink-3); }
+
+footer { font-size: 13px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 18px; }
+</style>
+
+<div class="wrap">
+
+  <div class="hero">
+    <span class="status">Planned · not built yet</span>
+    <h1>How people get into <em>Truex</em>, and what they do there</h1>
+    <p>Everyone signs in with a Gmail account, but only after someone invites them. Tenants hold the people, chats and connected tools. This page covers the full path from an empty platform to a team working in it, then the everyday flows.</p>
+  </div>
+
+  <section>
+    <header><span class="eyebrow">Roles</span><h2>Three kinds of people</h2></header>
+    <div class="roles">
+      <div class="role">
+        <h3>Platform operator</h3>
+        <span class="where">Admin dashboard · admin.&lt;domain&gt;</span>
+        <ul>
+          <li>Creates tenants</li>
+          <li>Sets tenant settings: status, allowed models and skills, chat visibility</li>
+          <li>Invites each tenant's first admin</li>
+        </ul>
+        <div class="not">Can't see any tenant's chats, agents or tools unless invited into that tenant like anyone else.</div>
+      </div>
+      <div class="role">
+        <h3>Tenant admin</h3>
+        <span class="where">Main app · Members, MCP settings</span>
+        <ul>
+          <li>Invites users and other admins</li>
+          <li>Changes roles, removes members</li>
+          <li>Adds shared (tenant) MCP servers and attaches them to agents</li>
+          <li>Can read every chat in the tenant</li>
+        </ul>
+        <div class="not">Can't write into someone else's chat.</div>
+      </div>
+      <div class="role">
+        <h3>User</h3>
+        <span class="where">Main app</span>
+        <ul>
+          <li>Creates agents and chats</li>
+          <li>Connects personal MCP servers that only load in their own chats</li>
+          <li>Uses the tenant's shared MCP servers</li>
+        </ul>
+        <div class="not">Sees other people's chats only when the tenant allows it, and then read-only.</div>
+      </div>
+    </div>
+    <p>Operators come from the <code>PLATFORM_OPERATOR_EMAILS</code> setting (default <code>ashokjoe2001@gmail.com</code>). Roles belong to a membership, so one person can be an admin in one tenant and a user in another.</p>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Onboarding</span><h2>From an empty platform to a working team</h2></header>
+    <ol class="steps">
+      <li><div class="body">
+        <div class="chips"><span class="chip">Operator</span><span class="chip app">Admin dashboard</span></div>
+        <h3>Operator signs in to the dashboard</h3>
+        <p>Sign in with Google. An operator email needs no invite here, because nothing exists yet to invite from. Any other email is refused.</p>
+      </div></li>
+      <li><div class="body">
+        <div class="chips"><span class="chip">Operator</span><span class="chip app">Admin dashboard</span></div>
+        <h3>Create a tenant</h3>
+        <p>Give it an id and a name, then pick allowed models, skills and chat visibility. Creating a tenant adds no members.</p>
+      </div></li>
+      <li><div class="body">
+        <div class="chips"><span class="chip">Operator</span><span class="chip app">Admin dashboard</span></div>
+        <h3>Invite the first admin</h3>
+        <p>Enter a Gmail address. The invite is always <code>admin</code> and expires in 7 days. No email is sent yet, so use "Copy sign-in link" and share it by hand.</p>
+      </div></li>
+      <li><div class="body">
+        <div class="chips"><span class="chip">Tenant admin</span><span class="chip app">Main app</span></div>
+        <h3>The admin signs in and lands in the tenant</h3>
+        <p>The first sign-in finds the pending invite, creates the account and membership, and marks the invite accepted.</p>
+      </div></li>
+      <li><div class="body">
+        <div class="chips"><span class="chip">Tenant admin</span><span class="chip app">Main app · Members</span></div>
+        <h3>Invite the team</h3>
+        <p>From Members, invite each Gmail address as <code>user</code> or <code>admin</code>. Pending invites can be revoked. Optionally add shared MCP servers and attach them to agents.</p>
+      </div></li>
+      <li><div class="body">
+        <div class="chips"><span class="chip">User</span><span class="chip app">Main app</span></div>
+        <h3>Users sign in and start working</h3>
+        <p>Each user signs in with the invited Gmail. People in one tenant land straight in it. People in several pick one first.</p>
+      </div></li>
+    </ol>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Sign-in</span><h2>What happens after "Sign in with Google"</h2></header>
+    <figure>
+      <div class="canvas">
+        <svg viewBox="0 0 740 520" role="img" aria-label="Sign-in decision flow: Gmail check, first sign-in invite check, then membership count decides between landing in the tenant, the tenant picker, or an error.">
+          <defs>
+            <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+            </marker>
+            <marker id="arrE" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="#C0665F"/>
+            </marker>
+          </defs>
+          <g font-size="13" text-anchor="middle">
+            <!-- start -->
+            <rect x="80" y="20" width="300" height="44" rx="22" fill="#3691CD"/>
+            <text x="230" y="47" fill="#FFFFFF" font-weight="600">Sign in with Google</text>
+
+            <!-- decisions -->
+            <rect x="80" y="104" width="300" height="44" rx="10" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+            <text x="230" y="131" fill="currentColor">Verified @gmail.com, no Workspace domain?</text>
+
+            <rect x="80" y="188" width="300" height="44" rx="10" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+            <text x="230" y="215" fill="currentColor">First time with this Google account?</text>
+
+            <rect x="80" y="272" width="300" height="44" rx="10" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+            <text x="230" y="299" fill="currentColor">Pending invite for this email?</text>
+
+            <rect x="80" y="356" width="300" height="44" rx="10" fill="none" stroke="currentColor" stroke-opacity=".45"/>
+            <text x="230" y="383" fill="currentColor">Active memberships in enabled tenants</text>
+
+            <!-- outcomes -->
+            <rect x="80" y="450" width="140" height="48" rx="10" fill="#3691CD" fill-opacity=".14" stroke="#3691CD"/>
+            <text x="150" y="471" fill="currentColor" font-weight="600">Into the tenant</text>
+            <text x="150" y="488" fill="currentColor" fill-opacity=".7" font-size="11.5">session bound to it</text>
+            <rect x="240" y="450" width="140" height="48" rx="10" fill="#3691CD" fill-opacity=".14" stroke="#3691CD"/>
+            <text x="310" y="471" fill="currentColor" font-weight="600">Tenant picker</text>
+            <text x="310" y="488" fill="currentColor" fill-opacity=".7" font-size="11.5">/select-tenant</text>
+
+            <!-- errors -->
+            <g font-family="JetBrains Mono, ui-monospace, monospace" font-size="12">
+              <rect x="480" y="108" width="230" height="36" rx="18" fill="#C0665F" fill-opacity=".14" stroke="#C0665F"/>
+              <text x="595" y="130" fill="currentColor">error=gmail_only</text>
+              <rect x="480" y="276" width="230" height="36" rx="18" fill="#C0665F" fill-opacity=".14" stroke="#C0665F"/>
+              <text x="595" y="298" fill="currentColor">error=not_invited</text>
+              <rect x="480" y="360" width="230" height="36" rx="18" fill="#C0665F" fill-opacity=".14" stroke="#C0665F"/>
+              <text x="595" y="382" fill="currentColor">error=no_tenant</text>
+            </g>
+          </g>
+
+          <!-- main path -->
+          <g stroke="currentColor" stroke-width="1.4" fill="none" marker-end="url(#arr)">
+            <line x1="230" y1="64" x2="230" y2="102"/>
+            <line x1="230" y1="148" x2="230" y2="186"/>
+            <line x1="230" y1="232" x2="230" y2="270"/>
+            <line x1="230" y1="316" x2="230" y2="354"/>
+            <polyline points="190,400 150,448"/>
+            <polyline points="270,400 310,448"/>
+            <polyline points="80,210 44,210 44,378 78,378"/>
+          </g>
+          <!-- error branches -->
+          <g stroke="#C0665F" stroke-width="1.4" fill="none" marker-end="url(#arrE)">
+            <line x1="380" y1="126" x2="478" y2="126"/>
+            <line x1="380" y1="294" x2="478" y2="294"/>
+            <line x1="380" y1="378" x2="478" y2="378"/>
+          </g>
+
+          <!-- edge labels -->
+          <g font-size="11.5" fill="currentColor" fill-opacity=".72">
+            <text x="240" y="172">yes</text>
+            <text x="240" y="256">yes</text>
+            <text x="240" y="340">yes · create account + memberships</text>
+            <text x="150" y="428" text-anchor="end">1</text>
+            <text x="310" y="428">2 or more</text>
+            <text x="429" y="118" text-anchor="middle">no</text>
+            <text x="429" y="286" text-anchor="middle">no</text>
+            <text x="429" y="370" text-anchor="middle">none</text>
+            <text x="36" y="294" text-anchor="middle" transform="rotate(-90 36 294)">no · returning user</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Returning users skip the invite check, but any new invites for their email are accepted on every sign-in. Invite matching ignores dots and <code>+tags</code>, so an invite for <code>A.Shok+x@gmail.com</code> matches <code>ashok@gmail.com</code>. Disabled tenants never count as memberships.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Everyday use</span><h2>Common flows inside a tenant</h2></header>
+    <div class="flows">
+      <div class="flow">
+        <h3>Start a chat</h3>
+        <ol>
+          <li>Pick an agent and send a message.</li>
+          <li>The chat is owned by you from then on.</li>
+          <li>Only you can send messages, approve tools or change its settings.</li>
+        </ol>
+        <div class="note">Turns run with the owner's personal MCP credentials, which is why only the owner can write.</div>
+      </div>
+      <div class="flow">
+        <h3>Connect your own tool</h3>
+        <ol>
+          <li>Open MCP settings, then Your servers.</li>
+          <li>Add a name, an HTTPS URL and an optional key.</li>
+          <li>Attach it to one or more agents.</li>
+          <li>It loads in your chats with those agents, and nobody else's.</li>
+        </ol>
+        <div class="note">Names use letters, digits, hyphens and single underscores. A name already used by a tenant server is refused.</div>
+      </div>
+      <div class="flow">
+        <h3>Share a tool with the tenant</h3>
+        <ol>
+          <li>A tenant admin opens MCP settings, then Tenant servers.</li>
+          <li>Adds the server with one shared key.</li>
+          <li>Attaches it to agents.</li>
+          <li>Every chat with those agents gets it.</li>
+        </ol>
+        <div class="note">Users see that it exists and which agents use it, but never the key.</div>
+      </div>
+      <div class="flow">
+        <h3>Change a tool mid-chat</h3>
+        <ol>
+          <li>Attach, detach or rotate a key in MCP settings.</li>
+          <li>Open chats pick up the change on their next turn.</li>
+          <li>A turn that's already running finishes with the old setup.</li>
+        </ol>
+      </div>
+      <div class="flow">
+        <h3>Switch tenant</h3>
+        <ol>
+          <li>Open the user menu, then Switch tenant.</li>
+          <li>Pick another tenant you belong to.</li>
+          <li>You get a fresh session in that tenant. Chats and tools from the other tenant don't follow.</li>
+        </ol>
+      </div>
+      <div class="flow">
+        <h3>Sign out</h3>
+        <ol>
+          <li>Open the user menu, then Sign out.</li>
+          <li>The session is deleted on the server right away.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Visibility</span><h2>Who can open a chat</h2><p>Set per tenant by the operator: <code>all</code> (the default) or <code>own</code>.</p></header>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Who</th><th>Tenant set to "all"</th><th>Tenant set to "own"</th></tr></thead>
+        <tbody>
+          <tr><td>Chat owner</td><td><span class="pill rw">Read + write</span></td><td><span class="pill rw">Read + write</span></td></tr>
+          <tr><td>Tenant admin</td><td><span class="pill ro">Read only</span></td><td><span class="pill ro">Read only</span></td></tr>
+          <tr><td>Other user</td><td><span class="pill ro">Read only</span></td><td><span class="pill no">Hidden</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Hidden chats look like they don't exist: they're left out of the list, and opening a link to one returns "not found". Under <code>own</code>, projects are personal folders too.</p>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Tools</span><h2>Shared tools and personal tools</h2></header>
+    <div class="tbl">
+      <table>
+        <thead><tr><th></th><th>Tenant server</th><th>Your server</th></tr></thead>
+        <tbody>
+          <tr><td>Who adds and edits it</td><td>Tenant admins</td><td>You</td></tr>
+          <tr><td>Who can see it</td><td>Everyone in the tenant (name, host, agents)</td><td>Only you</td></tr>
+          <tr><td>Where it loads</td><td>Every chat with an attached agent</td><td>Your chats with an attached agent</td></tr>
+          <tr><td>Credential</td><td>One shared key</td><td>Your own key</td></tr>
+          <tr><td>Name clash</td><td>Wins</td><td>Skipped, with a warning in settings</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Keys are encrypted at rest and never returned by any screen or API. URLs that point at private networks or cloud metadata addresses are refused.</p>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Sessions</span><h2>How long you stay signed in</h2></header>
+    <div class="kv">
+      <div><b>7 days</b><span>Main app, idle limit</span></div>
+      <div><b>30 days</b><span>Main app, hard limit</span></div>
+      <div><b>8 hours</b><span>Admin dashboard, hard limit</span></div>
+    </div>
+    <p>You get a new session on every sign-in and tenant switch. Access ends right away when an account or tenant is disabled, or a membership is removed.</p>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Offboarding</span><h2>Removing people and tenants</h2></header>
+    <div class="flows">
+      <div class="flow">
+        <h3>Remove a member</h3>
+        <ol>
+          <li>A tenant admin opens Members and removes the person.</li>
+          <li>Their sessions in this tenant end.</li>
+          <li>Their personal MCP servers are deleted without anyone reading them.</li>
+        </ol>
+        <div class="note">The last admin of a tenant can't be removed or demoted. Other tenants they belong to are unaffected.</div>
+      </div>
+      <div class="flow">
+        <h3>Disable a tenant</h3>
+        <ol>
+          <li>The operator sets the tenant's status to disabled.</li>
+          <li>Everyone's next request in that tenant fails, within about 5 seconds.</li>
+          <li>Sign-in skips it, and <code>tenant_disabled</code> is shown when it was the only one.</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <header><span class="eyebrow">Sign-in screens</span><h2>What people see when they can't get in</h2></header>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Code</th><th>Meaning</th><th>What to do</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">not_invited</td><td>No pending invite for this Gmail</td><td>Ask a tenant admin to invite this exact address</td></tr>
+          <tr><td class="mono">gmail_only</td><td>Not a verified @gmail.com account</td><td>Sign in with a personal Gmail account</td></tr>
+          <tr><td class="mono">no_tenant</td><td>Account exists but has no active membership</td><td>Ask an admin to invite you again</td></tr>
+          <tr><td class="mono">tenant_disabled</td><td>Your only tenant is disabled</td><td>Contact the platform operator</td></tr>
+          <tr><td class="mono">not_operator</td><td>Dashboard sign-in by a non-operator</td><td>Use the main app instead</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Source: docs/USER_SCOPED_MCP_PLAN.md (2026-09-30). Invite emails, Google Workspace domains and per-user OAuth for tools like Notion or GitHub come later.</footer>
+</div>

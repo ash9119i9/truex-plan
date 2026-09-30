@@ -26,8 +26,20 @@ import {
   requestIdMiddleware,
   route,
   tenantMiddleware,
+  userMiddleware,
 } from "./http";
-import { devTenantResolver } from "./tenant";
+import { currentTenant, devTenantResolver } from "./tenant";
+import { authMode, currentUser, devUserResolver } from "./user";
+import { googleRoutes } from "./google";
+import { adminApiRoutes, adminAuthRoutes, adminGate } from "./admin";
+import { inviteLookupRoutes, inviteMailer } from "./invites";
+import {
+  authMiddleware,
+  authRoutes,
+  csrfMiddleware,
+  rateLimit,
+  userTenants,
+} from "./auth";
 @Module({})
 class AppModule {}
 async function main() {
@@ -37,11 +49,29 @@ async function main() {
   });
   const http = app.getHttpAdapter().getInstance();
   http.use(requestIdMiddleware);
+  // Refuses an unknown mode, or google without its keys, before anything
+  // else is built.
+  const mode = authMode();
+  // Refuses NODE_ENV=production without RESEND_API_KEY.
+  const mailer = inviteMailer();
+  const origins = [
+    process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+    process.env.ADMIN_ORIGIN,
+  ].filter((origin): origin is string => !!origin);
   app.enableCors({
-    origin: process.env.FRONTEND_ORIGIN || "http://localhost:3000",
+    origin: origins,
+    credentials: true,
     exposedHeaders: [REQUEST_ID_HEADER],
   });
   http.disable("x-powered-by");
+  // Unset by default. Set when a forwarder adds X-Forwarded-For, so req.ip
+  // (and the /auth rate limit) sees the browser's address.
+  const trustProxy = process.env.TRUST_PROXY?.trim();
+  if (trustProxy)
+    http.set(
+      "trust proxy",
+      /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy,
+    );
   http.use(json({ limit: "2mb" }));
   const store = new Store();
   let connected = false;
@@ -96,17 +126,73 @@ async function main() {
       res.status(ok ? 200 : 503).json({ ok, mongo, agentCore });
     }),
   );
-  http.use("/api", (_req: Request, _res: Response, next: NextFunction) => {
-    if (!connected)
-      return next(
-        new ApiError(503, "MongoDB is unavailable", "STORAGE_UNAVAILABLE"),
-      );
-    next();
-  });
-  // Every API request works on exactly one tenant's database.
   http.use(
-    "/api",
-    tenantMiddleware(devTenantResolver(), (id) => store.resolveTenant(id)),
+    ["/api", "/auth"],
+    (_req: Request, _res: Response, next: NextFunction) => {
+      if (!connected)
+        return next(
+          new ApiError(503, "MongoDB is unavailable", "STORAGE_UNAVAILABLE"),
+        );
+      next();
+    },
+  );
+  // State-changing requests need a known Origin and JSON in both modes. Dev
+  // mode also lets a request without any Origin through, so curl and the
+  // test suite work; a foreign Origin is refused in every mode.
+  http.use(
+    ["/api", "/auth"],
+    csrfMiddleware({ origins, allowMissingOrigin: mode === "dev" }),
+  );
+  // Per req.ip; see TRUST_PROXY above.
+  http.use("/auth", rateLimit({ windowMs: 60_000, max: 60 }));
+  // Admin login, the admin API and the public invite lookup work the same in
+  // both modes, so the dashboard can be tried locally. The admin gate needs
+  // an admin session cookie and never reads the dev tenant or user headers;
+  // the admin router answers every /api/admin request (404 for unknown
+  // paths), so the dev resolvers and authMiddleware below never see one.
+  http.use("/auth/admin", adminAuthRoutes(store));
+  http.use("/auth/invites", inviteLookupRoutes(store));
+  http.use(
+    "/api/admin",
+    adminGate(store),
+    adminApiRoutes(store, service, mailer),
+  );
+  if (mode === "google") {
+    // Every API request resolves its tenant and user from the session
+    // cookie. The dev resolvers are never built in this mode.
+    http.use("/api", authMiddleware(store));
+    http.use("/auth", authRoutes(store));
+    http.use("/auth", googleRoutes(store));
+  } else {
+    // Every API request works on exactly one tenant's database.
+    http.use(
+      "/api",
+      tenantMiddleware(devTenantResolver(), (id) => store.resolveTenant(id)),
+    );
+    // Every API request also has exactly one user, fixed in dev mode.
+    http.use("/api", userMiddleware(devUserResolver()));
+  }
+  http.get(
+    "/api/me",
+    route(async (_req, res) => {
+      const user = currentUser()!;
+      const tenant = currentTenant()!;
+      const tenants =
+        mode === "google"
+          ? await userTenants(store, user.id)
+          : [{ id: tenant.id, name: tenant.id, role: user.role }];
+      const current = tenants.find((t) => t.id === tenant.id);
+      res.json({
+        user: {
+          id: user.id,
+          email: user.email,
+          ...(mode === "google" ? res.locals.profile : {}),
+        },
+        tenant: { id: tenant.id, name: current?.name ?? tenant.id },
+        role: user.role,
+        tenants,
+      });
+    }),
   );
   // Raw schema/configuration and host capabilities are not a product API.
   http.use("/api", (req: Request, _res: Response, next: NextFunction) => {
@@ -148,7 +234,7 @@ async function main() {
     route(async (req, res) =>
       res.json(
         await service.owned(
-          await service.session(String(req.params.id)),
+          await service.sessionFor(String(req.params.id), "read"),
           "/documents",
         ),
       ),
@@ -161,7 +247,7 @@ async function main() {
         .status(201)
         .json(
           await service.owned(
-            await service.session(String(req.params.id)),
+            await service.sessionFor(String(req.params.id), "write"),
             "/documents",
             "POST",
             { name: req.body.name, base64: req.body.base64 },
@@ -173,7 +259,7 @@ async function main() {
     "/api/sessions/:id/documents/:fileId",
     route(async (req, res) => {
       const file = await service.owned(
-        await service.session(String(req.params.id)),
+        await service.sessionFor(String(req.params.id), "read"),
         "/documents/" + encodeURIComponent(String(req.params.fileId)),
       );
       if (file.kind === "visualization")
@@ -199,7 +285,7 @@ async function main() {
       res.setHeader("X-Content-Type-Options", "nosniff");
       res.json(
         await service.owned(
-          await service.session(String(req.params.id)),
+          await service.sessionFor(String(req.params.id), "read"),
           "/visualizations/" + encodeURIComponent(String(req.params.fileId)),
         ),
       );
@@ -219,10 +305,68 @@ async function main() {
       ),
     ),
   );
+  // MCP servers. /api/mcp is the caller's own (user scope) plus a read-only
+  // view of the tenant's; /api/tenant/mcp* and /api/agents/:id/tenant-mcp
+  // manage tenant servers and answer 403 to anyone but a tenant admin.
+  http.get(
+    "/api/mcp",
+    route(async (_req, res) => res.json(await service.listMcp())),
+  );
   http.post(
     "/api/mcp",
     route(async (req, res) =>
       res.status(201).json(await service.createMcp(req.body)),
+    ),
+  );
+  http.patch(
+    "/api/mcp/:id",
+    route(async (req, res) =>
+      res.json(await service.updateMcp(String(req.params.id), req.body)),
+    ),
+  );
+  http.delete(
+    "/api/mcp/:id",
+    route(async (req, res) =>
+      res.json(await service.deleteMcp(String(req.params.id))),
+    ),
+  );
+  http.get(
+    "/api/tenant/mcp",
+    route(async (_req, res) => res.json(await service.listTenantMcp())),
+  );
+  http.post(
+    "/api/tenant/mcp",
+    route(async (req, res) =>
+      res.status(201).json(await service.createTenantMcp(req.body)),
+    ),
+  );
+  http.patch(
+    "/api/tenant/mcp/:id",
+    route(async (req, res) =>
+      res.json(await service.updateTenantMcp(String(req.params.id), req.body)),
+    ),
+  );
+  http.delete(
+    "/api/tenant/mcp/:id",
+    route(async (req, res) =>
+      res.json(await service.deleteTenantMcp(String(req.params.id))),
+    ),
+  );
+  http.get(
+    "/api/agents/:id/tenant-mcp",
+    route(async (req, res) =>
+      res.json(await service.agentTenantMcp(String(req.params.id))),
+    ),
+  );
+  http.post(
+    "/api/agents/:id/tenant-mcp",
+    route(async (req, res) =>
+      res.json(
+        await service.setAgentTenantMcp(
+          String(req.params.id),
+          req.body?.profileIds,
+        ),
+      ),
     ),
   );
   http.get(
@@ -350,7 +494,7 @@ async function main() {
     route(async (req, res) =>
       res.json(
         await service.owned(
-          await service.session(String(req.params.id)),
+          await service.sessionFor(String(req.params.id), "write"),
           "/interrupt",
           "POST",
           {},
@@ -363,7 +507,7 @@ async function main() {
     route(async (req, res) =>
       res.json(
         await service.owned(
-          await service.session(String(req.params.id)),
+          await service.sessionFor(String(req.params.id), "write"),
           "/approvals/" + encodeURIComponent(String(req.params.requestId)),
           "POST",
           { result: req.body.result },
@@ -413,7 +557,7 @@ async function main() {
   http.get(
     "/api/sessions/:id/timings",
     route(async (req, res) => {
-      const s = await service.session(String(req.params.id));
+      const s = await service.sessionFor(String(req.params.id), "read");
       await service.ingest(s);
       const rows = ((await service.session(s._id)).timings || []).map(
         publicTiming,
@@ -443,7 +587,7 @@ async function main() {
   http.get(
     "/api/sessions/:id/traces",
     route(async (req, res) => {
-      const s = await service.session(String(req.params.id));
+      const s = await service.sessionFor(String(req.params.id), "read");
       // Stored traces stay readable while the assistant service is down.
       await service.ingest(s).catch((error) =>
         log("warn", "trace ingestion failed", {
@@ -465,7 +609,7 @@ async function main() {
   http.get(
     "/api/sessions/:id/turns/:turnId/context",
     route(async (req, res) => {
-      const s = await service.session(String(req.params.id));
+      const s = await service.sessionFor(String(req.params.id), "read");
       res.set("Cache-Control", "no-store");
       res.json(
         await service.owned(
@@ -478,7 +622,7 @@ async function main() {
   http.get(
     "/api/sessions/:id/events",
     route(async (req, res) => {
-      const s = await service.session(String(req.params.id));
+      const s = await service.sessionFor(String(req.params.id), "read");
       if (!service.hosts.includes(s.agentCoreHost))
         throw new ApiError(
           503,

@@ -6,10 +6,14 @@
 //   npm run tenant -- disable <id> | enable <id>
 //   npm run tenant -- allow-models <id> <modelId...|--all>
 //   npm run tenant -- allow-skills <id> <skillId...|--all>
+//   npm run tenant -- chat-visibility <id> own|all
 //   npm run tenant -- drop <id> --confirm <id>
+//   npm run tenant -- invite <id> <email> --role admin|user
+//   npm run tenant -- members <id>
 //
 // Reads MONGO_URI, MONGO_DB and CATALOG_MONGO_DB (process env first, then
 // platform/.env). Unset CATALOG_MONGO_DB means the catalog is MONGO_DB.
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -34,7 +38,10 @@ const usage = `usage: node scripts/tenant.mjs <command>
   disable <id> | enable <id>            block or allow a tenant's requests
   allow-models <id> <modelId...|--all>  restrict catalog models (--all lifts it)
   allow-skills <id> <skillId...|--all>  restrict catalog skills (--all lifts it)
-  drop <id> --confirm <id>              delete a tenant database and registry entry`;
+  chat-visibility <id> own|all          who can read chats (unset means all)
+  drop <id> --confirm <id>              delete a tenant database and registry entry
+  invite <id> <email> --role admin|user create an invite and print its link (no email)
+  members <id>                          list active members with role and last sign-in`;
 
 class CliError extends Error {}
 const fail = (message) => {
@@ -54,13 +61,51 @@ const dbNameFor = (id) =>
     : "truex_t_" + validId(id).replace(/-/g, "_");
 const now = () => new Date().toISOString();
 
+// Same rules as emailKey/isGmail/newToken/hashToken in platform/src/auth.ts.
+const emailKey = (email) => {
+  const value = email.trim().toLowerCase();
+  const at = value.lastIndexOf("@");
+  if (at < 1) return value;
+  const local = value.slice(0, at).split("+")[0].replace(/\./g, "");
+  return `${local}${value.slice(at)}`;
+};
+const isGmail = (email) => /^[^@\s]+@gmail\.com$/i.test(email.trim());
+const INVITE_LIFETIME_MS = 7 * 86_400_000;
+const inviteLink = (token) =>
+  `${(process.env.APP_PUBLIC_URL || process.env.FRONTEND_ORIGIN || "http://localhost:3000").replace(/\/+$/, "")}/invite/${token}`;
+
 async function tenantIndexes(db) {
   await Promise.all([
     db.collection("messages").createIndex({ sessionId: 1, at: 1 }),
     db.collection("sessions").createIndex({ status: 1 }),
     db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
     db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
+    db.collection("sessions").createIndex({ userId: 1, createdAt: -1 }),
+    ...mcpIndexes(db),
   ]);
+}
+// Same definitions as mcpIndexes() in platform/src/store.ts.
+function mcpIndexes(db) {
+  const mcp = db.collection("truex_mcp");
+  return [
+    mcp.createIndex(
+      { scope: 1, name: 1 },
+      {
+        name: "tenant_mcp_name",
+        unique: true,
+        partialFilterExpression: { scope: "tenant" },
+      },
+    ),
+    mcp.createIndex(
+      { ownerId: 1, name: 1 },
+      {
+        name: "user_mcp_name",
+        unique: true,
+        partialFilterExpression: { scope: "user" },
+      },
+    ),
+    mcp.createIndex({ agentIds: 1, scope: 1 }),
+  ];
 }
 async function catalogIndexes(catalog) {
   await Promise.all([
@@ -156,6 +201,7 @@ async function main(argv) {
             d.allowedSkillIds
               ? `skills=${d.allowedSkillIds.join(",")}`
               : "skills=all",
+            `chats=${d.chatVisibility ?? "all"}`,
           ].join(" ");
           console.log(
             `${d._id}\t${d.status}\t${d.dbName}\t${d.name}\t${limits}`,
@@ -224,6 +270,23 @@ async function main(argv) {
         console.log(`tenant "${id}": ${field} = ${unique.join(", ")}`);
         return;
       }
+      case "chat-visibility": {
+        const [id, value, ...rest] = args;
+        if ((value !== "own" && value !== "all") || rest.length)
+          fail("usage: chat-visibility <id> own|all");
+        // Registers the implicit default tenant on first change.
+        const doc = await find(id);
+        if ((doc.chatVisibility ?? "all") === value && doc.chatVisibility) {
+          console.log(`tenant "${id}": chatVisibility is already ${value}`);
+          return;
+        }
+        await tenants.updateOne(
+          { _id: id },
+          { $set: { chatVisibility: value, updatedAt: now() } },
+        );
+        console.log(`tenant "${id}": chatVisibility = ${value}`);
+        return;
+      }
       case "drop": {
         const [id, flag, repeat] = args;
         validId(id);
@@ -258,6 +321,75 @@ async function main(argv) {
         await db.dropDatabase();
         await tenants.deleteOne({ _id: id });
         console.log(`dropped tenant "${id}"`);
+        return;
+      }
+      case "invite": {
+        const [id, email, flag, role, ...rest] = args;
+        if (
+          !email ||
+          flag !== "--role" ||
+          (role !== "admin" && role !== "user") ||
+          rest.length
+        )
+          fail("usage: invite <id> <email> --role admin|user");
+        await find(id);
+        const address = email.trim();
+        if (!isGmail(address)) fail("only @gmail.com addresses can be invited");
+        const key = emailKey(address);
+        const user = await catalog.collection("users").findOne({ emailKey: key });
+        if (
+          user &&
+          (await catalog
+            .collection("memberships")
+            .findOne({ userId: user._id, tenantId: id, status: "active" }))
+        )
+          fail(`${address} is already a member of "${id}"`);
+        const invites = catalog.collection("invites");
+        if (await invites.findOne({ tenantId: id, emailKey: key, status: "pending" }))
+          fail(
+            `${address} already has a pending invite to "${id}"; revoke or resend it from the admin dashboard`,
+          );
+        // Only the hash is stored; the link printed below is the only copy.
+        const token = randomBytes(32).toString("base64url");
+        const created = new Date();
+        const inviteId = `inv_${randomUUID()}`;
+        await invites.insertOne({
+          _id: inviteId,
+          tenantId: id,
+          email: address,
+          emailKey: key,
+          role,
+          tokenHash: createHash("sha256").update(token).digest("hex"),
+          status: "pending",
+          createdAt: created.toISOString(),
+          expiresAt: new Date(created.getTime() + INVITE_LIFETIME_MS),
+        });
+        console.log(`invited ${address} to "${id}" as ${role} (${inviteId})`);
+        console.log(`link (single use, expires in 7 days; not emailed):`);
+        console.log(inviteLink(token));
+        return;
+      }
+      case "members": {
+        const [id, ...rest] = args;
+        if (rest.length) fail("usage: members <id>");
+        await find(id);
+        const memberships = await catalog
+          .collection("memberships")
+          .find({ tenantId: id, status: "active" })
+          .sort({ createdAt: 1 })
+          .toArray();
+        const users = await catalog
+          .collection("users")
+          .find({ _id: { $in: memberships.map((m) => m.userId) } })
+          .toArray();
+        const byId = new Map(users.map((u) => [u._id, u]));
+        if (!memberships.length) console.log(`tenant "${id}" has no members`);
+        for (const m of memberships) {
+          const u = byId.get(m.userId);
+          console.log(
+            `${m.userId}\t${u?.email ?? "?"}\t${m.role}\t${u?.status ?? "?"}\tlast sign-in ${u?.lastLoginAt ?? "never"}`,
+          );
+        }
         return;
       }
       default:

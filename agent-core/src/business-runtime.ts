@@ -484,6 +484,11 @@ export class BusinessRuntime extends CodexClient {
       }
       return result;
     }
+    // Only agent-core calls this, to reload a thread with a new MCP config.
+    if (method === "thread/unsubscribe") {
+      this.workspace(params.threadId);
+      return super.request(method, { threadId: params.threadId });
+    }
     // Approval modes read tool annotations; only agent-core calls this.
     if (method === "mcpServerStatus/list") {
       this.workspace(params.threadId);

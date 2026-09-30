@@ -1,0 +1,161 @@
+<title>Truex Auth Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@1,6..72,400..500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: one reading column, status-tagged sections; tokens mirror truex-design-spec.html so the doc matches the product. */
+:root {
+  --bg: #FFFFFF; --surface-3: #F6F9FA; --line: #E3ECEF;
+  --ink: #1F2A30; --ink-2: #5F6D73; --ink-3: #849198;
+  --accent: #3691CD; --accent-fg: #2A72A3; --accent-soft: #EAF5F8;
+  --ok-bg: #E6F4EC; --ok-text: #25694A;
+  --warn-bg: #FFF3D9; --warn-text: #7D5D1D;
+  --bad-bg: #FBE7E4; --bad-text: #9A3527;
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-accent: "Newsreader", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #171717; --surface-3: #242424; --line: #2A2A2A;
+  --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F;
+  --accent: #3691CD; --accent-fg: #BCDEE8; --accent-soft: #14283A;
+  --ok-bg: #12291E; --ok-text: #8FD3AE;
+  --warn-bg: #2E2512; --warn-text: #E6C27A;
+  --bad-bg: #331A16; --bad-text: #F0A596; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #171717; --surface-3: #242424; --line: #2A2A2A;
+  --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F;
+  --accent: #3691CD; --accent-fg: #BCDEE8; --accent-soft: #14283A;
+  --ok-bg: #12291E; --ok-text: #8FD3AE;
+  --warn-bg: #2E2512; --warn-text: #E6C27A;
+  --bad-bg: #331A16; --bad-text: #F0A596; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.6 var(--font-sans); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 860px; margin: 0 auto; padding-inline: 20px; padding-block: 48px 96px; }
+header { padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+h1 { margin: 0 0 10px; font-size: clamp(28px, 5vw, 40px); line-height: 1.1; font-weight: 600; letter-spacing: -.03em; text-wrap: balance; }
+h1 em { font-family: var(--font-accent); font-style: italic; font-weight: 400; color: var(--accent-fg); }
+.lede { margin: 0; max-width: 64ch; color: var(--ink-2); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font: 12px var(--font-mono); color: var(--ink-3); }
+section { padding-top: 40px; }
+h2 { margin: 0 0 8px; font-size: 22px; font-weight: 600; letter-spacing: -.02em; text-wrap: balance; }
+h3 { margin: 24px 0 6px; font-size: 16px; font-weight: 600; }
+p, li { max-width: 68ch; color: var(--ink-2); }
+strong { color: var(--ink); font-weight: 600; }
+ul, ol { padding-left: 20px; display: grid; gap: 4px; }
+code { font: 12.5px var(--font-mono); padding: 1px 5px; border-radius: 5px; background: var(--surface-3); color: var(--ink); overflow-wrap: anywhere; }
+.note { padding: 12px 14px; border-radius: 10px; background: var(--accent-soft); color: var(--ink); font-size: 14px; max-width: none; }
+.table { overflow-x: auto; margin-top: 12px; border: 1px solid var(--line); border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+th { font: 500 11px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); background: var(--surface-3); }
+tr:last-child td { border-bottom: 0; }
+td { color: var(--ink-2); }
+td:first-child { color: var(--ink); font-weight: 500; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font: 500 11px var(--font-mono); letter-spacing: .03em; white-space: nowrap; }
+.ok { background: var(--ok-bg); color: var(--ok-text); }
+.warn { background: var(--warn-bg); color: var(--warn-text); }
+.bad { background: var(--bad-bg); color: var(--bad-text); }
+.gaps { list-style: none; padding: 0; display: grid; gap: 12px; margin-top: 12px; }
+.gaps li { max-width: none; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; display: grid; gap: 4px; }
+.gaps .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ink); font-weight: 600; }
+.gaps p { margin: 0; }
+.steps { counter-reset: s; list-style: none; padding: 0; gap: 14px; }
+.steps > li { counter-increment: s; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; max-width: none; }
+.steps > li::before { content: counter(s); width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-fg); font: 600 12px/24px var(--font-mono); text-align: center; }
+.steps > li > div { min-width: 0; }
+.steps ul { margin: 6px 0 0; }
+a { color: var(--accent-fg); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+<header>
+  <h1>Authentication and authorization <em>in Truex</em></h1>
+  <p class="lede">Where auth stands on the <code>feat/auth-mcp-backend</code> branch, the gaps found in review, and the order to close them. Most of the backend is built; what's left is configuration, hardening and the frontend.</p>
+  <div class="meta"><span>2026-10-01</span><span>branch feat/auth-mcp-backend (uncommitted)</span><span>scope: platform + agent-core</span></div>
+</header>
+
+<section>
+  <h2>What was reviewed</h2>
+  <p>Read in full: <code>platform/src/auth.ts</code>, <code>google.ts</code>, <code>access.ts</code>, <code>index.ts</code>, <code>http.ts</code>, <code>.env.example</code>, and the login part of <code>admin.ts</code>. Read in part: <code>service.ts</code> (session and MCP checks) and <code>agent-core/src/index.ts</code>.</p>
+  <p class="note">Not reviewed yet: the test suite, <code>invites.ts</code> and <code>secrets.ts</code> in full, the <code>/api/admin</code> routes, and the frontend beyond its route list. Points marked "inferred" below come from reading code, not from running it.</p>
+</section>
+
+<section>
+  <h2>How it works today</h2>
+  <p>The platform runs in one of two modes, set by <code>AUTH_MODE</code>.</p>
+  <div class="table"><table>
+    <thead><tr><th>Mode</th><th>Who the user is</th><th>Tenant</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td><code>dev</code></td><td>Fixed <code>DEV_USER_ID</code> and role; optional <code>X-Truex-User</code> header for two-user testing</td><td>Dev tenant</td><td>Local only; refuses to start with <code>NODE_ENV=production</code></td></tr>
+      <tr><td><code>google</code></td><td>Session cookie from Google sign-in</td><td>Bound to the session, checked against an active membership on every request</td><td>Real deployments</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Authentication</h3>
+  <div class="table"><table>
+    <thead><tr><th>Piece</th><th>What it does</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Google sign-in</td><td>Authorization code flow with PKCE, state and nonce. Gmail only, <code>email_verified</code> required, Workspace accounts refused. New accounts come only from an invite.</td><td><span class="pill ok">built</span></td></tr>
+      <tr><td>Invites</td><td>Token stored as a hash, expiry, single use via an atomic claim. The Google email must match the invited Gmail (dots and +tags ignored).</td><td><span class="pill ok">built</span></td></tr>
+      <tr><td>Sessions</td><td>Random 32-byte token, only its SHA-256 stored. httpOnly, SameSite=Lax, <code>__Host-</code> and Secure on https. 7 days idle, 30 days max.</td><td><span class="pill ok">built</span></td></tr>
+      <tr><td>Rotation and logout</td><td>New token on sign-in and tenant switch. Logout deletes the session. Removing a member ends all their sessions in that tenant.</td><td><span class="pill ok">built</span></td></tr>
+      <tr><td>Admin dashboard login</td><td>One username and password, scrypt hash from env, constant-time check, 5 tries per minute per IP, 8-hour session that never extends.</td><td><span class="pill ok">built</span></td></tr>
+      <tr><td>CSRF and CORS</td><td>State-changing requests need an allowed Origin and a JSON body. CORS allows only the app and admin origins.</td><td><span class="pill ok">built</span></td></tr>
+      <tr><td>Frontend sign-in pages</td><td>No <code>/login</code>, <code>/invite</code> or <code>/select-tenant</code> pages and no route protection yet.</td><td><span class="pill warn">not started</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Authorization</h3>
+  <p>Roles live on the membership and are <code>admin</code> or <code>user</code>. The rules for chats and project folders sit in <code>access.ts</code>:</p>
+  <div class="table"><table>
+    <thead><tr><th>Caller</th><th>Tenant shows all chats</th><th>Tenant shows own chats only</th></tr></thead>
+    <tbody>
+      <tr><td>Owner</td><td>Read and change</td><td>Read and change</td></tr>
+      <tr><td>Tenant admin</td><td>Read only</td><td>Read only</td></tr>
+      <tr><td>Other user</td><td>Read only</td><td>Hidden (404)</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>Every session route checked goes through <code>sessionFor(id, "read" | "write")</code>, and lists filter by owner inside the database query.</li>
+    <li>Tenant MCP servers need a tenant admin. User MCP servers belong to one person; anyone else gets a 404.</li>
+    <li>Any member can create agents, by design for the alpha.</li>
+  </ul>
+</section>
+
+<section>
+  <h2>Gaps</h2>
+  <ul class="gaps">
+    <li><div class="head"><span class="pill bad">high</span>agent-core accepts any caller</div>
+      <p>It's a plain Express app with no shared secret, so routes like <code>/threads/:id/documents</code> serve anyone who can reach them. That's safe today only because it listens on <code>127.0.0.1</code>. Once agent-core runs on its own host, anyone on that network can read any thread. Confirmed.</p></li>
+    <li><div class="head"><span class="pill warn">medium</span>Rate limits live in memory</div>
+      <p>Counts reset on restart and each platform instance counts on its own. Admin login has no lockout after repeated failures. Confirmed.</p></li>
+    <li><div class="head"><span class="pill warn">medium</span>Open live streams aren't rechecked</div>
+      <p>The chat event stream is authorized once when it opens. A removed member keeps getting updates until it disconnects. Inferred.</p></li>
+    <li><div class="head"><span class="pill warn">low</span>agent-core health check shows internals</div>
+      <p><code>/healthz</code> returns the Codex home path, the pinned revision and the thread count. It only matters if agent-core is exposed. Confirmed.</p></li>
+    <li><div class="head"><span class="pill warn">low</span>Coarse roles, no audit log</div>
+      <p>No per-agent edit or delete rights and no record of admin actions. Fine for the alpha; worth planning before more teams join.</p></li>
+    <li><div class="head"><span class="pill warn">open</span>Frontend has no auth yet</div>
+      <p>No sign-in pages, no redirect to login when a session expires, and admin-only controls aren't hidden from regular users. Planned to follow your designs.</p></li>
+  </ul>
+</section>
+
+<section>
+  <h2>Plan</h2>
+  <ol class="steps">
+    <li><div><strong>Secure agent-core.</strong> Require a shared secret on every platform-to-agent-core call, following the <code>MODEL_GATEWAY_SECRET</code> pattern, and block direct network access. Trim <code>/healthz</code> to booleans.</div></li>
+    <li><div><strong>Turn on Google mode.</strong>
+      <ul>
+        <li>Create a Google OAuth client with redirect URI <code>${APP_PUBLIC_URL}/auth/google/callback</code>.</li>
+        <li>Set <code>AUTH_MODE=google</code>, <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>ADMIN_PASSWORD_HASH</code> (from <code>npm run admin -- hash-password</code>), <code>RESEND_API_KEY</code> with a verified sending domain, <code>TRUST_PROXY</code>, and <code>MCP_ENCRYPTION_KEY</code>.</li>
+        <li>Run <code>migrate:mcp-scopes</code> so the qlik and btp MCPs load again.</li>
+      </ul></div></li>
+    <li><div><strong>Harden.</strong> Move rate limits into Mongo, add an admin login lockout, and recheck membership on open event streams.</div></li>
+    <li><div><strong>Build the frontend.</strong> Login, invite acceptance, tenant picker, logout, redirect on 401, role-based hiding, and the admin dashboard, following <code>truex-design-spec.html</code>.</div></li>
+    <li><div><strong>Later.</strong> Per-agent permissions, a Members panel for tenant admins, and an audit log of admin actions.</div></li>
+  </ol>
+</section>
+</div>

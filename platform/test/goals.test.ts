@@ -18,7 +18,11 @@ test("only a completed goal can be reviewed; accepting persists and reopening re
     await mongo.stop();
   });
   const service = new PlatformService(store);
-  await store.sessions.insertOne({ _id: "s" } as any);
+  // reviewGoal loads the session itself (owner check), so it must be current.
+  await store.sessions.insertOne({
+    _id: "s",
+    runtimePolicyVersion: POLICY_VERSION,
+  } as any);
   let goal: any = {
     objective: "Quarterly report",
     status: "active",

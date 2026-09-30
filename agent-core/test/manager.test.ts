@@ -1311,3 +1311,112 @@ test("an unanswered question proceeds with its recommended option; tool approval
     "expired",
   ]);
 });
+const mcpConfig = (url: string) => ({
+  config: { "mcp_servers.sap": { url } },
+});
+const completeTurn = (runtime: Fake) =>
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: {
+      threadId: "thread_1",
+      turn: { id: "turn_1", status: "completed" },
+    },
+  });
+test("a new MCP fingerprint reloads a loaded idle thread with the new config", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({
+    ...mcpConfig("https://a.example/mcp"),
+    mcpFingerprint: "fp_a",
+  });
+  // The fingerprint is agent-core's, not a runtime parameter.
+  assert.equal("mcpFingerprint" in runtime.calls[0].params, false);
+  runtime.calls.length = 0;
+  await manager.resume("thread_1", {
+    ...mcpConfig("https://b.example/mcp"),
+    mcpFingerprint: "fp_b",
+  });
+  assert.deepEqual(
+    runtime.calls.map((x) => x.method),
+    ["thread/unsubscribe", "thread/resume", "thread/goal/get"],
+  );
+  assert.deepEqual(runtime.calls[0].params, { threadId: "thread_1" });
+  const resume = runtime.calls[1].params;
+  assert.equal(resume.threadId, "thread_1");
+  assert.deepEqual(resume.config, {
+    "mcp_servers.sap": { url: "https://b.example/mcp" },
+  });
+  assert.equal("mcpFingerprint" in resume, false);
+  assert.equal(manager.snapshot("thread_1").state.kind, "idle");
+  // Loaded with fp_b now: resuming with it again is the fast path.
+  runtime.calls.length = 0;
+  await manager.resume("thread_1", { mcpFingerprint: "fp_b" });
+  assert.deepEqual(runtime.calls, []);
+  await assert.rejects(
+    manager.resume("thread_1", { mcpFingerprint: { bad: true } }),
+    /Invalid MCP fingerprint/,
+  );
+});
+test("an MCP change during a running turn applies before the next turn", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({ mcpFingerprint: "fp_a" });
+  await manager.message("thread_1", "first");
+  runtime.calls.length = 0;
+  const snapshot = await manager.resume("thread_1", {
+    ...mcpConfig("https://b.example/mcp"),
+    mcpFingerprint: "fp_b",
+  });
+  // The running turn keeps its config.
+  assert.deepEqual(runtime.calls, []);
+  assert.deepEqual(snapshot.state, { kind: "running", turnId: "turn_1" });
+  // A steer into the same turn leaves the config alone too.
+  await manager.message("thread_1", "more");
+  assert.deepEqual(
+    runtime.calls.map((x) => x.method),
+    ["turn/steer"],
+  );
+  completeTurn(runtime);
+  runtime.calls.length = 0;
+  await manager.message("thread_1", "second");
+  assert.deepEqual(
+    runtime.calls.map((x) => x.method),
+    ["thread/unsubscribe", "thread/resume", "thread/goal/get", "turn/start"],
+  );
+  assert.deepEqual(runtime.calls[1].params.config, {
+    "mcp_servers.sap": { url: "https://b.example/mcp" },
+  });
+  // Applied once; the next turn with fp_b starts directly.
+  completeTurn(runtime);
+  runtime.calls.length = 0;
+  await manager.resume("thread_1", { mcpFingerprint: "fp_b" });
+  await manager.message("thread_1", "third");
+  assert.deepEqual(
+    runtime.calls.map((x) => x.method),
+    ["turn/start"],
+  );
+});
+test("the same MCP fingerprint keeps the loaded thread", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({ mcpFingerprint: "fp_a" });
+  runtime.calls.length = 0;
+  await manager.resume("thread_1", {
+    ...mcpConfig("https://a.example/mcp"),
+    mcpFingerprint: "fp_a",
+  });
+  assert.deepEqual(runtime.calls, []);
+});
+test("a resume without an MCP fingerprint behaves as before", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({ mcpFingerprint: "fp_a" });
+  runtime.calls.length = 0;
+  // Loaded: the fast path, even though the config differs.
+  await manager.resume("thread_1", mcpConfig("https://b.example/mcp"));
+  assert.deepEqual(runtime.calls, []);
+  // Not loaded: one cold resume and no unsubscribe.
+  const second = new ThreadManager(runtime, manager.home);
+  t.after(() => second.close());
+  await second.resume("thread_1", mcpConfig("https://b.example/mcp"));
+  assert.deepEqual(
+    runtime.calls.map((x) => x.method),
+    ["thread/resume", "thread/goal/get"],
+  );
+});

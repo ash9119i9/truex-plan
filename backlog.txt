@@ -140,3 +140,46 @@ Each one digs deep so nothing gets missed.
 1. Projects: bring back the project tree / Projects nav + page (removed from sidebar in phase 1)
 2. Knowledge: Knowledge nav + page
 3. Share button (topbar): placed in phase 1 with no action, wire up sharing a conversation link
+
+
+// Auth, invites, chat ownership, tenant/user MCP (docs/USER_SCOPED_MCP_PLAN.md)
+// Covers "user invitation", "only their created chats", "Adding Auth", "Enterprise APP (MCP)" above.
+// Backend done 01/10 on branch feat/auth-mcp-backend (NOT committed). Platform 142/142, agent-core 170/170.
+// Invite accept page (/invite/[token]) done, browser-tested against a mock. Frontend 175/175.
+
+Setup (platform/.env, don't paste values in chat)
+1. MCP_ENCRYPTION_KEY (openssl rand -base64 32), then npm run migrate:mcp-scopes (dry run),
+   then with --confirm migrate-mcp-scopes. qlik/btp DON'T load in chats until this runs.
+2. Tell whether qlik/btp use private/internal hosts -> add them to MCP_ALLOWED_PRIVATE_HOSTS
+3. Admin login: ADMIN_USERNAME + ADMIN_PASSWORD_HASH (npm run admin -- hash-password)
+4. Invites by email: RESEND_API_KEY + INVITE_FROM_EMAIL, verify the sending domain in Resend
+5. AUTH_MODE=google only once the login screens exist (dev mode keeps today's app working)
+
+Chat purge (needs a go, can't be undone)
+- Stop agent-core (:4100) first, then npm run purge:chats -- --confirm purge-chats
+- Dry run on 30/09: 105 documents + 385 files
+
+Frontend still to build (needs designs, follow truex-design-spec.html)
+1. Admin dashboard app (admin/, port 3001): login, tenants, create tenant, settings, invites, members
+   - gap: no endpoint lists models/skills for the allowed-models picker, add it if we want the picker
+2. /login and /select-tenant pages, user menu (name, avatar, switch tenant, sign out)
+3. /api forwarder + lib/api.ts same-origin + proxy.ts guard + 401 -> /login
+4. MCP settings: "Your servers" / "Tenant servers", then remove the LEGACY(frontend-v1) shim in service.ts
+5. Chat owner label, admin "All users" toggle, read-only chat view
+
+Testing still to do
+- Real Google sign-in end to end (only tested with a fake Google)
+- Move the join page browser test (/tmp/join-e2e) into the repo
+
+Deploy + docs
+- Ingress (only frontend + admin public), HOST=0.0.0.0, TRUST_PROXY, TRUST_FORWARDED_FOR=on behind the Ingress
+- Google redirect URI for the production host
+- Update docs/mongodb.md, README.md, docs/VALIDATION.md
+
+Small follow-ups
+- Removing a member isn't atomic: if the MCP delete fails, retry isn't possible from the dashboard
+- Admin login has a fixed 5/min limit, no growing delay after failures
+- Join page: "Email" label (spec says "Work email"), no terms line (no terms URL yet)
+
+Housekeeping
+- Commit feat/auth-mcp-backend, then remove the leftover agent copies in .claude/worktrees

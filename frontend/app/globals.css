@@ -13,6 +13,7 @@
 @import "../styles/v2/chat.css";
 @import "../styles/v2/session.css";
 @import "../styles/v2/agent-dialog.css";
+@import "../styles/v2/agents-view.css";
 
 button {
   cursor: pointer;

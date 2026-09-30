@@ -7,7 +7,7 @@ import { approvalModesConfig } from "../src/features";
 import { publicApproval, publicSession, POLICY_VERSION } from "../src/public";
 import { ALLOW_FOR_CHAT } from "../../shared/contracts";
 import type { ApprovalModesConfig } from "../../shared/contracts";
-import { insertFixtures } from "./fixtures";
+import { admin, asUser, insertFixtures } from "./fixtures";
 
 const OFF = approvalModesConfig({});
 const ON: ApprovalModesConfig = {
@@ -79,12 +79,15 @@ test(
       ...ON,
       autopilot: true,
     });
-    const mcp = await off.createMcp({
-      name: "sap",
-      transport: "http",
-      url: "https://example.com/mcp",
+    // A tenant MCP (admin-managed), so it loads without a chat owner.
+    await asUser(admin, async () => {
+      const mcp = await off.createTenantMcp({
+        name: "sap",
+        transport: "http",
+        url: "https://example.com/mcp",
+      });
+      await off.setAgentTenantMcp("assistant", [mcp.id]);
     });
-    await off.setAgentMcp("assistant", [mcp.id]);
 
     // Codex asks for every MCP call only when agent-core decides.
     const offServer = (await off.configuration("assistant")).config[

@@ -90,6 +90,8 @@ export interface Session {
     personality?: string;
   };
   _id: string;
+  /** Owner, set once on create from the signed-in user; never changes. */
+  userId?: string;
   agentId: string;
   title?: string;
   threadId: string;
@@ -110,6 +112,8 @@ export interface Session {
   projectId?: string;
   threadStartMs?: number;
   runtimeStartup?: { spawnMs: number; initializeMs: number };
+  /** sha256 of the thread's built MCP servers; agent-core reloads on change. */
+  mcpFingerprint?: string;
 }
 export type GoalStatus =
   | "active"
@@ -358,6 +362,7 @@ export type CollabTool =
 export type PublicSession = Pick<
   Session,
   | "_id"
+  | "userId"
   | "agentId"
   | "title"
   | "status"
@@ -370,6 +375,8 @@ export type PublicSession = Pick<
 // A named folder that groups sessions. A session belongs to at most one.
 export interface Project {
   _id: string; // "proj_" + uuid
+  /** Creator; set on create. Under chatVisibility "own" a per-user folder. */
+  ownerId?: string;
   name: string;
   createdAt: string;
   updatedAt: string;

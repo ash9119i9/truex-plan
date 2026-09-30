@@ -13,7 +13,7 @@ import {
   SUB_AGENT_ID,
   POLICY_VERSION,
 } from "./public";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
@@ -80,10 +80,25 @@ export function upstreamError(
   });
   return new ApiError(502, message, "UPSTREAM_FAILED", { cause });
 }
-import { attachedMcpInstructions, mcpConfig, newMcpProfile } from "./mcp";
-import type { DatabaseId, ModelDocument } from "./documents";
+import {
+  attachedMcpInstructions,
+  checkMcpProfile,
+  checkMcpUrl,
+  mcpConfig,
+  mcpProfileUpdate,
+  mcpSummary,
+  newMcpProfile,
+} from "./mcp";
+import {
+  idCandidates,
+  type DatabaseId,
+  type McpDocument,
+  type ModelDocument,
+} from "./documents";
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
 import { currentTenant, currentTenantId } from "./tenant";
+import { currentUser, userId } from "./user";
+import { checkProject, checkSession, ownerFilter, type Access } from "./access";
 // Codex edits an objective in place, so the creation time identifies a goal.
 function sameGoal(saved: SessionGoal | undefined, goal: Goal) {
   return !!saved && (saved.createdAt ?? null) === (goal.createdAt ?? null);
@@ -210,6 +225,27 @@ export function subAgentOptions(value: unknown) {
       : {}),
   };
 }
+// Same value with object keys sorted, so equal configs serialize equally.
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonical((value as any)[key])]),
+    );
+  return value;
+}
+// sha256 of a thread's built mcp_servers.* entries (names, urls, headers and
+// keys). Only this hash leaves the platform; agent-core reloads a loaded
+// thread when it changes.
+export function mcpFingerprint(config: Record<string, unknown>) {
+  const servers = Object.keys(config)
+    .filter((key) => key.startsWith("mcp_servers."))
+    .sort()
+    .map((key) => [key, canonical(config[key])]);
+  return createHash("sha256").update(JSON.stringify(servers)).digest("hex");
+}
 function validAgentId(agentId: string) {
   if (typeof agentId !== "string" || !SUB_AGENT_ID.test(agentId))
     throw new ApiError(400, "Invalid helper agent id", "INVALID_INPUT");
@@ -314,10 +350,12 @@ export class PlatformService {
       );
     return result;
   }
-  async session(id: string) {
+  async session(id: string, mode?: Access) {
     const session = await this.store.sessions.findOne({ _id: id });
     if (!session)
       throw new ApiError(404, "Session not found", "SESSION_NOT_FOUND");
+    // Before the legacy check, so a hidden chat never answers 409.
+    if (mode) checkSession(session, mode);
     if (session.runtimePolicyVersion !== POLICY_VERSION)
       throw new ApiError(
         409,
@@ -326,7 +364,20 @@ export class PlatformService {
       );
     return session;
   }
-  async configuration(agentId: string, cwd?: string) {
+  // Loads a session for a request and applies the ownership rules (see
+  // access.ts). Every /api/sessions/:id route goes through this, directly or
+  // through a service method that calls it.
+  async sessionFor(id: string, mode: Access) {
+    return this.session(id, mode);
+  }
+  // Builds a thread's config. `ownerId` is the chat's owner, never whoever
+  // triggered the build: create() passes the signed-in creator, resume()
+  // the stored session.userId (also for cold resume and background work).
+  // Without an owner only tenant MCPs load.
+  async configuration(
+    agentId: string,
+    { cwd, ownerId }: { cwd?: string; ownerId?: string } = {},
+  ) {
     const agent = await this.store.findAgent(agentId);
     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
     const profile = await this.store.findModel(agent.modelProfileId);
@@ -361,22 +412,44 @@ export class PlatformService {
               : {}),
           }
         : this.gatewayConfig(profile, provider);
+    // Attachments live on the profiles (agentIds); agent.mcpProfileIds is
+    // legacy and no longer read.
+    const agentKey = String(agent._id);
+    const enabled = { agentIds: agentKey, enabled: { $ne: false } };
+    const tenantMcps = await this.store.mcp
+      .find({ scope: "tenant", ...enabled })
+      .sort({ name: 1 })
+      .toArray();
+    const userMcps = ownerId
+      ? await this.store.mcp
+          .find({ scope: "user", ownerId, ...enabled })
+          .sort({ name: 1 })
+          .toArray()
+      : [];
+    // Tenant names are reserved tenant-wide (attached here or not), so a user
+    // copy made before the tenant one existed is skipped, and the chat still
+    // starts. The owner sees the same warning in MCP settings.
+    const reserved = userMcps.length ? await this.tenantNames() : new Set();
     const names = new Set<string>();
-    for (const id of agent.mcpProfileIds || []) {
-      const mcp = await this.store.findMcp(id);
-      if (!mcp)
-        throw new ApiError(
-          422,
-          `MCP profile missing: ${String(id)}`,
-          "CONNECTOR_CONFIGURATION",
-        );
-      if (names.has(mcp.name))
+    for (const mcp of [...tenantMcps, ...userMcps]) {
+      if (names.has(mcp.name) || (mcp.scope === "user" && reserved.has(mcp.name))) {
+        if (mcp.scope === "user") {
+          log("warn", "user MCP skipped: a tenant MCP uses its name", {
+            op: "configuration",
+            agentId: agentKey,
+            mcpId: String(mcp._id),
+            name: mcp.name,
+          });
+          continue;
+        }
         throw new ApiError(
           422,
           `Duplicate MCP server name: ${mcp.name}`,
           "CONNECTOR_CONFIGURATION",
         );
+      }
       names.add(mcp.name);
+      // The only place a stored key is decrypted.
       const server = mcpConfig(mcp);
       if (server.command)
         throw new ApiError(
@@ -384,6 +457,8 @@ export class PlatformService {
           "Business connectors must use HTTP. Configure this connector on a separate service.",
           "CONNECTOR_POLICY",
         );
+      // Re-checked on every build, so a DNS change since saving is caught.
+      await checkMcpUrl(String(server.url), { atBuild: true });
       // Approval modes decide in agent-core, so Codex must ask for each call.
       if (this.approvalModes.enabled)
         server.default_tools_approval_mode = "prompt";
@@ -412,6 +487,7 @@ export class PlatformService {
       sandbox: "read-only",
       approvalPolicy: "on-request",
       ...(skills.length ? { skills } : {}),
+      mcpFingerprint: mcpFingerprint(config),
     };
   }
   // Catalog skills of an agent, in the agent's order. A missing, disabled or
@@ -566,25 +642,96 @@ export class PlatformService {
       builtin: false,
     };
   }
-  async agentMcp(agentId: string) {
+  // --- MCP profiles: tenant scope (admins) and user scope (the owner). ---
+  // Only apiKeyEnc is stored; responses carry hasKey, never a key. Someone
+  // else's user MCP answers 404, like an unknown id.
+  private mcpCaller() {
+    const user = currentUser();
+    if (!user)
+      throw new ApiError(401, "Sign in to manage MCP servers", "UNAUTHENTICATED");
+    return user;
+  }
+  private tenantAdmin() {
+    const user = this.mcpCaller();
+    if (user.role !== "admin")
+      throw new ApiError(
+        403,
+        "Only a tenant admin can manage tenant MCP servers",
+        "TENANT_ADMIN_REQUIRED",
+      );
+    return user;
+  }
+  private async mcpAgentKey(agentId: string) {
     const agent = await this.store.findAgent(agentId);
     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
-    const profiles = await this.store.mcp
-      .find({}, { projection: { _id: 1, name: 1, enabled: 1, transport: 1 } })
+    // agentIds holds String(agent._id), whatever the _id's BSON type.
+    return String(agent._id);
+  }
+  private async scopedMcp(id: string, filter: Record<string, unknown>) {
+    const profile =
+      typeof id === "string" && id && id.length <= 200
+        ? await this.store.mcp.findOne({
+            _id: { $in: idCandidates(id) },
+            ...filter,
+          })
+        : null;
+    if (!profile)
+      throw new ApiError(404, "MCP profile not found", "MCP_NOT_FOUND");
+    return profile;
+  }
+  private ownMcp(id: string) {
+    return this.scopedMcp(id, { scope: "user", ownerId: this.mcpCaller().id });
+  }
+  private tenantMcp(id: string) {
+    this.tenantAdmin();
+    return this.scopedMcp(id, { scope: "tenant" });
+  }
+  // Tenant names are reserved tenant-wide, for user MCPs of every member.
+  private async reservedName(name: string) {
+    if (
+      await this.store.mcp.findOne(
+        { scope: "tenant", name },
+        { projection: { _id: 1 } },
+      )
+    )
+      throw new ApiError(
+        409,
+        `A tenant MCP server is already named ${name}. Choose another name.`,
+        "MCP_NAME_RESERVED",
+      );
+  }
+  private async shadowedCount(name: string) {
+    return this.store.mcp.countDocuments({ scope: "user", name });
+  }
+  private async tenantNames() {
+    const tenant = await this.store.mcp
+      .find({ scope: "tenant" }, { projection: { name: 1 } })
       .toArray();
+    return new Set(tenant.map((p) => p.name));
+  }
+  // A user MCP that a tenant MCP shadows is skipped in every chat.
+  private userMcpSummary(profile: McpDocument, tenantNames: Set<string>) {
+    const shadowed = tenantNames.has(profile.name);
     return {
-      profileIds: (agent.mcpProfileIds || []).map(String),
-      profiles: profiles.map((p) => ({
-        id: String(p._id),
-        name: p.name,
-        enabled: p.enabled !== false,
-        transport: p.transport || "configured",
-      })),
+      ...mcpSummary(
+        profile,
+        shadowed
+          ? [
+              `A tenant MCP server is also named ${profile.name}. Chats use the tenant server and skip this one; rename it to use it.`,
+            ]
+          : [],
+      ),
+      editable: true,
+      ...(shadowed ? { shadowed: true } : {}),
     };
   }
-  async setAgentMcp(agentId: string, ids: unknown) {
-    const agent = await this.store.findAgent(agentId);
-    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+  private tenantMcpSummary(profile: McpDocument, warnings: string[] = []) {
+    return {
+      ...mcpSummary(profile, warnings),
+      editable: currentUser()?.role === "admin",
+    };
+  }
+  private mcpIds(ids: unknown): string[] {
     if (
       !Array.isArray(ids) ||
       ids.length > 50 ||
@@ -593,39 +740,332 @@ export class PlatformService {
       throw new ApiError(
         400,
         "profileIds must be an array of up to 50 MCP IDs",
+        "INVALID_INPUT",
       );
-    const names = new Set<string>();
-    const references = [];
-    for (const id of new Set(ids as string[])) {
-      const profile = await this.store.findMcp(id);
-      if (!profile) throw new ApiError(422, `MCP profile missing: ${id}`);
-      if (mcpConfig(profile).command)
-        throw new ApiError(
-          422,
-          "Local command connectors are unavailable. Use an HTTP connector.",
-          "CONNECTOR_POLICY",
-        );
-      if (names.has(profile.name))
-        throw new ApiError(422, `Duplicate MCP server name: ${profile.name}`);
-      names.add(profile.name);
-      references.push(profile._id);
+    return [...new Set(ids as string[])];
+  }
+  private taken(error: unknown, name: string): never {
+    if ((error as { code?: number })?.code === 11000)
+      throw new ApiError(
+        409,
+        `An MCP server named ${name} already exists`,
+        "MCP_NAME_TAKEN",
+      );
+    throw error;
+  }
+  // Resolves ids within `filter` (404 for anything outside it) and validates
+  // newly attached profiles; already attached ones stay as they are.
+  private async attachable(
+    agentKey: string,
+    ids: string[],
+    filter: Record<string, unknown>,
+  ) {
+    const chosen = [];
+    for (const id of ids) {
+      const profile = await this.scopedMcp(id, filter);
+      if (!(profile.agentIds || []).includes(agentKey))
+        if (checkMcpProfile(profile).command)
+          throw new ApiError(
+            422,
+            "Local command connectors are unavailable. Use an HTTP connector.",
+            "CONNECTOR_POLICY",
+          );
+      chosen.push(profile._id);
     }
-    await this.store.agents.updateOne(
-      { _id: agent._id },
-      { $set: { mcpProfileIds: references } },
+    return chosen;
+  }
+  // Makes `chosen` the exact set of `filter`'s profiles attached to the
+  // agent: $addToSet on the chosen ones, $pull on the rest.
+  private async attach(
+    agentKey: string,
+    chosen: DatabaseId[],
+    filter: Record<string, unknown>,
+  ) {
+    const updatedAt = new Date().toISOString();
+    if (chosen.length)
+      await this.store.mcp.updateMany(
+        { ...filter, _id: { $in: chosen } },
+        { $addToSet: { agentIds: agentKey }, $set: { updatedAt } },
+      );
+    await this.store.mcp.updateMany(
+      { ...filter, agentIds: agentKey, _id: { $nin: chosen } },
+      { $pull: { agentIds: agentKey }, $set: { updatedAt } },
     );
+  }
+  private async saveUpdate(
+    existing: McpDocument,
+    set: Partial<McpDocument>,
+    unset: Record<string, "">,
+  ) {
+    if (!Object.keys(set).length && !Object.keys(unset).length) return;
+    await this.store.mcpReady();
+    await this.store.mcp
+      .updateOne(
+        { _id: existing._id },
+        {
+          $set: { ...set, updatedAt: new Date().toISOString() },
+          ...(Object.keys(unset).length ? { $unset: unset } : {}),
+        },
+      )
+      .catch((e) => this.taken(e, set.name ?? existing.name));
+  }
+  private async insertMcp(
+    body: unknown,
+    scope: Pick<McpDocument, "scope" | "ownerId">,
+    createdBy: string,
+  ) {
+    const profile = newMcpProfile(body);
+    if (scope.scope === "user") await this.reservedName(profile.name);
+    const warnings = await checkMcpUrl(profile.url!);
+    const now = new Date().toISOString();
+    const stored: McpDocument = {
+      ...profile,
+      ...scope,
+      agentIds: [],
+      createdBy,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.store.mcpReady();
+    await this.store.mcp
+      .insertOne(stored)
+      .catch((e) => this.taken(e, profile.name));
+    // The cross-scope rule has no index, so check again after writing: an
+    // admin may have created the tenant name between the first check and
+    // our insert. Then ours is removed and the caller gets the 409. The
+    // opposite order (tenant MCP created after a user one) is not a race:
+    // configuration() skips the shadowed user copy at build.
+    if (scope.scope === "user")
+      try {
+        await this.reservedName(profile.name);
+      } catch (e) {
+        await this.store.mcp.deleteOne({ _id: stored._id });
+        throw e;
+      }
+    return { profile: stored, warnings };
+  }
+
+  // Main app: the caller's user MCPs (editable) plus the tenant's MCPs
+  // (name, url host, attached agents; editable for admins only).
+  async listMcp() {
+    const user = this.mcpCaller();
+    const [own, tenant] = await Promise.all([
+      this.store.mcp
+        .find({ scope: "user", ownerId: user.id })
+        .sort({ name: 1 })
+        .toArray(),
+      this.store.mcp.find({ scope: "tenant" }).sort({ name: 1 }).toArray(),
+    ]);
+    const tenantNames = new Set(tenant.map((p) => p.name));
+    return {
+      userProfiles: own.map((p) => this.userMcpSummary(p, tenantNames)),
+      tenantProfiles: tenant.map((p) => this.tenantMcpSummary(p)),
+    };
+  }
+  // POST /api/mcp: a user MCP owned by the caller. 409 on a name clash.
+  async createMcp(body: unknown) {
+    const user = this.mcpCaller();
+    const { profile, warnings } = await this.insertMcp(
+      body,
+      { scope: "user", ownerId: user.id },
+      user.id,
+    );
+    return { ...mcpSummary(profile, warnings), editable: true };
+  }
+  async updateMcp(id: string, body: unknown) {
+    const existing = await this.ownMcp(id);
+    const { set, unset, profile } = mcpProfileUpdate(existing, body);
+    const renamed = set.name !== undefined && set.name !== existing.name;
+    if (renamed) await this.reservedName(set.name!);
+    const warnings = await checkMcpUrl(profile.url!);
+    await this.saveUpdate(existing, set, unset);
+    // Re-checked after the write, like insertMcp: a tenant MCP created in
+    // between wins, and the rename is reverted.
+    if (renamed)
+      try {
+        await this.reservedName(set.name!);
+      } catch (e) {
+        await this.store.mcp.updateOne(
+          { _id: existing._id, name: set.name },
+          { $set: { name: existing.name } },
+        );
+        throw e;
+      }
+    const summary = this.userMcpSummary(profile, await this.tenantNames());
+    const all = [...warnings, ...(summary.warnings || [])];
+    return { ...summary, ...(all.length ? { warnings: all } : {}) };
+  }
+  async deleteMcp(id: string) {
+    const existing = await this.ownMcp(id);
+    await this.store.mcp.deleteOne({ _id: existing._id });
+    return { ok: true };
+  }
+  // GET /api/agents/:id/mcp. `profiles`/`profileIds` keep their original
+  // meaning for the MCP settings form: the servers the caller may attach
+  // (their own) and which of them are attached. Tenant MCPs attached to the
+  // agent are listed read-only in tenantProfiles.
+  async agentMcp(agentId: string) {
+    const user = this.mcpCaller();
+    const agentKey = await this.mcpAgentKey(agentId);
+    const [own, tenant] = await Promise.all([
+      this.store.mcp
+        .find({ scope: "user", ownerId: user.id })
+        .sort({ name: 1 })
+        .toArray(),
+      this.store.mcp.find({ scope: "tenant" }).sort({ name: 1 }).toArray(),
+    ]);
+    const tenantNames = new Set(tenant.map((p) => p.name));
+    const isAttached = (p: McpDocument) =>
+      (p.agentIds || []).includes(agentKey);
+    const profiles = [
+      ...own.map((p) => ({
+        ...this.userMcpSummary(p, tenantNames),
+        attached: isAttached(p),
+      })),
+      // LEGACY(frontend-v1): the current MCP settings form has one list, so
+      // a tenant admin also sees (and can attach) every tenant MCP there.
+      // Remove when the new MCP settings ship.
+      ...(user.role === "admin"
+        ? tenant.map((p) => ({
+            ...this.tenantMcpSummary(p),
+            attached: isAttached(p),
+          }))
+        : []),
+    ];
+    return {
+      profileIds: profiles.filter((p) => p.attached).map((p) => p.id),
+      profiles,
+      tenantProfiles: tenant
+        .filter(isAttached)
+        .map((p) => ({ ...this.tenantMcpSummary(p), attached: true })),
+    };
+  }
+  // POST /api/agents/:id/mcp { profileIds }: the full set of the caller's
+  // own user MCPs for this agent; other people's MCPs are never touched.
+  // A tenant MCP id is 404 for a user.
+  async setAgentMcp(agentId: string, ids: unknown) {
+    const user = this.mcpCaller();
+    const agentKey = await this.mcpAgentKey(agentId);
+    const own = { scope: "user", ownerId: user.id };
+    const wanted = this.mcpIds(ids);
+    if (user.role !== "admin") {
+      await this.attach(
+        agentKey,
+        await this.attachable(agentKey, wanted, own),
+        own,
+      );
+      return this.agentMcp(agentId);
+    }
+    // LEGACY(frontend-v1): an admin's form submits their own and the tenant's
+    // MCPs in one list, so the ids are split by scope and each set replaced.
+    // Remove when the new MCP settings ship (admins then use
+    // POST /api/agents/:id/tenant-mcp).
+    const tenantScope = { scope: "tenant" as const };
+    const tenantIds = new Set(
+      (
+        await this.store.mcp
+          .find(
+            { ...tenantScope, _id: { $in: wanted.flatMap(idCandidates) } },
+            { projection: { _id: 1 } },
+          )
+          .toArray()
+      ).map((p) => String(p._id)),
+    );
+    const userChosen = await this.attachable(
+      agentKey,
+      wanted.filter((id) => !tenantIds.has(id)),
+      own,
+    );
+    const tenantChosen = await this.attachable(
+      agentKey,
+      wanted.filter((id) => tenantIds.has(id)),
+      tenantScope,
+    );
+    await this.attach(agentKey, userChosen, own);
+    await this.attach(agentKey, tenantChosen, tenantScope);
     return this.agentMcp(agentId);
   }
-  async createMcp(body: unknown) {
-    const profile = newMcpProfile(body);
-    if (mcpConfig(profile).command)
-      throw new ApiError(
-        422,
-        "Local command connectors are unavailable. Use an HTTP connector.",
-        "CONNECTOR_POLICY",
-      );
-    await this.store.mcp.insertOne(profile);
-    return { id: String(profile._id), name: profile.name };
+
+  // Tenant admins (/api/tenant/mcp*): the same operations for scope "tenant".
+  async listTenantMcp() {
+    this.tenantAdmin();
+    const tenant = await this.store.mcp
+      .find({ scope: "tenant" })
+      .sort({ name: 1 })
+      .toArray();
+    return { profiles: tenant.map((p) => this.tenantMcpSummary(p)) };
+  }
+  // The response says how many user MCPs the new name now shadows.
+  async createTenantMcp(body: unknown) {
+    const user = this.tenantAdmin();
+    const { profile, warnings } = await this.insertMcp(
+      body,
+      { scope: "tenant" },
+      user.id,
+    );
+    return this.withShadowed(profile, warnings);
+  }
+  async updateTenantMcp(id: string, body: unknown) {
+    const existing = await this.tenantMcp(id);
+    const { set, unset, profile } = mcpProfileUpdate(existing, body);
+    const warnings = await checkMcpUrl(profile.url!);
+    await this.saveUpdate(existing, set, unset);
+    return this.withShadowed(profile, warnings);
+  }
+  private async withShadowed(profile: McpDocument, warnings: string[]) {
+    const shadowedUserMcps = await this.shadowedCount(profile.name);
+    return {
+      ...this.tenantMcpSummary(profile, [
+        ...warnings,
+        ...(shadowedUserMcps
+          ? [
+              `${shadowedUserMcps} user MCP server${shadowedUserMcps === 1 ? " uses" : "s use"} the name ${profile.name}. Chats now use this tenant server and skip ${shadowedUserMcps === 1 ? "it" : "them"}.`,
+            ]
+          : []),
+      ]),
+      shadowedUserMcps,
+    };
+  }
+  async deleteTenantMcp(id: string) {
+    const existing = await this.tenantMcp(id);
+    await this.store.mcp.deleteOne({ _id: existing._id });
+    return { ok: true };
+  }
+  // Same shape as agentMcp, for the tenant's servers.
+  async agentTenantMcp(agentId: string) {
+    this.tenantAdmin();
+    const agentKey = await this.mcpAgentKey(agentId);
+    const tenant = await this.store.mcp
+      .find({ scope: "tenant" })
+      .sort({ name: 1 })
+      .toArray();
+    const profiles = tenant.map((p) => ({
+      ...this.tenantMcpSummary(p),
+      attached: (p.agentIds || []).includes(agentKey),
+    }));
+    return {
+      profileIds: profiles.filter((p) => p.attached).map((p) => p.id),
+      profiles,
+    };
+  }
+  async setAgentTenantMcp(agentId: string, ids: unknown) {
+    this.tenantAdmin();
+    const agentKey = await this.mcpAgentKey(agentId);
+    const scope = { scope: "tenant" };
+    await this.attach(
+      agentKey,
+      await this.attachable(agentKey, this.mcpIds(ids), scope),
+      scope,
+    );
+    return this.agentTenantMcp(agentId);
+  }
+  // Offboarding (Phase 5): removes a member's user MCPs in the current tenant.
+  async deleteUserMcps(ownerId: string) {
+    const { deletedCount } = await this.store.mcp.deleteMany({
+      scope: "user",
+      ownerId: userId(ownerId),
+    });
+    return { deleted: deletedCount };
   }
   async create(agentId: string, subAgents?: unknown, projectId?: unknown) {
     if (typeof agentId !== "string")
@@ -633,8 +1073,10 @@ export class PlatformService {
     const delegation = subAgentOptions(subAgents);
     // Checked before the thread exists, so a bad project needs no rollback.
     if (projectId !== undefined && projectId !== null)
-      await this.project(projectId);
-    const config: any = await this.configuration(agentId);
+      await this.project(projectId, "write");
+    const owner = currentUser()?.id;
+    // A new chat belongs to its creator, so their user MCPs load.
+    const config: any = await this.configuration(agentId, { ownerId: owner });
     if (delegation) config.subAgents = delegation;
     Object.assign(config, this.modeOptions());
     let host = "",
@@ -654,6 +1096,8 @@ export class PlatformService {
     }
     const session: Session = {
       _id: "sess_" + randomUUID(),
+      // Set once here and never changed.
+      ...(owner ? { userId: owner } : {}),
       runtimePolicyVersion: POLICY_VERSION,
       agentId,
       threadId: thread.threadId,
@@ -665,6 +1109,7 @@ export class PlatformService {
       timings: [],
       threadStartMs: thread.threadStartMs,
       runtimeStartup: thread.runtimeStartup,
+      mcpFingerprint: config.mcpFingerprint,
       ...(typeof projectId === "string" ? { projectId } : {}),
     };
     try {
@@ -684,6 +1129,7 @@ export class PlatformService {
     const filter: Record<string, unknown> = {
       archived: { $ne: true },
       runtimePolicyVersion: POLICY_VERSION,
+      ...ownerFilter("userId"),
     };
     if (projectId !== undefined) filter.projectId = projectIdOf(projectId);
     const sessions = await this.store.sessions
@@ -711,19 +1157,26 @@ export class PlatformService {
     return sessions.map((s) => publicSession(s, this.approvalModes));
   }
   // --- Projects: named folders; a session belongs to at most one. ---
+  // Ownership: the creator renames, deletes and files chats into a project.
+  // Others may see it only where they may see chats (access.ts).
   async projects(): Promise<Project[]> {
-    return this.store.projects.find().sort({ updatedAt: -1 }).toArray();
+    return this.store.projects
+      .find(ownerFilter("ownerId"))
+      .sort({ updatedAt: -1 })
+      .toArray();
   }
-  async project(id: unknown) {
+  async project(id: unknown, mode: Access = "read") {
     const project = await this.store.projects.findOne({ _id: projectIdOf(id) });
     if (!project)
       throw new ApiError(404, "Project not found", "PROJECT_NOT_FOUND");
-    return project;
+    return checkProject(project, mode);
   }
   async createProject(name: unknown) {
     const now = new Date().toISOString();
+    const owner = currentUser()?.id;
     const project: Project = {
       _id: "proj_" + randomUUID(),
+      ...(owner ? { ownerId: owner } : {}),
       name: projectName(name),
       createdAt: now,
       updatedAt: now,
@@ -733,8 +1186,9 @@ export class PlatformService {
   }
   async renameProject(id: unknown, name: unknown) {
     const next = projectName(name);
+    const { _id } = await this.project(id, "write");
     const project = await this.store.projects.findOneAndUpdate(
-      { _id: projectIdOf(id) },
+      { _id },
       { $set: { name: next, updatedAt: new Date().toISOString() } },
       { returnDocument: "after" },
     );
@@ -744,7 +1198,7 @@ export class PlatformService {
   }
   // Its sessions stay, as normal conversations.
   async deleteProject(id: unknown) {
-    const project = await this.project(id);
+    const project = await this.project(id, "write");
     await this.store.sessions.updateMany(
       { projectId: project._id },
       { $unset: { projectId: "" } },
@@ -754,7 +1208,7 @@ export class PlatformService {
   }
   // Moves a session into a project, or out of any with null.
   async setSessionProject(id: string, projectId: unknown) {
-    const session = await this.session(id);
+    const session = await this.sessionFor(id, "write");
     if (projectId === null) {
       await this.store.sessions.updateOne(
         { _id: id },
@@ -763,7 +1217,7 @@ export class PlatformService {
       const { projectId: _, ...rest } = session;
       return publicSession(rest, this.approvalModes);
     }
-    const project = await this.project(projectId);
+    const project = await this.project(projectId, "write");
     await this.store.sessions.updateOne(
       { _id: id },
       { $set: { projectId: project._id } },
@@ -805,7 +1259,10 @@ export class PlatformService {
     }
   }
   async subAgents(id: string) {
-    const agents = await this.owned(await this.session(id), "/agents");
+    const agents = await this.owned(
+      await this.sessionFor(id, "read"),
+      "/agents",
+    );
     return (Array.isArray(agents) ? agents : [])
       .map(publicSubAgent)
       .filter(Boolean);
@@ -813,7 +1270,7 @@ export class PlatformService {
   async subAgent(id: string, agentId: string) {
     const transcript = publicSubAgentTranscript(
       await this.owned(
-        await this.session(id),
+        await this.sessionFor(id, "read"),
         "/agents/" + encodeURIComponent(validAgentId(agentId)),
       ),
     );
@@ -822,7 +1279,7 @@ export class PlatformService {
   }
   async interruptAgent(id: string, agentId: string) {
     await this.owned(
-      await this.session(id),
+      await this.sessionFor(id, "write"),
       "/agents/" + encodeURIComponent(validAgentId(agentId)) + "/interrupt",
       "POST",
       {},
@@ -844,8 +1301,8 @@ export class PlatformService {
         "Approval modes are not enabled",
         "FEATURE_DISABLED",
       );
+    const session = await this.sessionFor(id, "write");
     const next = approvalMode(mode, this.approvalModes);
-    const session = await this.session(id);
     // Saved first so a later resume applies it even if the live update fails.
     await this.store.sessions.updateOne(
       { _id: id },
@@ -855,7 +1312,12 @@ export class PlatformService {
     return { mode: next };
   }
   async resume(session: Session) {
-    const config: any = await this.configuration(session.agentId, session.cwd);
+    // The stored owner, never the caller: resume also runs for admins reading
+    // a chat, cold resume, and background work without a user.
+    const config: any = await this.configuration(session.agentId, {
+      cwd: session.cwd,
+      ownerId: session.userId,
+    });
     Object.assign(config, this.modeOptions(session.approvalMode));
     if (session.settings?.model) config.model = session.settings.model;
     if (session.settings?.effort)
@@ -879,6 +1341,14 @@ export class PlatformService {
         { _id: session._id },
         { $set: { status: "active" } },
       );
+    // agent-core now holds (or has queued) this MCP config for the thread.
+    if (session.mcpFingerprint !== config.mcpFingerprint) {
+      await this.store.sessions.updateOne(
+        { _id: session._id },
+        { $set: { mcpFingerprint: config.mcpFingerprint } },
+      );
+      session.mcpFingerprint = config.mcpFingerprint;
+    }
     return snapshot;
   }
   async message(id: string, text: string, clientId: string) {
@@ -894,7 +1364,7 @@ export class PlatformService {
         "A valid clientId is required for idempotency",
         "INVALID_INPUT",
       );
-    const s = await this.session(id);
+    const s = await this.sessionFor(id, "write");
     await this.resume(s);
     const key = `${id}:user:${clientId}`;
     try {
@@ -1038,7 +1508,7 @@ export class PlatformService {
     });
   }
   async history(id: string) {
-    const s = await this.session(id);
+    const s = await this.sessionFor(id, "read");
     let snapshot = null,
       recoveryError = null,
       recoveryErrorRef: { code: string; requestId?: string } | null = null;
@@ -1063,9 +1533,11 @@ export class PlatformService {
         ...errorFields(e),
       });
     }
-    const saved = (await this.session(id)).plan;
+    // Re-read once: recovery above may have changed the stored session.
+    const fresh = await this.session(id);
+    const saved = fresh.plan;
     return {
-      session: publicSession(await this.session(id), this.approvalModes),
+      session: publicSession(fresh, this.approvalModes),
       messages: orderConversation(
         await this.store.messages.find({ sessionId: id }).toArray(),
       ),
@@ -1074,11 +1546,9 @@ export class PlatformService {
         : null,
       // Saved plan, also available when agent-core is unreachable.
       plan: publicStoredPlan(saved),
-      approvals: ((await this.session(id)).approvals || [])
-        .map(publicApproval)
-        .filter(Boolean),
-      goalReview: (await this.session(id)).goalReview || null,
-      goalHistory: (await this.session(id)).goalHistory || [],
+      approvals: (fresh.approvals || []).map(publicApproval).filter(Boolean),
+      goalReview: fresh.goalReview || null,
+      goalHistory: fresh.goalHistory || [],
       recoveryError: recoveryError
         ? `Conversation recovery: ${recoveryError}`
         : null,
@@ -1192,7 +1662,7 @@ export class PlatformService {
       Object.keys(params).length
     )
       throw new ApiError(400, "Help takes no arguments", "INVALID_INPUT");
-    const session = await this.session(id);
+    const session = await this.sessionFor(id, "write");
     const key = `${id}:command:${request.clientId}`;
     const existing = await this.store.messages.findOne({ _id: key });
     const replay = (message: Message) => {
@@ -1244,7 +1714,7 @@ export class PlatformService {
           ? {
               help: "/goal <objective> — Set a goal\n/goal show — View goal status\n/goal pause — Pause the goal\n/goal resume — Resume the goal\n/goal budget <tokens> — Set a token budget\n/goal clear — Clear the goal\n/fork — Create a conversation branch\n/compact — Compact context\n/model <identifier> — Change the model\n/effort <level> — Change reasoning effort\n/archive — Archive this conversation\n/unarchive — Restore this conversation\n\nPrefix a literal command with // to send it as a question.",
             }
-          : await this.capability(id, method, params);
+          : await this.capability(id, method, params, session);
       command = {
         ...message.command!,
         state: "succeeded",
@@ -1268,7 +1738,15 @@ export class PlatformService {
     await this.store.messages.updateOne({ _id: key }, { $set: { command } });
     return { commandMessage: { ...message, command } };
   }
-  async capability(id: string, method: string, params: unknown) {
+  // Reading the goal is the only read; every other operation changes the
+  // conversation and is the owner's. `loaded` is a session the caller has
+  // already checked for write, so it is not loaded twice.
+  async capability(
+    id: string,
+    method: string,
+    params: unknown,
+    loaded?: Session,
+  ) {
     try {
       businessCapabilityParams(method, params);
     } catch (error) {
@@ -1279,7 +1757,12 @@ export class PlatformService {
         { cause: error },
       );
     }
-    const s = await this.session(id);
+    const s =
+      loaded ??
+      (await this.sessionFor(
+        id,
+        method === "thread/goal/get" ? "read" : "write",
+      ));
     await this.resume(s);
     const result = await this.owned(s, "/capabilities", "POST", {
       method,
@@ -1437,7 +1920,9 @@ export class PlatformService {
     }
   }
   async goalHistory(id: string) {
-    return { entries: (await this.session(id)).goalHistory || [] };
+    return {
+      entries: (await this.sessionFor(id, "read")).goalHistory || [],
+    };
   }
   // The agent marks a goal complete; the user then accepts it or reopens it
   // with feedback. Reopening makes the goal active again for the agent.
@@ -1452,7 +1937,13 @@ export class PlatformService {
       typeof body.feedback === "string" ? body.feedback.trim() : "";
     if (feedback.length > 4000)
       throw new ApiError(400, "Feedback is too long", "INVALID_REVIEW");
-    const { goal } = await this.capability(id, "thread/goal/get", {});
+    const session = await this.sessionFor(id, "write");
+    const { goal } = await this.capability(
+      id,
+      "thread/goal/get",
+      {},
+      session,
+    );
     if (!goal || goal.status !== "complete")
       throw new ApiError(
         409,
@@ -1479,9 +1970,12 @@ export class PlatformService {
     };
     if (decision === "reopened") {
       await this.store.sessions.updateOne({ _id: id }, log);
-      const reopened = await this.capability(id, "thread/goal/set", {
-        status: "active",
-      });
+      const reopened = await this.capability(
+        id,
+        "thread/goal/set",
+        { status: "active" },
+        session,
+      );
       return { goal: reopened.goal, review };
     }
     await this.store.sessions.updateOne(

@@ -121,6 +121,11 @@ interface Thread {
   // Text sent with turn/start, for the trace of the turn it starts.
   input?: string;
   loaded: boolean;
+  // MCP fingerprint the runtime thread was loaded with, from the platform.
+  mcpFingerprint?: string;
+  // A newer MCP configuration that arrived during a turn; applied before the
+  // next turn starts, because the runtime ignores config on a running thread.
+  pendingResume?: { params: any; mcpFingerprint: string };
   // Owning tenant; also kept in the runtime's thread record for restarts.
   tenantId?: string;
   threadStartMs: number;
@@ -201,6 +206,14 @@ export function goalTokenDelta(usage: any) {
 // which a single large frame (an MCP tool result, a long replay) does on a
 // healthy client. Only a subscriber whose unsent data keeps growing is dropped.
 const maxBufferedBytes = 8 * 1024 * 1024;
+// The platform's hash of a thread's MCP configuration; opaque here.
+function parseFingerprint(value: unknown) {
+  if (
+    value !== undefined &&
+    (typeof value !== "string" || !/^[\w:.-]{1,200}$/.test(value))
+  )
+    throw new HttpError(400, "Invalid MCP fingerprint");
+}
 function send(res: Response, chunk: string) {
   res.write(chunk);
   return res.writableLength <= maxBufferedBytes;
@@ -458,9 +471,11 @@ export class ThreadManager {
       approvalNameHeuristic,
       tenantId,
       skills,
+      mcpFingerprint,
       ...start
     } = params || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
+    parseFingerprint(mcpFingerprint);
     const tenant = parseTenant(tenantId);
     skillSet(skills);
     validateRequest("thread/start", start);
@@ -481,6 +496,7 @@ export class ThreadManager {
       this.roots.add(t.id);
       this.setMode(t.id, approvalMode, approvalNameHeuristic);
       t.loaded = true;
+      t.mcpFingerprint = mcpFingerprint;
       t.threadStartMs = performance.now() - started;
       return { threadId: t.id, threadStartMs: t.threadStartMs };
     } finally {
@@ -489,8 +505,14 @@ export class ThreadManager {
   }
   async resume(id: string, input: any = {}) {
     // Approval mode fields are Truex settings, not runtime parameters.
-    const { approvalMode, approvalNameHeuristic, ...params } = input || {};
+    const {
+      approvalMode,
+      approvalNameHeuristic,
+      mcpFingerprint,
+      ...params
+    } = input || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
+    parseFingerprint(mcpFingerprint);
     if (params.tenantId !== undefined) parseTenant(params.tenantId);
     if (params.skills !== undefined) skillSet(params.skills);
     return this.serial(id, async () => {
@@ -499,59 +521,101 @@ export class ThreadManager {
       const moded = this.modes.has(id) || approvalMode !== undefined;
       this.setMode(id, approvalMode, approvalNameHeuristic);
       if (moded) this.reevaluate(t);
-      if (t.loaded) return this.snapshot(id);
-      this.reserve();
-      try {
-        this.redactor.remember(params);
-        const result = await this.runtime.request("thread/resume", {
-          ...params,
-          threadId: id,
-        });
-        t.loaded = true;
-        this.roots.add(id);
-        // Rebuild helper agents from the restored history.
-        for (const turn of result.thread?.turns ?? []) {
-          if (typeof turn?.id === "string") this.seeTurn(t, turn.id);
-          for (const item of turn?.items ?? []) this.collab(id, item);
+      if (t.loaded) {
+        // No fingerprint, or the same one: the loaded config is current.
+        if (mcpFingerprint === undefined) return this.snapshot(id);
+        if (mcpFingerprint === t.mcpFingerprint) {
+          t.pendingResume = undefined;
+          return this.snapshot(id);
         }
-        const active = result.thread?.turns?.find(
-          (turn: any) => turn.status === "inProgress",
-        );
-        t.state = active
-          ? { kind: "running", turnId: active.id }
-          : { kind: "idle" };
-        this.watch(t);
-        // Recover the goal after an agent-core restart; goals are optional.
-        try {
-          this.setGoal(
-            t,
-            (await this.runtime.request("thread/goal/get", { threadId: id }))
-              ?.goal ?? null,
-          );
-        } catch (e) {
-          log("debug", "goal recovery failed", {
-            threadId: id,
-            ...errorFields(e),
-          });
-          this.setGoal(t, null);
+        // The runtime ignores config for a running thread; apply it before
+        // the next turn instead. A draining pod starts no new turns, so it
+        // keeps serving the loaded thread.
+        if (t.state.kind !== "idle" || this.draining) {
+          t.pendingResume = { params, mcpFingerprint };
+          return this.snapshot(id);
         }
-        return this.snapshot(id);
-      } catch (e) {
-        if (
-          /thread.*(not found|does not exist)|no rollout found|unable to find.*thread/i.test(
-            rpcText(e),
-          )
-        )
-          throw new HttpError(
-            410,
-            "Thread history is missing from this pod",
-            "THREAD_LOST",
-          );
-        throw e;
-      } finally {
-        this.reservations--;
+        await this.unload(t);
       }
+      return this.load(t, params, mcpFingerprint);
     });
+  }
+  // Releases agent-core's subscription to a loaded runtime thread. With no
+  // subscribers left, the next thread/resume shuts the idle thread down and
+  // loads it again from its history with the new config.
+  private async unload(t: Thread) {
+    await this.runtime.request("thread/unsubscribe", { threadId: t.id });
+    t.loaded = false;
+    this.unwatch(t);
+    // The new configuration may offer different tools.
+    const mode = this.modes.get(t.id);
+    if (mode) mode.tools = undefined;
+  }
+  // Applies a configuration that arrived while a turn was running. Runs
+  // inside serial(), before the next turn starts.
+  private async applyPending(t: Thread) {
+    const pending = t.pendingResume;
+    if (!pending || !t.loaded || t.state.kind !== "idle") return;
+    // load() clears the pending change once it succeeds.
+    await this.unload(t);
+    await this.load(t, pending.params, pending.mcpFingerprint);
+  }
+  // Cold thread/resume. Runs inside serial().
+  private async load(t: Thread, params: any, mcpFingerprint?: string) {
+    const id = t.id;
+    this.reserve();
+    try {
+      this.redactor.remember(params);
+      const result = await this.runtime.request("thread/resume", {
+        ...params,
+        threadId: id,
+      });
+      t.loaded = true;
+      t.mcpFingerprint = mcpFingerprint;
+      t.pendingResume = undefined;
+      this.roots.add(id);
+      // Rebuild helper agents from the restored history.
+      for (const turn of result.thread?.turns ?? []) {
+        if (typeof turn?.id === "string") this.seeTurn(t, turn.id);
+        for (const item of turn?.items ?? []) this.collab(id, item);
+      }
+      const active = result.thread?.turns?.find(
+        (turn: any) => turn.status === "inProgress",
+      );
+      t.state = active
+        ? { kind: "running", turnId: active.id }
+        : { kind: "idle" };
+      this.watch(t);
+      // Recover the goal after an agent-core restart; goals are optional.
+      try {
+        this.setGoal(
+          t,
+          (await this.runtime.request("thread/goal/get", { threadId: id }))
+            ?.goal ?? null,
+        );
+      } catch (e) {
+        log("debug", "goal recovery failed", {
+          threadId: id,
+          ...errorFields(e),
+        });
+        this.setGoal(t, null);
+      }
+      return this.snapshot(id);
+    } catch (e) {
+      if (
+        /thread.*(not found|does not exist)|no rollout found|unable to find.*thread/i.test(
+          rpcText(e),
+        )
+      )
+        throw new HttpError(
+          410,
+          "Thread history is missing from this pod",
+          "THREAD_LOST",
+        );
+      throw e;
+    } finally {
+      this.reservations--;
+    }
   }
   // A conversation is visible only to its own tenant; another tenant's id
   // reads as missing. Callers that send no tenant keep today's behaviour.
@@ -597,6 +661,7 @@ export class ThreadManager {
         return { turnId, steer: true };
       }
       if (explicitSteer) throw new HttpError(409, "No running turn to steer");
+      await this.applyPending(t);
       t.state = { kind: "starting" };
       t.diff = "";
       t.clock = {
@@ -1946,6 +2011,8 @@ export class ThreadManager {
         const fork = this.thread(result.thread.id);
         this.roots.add(fork.id);
         fork.loaded = true;
+        // A fork is built from its source's loaded profile.
+        fork.mcpFingerprint = t.mcpFingerprint;
       }
       // Keep snapshots current even if the runtime sends no notification.
       if (method === "thread/goal/get" || method === "thread/goal/set") {

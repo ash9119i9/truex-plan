@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Request, Response, NextFunction } from "express";
 import { httpError } from "../../shared/errors";
 import { tenantContext, type TenantRef, type TenantResolver } from "./tenant";
+import { userContext, type UserRef, type UserResolver } from "./user";
 import {
   errorFields,
   log,
@@ -44,6 +45,18 @@ export function tenantMiddleware(
   };
 }
 
+// Resolves the request's user once, next to its tenant.
+export function userMiddleware(resolver: UserResolver) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      res.locals.user = resolver.resolve(req);
+    } catch (error) {
+      return next(error);
+    }
+    next();
+  };
+}
+
 // Runs a handler inside its request context. Set per handler because async
 // context does not survive the body parser's stream events.
 export const route =
@@ -57,8 +70,10 @@ export const route =
           .then(() => fn(req, res))
           .catch(next),
       );
+    const user: UserRef | undefined = res.locals.user;
+    const withUser = () => (user ? userContext.run(user, run) : run());
     const tenant: TenantRef | undefined = res.locals.tenant;
-    return tenant ? tenantContext.run(tenant, run) : run();
+    return tenant ? tenantContext.run(tenant, withUser) : withUser();
   };
 
 export function errorHandler(
@@ -75,6 +90,7 @@ export function errorHandler(
     path: req.path,
     sessionId: res.locals.sessionId,
     tenantId: res.locals.tenant?.id,
+    userId: res.locals.user?.id,
     status,
     code: body.code,
   };

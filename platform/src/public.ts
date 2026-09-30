@@ -23,6 +23,7 @@ export const POLICY_VERSION = 1;
 export function publicSession(s: Session, approvalModes?: ApprovalModesConfig) {
   return {
     _id: s._id,
+    ...(s.userId ? { userId: s.userId } : {}),
     agentId: s.agentId,
     title: s.title,
     status: s.status,

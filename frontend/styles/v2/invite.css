@@ -1,0 +1,141 @@
+/* Invite acceptance page, left pane and frame (join-tenant-v3-dev-spec.html, Layout and Left pane components).
+   Every rule is under .join-page and uses jp- class names, so base.css's global .field/.bar/.eyebrow,
+   chat.css's .steps and shell.css's .brand never apply here. Keyframes are prefixed jp- for the same reason.
+   Tokens come from tokens.css; the tints and board tokens come from invite-board.css. Imports nothing. */
+
+.join-page {
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: 12px;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+.join-page *,
+.join-page *::before,
+.join-page *::after { box-sizing: border-box; }
+.join-page button,
+.join-page input { font: inherit; color: inherit; }
+.join-page :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 8px; }
+
+@keyframes jp-rise { from { opacity: 0; transform: translateY(6px); } }
+@keyframes jp-spin { to { transform: rotate(360deg); } }
+@keyframes jp-shimmer { 50% { opacity: .55; } }
+
+/* ---------- left pane ---------- */
+.join-page .jp-left { position: relative; display: flex; flex-direction: column; padding: 8px 28px 20px; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+
+.join-page .jp-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; flex: none; }
+.join-page .jp-brand { display: flex; align-items: center; gap: 6px; }
+.join-page .jp-brand-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--ink); color: var(--bg); }
+.join-page .jp-brand-word { font-weight: 700; font-size: 17px; letter-spacing: -.03em; }
+.join-page .jp-brand-slash { color: var(--line-strong); font-size: 16px; }
+.join-page .jp-brand-sub { color: var(--ink-2); font-weight: 500; }
+
+.join-page .jp-seg { display: inline-flex; padding: 2px; border-radius: 9px; background: var(--surface-3); border: 1px solid var(--line); }
+.join-page .jp-seg button { height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--ink-2); font-size: 12px; cursor: pointer; }
+.join-page .jp-seg button:hover { color: var(--ink); }
+.join-page .jp-seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 500; }
+
+.join-page .jp-invite { flex: 1; width: 100%; max-width: 460px; margin: 0 auto; padding-block: clamp(20px, 7vh, 72px) 20px; display: flex; flex-direction: column; gap: 20px; animation: jp-rise .35s ease-out; }
+
+.join-page h1 { margin: 0; font-size: clamp(30px, 4vw, 42px); line-height: 1.06; font-weight: 600; letter-spacing: -.035em; text-wrap: balance; overflow-wrap: anywhere; }
+.join-page h1 em { font-family: var(--font-accent); font-style: italic; font-weight: 400; font-size: 1.04em; letter-spacing: -.01em; color: var(--accent-fg); padding-right: .04em; }
+
+/* who invited you: the workspace, one compact line above the headline */
+.join-page .jp-from { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 12px; }
+.join-page .jp-ws-logo { width: 38px; height: 38px; border-radius: 11px; background: var(--ink); color: var(--bg); display: grid; place-items: center; font-weight: 800; font-size: 15px; flex: none; }
+.join-page .jp-from-text { flex: 1; min-width: 0; }
+.join-page .jp-from-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: 14px; color: var(--ink-2); }
+.join-page .jp-from-line b { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.join-page .jp-from-sub { font-size: 12.5px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.join-page .jp-role-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-fg); font-size: 12px; font-weight: 600; }
+.join-page .jp-exp { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border-radius: 999px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; flex: none; }
+.join-page .jp-exp .jp-tick { width: 6px; height: 6px; border-radius: 50%; background: var(--success-text); }
+.join-page .jp-exp.bad { background: var(--error-bg); color: var(--error-text); }
+.join-page .jp-exp.bad .jp-tick { background: var(--error-text); }
+@media (max-width: 520px) { .join-page .jp-from-text { flex-basis: calc(100% - 50px); } .join-page .jp-exp { margin-left: 50px; } }
+
+/* join card */
+.join-page .jp-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-md); }
+.join-page .jp-join { padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+.join-page .jp-eyebrow { font: 500 11px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.join-page .jp-mono { font-family: var(--font-mono); }
+
+.join-page .jp-check-h { display: flex; justify-content: space-between; align-items: baseline; font-size: 12.5px; font-weight: 500; color: var(--ink-2); }
+.join-page .jp-check-h .jp-mono { font-size: 11.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.join-page .jp-bar { height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; margin-top: 8px; }
+.join-page .jp-bar span { display: block; height: 100%; border-radius: 4px; background: var(--accent); transition: width .45s cubic-bezier(.2,.8,.2,1), background .2s; }
+.join-page .jp-bar.bad span { background: var(--error-text); }
+
+.join-page .jp-steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.join-page .jp-steps li { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--ink-3); min-width: 0; transition: color .2s; }
+.join-page .jp-steps li > span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.join-page .jp-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-strong); display: grid; place-items: center; flex: none; transition: all .2s; font: 600 10px var(--font-mono); }
+.join-page .jp-steps li.is-on { color: var(--ink); font-weight: 500; }
+.join-page .jp-steps li.is-on .jp-dot { border-color: var(--accent-2); color: var(--accent-fg); }
+.join-page .jp-steps li.is-busy .jp-dot { border-color: var(--accent-2); border-top-color: transparent; animation: jp-spin .8s linear infinite; }
+.join-page .jp-steps li.is-done { color: var(--ink-2); }
+.join-page .jp-steps li.is-done .jp-dot { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.join-page .jp-steps li.is-bad { color: var(--error-text); }
+.join-page .jp-steps li.is-bad .jp-dot { background: var(--error-bg); border-color: var(--error-text); color: var(--error-text); }
+@media (max-width: 420px) { .join-page .jp-steps { grid-template-columns: minmax(0, 1fr); } }
+
+.join-page .jp-fields { display: flex; flex-direction: column; gap: 14px; }
+.join-page .jp-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.join-page .jp-field-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12.5px; font-weight: 500; color: var(--ink-2); }
+.join-page .jp-field-hint { font-size: 12px; font-family: var(--font-mono); font-weight: 400; color: var(--ink-3); }
+.join-page .jp-field-hint.ok { color: var(--success-text); }
+.join-page .jp-input-wrap { position: relative; }
+.join-page .jp-input { width: 100%; height: 40px; padding: 0 12px 0 44px; border: 1px solid var(--border-control); border-radius: 10px; background: var(--surface); font-size: 14px; transition: border-color .15s, box-shadow .15s; }
+.join-page .jp-input::placeholder { color: var(--ink-3); }
+.join-page .jp-input:focus { outline: none; border-color: var(--accent-2); box-shadow: 0 0 0 3px var(--accent-soft); }
+.join-page .jp-input[readonly] { background: var(--surface-3); color: var(--ink-2); }
+.join-page #jp-email { cursor: not-allowed; }
+.join-page .jp-input[aria-invalid="true"] { border-color: var(--error-text); }
+.join-page .jp-input-av { position: absolute; left: 8px; top: 8px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; border: 1.5px dashed var(--accent-2); color: var(--accent-fg); transition: all .25s; pointer-events: none; }
+.join-page .jp-input-av.is-set { border: 0; background: var(--ice-dot); color: var(--on-accent); }
+.join-page .jp-input-lock { position: absolute; left: 14px; top: 13px; color: var(--ink-3); }
+.join-page .jp-err { font-size: 12px; color: var(--error-text); }
+.join-page .jp-err[hidden] { display: none; }
+
+.join-page .jp-btn { height: 44px; border: 0; border-radius: 12px; background: var(--accent); color: var(--on-accent); font-size: 15px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; transition: background .15s, transform .12s; }
+.join-page .jp-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.join-page .jp-btn:active:not(:disabled) { background: var(--accent-pressed); transform: scale(.985); }
+.join-page .jp-btn:disabled { cursor: progress; }
+.join-page .jp-btn > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.join-page .jp-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgb(255 255 255 / 35%); border-top-color: var(--on-accent); animation: jp-spin .7s linear infinite; flex: none; }
+
+.join-page .jp-banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; font-size: 13px; }
+.join-page .jp-banner.warn { background: var(--warning-bg); color: var(--warning-text); }
+.join-page .jp-banner.ok { background: var(--success-bg); color: var(--success-text); }
+.join-page .jp-banner svg { flex: none; margin-top: 2px; }
+.join-page .jp-banner b { font-weight: 600; }
+.join-page .jp-banner > div { min-width: 0; overflow-wrap: anywhere; }
+
+.join-page .jp-fine { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 14px; font-size: 12.5px; color: var(--ink-3); }
+.join-page .jp-fine a { color: var(--accent-fg); text-decoration: none; }
+.join-page .jp-fine a:hover { text-decoration: underline; }
+
+/* loading: a quiet skeleton of the card */
+.join-page .jp-skeleton { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.join-page .jp-skeleton span { display: block; height: 14px; border-radius: 6px; background: var(--surface-3); animation: jp-shimmer 1.4s ease-in-out infinite; }
+.join-page .jp-skeleton span:nth-child(1) { width: 40%; }
+.join-page .jp-skeleton span:nth-child(3) { height: 44px; border-radius: 12px; }
+
+/* ---------- responsive: one column, board below ---------- */
+@media (max-width: 960px) {
+  .join-page { height: auto; min-height: 100vh; grid-template-columns: minmax(0, 1fr); padding: 0 0 16px; }
+  .join-page .jp-left { padding: 8px 16px 12px; overflow: visible; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .join-page .jp-left,
+  .join-page .jp-left *,
+  .join-page .jp-left *::before,
+  .join-page .jp-left *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}

@@ -43,7 +43,13 @@ test(
     const home = mkdtempSync(join(tmpdir(), "truex-http-"));
     mkdirSync(join(home, "workspace"));
     const mongo = await MongoMemoryServer.create();
-    const store = await new Store(mongo.getUri(), "http_test").connect();
+    // The catalog is pinned on both sides: the spawned platform loads
+    // platform/.env, whose CATALOG_MONGO_DB would otherwise win.
+    const store = await new Store(
+      mongo.getUri(),
+      "http_test",
+      "http_test",
+    ).connect();
     const corePort = await port(),
       platformPort = await port();
     let count = 0;
@@ -154,6 +160,9 @@ test(
       PORT: String(platformPort),
       MONGO_URI: mongo.getUri(),
       MONGO_DB: "http_test",
+      CATALOG_MONGO_DB: "http_test",
+      // Exempt from the private-address check, so no real DNS lookup runs.
+      MCP_ALLOWED_PRIVATE_HOSTS: "example.com",
       AGENT_CORE_URLS: `http://127.0.0.1:${corePort}`,
       AGENT_WORKSPACE: join(home, "workspace"),
     });
