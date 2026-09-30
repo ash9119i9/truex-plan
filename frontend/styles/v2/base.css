@@ -14,7 +14,6 @@
   --surface-hover: var(--surface-3);
   --ring: var(--accent-fg);
   --good: var(--success-text);
-  --warn-bg: var(--warning-bg);
   --warn-fg: var(--warning-text);
   --warn-border: color-mix(in srgb, var(--warning-text) 25%, var(--line));
   --danger: var(--error-text);

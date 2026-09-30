@@ -7,12 +7,25 @@ import { Hero } from "@/components/v2/hero";
 import { SearchPalette } from "@/components/v2/search-palette";
 import {
   Composer,
+  HELD_PLACEHOLDER,
   PLACEHOLDERS,
+  STOPPING_PLACEHOLDER,
+  SlashMenu,
   useRotatingPlaceholder,
 } from "@/components/v2/composer";
 import { FloatingDock } from "@/components/v2/floating-dock";
 import { Popover } from "@/components/v2/popover";
-import { AgentMenu } from "@/components/v2/agent-menu";
+import { AgentCard, AgentMenu } from "@/components/v2/agent-menu";
+import { ConnectedCarts } from "@/components/connected-tools";
+import { SessionBanner, SessionLockbar } from "@/components/v2/session-banner";
+import { ErrorToast } from "@/components/v2/toast";
+import {
+  cartState,
+  errorToast,
+  sessionHealth,
+  type McpServerInput,
+} from "@/lib/vm-chrome";
+import { streamError } from "@/lib/vm-stream";
 import { AgentDialog } from "@/components/v2/agent-dialog";
 import { tintOf } from "@/lib/agent-look";
 import { UserMenu } from "@/components/v2/user-menu";
@@ -32,7 +45,7 @@ import {
 import { SessionActivity } from "@/components/session-activity";
 import { McpSettings } from "@/components/mcp-settings";
 import { AssistantTools } from "@/components/assistant-tools";
-import { RequestCard } from "@/components/request-card";
+import { RequestDock } from "@/components/request-card";
 import { applyPlanEvent, awaitingApproval, type PlanStep } from "@/lib/plan";
 import { Sheet } from "@/components/sheet";
 import { GoalBar } from "@/components/goal-bar";
@@ -52,7 +65,6 @@ import {
   warnFailure,
   type ErrorRef as ErrorRefValue,
 } from "@/lib/api";
-import { ErrorRef } from "@/components/error-ref";
 import {
   applySubAgentEvent,
   defaultDelegation,
@@ -159,12 +171,34 @@ export default function Home() {
     [helperOpen, setHelperOpen] = useState(false),
     [vw, setVw] = useState(1440),
     [paletteOpen, setPaletteOpen] = useState(false),
-    [pop, setPop] = useState<null | "agent" | "user">(null),
+    [pop, setPop] = useState<null | "agent" | "agent-card" | "user">(null),
     [agentDialogOpen, setAgentDialogOpen] = useState(false),
     [composerFocused, setComposerFocused] = useState(false),
     [shellReady, setShellReady] = useState(false);
   const agentBtn = useRef<HTMLButtonElement>(null),
-    userBtn = useRef<HTMLButtonElement>(null);
+    userBtn = useRef<HTMLButtonElement>(null),
+    pillRef = useRef<HTMLButtonElement>(null);
+  // Turn chrome for the topbar pill: when the running turn started, a send
+  // waiting for its turn, and a stop waiting for the turn to settle.
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null),
+    [sendPending, setSendPending] = useState(false),
+    [stopping, setStopping] = useState(false),
+    // Latest mcp.status per server name for this session.
+    [mcpStatusByName, setMcpStatusByName] = useState<
+      Record<
+        string,
+        Pick<McpServerInput, "status" | "failureReason" | "toolCount">
+      >
+    >({}),
+    // The turn selected in the chat and the session panel, shared by both.
+    [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
+  const resetTurnChrome = () => {
+    setTurnStartedAt(null);
+    setSendPending(false);
+    setStopping(false);
+    setMcpStatusByName({});
+    setSelectedTurnId(null);
+  };
   // Follow activity: a new goal, plan or helper brings its tab forward.
   // Auto-opening uses the list size and never pushes an open sidebar out.
   const follow = useFollowActivity({
@@ -271,6 +305,7 @@ export default function Home() {
           : saved,
       );
       setEvents([]);
+      resetTurnChrome();
 
       seen.current.clear();
       setPending(data.snapshot?.pending || []);
@@ -406,10 +441,12 @@ export default function Home() {
             "subagent.completed",
             "turn.started",
             "turn.completed",
+            "plan.updated",
+            "diff.updated",
             "error",
           ].includes(event.type)
         )
-          setEvents((old) => [...old.slice(-99), event]);
+          setEvents((old) => [...old.slice(-499), event]);
         const d = event.data;
         setEntries((old) => applyChatEvent(old, event));
         setSubAgents((old) => applySubAgentEvent(old, event));
@@ -419,6 +456,10 @@ export default function Home() {
           case "snapshot":
             setPending(d.pending);
             setRunning(d.state.kind !== "idle");
+            if (d.state.kind === "idle") {
+              setTurnStartedAt(null);
+              setStopping(false);
+            }
             setGoal(d.goal || null);
             syncSessionGoal(id, d.goal || null);
             setTimings((old) => [
@@ -437,6 +478,8 @@ export default function Home() {
             break;
           case "turn.started":
             setRunning(true);
+            setTurnStartedAt(Date.now());
+            setSendPending(false);
             setFailure(null);
             setRetrying(false);
 
@@ -454,6 +497,9 @@ export default function Home() {
             break;
           case "turn.completed":
             setRunning(false);
+            setTurnStartedAt(null);
+            setSendPending(false);
+            setStopping(false);
             setRetrying(false);
             if (d.turn?.error?.message) {
               const turnId = d.turn.id ?? event.turnId;
@@ -470,6 +516,18 @@ export default function Home() {
                 ...old.filter((t) => t.turnId !== d.timing.turnId),
                 d.timing,
               ]);
+            break;
+          case "mcp.status":
+            if (typeof d?.name === "string")
+              setMcpStatusByName((old) => ({
+                ...old,
+                [d.name]: {
+                  status: d.status ?? null,
+                  failureReason: d.failureReason ?? null,
+                  toolCount:
+                    typeof d.toolCount === "number" ? d.toolCount : null,
+                },
+              }));
             break;
           case "approval.requested":
             setPending((old) => [
@@ -488,6 +546,7 @@ export default function Home() {
               break;
             }
             setRetrying(false);
+            setSendPending(false);
             setError(d.message || "The request could not be completed.", {
               ...(typeof d.code === "string" ? { code: d.code } : {}),
               ...(typeof d.turnId === "string" ? { turnId: d.turnId } : {}),
@@ -553,6 +612,7 @@ export default function Home() {
     setModeError("");
     setEntries([]);
     setEvents([]);
+    resetTurnChrome();
 
     setPending([]);
     setSubAgents(emptySubAgents);
@@ -677,8 +737,17 @@ export default function Home() {
     setError("");
     setEntries((old) => [
       ...old,
-      { kind: "message", id, role: "user", text: value, delivery: "pending" },
+      {
+        kind: "message",
+        id,
+        role: "user",
+        text: value,
+        delivery: "pending",
+        at: new Date().toISOString(),
+      },
     ]);
+    // A steer joins the running turn, so there is no turn to wait for.
+    if (!running) setSendPending(true);
     try {
       if (!sessionRef.current) setBusy(true);
       const active = await ensureSession();
@@ -700,6 +769,7 @@ export default function Home() {
       );
     } catch (e) {
       if (token !== generation.current) return;
+      setSendPending(false);
       reportError(e);
       setEntries((old) =>
         old.map((e) =>
@@ -852,6 +922,7 @@ export default function Home() {
               role: "user",
               text: commandText,
               delivery: "pending",
+              at: new Date().toISOString(),
               command: {
                 method: input.method,
                 params: input.params,
@@ -983,7 +1054,7 @@ export default function Home() {
     "mod+.": toggleActivity,
     "mod+j": newChat,
   });
-  const togglePop = (next: "agent" | "user") =>
+  const togglePop = (next: "agent" | "agent-card" | "user") =>
     setPop((cur) => (cur === next ? null : next));
   // The list refreshes with the server-generated title; the open session may not.
   const crumbTitle = session
@@ -1008,6 +1079,7 @@ export default function Home() {
               : "working"
             : "ready";
   function stopTurn() {
+    setStopping(true);
     void (async () => {
       const id = session!._id;
       try {
@@ -1024,12 +1096,39 @@ export default function Home() {
         await transport.interrupt(id).catch((e) => {
           // The turn already ended, so there is nothing to stop.
           if (!(e instanceof ApiRequestError && e.status === 409)) throw e;
+          setStopping(false);
         });
       } catch (e) {
+        setStopping(false);
         reportError(e);
       }
     })();
   }
+  const chatHealth = sessionHealth(session);
+  const orphaned = chatHealth?.kind === "orphaned";
+  const held = pending.length > 0;
+  const toolIssues = Object.entries(mcpStatusByName).filter(([name, s]) =>
+    ["auth", "failed"].includes(cartState({ id: name, name, ...s })),
+  ).length;
+  const projectName = session
+    ? session.projectId
+      ? projects.projects.find((p) => p._id === session.projectId)?.name
+      : null
+    : pendingProject?.name;
+  // Turn number: one per distinct turn the user started.
+  const turnCount = new Set(
+    entries.flatMap((e) =>
+      e.kind === "message" && e.role === "user" && e.turnId ? [e.turnId] : [],
+    ),
+  ).size;
+  // Turn errors render inline in the stream; everything else is a toast.
+  const turnError = !!errorDetail?.turnId;
+  const focusComposerAtEnd = (value: string) =>
+    setTimeout(() => {
+      const el = composer.current;
+      el?.focus();
+      el?.setSelectionRange(value.length, value.length);
+    }, 0);
   const composerForm = (
     <form
       className="composer-form"
@@ -1044,8 +1143,38 @@ export default function Home() {
         onGoalToggle={() => (goalMode ? setGoalMode(false) : startGoal(text))}
         onGoalCancel={() => setGoalMode(false)}
         busy={running}
+        stopping={stopping}
+        held={held}
         canSend={!!text.trim() && !busy && (!!session || !!agentId)}
         onStop={stopTurn}
+        requests={
+          session && pending.length ? (
+            <RequestDock
+              pending={pending}
+              plan={plan}
+              onAnswer={async (requestId, value) => {
+                await transport.answer(session._id, requestId, value);
+              }}
+              onRequestChanges={(steps) => {
+                const quoted = `Please change the plan:\n${steps
+                  .map((s, i) => `> ${i + 1}. ${s.step}`)
+                  .join("\n")}\n\n`;
+                setCommandOpen(false);
+                setText(quoted);
+                focusComposerAtEnd(quoted);
+              }}
+            />
+          ) : undefined
+        }
+        slash={
+          commandSuggestions.length ? (
+            <SlashMenu
+              commands={commandSuggestions}
+              activeIndex={commandIndex}
+              onPick={selectCommand}
+            />
+          ) : undefined
+        }
         stopTitle={
           goal?.status === "active"
             ? "Pause the goal and stop the current response"
@@ -1078,30 +1207,6 @@ export default function Home() {
             <span id="composer-hint" className="sr-only">
               Type / for commands. Enter to send, Shift + Enter for a new line.
             </span>
-            {commandSuggestions.length > 0 && (
-              <div
-                id="chat-commands"
-                className="slash-menu"
-                role="listbox"
-                aria-label="Chat commands"
-              >
-                {commandSuggestions.map((command, index) => (
-                  <button
-                    id={`chat-command-${index}`}
-                    type="button"
-                    role="option"
-                    aria-selected={index === commandIndex}
-                    className={index === commandIndex ? "selected" : ""}
-                    key={command.name}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => selectCommand(command.name)}
-                  >
-                    <strong>{command.name}</strong>
-                    <span>{command.description}</span>
-                  </button>
-                ))}
-              </div>
-            )}
             {notice && (
               <div className="composer-notice" role="status">
                 {notice}
@@ -1120,6 +1225,7 @@ export default function Home() {
         }
         budget={
           <BudgetField
+            variant="chip"
             initial={goalBudget}
             onChange={({ tokens, valid }) => {
               setGoalBudget(tokens);
@@ -1154,7 +1260,13 @@ export default function Home() {
               : undefined
           }
           placeholder={
-            goalMode
+            chatHealth?.kind === "orphaned"
+              ? chatHealth.placeholder
+              : stopping
+                ? STOPPING_PLACEHOLDER
+                : held
+                  ? HELD_PLACEHOLDER
+                  : goalMode
               ? "Describe the outcome you want. The assistant works until it’s done."
               : running
                 ? "Add a thought to steer the current turn…"
@@ -1163,7 +1275,7 @@ export default function Home() {
                   : PLACEHOLDERS[0]
           }
           value={text}
-          disabled={busy || (!session && !agentId)}
+          disabled={busy || (!session && !agentId) || orphaned}
           onChange={(e) => {
             setText(e.target.value);
             setCommandOpen(!goalMode && e.target.value.startsWith("/"));
@@ -1240,7 +1352,60 @@ export default function Home() {
           agentName={loading ? "Loading agents…" : agent?.name || "No agent"}
           stateText={stateText}
           busy={running}
-          onStatusClick={() => setPop("agent")}
+          turn={{
+            running,
+            starting: sendPending && !running,
+            stopping,
+            pendingCount: pending.length,
+            sessionStatus: session?.status,
+            startedAt: turnStartedAt,
+          }}
+          toolIssues={toolIssues}
+          project={projectName}
+          turnChip={running && turnCount ? `T${turnCount}` : null}
+          pillOpen={pop === "agent-card"}
+          pillRef={pillRef}
+          onStatusClick={() => togglePop("agent-card")}
+          popover={
+            <Popover
+              bare
+              className="ch-pop"
+              open={pop === "agent-card"}
+              onClose={() => setPop(null)}
+              ignoreRef={pillRef}
+              aria-label="Agent details"
+            >
+              <AgentCard
+                name={agent?.name || "No agent"}
+                model={agent?.model}
+                provider={agent?.provider}
+                sandbox={agent?.sandbox}
+                onEdit={() => {
+                  setPop(null);
+                  setAgentDialogOpen(true);
+                }}
+                onModel={() => {
+                  setPop(null);
+                  setCommandOpen(false);
+                  setText("/model ");
+                  focusComposerAtEnd("/model ");
+                }}
+                tools={
+                  agentId ? (
+                    <ConnectedCarts
+                      agentId={agentId}
+                      refreshKey={mcpVersion}
+                      status={mcpStatusByName}
+                      onManage={() => {
+                        setPop(null);
+                        setPanel("mcp");
+                      }}
+                    />
+                  ) : null
+                }
+              />
+            </Popover>
+          }
           isDark={isDark}
           onToggleTheme={toggleTheme}
           actions={
@@ -1257,6 +1422,48 @@ export default function Home() {
               </button>
             ) : null
           }
+        />
+        {session && goal && (
+          <GoalBar
+            key={session._id}
+            sessionId={session._id}
+            goal={goal}
+            review={goalReview}
+            onChange={(next, review) => {
+              setGoal(next);
+              setGoalReview(review);
+              syncSessionGoal(session._id, next);
+            }}
+            onReopen={(feedback) =>
+              applyPrompt(
+                feedback
+                  ? `The goal isn’t complete yet: ${feedback}`
+                  : "The goal isn’t complete yet. Please keep working on it.",
+              )
+            }
+            onProvideInput={() => {
+              setPanel(null);
+              setTimeout(() => composer.current?.focus(), 0);
+            }}
+            onFollowUp={() => startGoal()}
+            running={running}
+            entries={entries}
+            documents={documents}
+            documentHref={(id) =>
+              `${base}/api/sessions/${session._id}/documents/${encodeURIComponent(id)}`
+            }
+            failure={failure}
+            provider={agents.find((a) => a.id === session.agentId)?.provider}
+          />
+        )}
+        <SessionBanner
+          health={chatHealth}
+          reconnecting={status === "Reconnecting"}
+          onReconnect={() => {
+            setStatus("Reconnecting");
+            setStreamKey((k) => k + 1);
+          }}
+          onNewChat={newChat}
         />
         <div
           className="scroll"
@@ -1309,68 +1516,45 @@ export default function Home() {
                 }}
                 onOpen={(id) => void open(id)}
                 onRefresh={() => session && void open(session._id)}
+                timings={timings}
+                rateLimits={observability.rateLimits}
+                pending={pending}
+                error={
+                  // Turn errors show inline; all other errors show as the toast.
+                  turnError ? streamError(error, errorDetail, failure) : null
+                }
+                onRetryTurn={() => {
+                  const last = entries.findLast(
+                    (e) => e.kind === "message" && e.role === "user" && !e.command,
+                  );
+                  if (last?.kind === "message") void send(last.text);
+                }}
+                onRetryMessage={(e) => void send(e.text)}
+                selectedTurnId={selectedTurnId}
+                // "Turn N, show in session panel": open the panel on that turn.
+                onSelectTurn={(id) => {
+                  follow.manual();
+                  setSelectedTurnId(id);
+                  setPanels((p) => ({ ...p, activity: true }));
+                }}
               />
-              {session &&
-                pending.map((p) => (
-                  <RequestCard
-                    key={p.requestId}
-                    request={p}
-                    plan={plan}
-                    onAnswer={async (result) => {
-                      await transport.answer(session._id, p.requestId, result);
-                    }}
-                  />
-                ))}
             </div>
           )}
         </div>
         <div className="bottom">
-          {error && (
-            <div role="alert" className="error-banner">
-              <span className="error-banner-body">
-                {error}
-                <ErrorRef value={errorDetail} />
-              </span>
-              <button onClick={() => setError("")} aria-label="Dismiss error">
-                ×
-              </button>
-            </div>
-          )}
-          {session && goal && (
-            <GoalBar
-              key={session._id}
-              sessionId={session._id}
-              goal={goal}
-              review={goalReview}
-              onChange={(next, review) => {
-                setGoal(next);
-                setGoalReview(review);
-                syncSessionGoal(session._id, next);
-              }}
-              onReopen={(feedback) =>
-                applyPrompt(
-                  feedback
-                    ? `The goal isn’t complete yet: ${feedback}`
-                    : "The goal isn’t complete yet. Please keep working on it.",
-                )
-              }
-              onProvideInput={() => {
-                setPanel(null);
-                setTimeout(() => composer.current?.focus(), 0);
-              }}
-              onFollowUp={() => startGoal()}
-              running={running}
-              entries={entries}
-              documents={documents}
-              documentHref={(id) =>
-                `${base}/api/sessions/${session._id}/documents/${encodeURIComponent(id)}`
-              }
-              failure={failure}
-              provider={agents.find((a) => a.id === session.agentId)?.provider}
-            />
-          )}
+          <ErrorToast
+            toast={
+              turnError ? null : errorToast({ message: error, ref: errorDetail })
+            }
+            onDismiss={() => setError("")}
+          />
           {!empty && <HelperChip state={subAgents} onView={viewHelpers} />}
-          {!empty && composerForm}
+          {!empty &&
+            (chatHealth?.kind === "dead" || chatHealth?.kind === "archived" ? (
+              <SessionLockbar health={chatHealth} onNewChat={newChat} />
+            ) : (
+              composerForm
+            ))}
           <div className="dock-wrap">
             <Popover
               open={pop === "agent"}
@@ -1450,7 +1634,9 @@ export default function Home() {
                   icon: "activity",
                   kbd: "⌘.",
                   active: panels.activity,
-                  badge: running && !panels.activity,
+                  badge:
+                    pending.length + (turnError && !panels.activity ? 1 : 0) ||
+                    (running && !panels.activity),
                   onClick: toggleActivity,
                 },
                 {
@@ -1478,6 +1664,9 @@ export default function Home() {
       >
         <SessionActivity
           events={events}
+          entries={entries}
+          turnId={selectedTurnId}
+          onTurn={setSelectedTurnId}
           plan={plan}
           awaitingApproval={awaitingApproval(pending)}
           timings={timings}

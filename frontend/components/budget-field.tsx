@@ -2,6 +2,7 @@
 import { useEffect, useId, useState } from "react";
 import { budgetHelp, budgetOptions, parseTokenBudget } from "@/lib/goal";
 import { Icon } from "./v2/icon";
+import { RqIcon } from "./v2/rq-icon";
 
 export type BudgetValue = { tokens: number | null; valid: boolean };
 
@@ -13,12 +14,15 @@ export function BudgetField({
   selectClassName,
   showError = true,
   autoFocus = false,
+  variant = "select",
 }: {
   initial: number | null;
   onChange: (value: BudgetValue) => void;
   selectClassName?: string;
   showError?: boolean;
   autoFocus?: boolean;
+  /** "chip": the r2 composer budget chip (clock icon, label, chevron). */
+  variant?: "select" | "chip";
 }) {
   const preset = budgetOptions.find((option) => option.value === initial);
   const [choice, setChoice] = useState(
@@ -45,10 +49,11 @@ export function BudgetField({
 
   return (
     <span className="budget-field">
-      <span className="select">
+      <span className={variant === "chip" ? "rq-chip budget-chip" : "select"}>
         <label className="sr-only" htmlFor={selectId}>
           Budget
         </label>
+        {variant === "chip" && <RqIcon name="clock" size="sm" />}
         <select
           id={selectId}
           className={selectClassName}
@@ -67,7 +72,11 @@ export function BudgetField({
           ))}
           <option value="custom">Custom…</option>
         </select>
-        <Icon name="upDown" size={13} />
+        {variant === "chip" ? (
+          <RqIcon name="chevd" size="sm" />
+        ) : (
+          <Icon name="upDown" size={13} />
+        )}
       </span>
       {choice === "custom" && (
         <input

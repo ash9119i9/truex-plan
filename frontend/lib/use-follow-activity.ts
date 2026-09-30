@@ -8,6 +8,7 @@ import {
   followTab,
   noteSeen,
   pickTab,
+  settleTab,
   readFollow,
   writeFollow,
   type FollowTab,
@@ -46,6 +47,21 @@ export function useFollowActivity(options: {
   // Stored after mount so the server render and first paint agree.
   useEffect(() => setEnabledState(readFollow()), []);
   useEffect(() => () => clearTimeout(state.current.timer), []);
+  // Using the panel (click, key, scroll) holds the tab like picking one.
+  // Focus merely left inside the panel does not, so following resumes.
+  useEffect(() => {
+    const touch = (e: Event) => {
+      if ((e.target as Element | null)?.closest?.(".panel.activity"))
+        state.current.manualAt = Date.now();
+    };
+    const kinds = ["pointerdown", "keydown", "wheel"] as const;
+    for (const k of kinds)
+      document.addEventListener(k, touch, { capture: true, passive: true });
+    return () => {
+      for (const k of kinds)
+        document.removeEventListener(k, touch, { capture: true });
+    };
+  }, []);
 
   // Stable across renders: the stream subscription keeps the first copy.
   const api = useRef({
@@ -71,20 +87,18 @@ export function useFollowActivity(options: {
     // The user closed the panel; it stays closed until the next turn.
     dismiss() {
       state.current.dismissed = true;
+      // The close click is not a tab pick; the next turn may reopen.
+      state.current.manualAt = 0;
     },
   }).current;
 
   function flush() {
     const s = state.current,
       o = live.current,
-      tab = s.want;
+      tab = settleTab(s.want, s.seen);
     s.want = null;
     s.timer = undefined;
     if (!tab) return;
-    const panel = document.querySelector(".panel.activity");
-    const inPanel =
-      !!panel &&
-      (panel.matches(":hover") || panel.contains(document.activeElement));
     const action = followAction({
       enabled: on.current,
       vw: o.vw,
@@ -92,7 +106,6 @@ export function useFollowActivity(options: {
       manualAt: s.manualAt,
       dismissed: s.dismissed,
       panelOpen: o.panelOpen,
-      inPanel,
       fitsOpen: o.fitsOpen,
     });
     if (!action || (action === "switch" && o.tab === tab)) return;
@@ -103,6 +116,8 @@ export function useFollowActivity(options: {
   function setEnabled(next: boolean) {
     setEnabledState(next);
     writeFollow(next);
+    // The toggle click itself is not a tab pick.
+    if (next) state.current.manualAt = 0;
     if (!next) {
       clearTimeout(state.current.timer);
       state.current.timer = undefined;

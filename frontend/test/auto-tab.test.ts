@@ -6,6 +6,7 @@ import {
   noteSeen,
   emptySeen,
   pickTab,
+  settleTab,
   MANUAL_HOLD_MS,
   type FollowContext,
   type FollowSeen,
@@ -65,7 +66,7 @@ test("the most specific tab wins a batch", () => {
 
 const ctx = (c: Partial<FollowContext> = {}): FollowContext => ({
   enabled: true, vw: 1440, now, manualAt: 0, dismissed: false,
-  panelOpen: false, inPanel: false, fitsOpen: true, ...c,
+  panelOpen: false, fitsOpen: true, ...c,
 });
 
 test("opens a closed panel, switches an open one", () => {
@@ -77,7 +78,6 @@ test("holds off for the user", () => {
   assert.equal(followAction(ctx({ enabled: false })), null);
   assert.equal(followAction(ctx({ manualAt: now - 1000 })), null);
   assert.equal(followAction(ctx({ manualAt: now - MANUAL_HOLD_MS })), "open");
-  assert.equal(followAction(ctx({ panelOpen: true, inPanel: true })), null);
   assert.equal(followAction(ctx({ dismissed: true })), null);
 });
 
@@ -101,4 +101,18 @@ test("seen state follows the stream", () => {
   assert.deepEqual(s.plan, plan);
   s = noteSeen(s, ev("goal.cleared", {}));
   assert.equal(s.goal, null);
+});
+
+test("a goal's plan in the same burst lands on the Goal tab", () => {
+  const plan = [{ step: "a", status: "pending" }];
+  // Plan first, goal second, inside one burst.
+  let s = emptySeen();
+  let want = followTab(ev("plan.updated", { plan }), s, now);
+  s = noteSeen(s, ev("plan.updated", { plan }));
+  want = pickTab(want, followTab(ev("goal.updated", { goal: goal("active") }), s, now));
+  s = noteSeen(s, ev("goal.updated", { goal: goal("active") }));
+  assert.equal(settleTab(want, s), "goal");
+  // Without a goal a plan keeps its tab, and helpers still win.
+  assert.equal(settleTab("plan", emptySeen()), "plan");
+  assert.equal(settleTab("agents", s), "agents");
 });

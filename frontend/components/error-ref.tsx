@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { ErrorRef as Ref } from "@/lib/api";
+import { refText, type StreamError } from "@/lib/vm-stream";
+import { StreamIcon } from "./stream-icon";
 
-// Small muted "Ref: CODE · requestId" line under an error message, with a
-// copy button so the reference can be pasted into a support request.
+// Mono ref chip (wireframe §1 board 3, pin 6). Clicking copies the full ref
+// so it can be pasted into a support request.
 export function ErrorRef({ value }: { value: Ref | null | undefined }) {
   const [copied, setCopied] = useState<"" | "done" | "failed">("");
   useEffect(() => {
@@ -11,10 +13,8 @@ export function ErrorRef({ value }: { value: Ref | null | undefined }) {
     const timer = setTimeout(() => setCopied(""), 2000);
     return () => clearTimeout(timer);
   }, [copied]);
-  if (!value || (!value.code && !value.requestId && !value.turnId)) return null;
-  const text = [value.code, value.requestId ?? value.turnId]
-    .filter(Boolean)
-    .join(" · ");
+  const text = refText(value);
+  if (!text) return null;
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
@@ -25,23 +25,59 @@ export function ErrorRef({ value }: { value: Ref | null | undefined }) {
     }
   }
   return (
-    <span className="error-ref">
-      <span className="error-ref-text mono">Ref: {text}</span>
+    <>
       <button
         type="button"
-        className="link error-ref-copy"
+        className="st-ref"
         onClick={() => void copy()}
         aria-label={`Copy error reference ${text}`}
+        title={
+          copied === "done"
+            ? "Copied"
+            : copied === "failed"
+              ? "Select to copy"
+              : "Copy reference"
+        }
       >
-        {copied === "done"
-          ? "Copied"
-          : copied === "failed"
-            ? "Select to copy"
-            : "Copy"}
+        <StreamIcon name={copied === "done" ? "check" : "key"} sm />
+        {text}
       </button>
       <span className="sr-only" role="status">
         {copied === "done" ? "Reference copied" : ""}
       </span>
-    </span>
+    </>
+  );
+}
+
+// Bad-tone card in the turn that failed: the message, one line on what to do
+// next, the ref chip and Retry, which reruns the turn.
+export function StreamErrorCard({
+  error,
+  onRetry,
+}: {
+  error: StreamError;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="st-err" role="alert">
+      <span className="tile" aria-hidden="true">
+        <StreamIcon name="alert" />
+      </span>
+      <div className="b">
+        <b>{error.message}</b>
+        {error.hint && <span>{error.hint}</span>}
+      </div>
+      {(error.ref || onRetry) && (
+        <div className="acts">
+          <ErrorRef value={error.ref} />
+          {onRetry && (
+            <button type="button" className="btn primary" onClick={onRetry}>
+              <StreamIcon name="retry" sm />
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

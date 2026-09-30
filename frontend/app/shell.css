@@ -694,37 +694,6 @@
   gap: 2px;
   min-width: 0;
 }
-.error-ref {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.error-ref-text {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  user-select: all;
-  overflow-wrap: anywhere;
-}
-.error-banner .error-ref-copy,
-.error-ref-copy {
-  display: inline;
-  width: auto;
-  height: auto;
-  padding: 0 4px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: inherit;
-  font-size: 11px;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.error-ref-copy:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 .inline-retry {
   margin-left: 6px;
   padding: 0 4px;

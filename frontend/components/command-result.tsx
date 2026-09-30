@@ -1,38 +1,27 @@
 "use client";
 import type { CommandRecord, Goal, GoalReview } from "../../shared/contracts";
-import {
-  formatDuration,
-  goalStateLabel,
-  goalStatus,
-  goalTokens,
-  sameGoal,
-} from "@/lib/goal";
+import { sameGoal } from "@/lib/goal";
+import { commandLabel, commandView } from "@/lib/vm-stream";
+import { StreamIcon } from "./stream-icon";
 
-export function commandLabel(method: string) {
-  if (method === "help") return "Chat commands";
-  if (method.startsWith("thread/goal/")) return "Goal";
-  return (
-    (
-      {
-        "thread/fork": "Conversation branch",
-        "thread/compact/start": "Context",
-        "thread/settings/update": "Settings",
-        "thread/archive": "Archive",
-        "thread/unarchive": "Restore",
-      } as Record<string, string>
-    )[method] || "Command"
-  );
-}
+export { commandLabel };
+
+// Result card that hangs under a slash-command bubble (wireframe §1 board 1,
+// pins 4 and 5): icon tile, title, state pill, what changed. A failed command
+// uses the bad tone and echoes the command in mono; the user edits and resends.
 export function CommandResult({
   command,
+  text = "",
   onCommand,
   onOpen,
   onRefresh,
   currentGoal,
-  goalReview,
 }: {
   command: CommandRecord;
+  // The bubble text, e.g. "/goal Ship the plan".
+  text?: string;
   currentGoal?: Goal | null;
+  // Kept for callers; goal review status now lives in the topbar.
   goalReview?: GoalReview | null;
   onCommand?: (text: string) => void;
   onOpen?: (id: string) => void;
@@ -40,141 +29,65 @@ export function CommandResult({
 }) {
   const recorded = command.result?.goal;
   // A card for the conversation's current goal follows its live state; an
-  // older card keeps the status it recorded.
+  // older card keeps what it recorded.
   const live = sameGoal(recorded, currentGoal) ? currentGoal! : null;
   const goal = live || recorded;
+  const v = commandView(text, command, goal?.objective, !!live);
   const succeeded = command.state === "succeeded";
-  const status = {
-    running: "Awaiting confirmation",
-    succeeded: "Confirmed",
-    failed: "Failed",
-    unknown: "Unconfirmed",
-  }[command.state];
-  let summary = "";
-  if (succeeded) {
-    if (command.result?.help) summary = command.result.help;
-    else if (command.method === "thread/goal/clear") summary = "Goal cleared.";
-    else if (command.method.startsWith("thread/goal/"))
-      summary = goal ? goal.objective : "No goal is set.";
-    else if (command.method === "thread/fork")
-      summary = "Your new conversation branch is ready.";
-    else if (command.method === "thread/compact/start")
-      summary =
-        "Context compaction requested. Completion will appear in the conversation activity.";
-    else if (command.method === "thread/archive")
-      summary = "Conversation archived.";
-    else if (command.method === "thread/unarchive")
-      summary = "Conversation restored.";
-    else summary = "Conversation settings updated.";
-  }
+  const actions = [
+    succeeded &&
+      live &&
+      onCommand && { label: "Check goal", run: () => onCommand("/goal show") },
+    succeeded &&
+      live &&
+      onCommand && { label: "Clear goal…", run: () => onCommand("/goal clear") },
+    command.result?.sessionId &&
+      onOpen && {
+        label: "Open branch",
+        run: () => onOpen(command.result!.sessionId!),
+      },
+    (command.state === "unknown" || command.state === "running") &&
+      onRefresh && { label: "Check saved result", run: onRefresh },
+  ].filter(Boolean) as { label: string; run: () => void }[];
   return (
     <section
-      className={`command-result command-${command.state}`}
+      className={v.tone === "bad" ? "st-rc bad" : "st-rc"}
       aria-label={`${commandLabel(command.method)} result`}
     >
-      <header>
-        <span className="eyebrow">{commandLabel(command.method)}</span>
-        <span
-          role="status"
-          className={`ag-chip ${
-            command.state === "succeeded"
-              ? "is-done"
-              : command.state === "running"
-                ? "is-running"
-                : command.state === "failed"
-                  ? "is-warn"
-                  : "is-stopped"
-          }`}
-        >
-          {command.state === "running" && (
-            <span className="spinner" aria-hidden="true" />
-          )}
-          {status}
-        </span>
-      </header>
-      {summary && <p>{summary}</p>}
-      {command.error && <p role="alert">{command.error}</p>}
-      {command.state === "running" && <p>Waiting for the command result.</p>}
-      {succeeded && goal && (
-        <dl>
-          <div>
-            <dt>{live ? "Status" : "Status at this update"}</dt>
-            <dd>
-              {live
-                ? goalStateLabel(live, goalReview ?? null)
-                : goalStatus[goal.status]?.label || goal.status}
-            </dd>
-          </div>
-          {!!goal.timeUsedSeconds && (
-            <div>
-              <dt>Time spent</dt>
-              <dd>{formatDuration(goal.timeUsedSeconds)}</dd>
-            </div>
-          )}
-          {goal.tokensUsed !== undefined && (
-            <div>
-              <dt>Tokens used</dt>
-              <dd>{goalTokens(goal).toLocaleString()}</dd>
-            </div>
-          )}
-          {goal.tokenBudget != null && (
-            <div>
-              <dt>Token budget</dt>
-              <dd>{goal.tokenBudget.toLocaleString()}</dd>
-            </div>
-          )}
-        </dl>
-      )}
-      {succeeded && command.method === "thread/settings/update" && (
-        <dl>
-          {typeof command.params.model === "string" && (
-            <div>
-              <dt>Model</dt>
-              <dd>{command.params.model}</dd>
-            </div>
-          )}
-          {typeof command.params.effort === "string" && (
-            <div>
-              <dt>Reasoning effort</dt>
-              <dd>{command.params.effort}</dd>
-            </div>
-          )}
-        </dl>
-      )}
-      <div className="command-actions">
-        {succeeded && live && onCommand && (
-          <>
-            <button
-              type="button"
-              className="btn-soft"
-              onClick={() => onCommand("/goal show")}
-            >
-              Check goal status
-            </button>
-            <button
-              type="button"
-              className="btn-soft"
-              onClick={() => onCommand("/goal clear")}
-            >
-              Clear goal…
-            </button>
-          </>
+      <span className="tile" aria-hidden="true">
+        <StreamIcon name={v.tile} />
+      </span>
+      <div className="b">
+        <div className="h">
+          <b>{v.title}</b>
+          <span className={`pill ${v.pill.tone}`} role="status">
+            {v.pill.spinner && <span className="spinner" aria-hidden="true" />}
+            {v.pill.icon && <StreamIcon name={v.pill.icon} sm />}
+            {v.pill.label}
+          </span>
+        </div>
+        <span role={v.tone === "bad" ? "alert" : undefined}>{v.body}</span>
+        {v.foot && (
+          <span className="f">
+            {v.foot.icon && <StreamIcon name={v.foot.icon} sm />}
+            {v.foot.mono && <span className="mono">{v.foot.mono}</span>}
+            {v.foot.mono ? ` · ${v.foot.text}` : v.foot.text}
+          </span>
         )}
-        {command.result?.sessionId && onOpen && (
-          <button
-            type="button"
-            className="btn-soft"
-            onClick={() => onOpen(command.result!.sessionId!)}
-          >
-            Open conversation branch
-          </button>
+        {!!actions.length && (
+          <span className="f acts">
+            {actions.map((a) => (
+              <button
+                key={a.label}
+                type="button"
+                className="st-mini"
+                onClick={a.run}
+              >
+                {a.label}
+              </button>
+            ))}
+          </span>
         )}
-        {(command.state === "unknown" || command.state === "running") &&
-          onRefresh && (
-            <button type="button" className="btn-soft" onClick={onRefresh}>
-              Check saved result
-            </button>
-          )}
       </div>
     </section>
   );

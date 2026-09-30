@@ -15,97 +15,10 @@
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .bubble-wrap .bubble { max-width: none; }
-.msg-note { font-variant-numeric: tabular-nums; }
 
-.msg.agent { display: flex; gap: 12px; animation: rise .3s ease-out; }
-.msg.agent > .grow { display: flex; flex-direction: column; align-items: stretch; }
-.msg.agent:focus { outline: none; }
-.agent-avatar {
-  display: grid; place-items: center; width: 26px; height: 26px; flex: none; margin-top: 1px;
-  border-radius: 8px; color: var(--accent-ink);
-}
-.msg-meta { display: flex; gap: 8px; align-items: baseline; margin-bottom: 6px; }
-
-.answer { line-height: 1.65; color: var(--ink); font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
-.answer + .answer { margin-top: 12px; }
 .caret {
   display: inline-block; width: 7px; height: 15px; margin-left: 2px; vertical-align: -2px;
   border-radius: 2px; background: var(--accent); animation: blink 1s steps(2) infinite;
-}
-
-/* Footer: "{duration} · {tokens} tokens" + privacy line; opens the trace card. */
-.msg-foot { margin: 10px 0 0; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.msg-foot-btn {
-  display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; max-width: 100%;
-  padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer;
-}
-.msg-foot-btn:hover { color: var(--ink-2); }
-.msg-foot-btn > span + span::before { content: "·"; margin-right: 8px; color: var(--ink-3); }
-.msg-foot-privacy { display: inline-flex; align-items: center; gap: 4px; }
-.msg-foot-btn.warn .msg-foot-privacy { color: var(--warning-text); }
-.msg-foot-chevron { transition: transform .15s; }
-.msg-foot-chevron.open { transform: rotate(180deg); }
-.msg-foot + * { margin-top: 10px; }
-
-/* ---- Steps (thinking, working) ---- */
-.steps {
-  list-style: none; margin: 0 0 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; font-size: 13px; color: var(--ink-3);
-}
-.steps li { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.steps li.is-done { color: var(--ink-2); }
-.steps .is-done .step-mark { background: var(--accent-soft); }
-.steps li[hidden] { display: none; }
-.step-toggle {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; border: 0; background: none;
-  color: inherit; font: inherit; text-align: left; cursor: pointer;
-}
-.step-toggle:hover { color: var(--ink); }
-.step-caret { flex: none; color: var(--ink-3); transition: transform .15s; }
-.thinking[data-open="true"] .step-caret { transform: rotate(90deg); }
-.steps li.thinking-body {
-  display: block; max-height: 280px; overflow: auto; padding-top: 8px; border-top: 1px solid var(--line);
-  color: var(--ink-2); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
-  scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
-}
-
-/* ---- Helper card (Core §4 .hcard) ---- */
-.hcard { margin: 0 0 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
-.hcard:focus { outline: none; }
-.hcard:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
-.hcard-head {
-  display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px;
-  background: var(--surface-3); font-size: 13px; font-weight: 500; color: var(--ink-2);
-}
-.hcard-rows { list-style: none; margin: 0; padding: 0; }
-.hcard-row {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 12px;
-  border: 0; border-top: 1px solid var(--line); background: none; color: var(--ink);
-  font: inherit; font-size: 13px; text-align: left; cursor: pointer; transition: background .15s;
-}
-.hcard-row:hover, .hcard-row.is-lit, .hcard-row[aria-expanded="true"] { background: var(--ts, var(--surface-3)); }
-.hcard-row:focus-visible { outline-offset: -2px; }
-.hcard .h-av.xs {
-  display: grid; place-items: center; width: 18px; height: 18px; flex: none; border-radius: 6px;
-  background: var(--ts); color: var(--t); font-size: 10px; font-weight: 700; line-height: 1;
-}
-.hcard-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hcard-time { min-width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
-.hcard-go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: 12px; font-weight: 500; color: var(--accent-fg); }
-.hcard-detail { padding: 10px 12px 12px 40px; border-top: 1px solid var(--line); font-size: 13px; }
-.hcard-detail > p { margin: 0 0 8px; }
-.hcard-output {
-  max-height: 320px; overflow: auto; margin-bottom: 8px; padding: 10px 12px;
-  border: 1px solid var(--line); border-radius: 12px; background: var(--surface-3); line-height: 1.6;
-}
-.hcard-output > :first-child { margin-top: 0; }
-.hcard-output > :last-child { margin-bottom: 0; }
-.hcard-task { color: var(--ink-3); font-size: 12px; overflow-wrap: anywhere; }
-.hcard-error { color: var(--error-text); font-size: 12px; }
-.hcard-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-@media (max-width: 700px) {
-  .hcard-row .ag-chip { display: none; }
-  .hcard-detail { padding-left: 12px; }
 }
 
 /* Running-helpers pill pinned near the composer. */
@@ -113,86 +26,10 @@
 .helper-chip > span[aria-hidden] { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .helper-chip-view { flex: none; font-size: 13px; font-weight: 500; color: var(--accent-fg); }
 
-/* ---- Markdown inside answers (tokens only) ---- */
-.answer > :first-child, .hcard-output > :first-child { margin-top: 0; }
-.answer > :last-child, .hcard-output > :last-child { margin-bottom: 0; }
-.answer p, .hcard-output p { margin: 0 0 .75em; }
-.answer strong, .hcard-output strong { font-weight: 600; color: var(--ink); }
-.answer h1, .answer h2, .answer h3, .answer h4,
-.hcard-output h1, .hcard-output h2, .hcard-output h3, .hcard-output h4 {
-  margin: 1.2em 0 .5em; font-family: var(--font-display); font-weight: 600; letter-spacing: -.01em; line-height: 1.3; color: var(--ink);
-}
-.answer h1, .hcard-output h1 { font-size: 20px; }
-.answer h2, .hcard-output h2 { font-size: 17px; }
-.answer h3, .hcard-output h3 { font-size: 15px; }
-.answer h4, .hcard-output h4 { font-size: 14px; }
-.answer ul, .answer ol, .hcard-output ul, .hcard-output ol { margin: 0 0 .75em; padding-left: 1.4em; }
-.answer li, .hcard-output li { margin: .2em 0; }
-.answer li::marker, .hcard-output li::marker { color: var(--ink-3); }
-.answer li > p, .hcard-output li > p { margin: 0; }
-.answer a, .hcard-output a { color: var(--accent-fg); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
-.answer a:hover, .hcard-output a:hover { color: var(--ink); }
-.answer blockquote, .hcard-output blockquote { margin: 0 0 .75em; padding: 0 0 0 12px; border-left: 2px solid var(--line-strong); color: var(--ink-2); }
-.answer blockquote p, .hcard-output blockquote p { margin: 0; }
-.answer code, .hcard-output code {
-  padding: 1px 5px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-3);
-  color: var(--ink); font-family: var(--font-mono); font-size: 12.5px;
-}
-.answer pre, .hcard-output pre {
-  margin: 0 0 .75em; padding: 12px 14px; overflow: auto; border: 1px solid var(--line); border-radius: 12px;
-  background: var(--surface-3); color: var(--ink); font: 12.5px/1.6 var(--font-mono);
-  scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
-}
-.answer pre code, .hcard-output pre code { padding: 0; border: 0; border-radius: 0; background: none; font-size: inherit; }
-.answer hr, .hcard-output hr { margin: 1.2em 0; border: 0; border-top: 1px solid var(--line); }
-.answer table, .hcard-output table {
-  display: block; max-width: 100%; overflow-x: auto; margin: 0 0 .75em; border-collapse: collapse;
-  font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums;
-}
-.answer th, .answer td, .hcard-output th, .hcard-output td { padding: 6px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; }
-.answer th, .hcard-output th { background: var(--surface-3); font-weight: 500; color: var(--ink-2); }
-.answer img, .hcard-output img { max-width: 100%; border-radius: 12px; border: 1px solid var(--line); }
-
-/* ---- Suggested follow-ups ---- */
-.suggested-questions { margin-top: 12px; }
-.suggested-questions ul { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.suggested-question.animated-link { color: var(--accent-fg); font-size: 13px; font-weight: 500; }
-
 /* ================= Cards: spec primitives for areas the spec leaves open ================= */
-.command-result, .approval-record, .request-card, .visualization-question, .goal-panel, .goal-review {
+.request-card, .visualization-question, .goal-panel, .goal-review {
   padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: none;
 }
-
-/* Command result */
-.command-result { margin: 0; font-size: 13px; }
-.command-result header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.command-result .eyebrow { padding: 0; }
-.command-result p { margin: 8px 0 0; color: var(--ink-2); line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.command-result dl { display: flex; flex-wrap: wrap; gap: 10px 24px; margin: 10px 0 0; }
-.command-result dt { font: 500 10.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
-.command-result dd { margin: 3px 0 0; color: var(--ink); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.command-failed, .command-unknown { border-color: color-mix(in srgb, var(--warning-text) 25%, var(--line)); }
-.command-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.command-actions:empty { display: none; }
-
-/* Approval audit record */
-.approval-record { display: grid; gap: 8px; margin: 0 0 12px; font-size: 13px; }
-.approval-record-row { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
-.approval-record-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: currentColor; }
-.approval-record-body { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
-.approval-record-title, .approval-record-question { font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
-.approval-record-answer { color: var(--ink-2); overflow-wrap: anywhere; }
-.approval-record-badge {
-  display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px;
-  font-size: 11.5px; font-weight: 500; white-space: nowrap;
-}
-.approval-record-allowed { color: var(--success-text); }
-.approval-record-declined { color: var(--error-text); }
-.approval-record-muted { color: var(--ink-3); }
-.approval-record-badge.approval-record-allowed { background: var(--success-bg); }
-.approval-record-badge.approval-record-declined { background: var(--error-bg); }
-.approval-record-badge.approval-record-muted { background: var(--surface-3); }
-.approval-record-time { padding-left: 18px; font-size: 12px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
 /* Request card (questions, tool approvals, plan review) */
 .request-card { margin: 0; font-size: 13px; }
@@ -242,37 +79,8 @@
   background: var(--warning-bg); color: var(--warning-text); font-size: 13px;
 }
 
-/* Error reference */
-.error-ref { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-3); }
-.error-ref .error-ref-text { font-family: var(--font-mono); font-size: 11px; user-select: all; overflow-wrap: anywhere; }
-.error-ref .error-ref-copy { padding: 0; font-size: 12px; text-decoration: underline; text-underline-offset: 2px; }
-
-/* ================= Composer (Core §2) ================= */
-.composer {
-  position: relative; flex-shrink: 0; width: 100%; max-width: 740px; margin: 0;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-md);
-  padding: 12px 10px 8px 12px; transition: border-color .15s, box-shadow .15s;
-}
-/* The old stylesheet rings on :focus-within; the spec rings only while the textarea is focused. */
-.composer:focus-within { border-color: var(--line); box-shadow: var(--shadow-md); }
-.composer.goal-mode, .composer.goal-mode:focus-within { border-color: var(--accent-soft-2); background: var(--surface); }
-.composer.is-focus {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-  box-shadow: var(--shadow-md), 0 0 0 4px color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.composer.goal-mode.is-focus { border-color: color-mix(in srgb, var(--accent) 40%, var(--accent-soft-2)); }
-.composer.is-hero { max-width: none; }
-
-.composer textarea {
-  display: block; width: 100%; min-height: 60px; max-height: 240px; margin: 0; padding: 4px 4px 12px;
-  border: 0; outline: none; resize: none; background: transparent; color: var(--ink);
-  font: inherit; font-size: 15px; line-height: 1.5;
-}
-.composer.is-hero textarea { min-height: 76px; }
-.composer textarea::placeholder { color: var(--ink-3); }
-.composer textarea:disabled { cursor: not-allowed; }
-.composer textarea:focus-visible { outline: none; }
-
+/* ================= Composer (Core §2) =================
+   Frame, bar, send and slash menu moved to r2-requests.css (.rq-composer). */
 .composer-goal-head {
   display: flex; align-items: center; gap: 8px; margin: -4px -2px 6px 0; padding: 0 0 0 4px;
   font-size: 12px; line-height: 1.45; color: var(--ink-2);
@@ -282,23 +90,7 @@
 .composer-goal-head strong { margin-right: 4px; font-weight: 600; color: var(--accent-fg); }
 .composer-goal-head .icon-btn.ghost { width: 26px; height: 26px; color: var(--ink-3); }
 
-.composer-bar { display: flex; align-items: center; gap: 2px; min-width: 0; }
-.composer-bar .chip.goal-chip { margin-left: 0; color: var(--ink-2); }
-.composer-bar .chip.goal-chip svg { color: currentColor; }
-.composer-bar .chip.goal-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: transparent; color: var(--accent-fg); }
-
-.send {
-  display: grid; place-items: center; width: 34px; height: 34px; flex: none; margin-left: 4px; padding: 0;
-  border: 0; border-radius: 11px; background: var(--accent); color: var(--on-accent); cursor: pointer;
-  transition: opacity .15s, transform .12s;
-}
-.send:disabled { opacity: .35; cursor: default; }
-.send:not(:disabled):active { transform: scale(.94); }
-.send.is-stop { background: var(--ink); color: var(--bg); }
-
 /* Notes above the textarea: pending project, privacy heads-up. */
-.composer .composer-project { margin: -4px 0 6px; padding: 0 0 0 4px; font-size: 12px; color: var(--ink-3); }
-.composer .composer-project > svg, .composer .composer-project strong { color: var(--accent-fg); }
 .composer-note {
   display: flex; align-items: flex-start; gap: 8px; margin: -4px 0 8px; padding: 7px 6px 7px 10px;
   border-radius: 10px; font-size: 12.5px; line-height: 1.45;
@@ -309,26 +101,10 @@
 .composer-note .icon-btn.ghost { width: 22px; height: 22px; margin: -2px 0; color: inherit; }
 .composer-note .icon-btn.ghost:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
 
-/* Slash-command menu (rendered by the page inside the composer). */
-.composer .slash-menu { left: 0; right: 0; bottom: calc(100% + 8px); padding: 6px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow-lg); }
-.composer .slash-menu button { border-radius: 9px; color: var(--ink); }
-.composer .slash-menu button:hover, .composer .slash-menu button.selected { background: var(--surface-3); }
-.composer .slash-menu strong { font: 500 12px var(--font-mono); color: var(--accent-fg); }
-.composer .slash-menu span { color: var(--ink-3); }
-
 /* Budget field (composer bar and goal budget panel) */
 .budget-field { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
 .budget-field .input.budget-custom { width: 96px; height: 30px; padding: 0 10px; border-radius: 9px; font-size: 13px; }
 .budget-field .budget-error { flex-basis: 100%; font-size: 12px; color: var(--error-text); }
-
-/* Approval mode picker chip (alpha) */
-.approval-mode { display: inline-flex; align-items: center; gap: 4px; min-width: 0; flex-shrink: 1; }
-.approval-mode .select select { min-width: 0; max-width: 190px; text-overflow: ellipsis; }
-.approval-mode-tag {
-  flex: none; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-fg);
-  font: 500 10.5px var(--font-mono); letter-spacing: .05em; text-transform: uppercase;
-}
-@media (max-width: 640px) { .approval-mode .select select { max-width: 128px; } }
 
 /* ================= Goal strip (Core §3) ================= */
 /* .goal-bar holds the strip plus the review / budget / edit panels that open under it. */
@@ -399,14 +175,8 @@
 .goal-completion-documents li svg { color: var(--ink-3); }
 .goal-completion-documents .btn-soft { height: 28px; padding: 0 10px; font-size: 12px; flex: none; text-decoration: none; }
 
-/* Runtime items (tool calls kept for debugging views) */
-.runtime-item { border: 1px solid var(--line); border-left-width: 1px; border-radius: 12px; background: var(--surface); padding: 10px 12px; color: var(--ink-2); }
-.runtime-item summary svg, .runtime-item summary span { color: var(--ink-3); }
-.runtime-item pre { margin: 8px 0 0; padding: 10px 12px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-3); font: 11.5px/1.6 var(--font-mono); }
-
 @media (prefers-reduced-motion: reduce) {
   .caret { animation: none; }
-  .step-caret, .msg-foot-chevron, .hcard-row, .send, .composer { transition: none; }
 }
 
 /* The page's <form> wraps the composer. .bottom centres its children, so the form

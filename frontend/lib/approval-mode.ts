@@ -19,24 +19,26 @@ export interface ModeOption {
   label: string;
   description: string;
 }
+// Copy from the r2 approval mode menu. Secrets and plan approvals always ask,
+// whatever the mode.
 const modeOptions: ModeOption[] = [
   {
     value: "ask",
-    label: "Ask me every time",
-    description: "Every question and tool use waits for your answer.",
+    label: "Ask",
+    description: "Asks before running tools or changing files.",
   },
   {
     value: "readOnly",
-    label: "Auto-allow read-only tools",
-    description: "Tools that only read data run without asking.",
+    label: "Read-only",
+    description: "Reads and searches. Never writes or runs commands.",
   },
   {
     value: "auto",
-    label: "Autopilot",
-    description:
-      "Runs tools and picks recommended answers; plans and secrets still ask.",
+    label: "Auto",
+    description: "Runs tools without asking.",
   },
 ];
+export const MODE_FOOTNOTE = "Secrets and plan approvals always ask.";
 
 export interface ModePicker {
   options: ModeOption[];

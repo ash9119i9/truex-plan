@@ -1,50 +1,28 @@
 "use client";
-import { useId, useState } from "react";
-import { Icon } from "./v2/icon";
+import { StreamIcon } from "./stream-icon";
 
-// Reasoning as one row of the spec's .steps list (Core §4): spinner while it
-// streams, a done mark after. The row expands to show the full text.
+// A finished thinking step in the work log (wireframe §1 board 2, pin 3):
+// "Thought for 4s" as a disclosure that opens the summary in serif italic,
+// with raw reasoning below it when the runtime sent any. While thinking
+// streams, the log shows the shimmer live row instead (runtime-item.tsx).
 export function ThinkingBlock({
-  text,
-  streaming,
+  title,
+  summary,
+  raw,
 }: {
-  text: string;
-  streaming?: boolean;
+  title: string;
+  summary: string;
+  raw?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const contentId = useId();
-  const value = text.trim();
-  if (!value && !streaming) return null;
-  const words = value.split(/\s+/).length;
+  if (!summary && !raw) return <b>{title}</b>;
   return (
-    <ul className="steps thinking" data-open={open}>
-      <li className={streaming ? undefined : "is-done"}>
-        <button
-          type="button"
-          className="step-toggle"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          aria-controls={contentId}
-        >
-          {streaming ? (
-            <span className="spinner" aria-hidden="true" />
-          ) : (
-            <span className="step-mark" aria-hidden="true">
-              <Icon name="check" size={11} stroke={2.5} />
-            </span>
-          )}
-          <span className="grow">Thinking</span>
-          {!streaming && (
-            <span className="mono sm muted">
-              {words} word{words === 1 ? "" : "s"}
-            </span>
-          )}
-          <Icon name="chevronR" size={13} className="step-caret" />
-        </button>
-      </li>
-      <li id={contentId} className="thinking-body" hidden={!open}>
-        {value || "Thinking…"}
-      </li>
-    </ul>
+    <details className="st-think">
+      <summary>
+        <b>{title}</b>
+        <StreamIcon name="chevd" sm />
+      </summary>
+      {summary && <p>{summary}</p>}
+      {raw && <p>{raw}</p>}
+    </details>
   );
 }

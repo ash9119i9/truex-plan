@@ -1,0 +1,280 @@
+<title>Truex Caching Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: single reading column, phase sections as a numbered sequence, dense tables for keys and invalidation */
+:root {
+  --bg: #f6f8f9; --surface: #ffffff; --fg: #17222a; --muted: #56656f; --line: #dbe2e6;
+  --accent: #1d6a86; --accent-soft: #e2eff4; --warn: #9a5b00; --warn-soft: #fbf0dd; --ok: #2c7a4b;
+  --font-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11181d; --surface: #182229; --fg: #e3eaee; --muted: #93a3ad; --line: #2a3841;
+  --accent: #6cbad6; --accent-soft: #1c3440; --warn: #e5ad55; --warn-soft: #3a2e1a; --ok: #6cc592; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11181d; --surface: #182229; --fg: #e3eaee; --muted: #93a3ad; --line: #2a3841;
+  --accent: #6cbad6; --accent-soft: #1c3440; --warn: #e5ad55; --warn-soft: #3a2e1a; --ok: #6cc592; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15.5px; line-height: 1.6; }
+.wrap { max-width: 920px; margin: 0 auto; padding-inline: 20px; padding-block: 40px 72px; display: grid; gap: 44px; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.25; margin: 0; }
+h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 1.35rem; font-weight: 700; }
+h3 { font-size: 1.02rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-size: .74rem; letter-spacing: .09em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.lede { color: var(--muted); font-size: 1.05rem; }
+header { display: grid; gap: 12px; }
+section { display: grid; gap: 16px; }
+code, .mono { font-family: var(--font-mono); font-size: .86em; }
+code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+ul { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; }
+li { max-width: 72ch; }
+.ref { color: var(--muted); font-family: var(--font-mono); font-size: .78em; white-space: nowrap; }
+.principles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.principle { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 14px 16px; display: grid; gap: 4px; min-width: 0; }
+.principle strong { font-weight: 600; }
+.principle span { color: var(--muted); font-size: .92rem; }
+.phase { display: grid; grid-template-columns: 56px 1fr; gap: 14px; border-top: 1px solid var(--line); padding-top: 18px; }
+.phase-num { font-family: var(--font-mono); font-weight: 500; color: var(--accent); font-size: 1.5rem; line-height: 1.1; }
+.phase-body { display: grid; gap: 10px; min-width: 0; }
+.phase-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+.pill { font-size: .74rem; font-weight: 600; letter-spacing: .03em; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.pill.flag { color: var(--accent); border-color: var(--accent); }
+.pill.risk { color: var(--warn); border-color: var(--warn); }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+th { font-size: .74rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; background: var(--bg); }
+td code { white-space: nowrap; }
+.tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+.tier { border-left: 3px solid var(--accent); background: var(--surface); padding: 10px 14px; display: grid; gap: 3px; min-width: 0; }
+.tier b { font-weight: 600; }
+.tier small { color: var(--muted); font-size: .86rem; }
+.note { background: var(--warn-soft); border-radius: 8px; padding: 12px 16px; font-size: .94rem; }
+.note b { color: var(--warn); }
+.decisions { counter-reset: d; list-style: none; padding: 0; gap: 10px; }
+.decisions li { counter-increment: d; display: grid; grid-template-columns: 28px 1fr; gap: 8px; }
+.decisions li::before { content: counter(d); font-family: var(--font-mono); color: var(--accent); font-weight: 500; }
+footer { color: var(--muted); font-size: .86rem; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (max-width: 520px) { .phase { grid-template-columns: 1fr; gap: 4px; } h1 { font-size: 1.6rem; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="eyebrow">Plan · proposed 30 Sep 2026 · awaiting approval</div>
+  <h1>Truex caching and optimization plan</h1>
+  <p class="lede">Redis for shared state, an immutable document cache, a frontend response cache, and removal of repeated work across the platform, agent-core, model-gateway and frontend. Built from seven code audits. vendor/codex is not touched.</p>
+</header>
+
+<section>
+  <h2>What the audits found</h2>
+  <ul>
+    <li><b>Opening a conversation is the slowest action.</b> The browser makes four calls. On the server, three of them run a full sync from agent-core, and <code>history()</code> reads the same session five times. <span class="ref">service.ts:1040-1118</span></li>
+    <li><b>The browser caches nothing.</b> Reopening a conversation, switching a tab or opening a sheet refetches the data. The same MCP list is fetched by three components. <span class="ref">lib/api.ts:98</span></li>
+    <li><b>Each streamed token re-renders the whole page.</b> page.tsx has 57 state hooks, and every past message's Markdown is re-parsed on each token. <span class="ref">page.tsx:443, chat-messages.tsx:379</span></li>
+    <li><b>Every stream reconnect resends a full snapshot</b>, even when replay succeeded. The snapshot is also built twice. <span class="ref">manager.ts:1062-1086</span></li>
+    <li><b>No compression, no pagination and missing indexes.</b> Sending one message loads the whole history. The sessions list does an in-memory sort. <span class="ref">service.ts:689, 1216</span></li>
+    <li><b>Both platform replicas poll every session every 2s.</b> This doubles the load on agent-core and lets both replicas persist the same records before either acknowledges them. <span class="ref">service.ts:1119-1155</span></li>
+    <li><b>Anthropic reports zero cached input tokens</b> on every turn, even though cache control is set. <span class="ref">backlog.txt:58</span></li>
+    <li><b>Documents never change after they're written</b> (a new UUID each time, no overwrite), yet they're served <code>no-store</code> as base64 JSON. <span class="ref">file-tools.ts:285</span></li>
+  </ul>
+</section>
+
+<section>
+  <h2>Ground rules</h2>
+  <div class="principles">
+    <div class="principle"><strong>Redis speeds things up; it never holds the only copy</strong><span>Mongo and agent-core stay the source of truth. If Redis is lost or evicts keys, things get slower but never incorrect.</span></div>
+    <div class="principle"><strong>Redis is optional</strong><span>If <code>REDIS_URL</code> isn't set, services use in-process caches, which keeps local dev as it is today.</span></div>
+    <div class="principle"><strong>Every key includes the tenant</strong><span>Authorization runs before any cache read. HTTP caching is always <code>private</code>.</span></div>
+    <div class="principle"><strong>Each layer has its own flag</strong><span>Every layer can be turned on and off separately, following the <code>features.ts</code> <code>on()</code> pattern.</span></div>
+    <div class="principle"><strong>Measure first</strong><span><code>Server-Timing</code> headers and client-side timing marks go in before any cache, so each phase shows a before and after.</span></div>
+    <div class="principle"><strong>Sensitive data is never cached</strong><span>Turn context (the masked prompt) stays <code>no-store</code> in every layer.</span></div>
+  </div>
+</section>
+
+<section>
+  <h2>Phases</h2>
+
+  <div class="phase"><div class="phase-num">0</div><div class="phase-body">
+    <h3>Measure, then remove wasted work</h3>
+    <div class="phase-meta"><span class="pill">no new infra</span><span class="pill">no stale-data risk</span></div>
+    <ul>
+      <li>Add <code>Server-Timing</code> headers to the platform and agent-core. Add timing marks on the frontend for conversation open, time to first token and cold start. Record a baseline.</li>
+      <li><code>history()</code>: read the session once, skip the agent-core sync if the poller ran within the last 2s, and batch <code>reconcile()</code> lookups with <code>$in</code>.</li>
+      <li>Remove the per-request sync from <code>/traces</code> and <code>/timings</code>. <span class="ref">index.ts:413-463</span></li>
+      <li>Stop the duplicate <code>/api/sessions/:id</code> fetch on open. <span class="ref">page.tsx:289, 474</span></li>
+      <li><code>configuration()</code> and <code>setAgentMcp</code>: batch <code>findMcp</code> with <code>$in</code> and run the four lookups in parallel.</li>
+      <li>On message send, skip <code>/resume</code> and <code>/capabilities</code> when the thread is loaded and settings haven't changed. Load only the message fields the send needs, not the whole history. <span class="ref">service.ts:857-885, 1216</span></li>
+      <li>Mongo:
+        <ul>
+          <li>Add a <code>{runtimePolicyVersion:1, createdAt:-1}</code> index.</li>
+          <li>Use an inclusion projection for the sessions list.</li>
+          <li>Save <code>title</code> when the first user message is written, then drop the untitled <code>$group</code>.</li>
+          <li>Add a projection to the poller query.</li>
+        </ul>
+      </li>
+      <li>Add a unique index for command idempotency so the check-then-insert race can't create duplicates. <span class="ref">service.ts:1196-1210</span></li>
+    </ul>
+  </div></div>
+
+  <div class="phase"><div class="phase-num">1</div><div class="phase-body">
+    <h3>Frontend response cache</h3>
+    <div class="phase-meta"><span class="pill flag">NEXT_PUBLIC_CLIENT_CACHE</span><span class="pill">biggest improvement users will see</span></div>
+    <ul>
+      <li>Add a stale-while-revalidate layer in <code>lib/api.ts</code>: show the cached copy immediately and refresh it in the background. Key it by tenant and URL, share in-flight requests, clear it on writes, and send <code>If-None-Match</code> when the server sets ETags.</li>
+      <li>Cache these for the whole page load: models, capabilities, schemas and features.</li>
+      <li>Share one MCP list per agent across the three components that use it, and invalidate it when <code>mcpVersion</code> changes.</li>
+      <li>Keep an in-memory LRU of the last 20 conversations (detail, traces, timings) so a reopened conversation shows immediately. The stream then fills in anything new.</li>
+      <li>Show agents, sessions and projects from a <code>localStorage</code> copy on boot, which removes the "Loading agents…" wait. Clear it on tenant switch and, once auth exists, on logout.</li>
+      <li>Keep goal history, model context and the documents list when switching tabs or reopening sheets. Remove the 400ms goal-tab delay.</li>
+    </ul>
+  </div></div>
+
+  <div class="phase"><div class="phase-num">2</div><div class="phase-body">
+    <h3>Redis setup and coordination</h3>
+    <div class="phase-meta"><span class="pill flag">REDIS_URL</span><span class="pill">compose + k8s</span></div>
+    <ul>
+      <li>Add a Redis service to <code>deploy/compose.yaml</code> and <code>deploy/kubernetes.yaml</code>, and pass <code>REDIS_URL</code> to the platform (lines 62-76) and the gateway (lines 132-135).</li>
+      <li>Add a shared module in <code>shared/</code> exposing <code>getJSON / setJSON / lease / publish / subscribe</code>. It needs a command timeout of about 50ms, a circuit breaker that falls back to in-memory, and metrics for hits, misses and errors.</li>
+      <li>Use a <b>poller lease</b> so only one replica polls at a time: <code>SET lease:poll:{tenant} NX PX 5000</code>. If Redis is unavailable, both replicas poll as they do today.</li>
+      <li>Invalidate caches across replicas over <b>pub/sub</b> (channel <code>truex:inv</code>). Wire it to the gateway's unused <code>clear()</code>, extended with per-id eviction, and to the tenant registry. Key rotation and profile disable then take effect everywhere at once.</li>
+      <li>Record the last persisted cursor per session for <b>stream-triggered writes</b>, so extra tabs and replicas stop repeating goal and plan writes. <span class="ref">index.ts:537-600</span></li>
+      <li>Use Redis <code>SET NX</code> as a fast pre-check for idempotency on <code>command()</code> and on setting titles. The Phase 0 Mongo unique index stays as the guarantee.</li>
+    </ul>
+  </div></div>
+
+  <div class="phase"><div class="phase-num">3</div><div class="phase-body">
+    <h3>Server-side caches backed by Redis</h3>
+    <div class="phase-meta"><span class="pill flag">SERVER_CACHE</span></div>
+    <ul>
+      <li><b>Catalog (models, skills):</b> keep it in an in-process L1 cache backed by Redis. The key includes <code>catalog:ver</code>, which <code>scripts/tenant.mjs</code>, <code>demo.mjs</code> and the migration scripts increment. Use a 60s TTL as a safety net for writes made directly to Mongo.</li>
+      <li><b>Tenant config (agents, MCP lists, allow-lists):</b> the key includes <code>cfg:{tenant}:ver</code>, which the three write endpoints increment, publishing to <code>truex:inv</code> at the same time.</li>
+      <li><b>Inputs for <code>configuration()</code></b> (agent + model + MCP + skills) come from those caches, which takes 4+N Mongo reads off every message send.</li>
+      <li><b>ETags</b> on <code>/models</code>, <code>/agents</code>, <code>/agents/:id/mcp</code>, <code>/capabilities</code> and <code>/sessions</code>, built from the version stamp. Responses use <code>Cache-Control: private, no-cache</code> plus <code>Vary</code> on the tenant header.</li>
+      <li>Cache the <b>active-tenant list</b> for the poller, so it stops querying the registry twice every tick.</li>
+      <li>Cache <b>completed</b> traces, helper-agent transcripts and goal history under an immutable key. Anything still running or growing is not cached.</li>
+    </ul>
+  </div></div>
+
+  <div class="phase"><div class="phase-num">4</div><div class="phase-body">
+    <h3>Document and visualization cache</h3>
+    <div class="phase-meta"><span class="pill flag">DOCUMENT_CACHE</span><span class="pill">aligns with S3 plan</span></div>
+    <p>Documents and visualizations are never overwritten: a revision gets a new id with <code>sourceId</code>. That makes <code>(tenant, sessionId, fileId)</code> a safe permanent key. Caching works in tiers, from nearest to the user to the source:</p>
+    <div class="tiers">
+      <div class="tier"><b>Browser</b><small><code>private, max-age=31536000, immutable</code> on content, plus an in-memory memo for visualization JSON</small></div>
+      <div class="tier"><b>Platform Redis</b><small>Bytes ≤ 1 MB and visualization HTML, cached for 24h. Repeat views skip agent-core.</small></div>
+      <div class="tier"><b>agent-core disk</b><small>The source today. Once the S3 plan ships, it becomes an LRU cache in front of S3.</small></div>
+      <div class="tier"><b>S3 (later)</b><small>302 redirect to a presigned GET. The <code>sha256</code> becomes the content address.</small></div>
+    </div>
+    <ul>
+      <li>Compute <code>sha256</code> in <code>save()</code> and store it in the metadata. Use it for a strong ETag, and it matches the S3 plan's checksum.</li>
+      <li>Serve binary from agent-core as a stream with the right <code>Content-Type</code>, replacing base64 JSON. This removes the 33% size overhead and the 2 MB body limit problem once uploads grow to 25 MB.</li>
+      <li>The document list gets an ETag built from the file count and newest <code>createdAt</code>. When a file is saved, a stream event marks the list as stale, so the UI stops refetching on every sheet open and on every change to <code>timings.length</code>.</li>
+      <li>HTML and SVG are always downloaded as attachments, with <code>nosniff</code> kept. Visualizations keep rendering in the sandboxed iframe.</li>
+      <li>Authorization (tenant plus session ownership) always runs before a cached copy is served.</li>
+    </ul>
+    <div class="note"><b>Check first:</b> the audit found no delete or rename endpoint for files, but that wasn't fully confirmed. If one exists or is planned, it needs to remove the Redis key and switch that route off <code>immutable</code>. A browser can also keep a cached file after the workspace cleanup job deletes the conversation. That's acceptable for <code>private</code> caching, but you should approve it.</div>
+  </div></div>
+
+  <div class="phase"><div class="phase-num">5</div><div class="phase-body">
+    <h3>Streaming, payload and render performance</h3>
+    <div class="phase-meta"><span class="pill">no caching, same goal</span></div>
+    <ul>
+      <li><b>Frontend rendering:</b>
+        <ul>
+          <li>Memoize message blocks by id and text, and hoist the <code>remarkPlugins</code> array.</li>
+          <li>Batch <code>message.delta</code> updates once per animation frame and use <code>startTransition</code> for side panels.</li>
+          <li>Move chat state out of the 1776-line page.tsx.</li>
+        </ul>
+      </li>
+      <li><b>Lazy loading:</b> use <code>next/dynamic</code> for SessionActivity, AgentsPanel, McpSettings, AgentDialog and SearchPalette, and bring in markdown and motion only where they're used.</li>
+      <li><b>Snapshots:</b> skip the snapshot when replay succeeded, build it only once, and send only the parts the client is missing. This also avoids the 4 MB frame limit that cuts off long sessions. <span class="ref">public.ts:754</span></li>
+      <li><b>Platform relay:</b> pass <code>message.delta</code> frames straight through, and scan with an index instead of re-slicing the buffer.</li>
+      <li><b>Compression:</b> add <code>compression</code> to JSON routes on the platform and agent-core. Leave it off for SSE, which is already <code>no-transform</code>.</li>
+      <li><b>Pagination:</b> the session GET returns the latest N messages, served by the existing <code>{sessionId, at}</code> index, with "load earlier" for older ones.</li>
+      <li><b>agent-core:</b>
+        <ul>
+          <li>Cache marker records in a Map that's invalidated at its 2 writes.</li>
+          <li>Serialize each event once for all subscribers.</li>
+          <li>Make the durable event writes async.</li>
+        </ul>
+        <span class="ref">manager.ts:1260-1282, business-runtime.ts:219-250</span>
+      </li>
+      <li><b>Fonts:</b> trim the Caveat and Newsreader weights, or self-host them, to cut the render-blocking Google CSS.</li>
+    </ul>
+  </div></div>
+
+  <div class="phase"><div class="phase-num">6</div><div class="phase-body">
+    <h3>LLM prompt caching (gateway)</h3>
+    <div class="phase-meta"><span class="pill risk">likely largest effect on cost and first-token time</span></div>
+    <ul>
+      <li>Find out why <code>cachedInputTokens</code> is 0. Compare a direct Anthropic call with one through the duckdns proxy, using the same prefix twice. Fix the proxy or bypass it.</li>
+      <li>Forward <code>prompt_cache_key</code> in the chat adapter. Evaluate Gemini <code>cachedContent</code> for long system prompts.</li>
+      <li>Reuse one Anthropic client per profile and key. This is a small gain.</li>
+      <li>Caching MCP <code>tools/list</code> by server fingerprint and lazy-loading skills stay in the token optimization plan. Coordinate them, because loading a skill mid-thread invalidates the prompt cache.</li>
+    </ul>
+  </div></div>
+
+  <div class="phase"><div class="phase-num">7</div><div class="phase-body">
+    <h3>Later</h3>
+    <ul>
+      <li>A CDN in front of static assets once a public ingress exists.</li>
+      <li>Shared gateway rate limits and quotas in Redis (<code>rl:{profile}:{window}</code>). The gateway has no rate limits today.</li>
+      <li>Choose the agent-core owner by least load, using per-pod thread counts in Redis, instead of each replica's own round-robin counter.</li>
+    </ul>
+  </div></div>
+</section>
+
+<section>
+  <h2>Redis key design</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Key / channel</th><th>Purpose</th><th>TTL</th><th>If lost</th></tr></thead>
+    <tbody>
+      <tr><td><code>lease:poll:{tenant}</code></td><td>Lets only one replica poll a tenant</td><td>5s</td><td>Both replicas poll, as they do today</td></tr>
+      <tr><td><code>truex:inv</code> (pub/sub)</td><td>Evicts cached profiles, secrets, tenant entries and config on every replica</td><td>n/a</td><td>Cached data stays until its TTL expires</td></tr>
+      <tr><td><code>catalog:ver</code>, <code>cfg:{tenant}:ver</code></td><td>Version stamps included in cache keys and ETags</td><td>none</td><td>Rebuilt from Mongo, causing one miss</td></tr>
+      <tr><td><code>c:catalog:{ver}:models|skills</code></td><td>Catalog data</td><td>60s</td><td>Read from Mongo</td></tr>
+      <tr><td><code>c:{tenant}:{ver}:agents|mcp:{agentId}</code></td><td>Tenant config</td><td>300s</td><td>Read from Mongo</td></tr>
+      <tr><td><code>c:{tenant}:done:{sessionId}:{kind}:{id}</code></td><td>Completed traces, transcripts and goal history</td><td>24h</td><td>Read from Mongo or agent-core</td></tr>
+      <tr><td><code>doc:{tenant}:{sessionId}:{fileId}</code></td><td>Document bytes ≤ 1 MB and visualization HTML</td><td>24h</td><td>Fetched from agent-core</td></tr>
+      <tr><td><code>doclist:{tenant}:{sessionId}</code></td><td>Document list and its ETag</td><td>60s, cleared on save</td><td>Fetched from agent-core</td></tr>
+      <tr><td><code>sse:persisted:{sessionId}</code></td><td>Last persisted stream cursor</td><td>1h</td><td>Repeated writes, which are harmless</td></tr>
+      <tr><td><code>idem:{tenant}:cmd:{clientId}</code></td><td>Fast duplicate check for commands</td><td>10 min</td><td>The Mongo unique index catches it</td></tr>
+    </tbody>
+  </table></div>
+  <p>Because every key tolerates loss, Redis can run with <code>maxmemory-policy allkeys-lru</code> and no persistence.</p>
+</section>
+
+<section>
+  <h2>Invalidation</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Data</th><th>Written by</th><th>Invalidation</th></tr></thead>
+    <tbody>
+      <tr><td>Agents, agent MCP</td><td><code>POST /api/agents</code>, <code>POST /api/agents/:id/mcp</code></td><td>Increment <code>cfg:{tenant}:ver</code>, publish, and clear the client-side key</td></tr>
+      <tr><td>MCP profiles</td><td><code>POST /api/mcp</code></td><td>Same as above</td></tr>
+      <tr><td>Models, skills, allow-lists</td><td>Scripts and direct Mongo writes</td><td>Scripts increment <code>catalog:ver</code>, with a 60s TTL as a safety net</td></tr>
+      <tr><td>Tenant status</td><td><code>scripts/tenant.mjs</code></td><td>Publish a tenant eviction, with the existing 5s TTL as a safety net</td></tr>
+      <tr><td>Gateway profiles and secrets</td><td>Profile writes and key rotation</td><td>Publish, which calls <code>clear(id)</code> on every gateway pod</td></tr>
+      <tr><td>Documents</td><td><code>save()</code> (new id each time)</td><td>None needed for content. The list is marked stale by a stream event.</td></tr>
+      <tr><td>Sessions list</td><td>Session create, title, archive</td><td>ETag from the newest <code>updatedAt</code>. The client refreshes in the background.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Decisions needed</h2>
+  <ol class="decisions">
+    <li><span><b>Redis flavour and host.</b> ElastiCache for Valkey or Redis OSS on AWS, with <code>valkey/valkey</code> or <code>redis</code> in compose for dev. The Node client would be <code>ioredis</code> at a pinned version.</span></li>
+    <li><span><b>Frontend cache.</b> Build a small cache ourselves (roughly 150 lines, no new dependency), or adopt TanStack Query at a pinned version.</span></li>
+    <li><span><b>Keeping lists in localStorage before auth exists.</b> Agents, sessions and projects would stay readable on a shared machine until login and logout exist.</span></li>
+    <li><span><b>Browser caching documents for a year</b>, even after the cleanup job deletes the workspace.</span></li>
+    <li><span><b>Order of phases.</b> The proposal is 0 → 1 → 2 → 3 → 4, with 5 and 6 running in parallel once Phase 0 measurements are in.</span></li>
+  </ol>
+</section>
+
+<footer>Sources: seven read-only code audits of the frontend, platform, agent-core, model-gateway, deploy config, the document path, and a broad optimization sweep. Line references reflect the working tree on 30 Sep 2026. Nothing has been measured yet, which is why Phase 0 starts with measurement.</footer>
+</div>

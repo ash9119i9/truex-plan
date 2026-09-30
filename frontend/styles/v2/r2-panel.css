@@ -1,0 +1,194 @@
+/* r2 panel styles: copied from convo-v2-wireframe-r2.html section 4 ("Activity panel:
+   this turn and the whole session"). Tokens only, no literal hex. The wireframe scopes
+   these under #panel; here they are scoped under .session-panel so the generic
+   product classes (.row, .log, .stats, .seg, .pill…) never leak into other areas. */
+
+/* ---- shared product primitives used by the panel ---- */
+.session-panel .ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+.session-panel .ic.sm { width: 13px; height: 13px; vertical-align: -2px; }
+.session-panel .row { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.session-panel .spacer { flex: 1; }
+.session-panel .pn-body .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.session-panel .pn-body .strong { font-weight: 600; color: var(--ink); }
+.session-panel .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.session-panel .pill.accent { background: var(--accent-soft); color: var(--accent-fg); }
+.session-panel .pill.warn { background: var(--warn-bg); color: var(--warn-text); }
+.session-panel .pill.bad { background: var(--bad-bg); color: var(--bad); }
+.session-panel .pill.ok { background: var(--ok-bg); color: var(--ok); }
+.session-panel .pill.sm { height: 18px; font-size: 11px; }
+.session-panel .mark { width: 16px; height: 16px; border-radius: 50%; background: var(--surface-3); color: var(--accent-fg); display: grid; place-items: center; flex: none; font-size: 9px; font-weight: 700; }
+.session-panel .mark.done { background: var(--accent-soft); }
+.session-panel .ring { --p: 40; width: 44px; height: 44px; border-radius: 50%; flex: none; display: grid; place-items: center; background: conic-gradient(var(--accent) calc(var(--p) * 1%), var(--surface-3) 0); font: 700 11px var(--font-mono); color: var(--ink); }
+.session-panel .ring::before { content: ""; grid-area: 1 / 1; width: 34px; height: 34px; border-radius: 50%; background: var(--surface); }
+.session-panel .ring > span { grid-area: 1 / 1; position: relative; }
+.session-panel .pn-body .bar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.session-panel .pn-body .bar > i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.session-panel .diff { font: 12px/1.55 var(--font-mono); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; }
+.session-panel .diff div { padding: 0 10px; white-space: pre; }
+.session-panel .diff .add { background: var(--ok-bg); color: var(--ok); }
+.session-panel .diff .del { background: var(--bad-bg); color: var(--bad); }
+.session-panel .diff .hd { background: var(--surface-3); color: var(--ink-3); padding: 4px 10px; }
+.session-panel .pn-body .h-av { width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center; font-size: 10px; font-weight: 700; flex: none; background: var(--ts); color: var(--t); }
+.session-panel .pn-body code { background: var(--surface-3); border: 1px solid var(--line); border-radius: 5px; padding: 0 4px; color: var(--ink-2); overflow-wrap: anywhere; }
+.session-panel .pn-body button { font: inherit; }
+
+/* ---- panel body (the wireframe's .panel-body) ---- */
+.session-panel .pn-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+/* ---- segmented scope control: This turn / Session ---- */
+.session-panel .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px; background: var(--surface-3); border: 1px solid var(--line); }
+.session-panel .seg button { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: 500 12px var(--font-sans); color: var(--ink-2); white-space: nowrap; cursor: pointer; }
+.session-panel .seg button.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); font-weight: 600; }
+.session-panel .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.session-panel .seg button:disabled { cursor: default; }
+
+/* ---- turn rail ---- */
+.session-panel .turns { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
+.session-panel .turns::-webkit-scrollbar { display: none; }
+.session-panel .turn { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font: 500 12px var(--font-sans); color: var(--ink-2); white-space: nowrap; cursor: pointer; flex: none; }
+.session-panel .turn i { font: 500 10px var(--font-mono); font-style: normal; color: var(--ink-3); }
+.session-panel .turn.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent-fg); }
+.session-panel .turn.live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s infinite; }
+.session-panel .turn.old { opacity: .7; }
+.session-panel .turn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---- typed work log ---- */
+.session-panel .log { list-style: none; margin: 0; padding: 0; position: relative; display: flex; flex-direction: column; }
+.session-panel .log::before { content: ""; position: absolute; left: 11px; top: 12px; bottom: 12px; width: 1.5px; background: var(--line); }
+.session-panel .log > li { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 6px 0; font-size: 13px; color: var(--ink-2); }
+.session-panel .node { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); color: var(--ink-3); }
+.session-panel .node.k-think { color: var(--t0); background: var(--ts0); border-color: transparent; }
+.session-panel .node.k-tool { color: var(--t1); background: var(--ts1); border-color: transparent; }
+.session-panel .node.k-agent { color: var(--t2); background: var(--ts2); border-color: transparent; }
+.session-panel .node.k-file { color: var(--accent-fg); background: var(--accent-soft); border-color: transparent; }
+.session-panel .node.k-err { color: var(--bad); background: var(--bad-bg); border-color: transparent; }
+.session-panel .node.k-live { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.session-panel .log .t { font: 11px var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 4px; }
+.session-panel .log .what { min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
+.session-panel .log .what b { color: var(--ink); font-weight: 600; }
+
+/* ---- stats strip (panel variant: one row of equal columns) ---- */
+.session-panel .stats { display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.session-panel .stats > div { padding: 8px 9px; display: flex; flex-direction: column; gap: 1px; border-left: 1px solid var(--line); min-width: 0; }
+.session-panel .stats > div:first-child { border-left: 0; }
+.session-panel .stats .v { font-size: 15px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.session-panel .stats .v.bad { color: var(--bad); }
+.session-panel .stats .l { font-size: 11px; color: var(--ink-3); }
+
+/* ---- Section 4: session panel, scoped to a turn or the whole session ---- */
+.session-panel .pn-scope { display: flex; flex-direction: column; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); flex: none; }
+.session-panel .pn-scope-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.session-panel .pn-ctx { font-size: 12px; color: var(--ink-3); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.session-panel .pn-ctx b { color: var(--ink-2); font-weight: 600; }
+.session-panel .pn-live { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); font: 600 12px var(--font-sans); white-space: nowrap; }
+.session-panel button.pn-live { cursor: pointer; }
+.session-panel .pn-live::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s infinite; }
+.session-panel .pn-live.sm { height: 20px; font-size: 11px; }
+.session-panel .pn-seg-off button:not(.on) { opacity: .45; }
+.session-panel .pn-tabs .tab { display: inline-flex; align-items: center; gap: 5px; }
+.session-panel .pn-prompt { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--ink-2); min-width: 0; }
+.session-panel .pn-prompt q { quotes: none; color: var(--ink); font-weight: 500; overflow-wrap: anywhere; }
+.session-panel .pn-tc { display: inline-flex; align-items: center; height: 18px; padding: 0 6px; border: 0; border-radius: 6px; background: var(--surface-3); color: var(--ink-2); font: 600 10px/18px var(--font-mono); white-space: nowrap; flex: none; }
+.session-panel button.pn-tc { cursor: pointer; }
+.session-panel .pn-tc.on { background: var(--accent-soft); color: var(--accent-fg); }
+.session-panel .pn-tc.live { background: var(--ink); color: var(--bg); }
+.session-panel .pn-h { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.session-panel .pn-h .spacer { flex: 1; }
+.session-panel .pn-h em { font: 500 11px var(--font-mono); font-style: normal; letter-spacing: 0; text-transform: none; }
+.session-panel .pn-h button.em { border: 0; background: none; padding: 0; font: 500 11px var(--font-mono); color: inherit; cursor: pointer; }
+.session-panel .pn-sub { font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; }
+.session-panel .pn-mono { font: 11px var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.session-panel .pn-helper { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin-top: 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-size: 12px; min-width: 0; flex-wrap: wrap; color: var(--ink-2); text-align: left; }
+.session-panel .pn-helper .grow { flex-direction: row; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.session-panel button.pn-helper { width: 100%; cursor: pointer; }
+.session-panel .pn-helper.flat { margin: 0; }
+.session-panel .pn-helper > .ic { color: var(--ink-3); }
+.session-panel .pn-helper button.pn-mono { border: 0; background: none; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.session-panel .pn-progress { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.session-panel .pn-progress .bar { flex: 1; }
+.session-panel .pn-err { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; margin-top: 4px; border-radius: 9px; background: var(--bad-bg); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); color: var(--bad); font-size: 12px; }
+.session-panel .pn-err .btn { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 500 12px var(--font-sans); white-space: nowrap; align-self: flex-start; cursor: pointer; }
+
+/* grouped per-turn timeline */
+.session-panel .pn-groups { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface); }
+.session-panel .pn-group + .pn-group { border-top: 1px solid var(--line); }
+.session-panel .pn-group > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; padding: 9px 10px; }
+.session-panel .pn-group > summary::-webkit-details-marker { display: none; }
+.session-panel .pn-group > summary .ic { color: var(--ink-3); transition: transform .15s; }
+.session-panel .pn-group[open] > summary .ic.pn-chev { transform: rotate(90deg); }
+.session-panel .pn-group[open] > summary { background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.session-panel .pn-gt { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; color: var(--ink); font-weight: 500; }
+.session-panel .pn-gt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.session-panel .pn-gm { grid-column: 2 / 4; display: flex; flex-wrap: wrap; gap: 4px 10px; font: 11px var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.session-panel .pn-gm .bad { color: var(--bad); }
+.session-panel .pn-gm .warn { color: var(--warn-text); }
+.session-panel .pn-gbody { padding: 4px 10px 8px; }
+
+/* files across session */
+.session-panel .pn-files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.session-panel .pn-files li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; padding: 8px 10px; font-size: 12px; }
+.session-panel .pn-files li + li { border-top: 1px solid var(--line); }
+.session-panel .pn-files li > .ic { color: var(--accent-fg); }
+.session-panel .pn-files code { background: none; border: 0; padding: 0; color: var(--ink); font-size: 12px; }
+.session-panel .pn-files .pn-turnset { grid-column: 2 / 4; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.session-panel .pn-add { color: var(--ok); font: 11px var(--font-mono); }
+.session-panel .pn-del { color: var(--bad); font: 11px var(--font-mono); }
+
+/* plan */
+.session-panel .pn-vers { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--ink-3); }
+.session-panel .pn-ver { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.session-panel .pn-ver.cur { border-color: var(--accent); color: var(--accent-fg); background: var(--accent-soft); }
+.session-panel .pn-ver.gone { text-decoration: line-through; color: var(--ink-3); }
+.session-panel .pn-plan { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.session-panel .pn-plan li { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 9px; font-size: 13px; color: var(--ink-2); }
+.session-panel .pn-plan li.done { color: var(--ink-2); }
+.session-panel .pn-plan li.todo { color: var(--ink-3); }
+.session-panel .pn-plan li.run { color: var(--ink); font-weight: 500; }
+.session-panel .pn-plan li.adv { background: var(--accent-soft); color: var(--accent-fg); }
+.session-panel .pn-plan li.adv .pn-tc { background: var(--surface); color: var(--accent-fg); }
+.session-panel .pn-plan .mark .ic { width: 10px; height: 10px; stroke-width: 2.5; }
+.session-panel .pn-hist { border: 1px dashed var(--line-strong); border-radius: 12px; background: var(--surface-2); }
+.session-panel .pn-hist > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 10px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.session-panel .pn-hist > summary::-webkit-details-marker { display: none; }
+.session-panel .pn-hist > summary b { color: var(--ink-2); font-weight: 600; text-decoration: line-through; text-decoration-color: var(--ink-3); }
+.session-panel .pn-hist[open] > summary .pn-chev { transform: rotate(90deg); }
+.session-panel .pn-hist .pn-chev { transition: transform .15s; }
+.session-panel .pn-hist-body { padding: 0 10px 10px; display: flex; flex-direction: column; gap: 8px; }
+.session-panel .pn-hist .pn-plan li { opacity: .6; text-decoration: line-through; text-decoration-color: var(--ink-3); padding: 3px 8px; }
+.session-panel .pn-hist .diff div { white-space: pre-wrap; }
+.session-panel .pn-hist .diff .keep { color: var(--ink-3); }
+
+/* goal budget, split by turn */
+.session-panel .pn-budget { display: flex; height: 12px; border-radius: 999px; background: var(--surface-3); overflow: hidden; gap: 2px; }
+.session-panel .pn-budget i { display: block; height: 100%; background: color-mix(in srgb, var(--accent) 45%, var(--surface-3)); }
+.session-panel .pn-budget i.on { background: var(--accent); }
+.session-panel .pn-budget i.live { background: repeating-linear-gradient(135deg, var(--accent) 0 4px, color-mix(in srgb, var(--accent) 45%, var(--surface-3)) 4px 8px); }
+.session-panel .pn-contrib { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: 12px; }
+.session-panel .pn-contrib li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 8px; color: var(--ink-2); }
+.session-panel .pn-contrib li.on { background: var(--accent-soft); color: var(--accent-fg); }
+.session-panel .pn-contrib li span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* roster */
+.session-panel .pn-roster { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
+.session-panel .pn-roster li + li { border-top: 1px solid var(--line); }
+.session-panel .pn-roster .pn-rrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; width: 100%; padding: 9px 10px; border: 0; background: none; font-size: 13px; text-align: left; color: var(--ink-2); cursor: pointer; }
+.session-panel .pn-roster .pn-rrow:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.session-panel .pn-roster .h-av { width: 24px; height: 24px; border-radius: 8px; font-size: 11px; }
+.session-panel .pn-roster .who { display: flex; flex-direction: column; min-width: 0; }
+.session-panel .pn-roster .who b { font-weight: 600; color: var(--ink); }
+.session-panel .pn-roster .who span { font-size: 11px; color: var(--ink-3); }
+.session-panel .pn-roster .pn-turnset { grid-column: 2 / 4; display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+
+/* key/value trace numbers */
+.session-panel .pn-kv { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; font-size: 12px; color: var(--ink-2); }
+.session-panel .pn-kv b { font: 500 12px var(--font-mono); color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
+.session-panel .pn-mini { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 12px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow-sm); min-width: 0; }
+
+/* tokens per turn chart (Board E; rendered by the Insights tab) */
+.session-panel .pn-chart { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 10px; align-items: end; height: 128px; padding: 8px 10px 0; border: 1px solid var(--line); border-radius: 12px 12px 0 0; border-bottom: 0; background: linear-gradient(var(--line) 1px, transparent 1px) 0 8px / 100% 50% repeat-y, var(--surface); }
+.session-panel .pn-col { display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; height: 100%; min-width: 0; }
+.session-panel .pn-col b { font: 600 10px var(--font-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.session-panel .pn-col i { display: block; width: 100%; max-width: 34px; border-radius: 5px 5px 0 0; background: color-mix(in srgb, var(--accent) 45%, var(--surface-3)); }
+.session-panel .pn-col.on i { background: var(--accent); }
+.session-panel .pn-col.live i { background: repeating-linear-gradient(135deg, var(--accent) 0 4px, color-mix(in srgb, var(--accent) 40%, var(--surface-3)) 4px 8px); }
+.session-panel .pn-axis { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: 10px; padding: 5px 10px; border: 1px solid var(--line); border-top: 1px solid var(--line-strong); border-radius: 0 0 12px 12px; background: var(--surface-2); font: 500 10px var(--font-mono); color: var(--ink-3); text-align: center; }

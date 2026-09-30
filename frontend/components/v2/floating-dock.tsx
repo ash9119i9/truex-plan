@@ -47,7 +47,8 @@ export type DockItem = {
   kbd?: string;
   /** Toggle state. Leave undefined for plain actions (no aria-pressed, never active). */
   active?: boolean;
-  badge?: boolean;
+  /** true shows the dot; a number > 0 shows an amber count (e.g. open requests + unseen errors). */
+  badge?: boolean | number;
   onClick: () => void;
   /** Forwarded to the <button>, e.g. so a Popover can ignore clicks on its toggle. */
   buttonRef?: Ref<HTMLButtonElement>;
@@ -129,7 +130,11 @@ function DockButton({
       type="button"
       className={item.active ? "dock-btn is-active" : "dock-btn"}
       style={{ width: size, height: size }}
-      aria-label={item.label}
+      aria-label={
+        typeof item.badge === "number" && item.badge > 0
+          ? `${item.label}, ${item.badge} new`
+          : item.label
+      }
       aria-pressed={toggle ? item.active : undefined}
       onClick={item.onClick}
     >
@@ -149,7 +154,15 @@ function DockButton({
         </svg>
       </span>
       {item.active && <span className="dock-pip" aria-hidden="true" />}
-      {item.badge && <span className="dock-badge" aria-hidden="true" />}
+      {typeof item.badge === "number" ? (
+        item.badge > 0 && (
+          <span className="dock-badge count" aria-hidden="true">
+            {item.badge > 99 ? "99+" : item.badge}
+          </span>
+        )
+      ) : (
+        item.badge && <span className="dock-badge" aria-hidden="true" />
+      )}
       <span className="dock-tip" role="tooltip">
         {item.label}
         {item.kbd && <kbd>{item.kbd}</kbd>}

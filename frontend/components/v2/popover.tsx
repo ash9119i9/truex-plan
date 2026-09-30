@@ -13,9 +13,11 @@ export type PopoverProps = {
   children: ReactNode;
   ignoreRef?: RefObject<HTMLElement | null>;
   "aria-label"?: string;
+  /** Use `className` as the whole class list (no base .popover), e.g. the r2 "ch-pop" card. */
+  bare?: boolean;
 };
 
-export function Popover({ open, onClose, className, children, ignoreRef, "aria-label": ariaLabel }: PopoverProps) {
+export function Popover({ open, onClose, className, children, ignoreRef, "aria-label": ariaLabel, bare = false }: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   useEffect(() => {
@@ -42,7 +44,7 @@ export function Popover({ open, onClose, className, children, ignoreRef, "aria-l
 
   if (!open) return null;
   return (
-    <div ref={ref} role="dialog" aria-label={ariaLabel} className={className ? `popover ${className}` : "popover"}>
+    <div ref={ref} role="dialog" aria-label={ariaLabel} className={bare ? className : className ? `popover ${className}` : "popover"}>
       {children}
     </div>
   );

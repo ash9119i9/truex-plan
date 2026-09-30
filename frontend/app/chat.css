@@ -16,133 +16,10 @@
   margin: 0 auto;
 }
 
-/* ---------- Suggested follow-ups ---------- */
-.suggested-questions ul {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  margin: 14px 0 4px;
-  padding: 0;
-  list-style: none;
-}
-
-/* Animated link (Skiper UI Link003): underline grows from the center. */
-.animated-link {
-  display: inline-block;
-  max-width: 100%;
-  padding: 2px 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: left;
-  transition: color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.animated-link-text {
-  background: linear-gradient(currentColor, currentColor) 50% 100% / 0% 1px
-    no-repeat;
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
-  transition: background-size 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-/* Keeps the arrow on the same line as the last word. */
-.animated-link-tail {
-  white-space: nowrap;
-}
-.animated-link-arrow {
-  display: inline-block;
-  width: 0.6em;
-  height: 0.6em;
-  margin-left: 0.4em;
-  vertical-align: 0.05em;
-  opacity: 0;
-  transform: translateX(-4px) rotate(45deg);
-  transition:
-    opacity 0.3s,
-    transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.animated-link:not(:disabled):hover,
-.animated-link:focus-visible {
-  color: var(--foreground);
-}
-.animated-link:not(:disabled):hover .animated-link-text,
-.animated-link:focus-visible .animated-link-text {
-  background-size: 100% 1px;
-}
-.animated-link:not(:disabled):hover .animated-link-arrow,
-.animated-link:focus-visible .animated-link-arrow {
-  opacity: 1;
-  transform: rotate(45deg);
-}
-/* Touch screens have no hover, so the arrow stays faintly visible. */
-@media (hover: none) {
-  .animated-link-arrow {
-    opacity: 0.6;
-    transform: rotate(45deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .animated-link,
-  .animated-link-text,
-  .animated-link-arrow {
-    transition: none;
-  }
-}
-
-/* ---------- Composer ---------- */
-.composer {
-  position: relative;
-  flex-shrink: 0;
-  width: calc(100% - 48px);
-  max-width: 760px;
-  margin: 8px auto 20px;
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  border-radius: 18px;
-  box-shadow: var(--shadow-md);
-  transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
-}
-.composer:focus-within {
-  border-color: var(--ring);
-  box-shadow:
-    0 0 0 3px rgb(143 168 131 / 0.22),
-    var(--shadow-md);
-}
-.composer textarea {
-  display: block;
-  width: 100%;
-  min-height: 52px;
-  max-height: 240px;
-  resize: none;
-  border: 0;
-  outline: none;
-  padding: 14px 18px 4px;
-  background: transparent;
-  color: var(--foreground);
-  font-size: 14px;
-  line-height: 1.6;
-}
-/* The card shows the focus ring, so the textarea's own outline is redundant. */
-.composer textarea:focus-visible {
-  outline: none;
-}
-.composer textarea::placeholder {
-  color: var(--muted);
-}
-.composer textarea:disabled {
-  cursor: not-allowed;
-}
 /* Spring caret (Skiper 106): the native caret is hidden and a measured,
    spring-animated bar follows the insertion point instead. */
 .smooth-field {
   position: relative;
-}
-.composer .smooth-field textarea {
-  caret-color: transparent;
 }
 .smooth-mirror {
   position: absolute;
@@ -399,17 +276,6 @@
 .markdown img {
   max-width: 100%;
   border-radius: var(--radius-sm);
-}
-@media (prefers-reduced-motion: reduce) {
-    .composer{
-    transition: none;
-  }
-}
-
-/* ---------- Goal mode in the composer ---------- */
-.composer.goal-mode {
-  border-color: var(--accent-soft-2);
-  background: linear-gradient(var(--accent-soft), var(--surface) 64px);
 }
 /* Rolling timer digits (Number Flow). Tabular numbers keep the width steady. */
 .live-duration {

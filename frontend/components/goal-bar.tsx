@@ -3,6 +3,8 @@ import { useEffect, useId, useRef, useState } from "react";
 // Ellipsis, gauge and rotate have no v2 equivalent, so lucide stays for those.
 import { Ellipsis, Gauge, RotateCcw } from "lucide-react";
 import { Icon } from "./v2/icon";
+import { ChIcon } from "./v2/chrome-icons";
+import { goalStrip } from "@/lib/vm-chrome";
 import { api } from "@/lib/api";
 import { BudgetField, type BudgetValue } from "./budget-field";
 import {
@@ -105,6 +107,7 @@ export function GoalBar({
     ? Math.min(100, Math.round((goal.tokensUsed / goal.tokenBudget) * 100))
     : null;
   const total = goalTokens(goal);
+  const strip = goalStrip(goal, review, total);
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -277,54 +280,55 @@ export function GoalBar({
     }
   };
 
-  // Spec .goal-status has four variants; warnings reuse the paused (warn) dot.
-  const tone =
-    accepted || goal.status === "complete"
-      ? "s-done"
-      : goal.status === "active"
-        ? "s-running"
-        : status.tone === "warn" || reviewing || goal.status === "paused"
-          ? "s-paused"
-          : "s-ended";
   return (
     <section
-      className="goal-bar"
+      className="goal-bar r2"
       data-tone={accepted ? "good" : reviewing ? "review" : status.tone}
       aria-label="Conversation goal"
     >
-      <div className="goal-strip">
-        <Icon name="target" size={14} />
-        <p className="goal-strip-text" title={goal.objective}>
-          {goal.objective}
-        </p>
+      <div className="ch-goal">
+        <span className="ch-gi">
+          <ChIcon name="target" sm />
+        </span>
+        <span className="ch-obj" title={goal.objective}>
+          {strip.objective}
+        </span>
         <span
-          className="goal-strip-meta mono sm"
+          className={strip.pill.tone ? `pill ${strip.pill.tone}` : "pill"}
+          title={status.hint}
+        >
+          {strip.pill.pulse && <span className="pulse" aria-hidden="true" />}
+          {strip.pill.label}
+        </span>
+        <span
+          className="ch-meter"
           title={
             goal.tokenBudget
-              ? `${goal.tokensUsed.toLocaleString()} of ${goal.tokenBudget.toLocaleString()} budget tokens used; ${total.toLocaleString()} tokens in total`
-              : undefined
+              ? `${goal.tokensUsed.toLocaleString()} of ${goal.tokenBudget.toLocaleString()} budget tokens used; ${total.toLocaleString()} tokens in total; ${formatDuration(goal.timeUsedSeconds)}`
+              : `${formatDuration(goal.timeUsedSeconds)}`
           }
         >
-          {formatDuration(goal.timeUsedSeconds)} ·{" "}
-          {goal.tokenBudget
-            ? `${formatTokens(goal.tokensUsed)} / ${formatTokens(goal.tokenBudget)}`
-            : `${formatTokens(total)} tokens`}
-        </span>
-        {used !== null && (
-          <div
-            className="bar"
-            role="progressbar"
-            aria-label="Token budget used"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={used}
-          >
-            <span style={{ width: `${used}%` }} />
-          </div>
-        )}
-        <span className={`goal-status ${tone}`} title={status.hint}>
-          <span className="pulse" aria-hidden="true" />
-          {goalStateLabel(goal, review)}
+          {strip.meter ? (
+            <>
+              <span>
+                <b>{strip.meter.used}</b> of {strip.meter.budget}
+              </span>
+              <span
+                className={strip.meter.warn ? "bar warn" : "bar"}
+                role="progressbar"
+                aria-label="Token budget used"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={strip.meter.pct}
+              >
+                <i style={{ width: `${strip.meter.pct}%` }} />
+              </span>
+            </>
+          ) : (
+            <span>
+              <b>{strip.total}</b> tokens
+            </span>
+          )}
         </span>
         <div className="goal-strip-actions">
           {goal.status === "active" && (

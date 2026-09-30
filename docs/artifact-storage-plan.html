@@ -84,6 +84,7 @@ ol.phases > li { margin-bottom: 14px; }
     <li><a href="#today">Where we are today</a></li>
     <li><a href="#users">What users get</a></li>
     <li><a href="#arch">Architecture</a></li>
+    <li><a href="#skills">Agent skills</a></li>
     <li><a href="#layout">Bucket and keys</a></li>
     <li><a href="#model">Data model</a></li>
     <li><a href="#api">API</a></li>
@@ -100,8 +101,8 @@ ol.phases > li { margin-bottom: 14px; }
 <header>
   <div class="eyebrow">Plan · Draft for review</div>
   <h1>Truex Artifact Storage</h1>
-  <p class="lede">Move every file a conversation touches (uploads, generated documents, visualizations, exports) from agent-core's pod disk into S3, with metadata in each tenant's Mongo database, and build the attach, preview, library and share features on top.</p>
-  <div class="meta"><span>30 Sep 2026</span><span>Branch feat/design-v2</span><span>Covers backlog: document attaching, document preview, document enrichment, conversation export, Knowledge, Share, SAP push bridge, AWS use case</span></div>
+  <p class="lede">Move every file a conversation touches (uploads, generated documents, visualizations, exports) from agent-core's pod disk into S3, with metadata in each tenant's Mongo database, and build the attach, preview, library and share features on top. Agent skills move to S3 too, so a skill can carry its industry specs and reference files, not just a SKILL.md.</p>
+  <div class="meta"><span>30 Sep 2026</span><span>Branch feat/design-v2</span><span>Covers backlog: document attaching, document preview, document enrichment, conversation export, Knowledge, Share, SAP push bridge, skills implementation, configuring skills, AWS use case</span></div>
 </header>
 
 <section id="summary">
@@ -115,6 +116,7 @@ ol.phases > li { margin-bottom: 14px; }
     <li>New <code>artifacts</code> collection in each tenant DB. Platform learns about agent-created files from the existing records ingestion loop.</li>
     <li>Browser uploads use a presigned POST with a size range. Downloads use a 302 to a 5-minute presigned GET, so existing <code>&lt;a href&gt;</code> links keep working after auth lands.</li>
     <li>Flag-gated with <code>ARTIFACT_STORE=local|s3</code>, following the <code>features.ts</code> pattern. The old <code>/documents</code> routes stay as shims.</li>
+    <li>Skills become tenant-owned, immutable, versioned bundles under <code>t/&lt;tenantId&gt;/skills/</code> in the same bucket, created by uploading a zip or writing in an in-app editor. The skill document in Mongo holds the S3 location, and the agent's <code>skills</code> list references skills by id. At thread start, platform resolves them and agent-core fetches, caches and injects them into the thread config, alongside MCP.</li>
   </ul>
 </div>
 </section>
@@ -132,6 +134,7 @@ ol.phases > li { margin-bottom: 14px; }
 <tr><td>Durability</td><td>A 20 Gi ReadWriteOnce PVC per agent-core pod in k8s. Files can't move between pods. The sweeper removes whole workspaces (documents included) when <code>WORKSPACE_TTL_DAYS</code> is set.</td><td><code>deploy/kubernetes.yaml</code>, <code>workspace-sweeper.ts</code></td></tr>
 <tr><td>Metadata</td><td>Not in Mongo. The UI polls <code>/documents</code>, and visualizations are found through a <code>[truex-visualization:id]</code> text token.</td><td><code>shared/assistant-capabilities.ts:52</code></td></tr>
 <tr><td>Frontend</td><td>The upload list only appears in a sheet opened by slash command. There is no composer attach, no preview, no delete, and Share is inert.</td><td><code>assistant-tools.tsx</code>, <code>v2/topbar.tsx:65</code></td></tr>
+<tr><td>Skills</td><td>Agents reference catalog skills through <code>skillIds</code>. The whole SKILL.md body is stored inline in <code>truex_skills</code> (64 KB each, 50 per agent, 256 KB total) and appended to the base instructions of every model request. Skills can't carry reference files, and Codex skill discovery is off on purpose.</td><td><code>platform/src/service.ts:419</code>, <code>agent-core/src/tenancy.ts:41</code>, <code>business-runtime.ts:312</code></td></tr>
 <tr><td>Identity</td><td>No auth. Sessions have no owner. The tenant comes from the dev resolver or a header.</td><td><code>platform/src/tenant.ts</code>, <code>USER_SCOPED_MCP_PLAN.md</code></td></tr>
 <tr><td>AWS</td><td>No S3 code, IAM, region or IaC. The only AWS usage is the Secrets Manager lookup in model-gateway.</td><td><code>model-gateway/src/profiles.ts</code></td></tr>
 </tbody></table></div>
@@ -143,12 +146,13 @@ ol.phases > li { margin-bottom: 14px; }
 <div class="journeys">
   <div class="journey"><h3>My files don't disappear</h3><p>A generated report is still there next week, after a restart or a pod move. Downloads are fast and not size-capped by JSON.</p><span class="pill user">Phase 1</span></div>
   <div class="journey"><h3>Files show up in the chat</h3><p>When the agent creates a deck, a file card appears in its reply with name, type, size, version, Download and Preview. The session sidebar gets a Files tab.</p><span class="pill user">Phase 1</span></div>
-  <div class="journey"><h3>Attach while typing</h3><p>A paperclip, drag and drop onto the composer, or paste. Each file shows a pill with progress and can be removed before sending. Files up to 25 MB. The sent message shows its attachments.</p><span class="pill user">Phase 2</span></div>
-  <div class="journey"><h3>Look before downloading</h3><p>Images, PDF, Markdown, CSV and plain text preview in place. Word, Excel and PowerPoint preview as a rendered PDF in a later phase, with extracted text meanwhile.</p><span class="pill user">Phase 3</span></div>
-  <div class="journey"><h3>One place for everything</h3><p>The Knowledge page lists my files across chats and projects. Search by name, filter by type, rename, delete, see versions, and attach an existing file to a new chat without re-uploading.</p><span class="pill user">Phase 4</span><span class="pill dep">Needs auth</span></div>
-  <div class="journey"><h3>Export and share</h3><p>Export a conversation as Markdown, PDF or Word. Share a chat or a file with people in my tenant via the topbar Share button, with expiry and revoke.</p><span class="pill user">Phase 5</span><span class="pill dep">Needs auth</span></div>
-  <div class="journey"><h3>Admins see and control usage</h3><p>Storage used per tenant and per user, retention period, max upload size, and allowed file types in tenant settings.</p><span class="pill user">Phase 6</span><span class="pill dep">Needs auth</span></div>
-  <div class="journey"><h3>Send big files to SAP</h3><p>The agent passes a file reference to the SAP MCP tool instead of re-sending 5,000 lines. The bridge reads the bytes from the store.</p><span class="pill user">Phase 5</span><span class="pill dep">Needs SAP tool spec</span></div>
+  <div class="journey"><h3>Agents that know the domain</h3><p>A tenant admin writes a skill in the app, or uploads a zip with a SKILL.md plus industry specs, templates and code lists, then attaches it to agents. The agent follows the skill and quotes the spec on demand, without the whole spec in every prompt.</p><span class="pill user">Phase 2</span></div>
+  <div class="journey"><h3>Attach while typing</h3><p>A paperclip, drag and drop onto the composer, or paste. Each file shows a pill with progress and can be removed before sending. Files up to 25 MB. The sent message shows its attachments.</p><span class="pill user">Phase 3</span></div>
+  <div class="journey"><h3>Look before downloading</h3><p>Images, PDF, Markdown, CSV and plain text preview in place. Word, Excel and PowerPoint preview as a rendered PDF in a later phase, with extracted text meanwhile.</p><span class="pill user">Phase 4</span></div>
+  <div class="journey"><h3>One place for everything</h3><p>The Knowledge page lists my files across chats and projects. Search by name, filter by type, rename, delete, see versions, and attach an existing file to a new chat without re-uploading.</p><span class="pill user">Phase 5</span><span class="pill dep">Needs auth</span></div>
+  <div class="journey"><h3>Export and share</h3><p>Export a conversation as Markdown, PDF or Word. Share a chat or a file with people in my tenant via the topbar Share button, with expiry and revoke.</p><span class="pill user">Phase 6</span><span class="pill dep">Needs auth</span></div>
+  <div class="journey"><h3>Admins see and control usage</h3><p>Storage used per tenant and per user, retention period, max upload size, and allowed file types in tenant settings.</p><span class="pill user">Phase 7</span><span class="pill dep">Needs auth</span></div>
+  <div class="journey"><h3>Send big files to SAP</h3><p>The agent passes a file reference to the SAP MCP tool instead of re-sending 5,000 lines. The bridge reads the bytes from the store.</p><span class="pill user">Phase 6</span><span class="pill dep">Needs SAP tool spec</span></div>
 </div>
 <h3>UX details that matter</h3>
 <ul>
@@ -184,7 +188,7 @@ flowchart LR
   <li>Emit an <code>artifact</code> record (id, key, size, sha256, mediaType, sourceId, turnId, toolCallId) into the existing <code>/threads/:id/records</code> stream. Emit a matching SSE event so the chat can render a file card without polling.</li>
   <li>New route <code>POST /threads/:id/documents/import</code> copies a browser-uploaded object into the conversation's cache and registers it with the agent.</li>
   <li>Fork does a <code>CopyObject</code> into the new conversation's prefix, matching today's copy behavior.</li>
-  <li>Workspace <code>work/</code> stays local scratch until Phase 6. Only exported or final deliverables go to S3.</li>
+  <li>Workspace <code>work/</code> stays local scratch until Phase 7. Only exported or final deliverables go to S3.</li>
 </ul>
 <h3>Platform</h3>
 <ul>
@@ -202,14 +206,114 @@ flowchart LR
 </ul>
 </section>
 
+<section id="skills">
+<h2>Agent skills from S3</h2>
+<p>Skills already work end to end. Today's path is: the agent's <code>skillIds</code>, then catalog <code>truex_skills</code> (body inline in Mongo), then platform <code>skills()</code> with the tenant allow-list, then the thread config's <code>skills</code>, then agent-core <code>skillSet()</code>, then <code>skillInstructions()</code> in the base instructions. This plan makes skills tenant-owned, stores every version in S3, and lets a skill carry reference files.</p>
+
+<div class="decisions">
+  <h3>Decided</h3>
+  <ul>
+    <li>Skills belong to a tenant. They live in the tenant's own database and under the tenant's S3 prefix, like agents and MCP profiles. Other tenants can't see or attach them.</li>
+    <li>There are two ways to create a skill: upload a zip, or write it in a text editor in the app.</li>
+    <li>Agents use the latest version by default. An agent can pin a version when a spec must not change under it.</li>
+  </ul>
+</div>
+<p>This replaces the earlier split where skills sat only in the shared catalog. Existing catalog skills keep working as a read-only "Truex library", still governed by <code>allowedSkillIds</code>. A tenant can copy a library skill into its own skills to edit it.</p>
+
+<h3>What users see</h3>
+<ul>
+  <li><strong>Skills page</strong> (next to Agents in the side nav). A list showing name, description, current version, "Used by N agents" and last updated. Each skill can be disabled.</li>
+  <li><strong>New skill, then Write a skill.</strong> A form with three fields:
+    <ul>
+      <li>Name: a slug, checked as you type.</li>
+      <li>Description, labelled "When should the agent use this?"</li>
+      <li>Instructions: a Markdown text area with a Preview tab and a size counter against the 64 KB limit.</li>
+    </ul>
+    Save publishes v1. Each later edit publishes a new version and keeps any reference files.</li>
+  <li><strong>New skill, then Upload a zip.</strong> Drop a <code>.zip</code> with <code>SKILL.md</code> at the root and optional reference files. Before you click Publish, the page shows the parsed name, description and file list with sizes, plus a clear message for each problem, such as "SKILL.md is missing" or "specs/big.pdf is over 20 MB".</li>
+  <li><strong>Skill detail.</strong>
+    <ul>
+      <li>Instructions and reference files, each file downloadable.</li>
+      <li>Version history with who published each version and when.</li>
+      <li>"Used by" agents.</li>
+      <li>Actions: Edit instructions, Upload new version, Download as zip.</li>
+    </ul></li>
+  <li><strong>Agent dialog.</strong> A skills picker listing the tenant's skills and allowed library skills. Each attached skill shows "Latest (v4)", or a pinned version picked from a dropdown.</li>
+</ul>
+
+<h3>Two shapes of skill</h3>
+<div class="scroll"><table>
+<thead><tr><th>Shape</th><th>Contents</th><th>How the agent gets it</th></tr></thead>
+<tbody>
+<tr><td>Instructions only (always the result of the editor)</td><td><code>SKILL.md</code> alone</td><td>The body goes into the base instructions, exactly as today.</td></tr>
+<tr><td>Skill with references (zip upload)</td><td><code>SKILL.md</code> plus <code>files/</code>: industry specs (PDF, DOCX, XLSX), Markdown, CSV and JSON code lists, templates</td><td>The body goes into the instructions. Reference files are listed by name and size, and the agent reads them on demand with a skill-file tool. They are never inlined.</td></tr>
+</tbody></table></div>
+
+<h3>Bundle in S3</h3>
+<pre><code>t/&lt;tenantId&gt;/skills/&lt;skillId&gt;/&lt;version&gt;/SKILL.md
+t/&lt;tenantId&gt;/skills/&lt;skillId&gt;/&lt;version&gt;/files/&lt;path&gt;
+t/&lt;tenantId&gt;/skills/&lt;skillId&gt;/&lt;version&gt;/text/&lt;path&gt;.txt      extracted at publish time (PDF, Office)
+t/&lt;tenantId&gt;/skills/&lt;skillId&gt;/&lt;version&gt;/manifest.json      { sha256, files: [{ path, size, sha256, mediaType }] }
+catalog/skills/&lt;skillId&gt;/&lt;version&gt;/...                      Truex library (today's catalog skills, migrated)</code></pre>
+<p>Versions are immutable. Publishing writes a new version prefix and never overwrites, so an agent pinned to v3 keeps getting v3. Skills have no lifecycle expiry. Deleting a tenant removes its skills along with the rest of <code>t/&lt;tenantId&gt;/</code>.</p>
+
+<h3>Where the key lives</h3>
+<pre><code>// tenant DB: truex_skills (new, one per tenant; unique index on name)
+{ _id: "skl_&lt;uuid&gt;", name, description, version, enabled,
+  origin: "editor" | "upload" | "library-copy",
+  storage: { prefix: "t/&lt;tenantId&gt;/skills/&lt;id&gt;/&lt;version&gt;/", sha256, size, fileCount },
+  versions: [{ version, sha256, origin, publishedAt, publishedBy? }],
+  createdAt, updatedAt }
+
+// tenant DB: truex_agents
+{ ..., skills: [{ skillId: "skl_…", version?: 3 }] }   // version absent = latest enabled
+                                                       // skillIds (library) still read for existing agents</code></pre>
+<p>The S3 location sits on the skill document, and the agent stores a reference plus an optional version pin. Putting the raw S3 key on the agent would mean editing every agent whenever a skill is republished, and nothing would check that the key belongs to the agent's tenant.</p>
+
+<h3>Runtime flow</h3>
+<ol>
+  <li>On thread start or resume, platform's agent config (<code>service.ts:392</code>) resolves <code>agent.skills</code> from the tenant's <code>truex_skills</code>. Library skills still go through <code>findSkills</code> with the allow-list. Disabled or missing skills fail with <code>SKILL_CONFIGURATION</code>, as today. For each skill it reads <code>SKILL.md</code> and <code>manifest.json</code> from S3, cached in memory by <code>sha256</code>.</li>
+  <li>Platform sends the thread config with <code>skills: [{ name, description, version, body, sha256, prefix, files: [{ path, size, mediaType }] }]</code>. This is the same payload that carries <code>mcp_servers.*</code>.</li>
+  <li>agent-core <code>skillSet()</code> validates the new fields and checks that every <code>prefix</code> starts with <code>t/&lt;this thread's tenant&gt;/skills/</code> or <code>catalog/skills/</code>. A bad config therefore can't point a thread at another tenant's bundle. The skills are saved in the thread marker, and <code>skillInstructions()</code> renders the body plus a short "Reference files" list for each skill.</li>
+  <li>New agent-core dynamic tools <code>list_skill_files</code> and <code>read_skill_file(skill, path, offset, limit)</code> read from a content-addressed cache at <code>&lt;home&gt;/skill-cache/&lt;sha256&gt;/</code>. A cache miss triggers a download with a checksum check. The tools reuse the PDF and Office text extraction in <code>file-tools.ts</code> and page long files to protect context.</li>
+  <li>Resume and fork re-read the marker. An agent on "latest" picks up a new version when platform rebuilds the config, which already happens on resume. A pinned agent never changes.</li>
+</ol>
+<p>Skills can't go into the Codex config the way MCP does. MCP servers become Codex config keys, but Codex skill loading can't be limited to the skills a thread was given, which is why discovery is off today. Skills therefore keep entering through the base instructions plus our own tool, which needs no <code>vendor/codex</code> changes.</p>
+
+<h3>Publishing</h3>
+<ul>
+  <li><strong>Editor.</strong> <code>POST /api/skills</code> takes JSON <code>{ name, description, body }</code>. Platform renders <code>SKILL.md</code> with front matter and writes it to a new version prefix. For an edit it also copies the previous version's <code>files/</code> and <code>text/</code> with <code>CopyObject</code>, so reference files carry over.</li>
+  <li><strong>Zip.</strong> The browser uploads to a presigned POST at <code>t/&lt;tenantId&gt;/uploads/&lt;uploadId&gt;</code> (at most 50 MB). <code>POST /api/skills/import</code> then streams the zip with a pinned, maintained zip reader, validates it, extracts text, writes the version, and deletes the staging object. Uploading a zip for an existing skill creates its next version.</li>
+  <li>Validation:
+    <ul>
+      <li><code>SKILL.md</code> is required, and its front matter <code>name</code> and <code>description</code> must match the existing rules. Body at most 64 KB.</li>
+      <li>Zip at most 50 MB, at most 200 MB uncompressed, at most 20 MB per file, at most 200 files, allowed types only.</li>
+      <li>No symlinks, absolute paths or <code>..</code> (zip-slip). A high compression ratio is rejected as a zip bomb.</li>
+    </ul></li>
+  <li>Publish order: write the files, extracted text and manifest to the new version prefix, then bump <code>version</code> in Mongo. A failed publish leaves the current version untouched, and the reconciler removes the orphaned prefix.</li>
+  <li><code>npm run skill -- publish|list|disable &lt;tenant&gt; ...</code> stays available for ops and bulk loads.</li>
+  <li>Migration: each existing catalog skill is uploaded to <code>catalog/skills/</code> as a SKILL.md-only library bundle at the same version. Agents' <code>skillIds</code> keep resolving without edits.</li>
+</ul>
+
+<h3>Guardrails</h3>
+<ul>
+  <li>Skill text is instructions to the model. Once auth ships, only tenant admins create or edit skills. Until then, any user of the tenant can, the same as agent creation today (<code>platform/src/index.ts:127</code>). The existing <code>fence()</code> tag escaping stays, and reference files come back from the tool as data, not instructions.</li>
+  <li>agent-core gets read-only access to <code>t/*/skills/*</code> and <code>catalog/skills/*</code>, plus the prefix check above. Platform alone can write skill prefixes.</li>
+  <li>If S3 is down at thread start and the skill is already cached by <code>sha256</code>, the thread starts normally. Otherwise it fails with <code>SKILL_CONFIGURATION</code>. A failed <code>read_skill_file</code> returns a tool error and the chat continues.</li>
+  <li>Token budget: bodies keep today's limits (64 KB each, 256 KB per agent), and reference files are never inlined. A later option for agents with many skills sends descriptions only, with a <code>load_skill</code> tool (backlog: token efficiency).</li>
+</ul>
+</section>
+
 <section id="layout">
 <h2>Bucket and keys</h2>
 <pre><code>s3://truex-artifacts-&lt;env&gt;-&lt;region&gt;/
   t/&lt;tenantId&gt;/s/&lt;sessionId&gt;/a/&lt;artifactId&gt;/&lt;versionNo&gt;   bytes (no user filename in the key)
   t/&lt;tenantId&gt;/s/&lt;sessionId&gt;/a/&lt;artifactId&gt;/&lt;versionNo&gt;.txt   extracted text for the agent
-  t/&lt;tenantId&gt;/s/&lt;sessionId&gt;/a/&lt;artifactId&gt;/&lt;versionNo&gt;.pdf   rendered preview (Phase 3)
+  t/&lt;tenantId&gt;/s/&lt;sessionId&gt;/a/&lt;artifactId&gt;/&lt;versionNo&gt;.pdf   rendered preview (Phase 4)
   t/&lt;tenantId&gt;/uploads/&lt;uploadId&gt;                         staging, expires after 1 day
-  t/&lt;tenantId&gt;/exports/&lt;exportId&gt;                         conversation exports, expire after 7 days</code></pre>
+  t/&lt;tenantId&gt;/exports/&lt;exportId&gt;                         conversation exports, expire after 7 days
+  t/&lt;tenantId&gt;/skills/&lt;skillId&gt;/&lt;version&gt;/...            tenant skill bundles, immutable (see Agent skills)
+  catalog/skills/&lt;skillId&gt;/&lt;version&gt;/...                  Truex library skills, read-only</code></pre>
 <ul>
   <li>The filename lives in Mongo and is applied through <code>ResponseContentDisposition</code> at signing time. Renames are metadata-only, and user text never reaches key paths.</li>
   <li>The tenant-first prefix makes it cheap to delete a tenant, report usage, and write per-tenant IAM or STS session-tag conditions later.</li>
@@ -250,15 +354,22 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
 <tr><td class="nw"><code>GET /api/sessions/:id/artifacts</code></td><td>Files in a chat, newest version per root</td><td>1</td></tr>
 <tr><td class="nw"><code>GET /api/artifacts/:id</code></td><td>Metadata plus version list</td><td>1</td></tr>
 <tr><td class="nw"><code>GET /api/artifacts/:id/content?disposition=</code></td><td>302 to a presigned GET. <code>inline</code> is allowed only for safe types (images, PDF, text); HTML and SVG are always served as attachments.</td><td>1</td></tr>
-<tr><td class="nw"><code>POST /api/sessions/:id/uploads</code></td><td>Returns a presigned POST (url, fields, maxBytes, expiresAt)</td><td>2</td></tr>
-<tr><td class="nw"><code>POST /api/uploads/:id/complete</code></td><td>Verify size and magic bytes, create the artifact, import it into agent-core</td><td>2</td></tr>
-<tr><td class="nw"><code>POST /api/sessions/:id/messages</code></td><td>Adds <code>attachmentIds[]</code> to the existing body</td><td>2</td></tr>
-<tr><td class="nw"><code>GET /api/artifacts/:id/preview</code></td><td>Preview descriptor (kind, url, or text excerpt)</td><td>3</td></tr>
-<tr><td class="nw"><code>GET /api/artifacts?scope=&amp;type=&amp;q=</code></td><td>Knowledge library across chats</td><td>4</td></tr>
-<tr><td class="nw"><code>POST /api/artifacts/:id/rename</code>, <code>/delete</code>, <code>/restore</code></td><td>Manage files</td><td>4</td></tr>
-<tr><td class="nw"><code>POST /api/sessions/:id/attach</code></td><td>Reuse a library file in another chat (CopyObject)</td><td>4</td></tr>
-<tr><td class="nw"><code>POST /api/sessions/:id/export</code></td><td>Export as <code>md</code>, <code>pdf</code> or <code>docx</code>, stored as an <code>export</code> artifact</td><td>5</td></tr>
-<tr><td class="nw"><code>POST /api/sessions/:id/share</code>, <code>/api/artifacts/:id/share</code></td><td>Tenant-internal share link with expiry and revoke</td><td>5</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/uploads</code></td><td>Returns a presigned POST (url, fields, maxBytes, expiresAt)</td><td>3</td></tr>
+<tr><td class="nw"><code>POST /api/uploads/:id/complete</code></td><td>Verify size and magic bytes, create the artifact, import it into agent-core</td><td>3</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/messages</code></td><td>Adds <code>attachmentIds[]</code> to the existing body</td><td>3</td></tr>
+<tr><td class="nw"><code>GET /api/artifacts/:id/preview</code></td><td>Preview descriptor (kind, url, or text excerpt)</td><td>4</td></tr>
+<tr><td class="nw"><code>GET /api/artifacts?scope=&amp;type=&amp;q=</code></td><td>Knowledge library across chats</td><td>5</td></tr>
+<tr><td class="nw"><code>POST /api/artifacts/:id/rename</code>, <code>/delete</code>, <code>/restore</code></td><td>Manage files</td><td>5</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/attach</code></td><td>Reuse a library file in another chat (CopyObject)</td><td>5</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/export</code></td><td>Export as <code>md</code>, <code>pdf</code> or <code>docx</code>, stored as an <code>export</code> artifact</td><td>6</td></tr>
+<tr><td class="nw"><code>POST /api/sessions/:id/share</code>, <code>/api/artifacts/:id/share</code></td><td>Tenant-internal share link with expiry and revoke</td><td>6</td></tr>
+<tr><td class="nw"><code>GET /api/skills</code></td><td>The tenant's skills plus allowed library skills, for the Skills page and agent dialog</td><td>2</td></tr>
+<tr><td class="nw"><code>GET /api/skills/:id</code></td><td>Detail: versions, reference files, agents using it</td><td>2</td></tr>
+<tr><td class="nw"><code>POST /api/skills</code></td><td>Create a skill or a new version from the editor (JSON name, description, body)</td><td>2</td></tr>
+<tr><td class="nw"><code>POST /api/skills/uploads</code></td><td>Presigned POST for a skill zip</td><td>2</td></tr>
+<tr><td class="nw"><code>POST /api/skills/import</code></td><td>Validate an uploaded zip and publish it as a new skill or version</td><td>2</td></tr>
+<tr><td class="nw"><code>POST /api/skills/:id/disable</code>, <code>/copy</code></td><td>Disable a skill; copy a library skill into the tenant</td><td>2</td></tr>
+<tr><td class="nw"><code>POST /api/agents/:id/skills</code></td><td>Set an agent's <code>skills</code> list with optional version pins</td><td>2</td></tr>
 <tr><td class="nw"><code>/api/sessions/:id/documents*</code></td><td>Kept as shims over the new store until the frontend migrates</td><td>1</td></tr>
 </tbody></table></div>
 </section>
@@ -294,9 +405,10 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
 <section id="rollout">
 <h2>Phased rollout</h2>
 <p>Each phase ships behind <code>ARTIFACT_STORE=s3</code> and can be turned off without data loss, because the local copy is always written first.</p>
-<ol class="phases">
+<ol class="phases" start="0">
   <li><strong>Foundations.</strong> Bucket, KMS and IAM (IaC, Terraform or CDK to be decided). <code>ArtifactStore</code> interface, MinIO service in <code>deploy/compose.yaml</code> for dev, <code>artifactConfig</code>, <code>artifacts</code> collection, and pinned <code>@aws-sdk/client-s3</code>, <code>s3-presigned-post</code> and <code>s3-request-presigner</code> on the same release as the existing Secrets Manager client. No user-visible change.</li>
   <li><strong>Durable files and downloads.</strong> Write-through for all producers, artifact records into Mongo, 302 downloads, file cards in chat, Files tab. Fixes the 1 MB export mismatch. Backfill script uploads existing <code>business-workspaces/*/*/files</code>.</li>
+  <li><strong>Tenant skills from S3.</strong> Tenant <code>truex_skills</code> collection, S3 bundles, Skills page with the Write-a-skill editor and zip upload, skills picker with version pins in the agent dialog, platform resolution, agent-core skill cache with <code>list_skill_files</code> and <code>read_skill_file</code>, and migration of catalog skills to the library. Doesn't wait on auth, but the admin-only rule is added when auth lands. Backlog: "skills implementation", "Configuring their Skills".</li>
   <li><strong>Attach in chat.</strong> Presigned POST, composer attach, drag and drop, paste, <code>attachmentIds</code> on messages, attachment chips on user messages. Backlog: "Document Attaching in the Chat".</li>
   <li><strong>Preview.</strong> Images, PDF (pdf.js), Markdown, CSV and text. Office files first show extracted text, then a LibreOffice worker renders PDF previews. Backlog: "Document Preview", "Chat Rich Preview".</li>
   <li><strong>Knowledge library.</strong> Cross-chat list, search, rename, delete with undo, versions, attach from library, project scoping. Needs auth for "mine". Backlog: v2 "Knowledge nav + page".</li>
@@ -313,6 +425,17 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
   <li>Failure cases: S3 down during a tool call (outbox drains later), expired upload URL, oversize upload rejected by the policy, type mismatch rejected at complete.</li>
   <li>Frontend: <code>node:test</code> for <code>lib/artifacts.ts</code> (fetch and XHR mocked) and attachment state reducers. Manual browser pass on drag, drop, paste and preview until a DOM test setup exists.</li>
   <li>Tenant isolation: tenant A can't list, sign or import tenant B's artifact ids.</li>
+  <li>Skills:
+    <ul>
+      <li>Editor save creates v1, and an edit creates v2 that keeps the reference files.</li>
+      <li>Zip import rejects a missing SKILL.md, zip-slip paths, zip bombs and oversized files.</li>
+      <li>A SKILL.md-only skill renders the same instructions as today's inline skill (snapshot test on <code>skillInstructions</code>).</li>
+      <li><code>read_skill_file</code> pages a PDF spec.</li>
+      <li>A pinned version stays fixed after a republish, and a "latest" agent moves on resume.</li>
+      <li>A cache hit works with S3 down.</li>
+      <li>Tenant A can't list, attach or read tenant B's skills. agent-core rejects a config whose prefix belongs to another tenant.</li>
+      <li>A library skill outside the allow-list is rejected.</li>
+    </ul></li>
 </ul>
 </section>
 
@@ -325,7 +448,7 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
 <tr><td>Should agent-core hold S3 credentials, or only presigned URLs from platform?</td><td>Scoped role on agent-core. Presigned-only is possible but adds a platform round trip on every tool write.</td></tr>
 <tr><td>Max upload size and allowed types</td><td>25 MB, today's allow-list plus png, jpg, gif and webp.</td></tr>
 <tr><td>Default retention</td><td>Keep until deleted, with a tenant-level override.</td></tr>
-<tr><td>Office preview via a LibreOffice worker</td><td>Yes in Phase 3b. It is a separate container with no network.</td></tr>
+<tr><td>Office preview via a LibreOffice worker</td><td>Yes in Phase 4b. It is a separate container with no network.</td></tr>
 <tr><td>Share scope</td><td>Tenant-internal only at first. Public links later with expiry.</td></tr>
 <tr><td>Per-tenant KMS keys</td><td>One key per environment now. Per-tenant keys only if an enterprise customer asks.</td></tr>
 <tr><td>IaC tool</td><td>Terraform or CDK. The repo has none today.</td></tr>
@@ -337,7 +460,7 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
 <div class="note"><strong>No auth yet.</strong> S3 makes files durable and shareable, which raises the cost of the existing open <code>/api</code> surface. Keep the rollout internal until user-scoped auth ships.</div>
 <ul>
   <li>The Mongo row and S3 object can drift. The pending, then put, then ready order plus a reconciler handles it.</li>
-  <li>The outbox on agent-core disk is lost if the pod dies before it drains. This is acceptable because the window is small and the next turn re-syncs. Phase 6 snapshots close it fully.</li>
+  <li>The outbox on agent-core disk is lost if the pod dies before it drains. This is acceptable because the window is small and the next turn re-syncs. Phase 7 snapshots close it fully.</li>
   <li>Changes to <code>ConversationFile</code> touch the goal-completion and assistant-tools UI. The shims keep them working during migration.</li>
   <li>No changes are needed in <code>vendor/codex</code>. All file tools are agent-core dynamic tools.</li>
 </ul>

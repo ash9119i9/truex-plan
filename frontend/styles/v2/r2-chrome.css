@@ -1,0 +1,171 @@
+/* r2 chrome styles: copied from convo-v2-wireframe-r2.html (§3 Session chrome). Tokens only, no literal hex.
+   Board-only chrome (.ch-app, .ch-stage, .ch-stream, .ch-work, .ch-dockrow, .ch-float, .ch-ghost, .ch-states,
+   .ch-state, .ch-mini, .ch-group, .ch-h, .ch-health, .ch-slice, .ch-dim, pins, sticky tape) is skipped.
+   Shared primitives the wireframe draws globally (.ic, .btn, .pill, .bar, .spacer, .pulse.warn) are scoped
+   to the chrome containers so they never collide with other components. */
+
+/* ---- primitives, scoped ---- */
+:is(.ch-top, .ch-goal, .ch-toast, .ch-pop, .ch-ban, .ch-lockbar) .ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; vertical-align: -3px; }
+:is(.ch-top, .ch-goal, .ch-toast, .ch-pop, .ch-ban, .ch-lockbar) .ic.sm { width: 13px; height: 13px; vertical-align: -2px; }
+:is(.ch-toast, .ch-pop, .ch-ban, .ch-lockbar, .ch-goal) .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 500 13px var(--font-sans); white-space: nowrap; cursor: pointer; }
+:is(.ch-toast, .ch-pop, .ch-ban, .ch-lockbar, .ch-goal) .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+:is(.ch-toast, .ch-pop, .ch-ban, .ch-lockbar, .ch-goal) .btn.soft { background: var(--accent-soft); color: var(--accent-fg); border-color: transparent; }
+:is(.ch-toast, .ch-pop, .ch-ban, .ch-lockbar, .ch-goal) .btn.ghost { border-color: transparent; background: transparent; color: var(--ink-2); }
+:is(.ch-toast, .ch-pop, .ch-ban, .ch-lockbar, .ch-goal) .btn:disabled { opacity: .45; cursor: not-allowed; }
+.ch-pop .spacer { flex: 1; }
+.ch-goal .pill { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.ch-goal .pill.accent { background: var(--accent-soft); color: var(--accent-fg); }
+.ch-goal .pill.warn { background: var(--warn-bg); color: var(--warn-text); }
+.ch-goal .pill.bad { background: var(--bad-bg); color: var(--bad); }
+.ch-goal .pill.ok { background: var(--ok-bg); color: var(--ok); }
+.ch-goal .bar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.ch-goal .bar > i { display: block; height: 100%; background: var(--accent); border-radius: inherit; }
+.ch-goal .bar.warn > i { background: var(--warn); }
+.ch-top .pulse { background: var(--accent); }
+.ch-top .pulse.idle { animation: none; background: var(--ink-3); opacity: .7; }
+.ch-top .pulse.warn { animation: none; background: var(--warn); opacity: 1; }
+.ch-goal .pulse { background: var(--accent); }
+.ch-top .spinner { flex: none; }
+:where(.ch-top, .ch-toast, .ch-pop, .ch-ban, .ch-lockbar) button { font: inherit; }
+:is(.ch-top, .ch-goal, .ch-toast, .ch-pop, .ch-ban, .ch-lockbar) :focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; }
+
+/* ---- topbar ---- */
+.ch-top { position: relative; z-index: 3; flex: none; display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, var(--surface), var(--bg)); }
+.ch-crumb { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--ink); }
+.ch-crumb .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ch-proj { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-3); font-weight: 500; white-space: nowrap; }
+.ch-proj .ic { color: var(--ink-3); }
+.ch-right { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.ch-ib { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: var(--ink-2); flex: none; border: 0; background: none; padding: 0; cursor: pointer; }
+.ch-ib.on { background: var(--surface-3); color: var(--ink); }
+.ch-ib:hover { background: var(--surface-3); color: var(--ink); }
+.ch-turnchip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 8px; border-radius: 999px; border: 1px solid var(--line); font: 500 11px var(--font-mono); color: var(--ink-2); white-space: nowrap; margin-right: 4px; }
+.ch-turnchip i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.6s infinite; }
+.ch-arch { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--surface-3); color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line-strong); font-size: 11.5px; font-weight: 600; white-space: nowrap; flex: none; }
+/* Positions the agent popover under the pill. */
+.ch-anchor { position: relative; flex: none; display: flex; justify-content: center; }
+
+/* ---- status pill ---- */
+.ch-pill { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 4px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow-sm); font-size: 13px; font-weight: 600; color: var(--ink); white-space: nowrap; flex: none; transition: box-shadow .2s, border-color .2s; cursor: pointer; }
+.ch-pill.open { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-sm); }
+.ch-pill > .ic.sm { color: var(--ink-3); }
+.ch-av { position: relative; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--t1); background: linear-gradient(145deg, var(--ts1), color-mix(in srgb, var(--t1) 28%, var(--ts1))); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t1) 25%, transparent); }
+.ch-av .ic { width: 14px; height: 14px; }
+.ch-flag { position: absolute; top: -2px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 2px var(--surface); }
+.ch-sep { width: 1px; height: 14px; background: var(--line-strong); flex: none; }
+.ch-st { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--ink-2); }
+.ch-time { font: 500 11px var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ch-pill.s-idle .ch-st { color: var(--ink-3); }
+.ch-pill.s-run .ch-st { color: var(--accent-fg); }
+.ch-pill.s-stop { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.ch-pill.s-stop .ch-st { color: var(--warn-text); }
+.ch-pill.s-wait { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 55%, transparent); animation: ch-breathe 2.4s ease-in-out infinite; }
+.ch-pill.s-wait .ch-st { color: var(--accent-fg); font-weight: 600; }
+@keyframes ch-breathe { 50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent); } }
+.ch-sq { width: 8px; height: 8px; border-radius: 2px; background: var(--warn); flex: none; animation: blink 1.2s steps(2) infinite; }
+.ch-shim { background: linear-gradient(90deg, var(--ink-3) 0 35%, var(--ink) 50%, var(--ink-3) 65%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: ch-shim 1.8s linear infinite; }
+@keyframes ch-shim { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+/* ---- goal strip ---- */
+.ch-goal { flex: none; display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, var(--accent-soft), transparent 75%); font-size: 13px; }
+.ch-gi { width: 24px; height: 24px; border-radius: 8px; display: grid; place-items: center; flex: none; background: var(--surface); color: var(--accent-fg); box-shadow: var(--shadow-sm); }
+.ch-obj { flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 500; }
+.ch-goal .pill .pulse { width: 6px; height: 6px; }
+.ch-meter { display: inline-flex; align-items: center; gap: 8px; font: 500 11.5px var(--font-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ch-meter .bar { width: 76px; }
+.ch-meter b { color: var(--ink); font-weight: 600; }
+
+/* ---- toast ---- */
+.ch-toast { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; margin: 6px 16px 0; padding: 10px 10px 10px 12px; border-radius: 14px; background: var(--surface); border: 1px solid color-mix(in srgb, var(--bad) 30%, var(--line)); box-shadow: var(--shadow-card); animation: ch-rise .5s cubic-bezier(.2, .9, .3, 1.2) both; }
+@keyframes ch-rise { from { opacity: 0; transform: translateY(10px); } }
+.ch-toast-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; background: var(--bad-bg); color: var(--bad); }
+.ch-toast-tx { flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--ink-2); }
+.ch-toast-tx b { color: var(--ink); font-weight: 600; }
+.ch-ref { display: inline-flex; align-items: center; gap: 5px; align-self: flex-start; margin-top: 3px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--surface-3); border: 1px dashed var(--line-strong); font: 500 11px var(--font-mono); color: var(--ink-2); }
+.ch-toast-act { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+/* The toast sits in .bottom, which already has side padding. */
+.bottom > .ch-toast { width: 100%; max-width: 740px; margin: 0 auto; }
+
+/* ---- agent popover ---- */
+.ch-pop { position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 20; width: min(372px, calc(100vw - 24px)); border-radius: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow-lift); display: flex; flex-direction: column; animation: ch-pop .45s cubic-bezier(.2, .9, .3, 1.2) both; text-align: left; }
+@keyframes ch-pop { from { opacity: 0; transform: translateX(-50%) translateY(-6px) scale(.98); } }
+.ch-pop::before { content: ""; position: absolute; top: -6px; left: 50%; width: 11px; height: 11px; transform: translateX(-50%) rotate(45deg); background: var(--surface); border-left: 1px solid var(--line); border-top: 1px solid var(--line); }
+.ch-pop-head { display: flex; align-items: center; gap: 12px; padding: 14px 14px 12px; }
+.ch-pop-head .ch-av { width: 40px; height: 40px; border-radius: 12px; }
+.ch-pop-head .ch-av .ic { width: 20px; height: 20px; }
+.ch-who { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ch-who b { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.ch-who span { font-size: 12px; color: var(--ink-3); }
+.ch-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 0 12px 12px; }
+.ch-fact { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); min-width: 0; }
+.ch-fact > .ic { color: var(--ink-3); }
+.ch-fact div { display: flex; flex-direction: column; min-width: 0; }
+.ch-fact small { font-size: 10.5px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.ch-fact span { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-fact span.mono { font-weight: 500; }
+.ch-sechd { display: flex; align-items: center; gap: 8px; padding: 10px 14px 8px; border-top: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.ch-sechd .ch-count { font: 500 11px var(--font-mono); color: var(--ink-3); margin-left: auto; }
+
+/* connected tools: mini cartridges */
+.ch-carts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; padding: 4px 12px 12px; }
+.ch-cart { position: relative; padding: 11px 7px 0; border-radius: 11px 11px 6px 6px; background: linear-gradient(180deg, var(--surface), var(--surface-3)); box-shadow: 0 1px 0 var(--line-strong), 0 3px 0 var(--line), var(--shadow-sm); clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%); min-width: 0; }
+button.ch-cart { display: block; width: 100%; border: 0; text-align: left; cursor: pointer; color: inherit; }
+.ch-cart::before { content: ""; position: absolute; left: 10px; right: 24px; top: 4px; height: 4px; border-radius: 2px; background: repeating-linear-gradient(90deg, var(--line-strong) 0 2px, transparent 2px 6px); }
+.ch-cart.tone-0 { --t: var(--t0); --ts: var(--ts0); } .ch-cart.tone-1 { --t: var(--t1); --ts: var(--ts1); }
+.ch-cart.tone-2 { --t: var(--t2); --ts: var(--ts2); } .ch-cart.tone-main { --t: var(--tm); --ts: var(--tsm); }
+.ch-lab { position: relative; display: flex; flex-direction: column; gap: 3px; min-height: 58px; padding: 7px 8px; border-radius: 7px; background: var(--ts); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t) 18%, transparent); overflow: hidden; }
+.ch-lab .ic { color: var(--t); }
+/* Wireframe uses the hand font here (annotation chrome); product uses the UI font at the same weight. */
+.ch-lab b { font: 700 14px/1.1 var(--font-sans); color: var(--t); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-lab small { font: 500 10px var(--font-mono); color: var(--ink-2); margin-top: auto; }
+.ch-pins { display: flex; align-items: center; gap: 6px; padding: 6px 2px 6px; }
+.ch-teeth { flex: 1; height: 7px; border-radius: 2px; background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--warn) 70%, var(--surface)) 0 4px, transparent 4px 7px); opacity: .8; }
+.ch-led { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); }
+.ch-led.warn { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 22%, transparent); }
+.ch-led.bad { background: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 22%, transparent); }
+/* Masking tape: product version uses warn tokens instead of the board's sticky-note tokens. */
+.ch-tape { position: absolute; right: -4px; top: 26px; z-index: 2; padding: 2px 10px 3px; font: 700 11px/1.2 var(--font-sans); transform: rotate(7deg); background: var(--warn-bg); color: var(--warn-text); box-shadow: var(--shadow-sm); clip-path: polygon(3% 0, 97% 5%, 100% 50%, 96% 100%, 2% 95%, 0 50%); }
+.ch-tape.bad { background: var(--bad-bg); color: var(--bad); }
+.ch-cart.down .ch-lab { filter: grayscale(.85); opacity: .7; }
+.ch-pop-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 12px 12px; padding: 8px 10px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-text); font-size: 12.5px; }
+.ch-pop-foot .spacer { min-width: 4px; }
+.ch-pop-empty { margin: 0 14px 12px; font-size: 12px; color: var(--ink-3); }
+
+/* ---- session health ---- */
+.ch-ban { flex: none; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 12px 14px 0; padding: 10px 12px; border-radius: 12px; font-size: 13px; }
+.ch-ban.warn { background: var(--warn-bg); color: var(--warn-text); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); }
+.ch-ban.dead { background: var(--surface-3); color: var(--ink-2); border: 1px solid var(--line-strong); }
+.ch-ban-ic { width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; background: var(--surface); box-shadow: var(--shadow-sm); }
+.ch-ban.warn .ch-ban-ic { color: var(--warn); }
+.ch-ban-tx { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; }
+.ch-ban-tx b { color: var(--ink); font-weight: 600; }
+.ch-ban.warn .ch-ban-tx b { color: inherit; }
+.ch-ban-act { display: flex; gap: 6px; flex-wrap: wrap; }
+.ch-lockbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; max-width: 740px; margin: 10px auto 0; padding: 10px 10px 10px 14px; border-radius: 16px; border: 1px dashed var(--line-strong); background: var(--surface-2); font-size: 13px; color: var(--ink-2); }
+.ch-lockbar .ic { color: var(--ink-3); }
+.ch-lockbar span { flex: 1 1 160px; min-width: 0; }
+
+/* ---- dock: count badge on Activity (Board A pin 6) ---- */
+.dock-badge.count { width: auto; min-width: 15px; height: 15px; top: -3px; right: -3px; padding: 0 4px; border: 0; background: var(--warn); color: var(--bg); font: 700 9px/15px var(--font-mono); text-align: center; animation: none; }
+
+@media (max-width: 560px) {
+  .ch-proj, .ch-turnchip, .ch-time, .ch-hide-sm { display: none; }
+  .ch-top { padding: 0 6px 0 10px; gap: 6px; }
+  .ch-pill { padding-right: 8px; gap: 6px; }
+  .ch-meter .bar { width: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ch-pill.s-wait, .ch-shim, .ch-sq, .ch-toast, .ch-pop, .ch-turnchip i { animation: none; }
+  .ch-shim { color: var(--ink-3); background: none; }
+}
+button.ch-fact { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+button.ch-fact:hover { border-color: var(--line-strong); }
+/* No servers need attention: the footer keeps only "Open tools", without the amber fill. */
+.ch-pop-foot.ok { background: none; padding-top: 0; }
+/* GoalBar keeps its actions (pause / resume / menu / clear) at the end of the strip. */
+.goal-bar.r2 { width: 100%; max-width: none; margin: 0; gap: 0; border: 0; border-radius: 0; background: none; overflow: visible; }
+.goal-bar.r2 > :not(.ch-goal) { width: 100%; max-width: 740px; margin: 8px auto 0; }
+.ch-goal .goal-strip-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-right: -4px; }
+.ch-goal .icon-btn.ghost { width: 28px; height: 28px; color: var(--ink-2); }
+.ch-goal .icon-btn.ghost:hover { color: var(--ink); }
+.ch-goal .icon-btn:disabled { opacity: .45; cursor: not-allowed; }

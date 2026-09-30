@@ -1,42 +1,44 @@
 "use client";
-import { ShieldAlert, ShieldCheck } from "lucide-react";
-import { describeFinding } from "../../../shared/privacy.ts";
+import { privacyVM } from "@/lib/vm-insights";
 import type { PrivacyReport } from "../../../shared/contracts";
+import { ObIcon } from "./ob-icon";
 
-// Was my data safe: what pattern checks detected in text the model saw.
-// Only masked samples are ever shown; the raw values never reach the browser.
-// Lucide shields stay: the spec icon set has no shield equivalent.
-export function PrivacyCard({ report }: { report: PrivacyReport }) {
-  const findings = report?.findings || [];
-  if (!findings.length)
-    return (
-      <div className="tc-privacy">
-        <p className="tc-privacy-head">
-          <ShieldCheck size={15} aria-hidden="true" /> No personal data detected
-        </p>
-        <p className="tc-note">
-          Checked {report?.scannedChars?.toLocaleString() ?? 0} characters for
-          emails, phone numbers, card and account numbers, IDs and access keys.
-          Pattern checks can miss things.
-        </p>
-      </div>
-    );
+// One row per finding: kind, masked sample, where it was seen and the count.
+// Only masked samples ever reach the browser. Renders nothing when empty.
+export function PrivacyCard({
+  report,
+  title = "Privacy on this turn",
+}: {
+  report: PrivacyReport | PrivacyReport[] | null | undefined;
+  title?: string;
+}) {
+  const vm = privacyVM(Array.isArray(report) ? report : [report]);
+  if (!vm.findings.length) return null;
   return (
-    <div className="tc-privacy is-warn">
-      <p className="tc-privacy-head">
-        <ShieldAlert size={15} aria-hidden="true" /> Personal data detected
-      </p>
-      <ul>
-        {findings.map((f) => (
-          <li key={`${f.kind}:${f.source}`}>
-            <span>{describeFinding(f)}</span>
-            <code aria-label={`Masked sample ${f.sample}`}>{f.sample}</code>
-          </li>
-        ))}
-      </ul>
-      <p className="tc-note">
-        This was sent to the model as part of the turn. Samples are masked.
-      </p>
+    <div className="ob-sec">
+      <div className="ob-h">
+        <ObIcon name="shield" sm />
+        {title}
+        <span className="ob-r">{vm.summary}</span>
+      </div>
+      {vm.findings.map((f) => (
+        <div className="ob-find" key={f.key}>
+          <span className="ob-tile">
+            <ObIcon name="shield" />
+          </span>
+          <div className="ob-find-main">
+            <span>
+              <b>{f.kind}</b>
+              <code aria-label={`Masked sample ${f.sample}`}>{f.sample}</code>
+            </span>
+            <span>
+              <ObIcon name="file" sm />
+              {f.source}
+            </span>
+          </div>
+          <span className="ob-cnt">{f.count}</span>
+        </div>
+      ))}
     </div>
   );
 }

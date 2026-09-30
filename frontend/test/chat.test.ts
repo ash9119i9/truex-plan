@@ -368,3 +368,44 @@ test("resolved approvals stay in the chat after their turn, once", () => {
     list,
   );
 });
+
+test("history entries keep the saved time on user and assistant messages", () => {
+  const list = historyEntries([
+    {
+      _id: "u1",
+      role: "user",
+      text: "Hi",
+      turnId: "t1",
+      at: "2026-09-30T10:00:00.000Z",
+    } as Message,
+    {
+      _id: "a1",
+      role: "assistant",
+      text: "Hello",
+      turnId: "t1",
+      messageIndex: 0,
+      at: "2026-09-30T10:00:05.000Z",
+    } as Message,
+  ]);
+  const [user, answer] = list as Extract<Entry, { kind: "message" }>[];
+  assert.equal(user.at, "2026-09-30T10:00:00.000Z");
+  assert.equal(answer.at, "2026-09-30T10:00:05.000Z");
+  // A later stream event for the same answer keeps the saved time.
+  const next = applyChatEvent(
+    list,
+    event("message.final", { text: "Hello", messageIndex: 0 }, "a1", "t1"),
+  );
+  const updated = next.find(
+    (e) => e.kind === "message" && e.role === "assistant",
+  ) as Extract<Entry, { kind: "message" }>;
+  assert.equal(updated.at, "2026-09-30T10:00:05.000Z");
+});
+
+test("messages without a saved time have no at field", () => {
+  const [user] = historyEntries([
+    { _id: "u1", role: "user", text: "Hi" } as Message,
+  ]);
+  assert.equal("at" in user, false);
+  const [answer] = history();
+  assert.equal("at" in answer, false);
+});

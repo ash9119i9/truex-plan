@@ -42,9 +42,9 @@ test("autopilot is offered only when it is switched on", () => {
   assert.deepEqual(values({ ...on, autopilot: false }), ["ask", "readOnly"]);
   const labels = modePicker(on, null)!.options.map((o) => o.label);
   assert.deepEqual(labels, [
-    "Ask me every time",
-    "Auto-allow read-only tools",
-    "Autopilot",
+    "Ask",
+    "Read-only",
+    "Auto",
   ]);
   assert.ok(modePicker(on, null)!.options.every((o) => o.description));
 });

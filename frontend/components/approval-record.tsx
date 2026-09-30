@@ -1,78 +1,34 @@
 import type { ApprovalRecord } from "../../shared/contracts";
-import {
-  autoAnswerNote,
-  decisionLabel,
-  recordSummary,
-  type ModeRecord,
-} from "@/lib/approval-mode";
+import { auditRows, type AuditRow } from "@/lib/vm-stream";
+import { StreamIcon } from "./stream-icon";
 
-function time(at?: string) {
-  const date = at ? new Date(at) : null;
-  return date && !Number.isNaN(date.getTime())
-    ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : "";
-}
-
-// A compact, read-only line in the chat recording what was decided, so the
-// conversation keeps an audit trail after the request card goes away.
-export function ApprovalRecordView({
-  record: shared,
-}: {
-  record: ApprovalRecord | ModeRecord;
-}) {
-  const record = shared as ModeRecord;
-  const at = time(record.at);
+// After-the-fact audit inside the work log (wireframe §1 board 2, pin 7): one
+// compact row per decision. Secret answers never render, only a fixed mask.
+export function AuditList({ rows }: { rows: AuditRow[] }) {
   return (
-    <div className="approval-record" role="group" aria-label="Your decision">
-      {record.items.map((item, i) => {
-        if (item.kind === "toolApproval") {
-          const d = decisionLabel(record, item.decision);
-          return (
-            <div key={i} className="approval-record-row">
-              <span
-                className={`approval-record-dot approval-record-${d.tone}`}
-                aria-hidden="true"
-              />
-              <span className="approval-record-body">
-                <span className="approval-record-title">
-                  {item.action || "Connected business service"}
+    <div className="st-audit" role="list" aria-label="Decisions">
+      {rows.map((row, i) => (
+        <div key={i} className={row.tone} role="listitem">
+          <StreamIcon name={row.icon} />
+          <span className="d">{row.label}</span>
+          <span className="x" title={row.detail}>
+            {row.detail}
+            {row.masked && (
+              <>
+                {" · "}
+                <span className="st-mask" aria-label="answer hidden">
+                  ••••••••
                 </span>
-                <span
-                  className={`approval-record-badge approval-record-${d.tone}`}
-                >
-                  {d.text}
-                </span>
-              </span>
-            </div>
-          );
-        }
-        const answer = item.secret
-          ? "Answer hidden"
-          : item.answer
-            ? record.outcome === "auto"
-              ? `${item.answer} (${autoAnswerNote(record)})`
-              : item.answer
-            : record.outcome === "answered"
-              ? ""
-              : "No answer";
-        return (
-          <div key={i} className="approval-record-row">
-            <span
-              className="approval-record-dot approval-record-muted"
-              aria-hidden="true"
-            />
-            <span className="approval-record-body">
-              <span className="approval-record-question">{item.question}</span>
-              <span className="approval-record-answer">{answer}</span>
-            </span>
-          </div>
-        );
-      })}
-      {at && (
-        <time className="approval-record-time" dateTime={record.at}>
-          {recordSummary(record)} at {at}
-        </time>
-      )}
+              </>
+            )}
+          </span>
+        </div>
+      ))}
     </div>
   );
+}
+
+// One record on its own, for callers outside the work log.
+export function ApprovalRecordView({ record }: { record: ApprovalRecord }) {
+  return <AuditList rows={auditRows(record)} />;
 }

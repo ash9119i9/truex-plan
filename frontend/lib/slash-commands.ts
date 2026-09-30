@@ -1,24 +1,79 @@
 import { parseTokenBudget } from "./goal.ts";
 
-export const slashCommands = [
+// Icon names match components/v2/rq-icon.tsx; the shortcut is the hint the
+// slash popover shows on inactive rows (the active row always shows Enter).
+// Set one only once the page handles that key.
+export type CommandIcon =
+  | "target"
+  | "layers"
+  | "sigma"
+  | "bot"
+  | "brain"
+  | "lock"
+  | "history"
+  | "spark"
+  | "plug"
+  | "users"
+  | "slash";
+export interface SlashCommand {
+  name: string;
+  description: string;
+  icon: CommandIcon;
+  shortcut?: string;
+}
+
+export const slashCommands: SlashCommand[] = [
   {
     name: "/goal",
     description:
       "Set a goal, or /goal show | pause | resume | budget <tokens> | clear",
+    icon: "target",
   },
-  { name: "/fork", description: "Create a new conversation branch" },
-  { name: "/compact", description: "Summarize this conversation context" },
-  { name: "/model", description: "Change model: /model <model name>" },
-  { name: "/effort", description: "Change reasoning: /effort <level>" },
-  { name: "/archive", description: "Archive this conversation" },
-  { name: "/unarchive", description: "Restore this conversation" },
-  { name: "/tools", description: "Capabilities, documents & visuals" },
-  { name: "/mcp", description: "Manage connected tools (MCP)" },
-  { name: "/agents", description: "Show helper agents in this conversation" },
-  { name: "/help", description: "Show available chat commands" },
+  {
+    name: "/fork",
+    description: "Create a new conversation branch",
+    icon: "layers",
+  },
+  {
+    name: "/compact",
+    description: "Summarize this conversation context",
+    icon: "sigma",
+  },
+  {
+    name: "/model",
+    description: "Change model: /model <model name>",
+    icon: "bot",
+  },
+  {
+    name: "/effort",
+    description: "Change reasoning: /effort <level>",
+    icon: "brain",
+  },
+  { name: "/archive", description: "Archive this conversation", icon: "lock" },
+  {
+    name: "/unarchive",
+    description: "Restore this conversation",
+    icon: "history",
+  },
+  {
+    name: "/tools",
+    description: "Capabilities, documents & visuals",
+    icon: "spark",
+  },
+  { name: "/mcp", description: "Manage connected tools (MCP)", icon: "plug" },
+  {
+    name: "/agents",
+    description: "Show helper agents in this conversation",
+    icon: "users",
+  },
+  {
+    name: "/help",
+    description: "Show available chat commands",
+    icon: "slash",
+  },
 ];
 
-export function suggestCommands(text: string) {
+export function suggestCommands(text: string): SlashCommand[] {
   // Once arguments or a second line start, editing keys belong to the draft.
   return /^\/[a-z]*$/i.test(text)
     ? slashCommands.filter((command) =>

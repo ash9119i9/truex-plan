@@ -98,6 +98,12 @@ export function pickTab(a: FollowTab | null, b: FollowTab | null) {
   return RANK[b] > RANK[a] ? b : a;
 }
 
+// The tab a burst lands on, judged once the burst is over: a plan that
+// arrived just before its goal still belongs to the Goal tab.
+export function settleTab(want: FollowTab | null, seen: FollowSeen) {
+  return want === "plan" && seen.goal?.status === "active" ? "goal" : want;
+}
+
 export interface FollowContext {
   enabled: boolean;
   vw: number;
@@ -107,8 +113,6 @@ export interface FollowContext {
   // The user closed the panel during this turn.
   dismissed: boolean;
   panelOpen: boolean;
-  // Pointer or focus is inside the panel.
-  inPanel: boolean;
   // Opening the panel leaves an open sidebar in place.
   fitsOpen: boolean;
 }
@@ -117,7 +121,7 @@ export interface FollowContext {
 // panel on that tab, or nothing.
 export function followAction(ctx: FollowContext): "switch" | "open" | null {
   if (!ctx.enabled || ctx.now - ctx.manualAt < MANUAL_HOLD_MS) return null;
-  if (ctx.panelOpen) return ctx.inPanel ? null : "switch";
+  if (ctx.panelOpen) return "switch";
   // At drawer widths the panel would cover the chat (spec: innerWidth > 900).
   if (ctx.dismissed || ctx.vw <= 900 || !ctx.fitsOpen) return null;
   return "open";

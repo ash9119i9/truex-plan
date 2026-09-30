@@ -19,6 +19,8 @@ export type Entry =
       done?: boolean;
       delivery?: string;
       steer?: boolean;
+      // ISO time the message was sent or saved.
+      at?: string;
     }
   | {
       kind: "thinking";
@@ -48,6 +50,7 @@ export function upsertMessage(
     text: string;
     final: boolean;
     append?: boolean;
+    at?: string;
   },
 ): Entry[] {
   const ids = [value.itemId, ...(value.aliases || [])].filter(
@@ -103,7 +106,9 @@ export function upsertMessage(
       ),
     ],
     messageIndex: value.messageIndex ?? previous?.messageIndex,
+    at: value.at ?? previous?.at,
   };
+  if (!entry.at) delete entry.at;
   return previous
     ? list.map((e) => (e === previous ? entry : e))
     : [...list, entry];
@@ -119,6 +124,7 @@ export function historyEntries(messages: Message[]): Entry[] {
         messageIndex: m.messageIndex,
         text: m.text,
         final: true,
+        at: m.at,
       });
     const id = m.clientId || m.itemId || m._id;
     const entry: Entry = {
@@ -131,6 +137,7 @@ export function historyEntries(messages: Message[]): Entry[] {
       command: m.command,
       steer: m.steer,
       final: true,
+      ...(m.at ? { at: m.at } : {}),
     };
     return list.some((e) => e.id === id) ? list : [...list, entry];
   }, []);

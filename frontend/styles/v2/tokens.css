@@ -1,4 +1,5 @@
-/* Copied unedited from docs/truex-design-spec.html → Appendix (index.html:12–111, app.tsx:2651–2658).
+/* r2 values (convo-v2-wireframe-r2.html) override the spec where they differ.
+   Base copied from docs/truex-design-spec.html → Appendix (index.html:12–111, app.tsx:2651–2658).
    Single source of truth for color, type, radius, shadow. Do not add literal hex in components. */
 /* Blue Brand System — light-mode-first.
    Primary blue #3691CD carries actions, focus and progress (white content on it).
@@ -6,9 +7,10 @@
 :root {
   --brand-50: #F8FCFD; --brand-100: #F4FAFC; --brand-200: #EAF5F8; --brand-300: #D8EBF0;
   --brand-400: #BCDEE8; --brand-500: #3691CD; --brand-600: #2A7DB4; --brand-700: #226A9B;
+  --page: #F6F9FA;          /* r2: canvas behind panels */
   --bg: #FFFFFF;
   --surface: #FFFFFF;
-  --surface-2: #FFFFFF;
+  --surface-2: #F8FCFD;
   --surface-3: #F6F9FA;     /* soft surface */
   --line: #E3ECEF;
   --line-strong: #D8E0E4;
@@ -28,7 +30,8 @@
   --accent-text: #2A72A3;
   --accent-ink: #1F2A30;    /* content on pastel fills */
   --on-accent: #FFFFFF;     /* content on #3691CD fills */
-  --warn: #7D5D1D;
+  --warn: #C58A1E; --warn-bg: #FFF3D9; --warn-text: #7D5D1D;
+  --bad: #C2452D; --bad-bg: #FCECE7; --ok: #0f7a55; --ok-bg: #E6F5EE;
   --success-bg: #E7F4ED; --success-text: #35624E;
   --warning-bg: #FFF3D9; --warning-text: #7D5D1D;
   --error-bg: #FBE7E7;   --error-text: #8D4545;
@@ -36,8 +39,10 @@
   --neutral-bg: #F6F9FA; --neutral-text: #5F6D73;
   --glow-1: rgb(188 222 232 / 60%);
   --glow-2: rgb(234 245 248 / 90%);
-  --shadow-sm: 0 1px 2px rgb(31 42 48 / 5%);
-  --shadow-md: 0 1px 2px rgb(31 42 48 / 4%), 0 8px 24px -8px rgb(31 42 48 / 10%);
+  --shadow-sm: 0 1px 2px rgb(31 42 48 / 6%);
+  --shadow-md: 0 4px 14px rgb(31 42 48 / 8%);
+  --shadow-card: 0 1px 2px rgb(31 42 48 / 6%), 0 14px 28px -12px rgb(31 42 48 / 28%);
+  --shadow-lift: 0 2px 4px rgb(31 42 48 / 6%), 0 26px 44px -16px rgb(31 42 48 / 34%);
   --shadow-lg: 0 2px 4px rgb(31 42 48 / 4%), 0 10px 35px rgb(31 42 48 / 8%);
   --radius: 16px;
   --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
@@ -51,33 +56,39 @@
 /* Dark theme is not in the brand system (light-mode-first); derived from graphite with #3691CD / #BCDEE8 accents. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #171717; --surface: #171717; --surface-2: #171717; --surface-3: #242424;
+    --page: #111213; --bg: #171717; --surface: #171717; --surface-2: #1C1C1C; --surface-3: #242424;
     --line: #2A2A2A; --line-strong: #363636; --border-control: #404040;
     --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F; --ink-disabled: #4E5C62;
     --accent: #3691CD; --accent-2: #5AA8DC; --accent-hover: #2A7DB4; --accent-pressed: #226A9B;
     --accent-soft: #14283A; --accent-soft-2: #1F4461; --accent-fg: #BCDEE8; --accent-text: #BCDEE8; --accent-ink: #1F2A30; --on-accent: #FFFFFF;
-    --warn: #E6C27A;
+    --warn: #E6C27A; --warn-bg: #2E2512; --warn-text: #E6C27A;
+    --bad: #E07A63; --bad-bg: #2C1712; --ok: #4FC79B; --ok-bg: #0E211A;
     --success-bg: #16291F; --success-text: #A8D8BE; --warning-bg: #2E2512; --warning-text: #E6C27A;
     --error-bg: #2F1A1A; --error-text: #EDB0B0; --info-bg: #14283A; --info-text: #BCDEE8;
     --neutral-bg: #242424; --neutral-text: #8B999F;
     --glow-1: rgb(54 145 205 / 16%); --glow-2: rgb(188 222 232 / 6%);
-    --shadow-md: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -8px rgb(0 0 0 / 50%);
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%); --shadow-md: 0 4px 14px rgb(0 0 0 / 45%);
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 35%), 0 14px 28px -12px rgb(0 0 0 / 70%);
+    --shadow-lift: 0 2px 4px rgb(0 0 0 / 35%), 0 26px 44px -16px rgb(0 0 0 / 80%);
     --shadow-lg: 0 2px 4px rgb(0 0 0 / 30%), 0 24px 48px -16px rgb(0 0 0 / 70%);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #171717; --surface: #171717; --surface-2: #171717; --surface-3: #242424;
+  --page: #111213; --bg: #171717; --surface: #171717; --surface-2: #1C1C1C; --surface-3: #242424;
   --line: #2A2A2A; --line-strong: #363636; --border-control: #404040;
   --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F; --ink-disabled: #4E5C62;
   --accent: #3691CD; --accent-2: #5AA8DC; --accent-hover: #2A7DB4; --accent-pressed: #226A9B;
   --accent-soft: #14283A; --accent-soft-2: #1F4461; --accent-fg: #BCDEE8; --accent-text: #BCDEE8; --accent-ink: #1F2A30; --on-accent: #FFFFFF;
-  --warn: #E6C27A;
+  --warn: #E6C27A; --warn-bg: #2E2512; --warn-text: #E6C27A;
+    --bad: #E07A63; --bad-bg: #2C1712; --ok: #4FC79B; --ok-bg: #0E211A;
   --success-bg: #16291F; --success-text: #A8D8BE; --warning-bg: #2E2512; --warning-text: #E6C27A;
   --error-bg: #2F1A1A; --error-text: #EDB0B0; --info-bg: #14283A; --info-text: #BCDEE8;
   --neutral-bg: #242424; --neutral-text: #8B999F;
   --glow-1: rgb(54 145 205 / 16%); --glow-2: rgb(188 222 232 / 6%);
-  --shadow-md: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px -8px rgb(0 0 0 / 50%);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%); --shadow-md: 0 4px 14px rgb(0 0 0 / 45%);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 35%), 0 14px 28px -12px rgb(0 0 0 / 70%);
+  --shadow-lift: 0 2px 4px rgb(0 0 0 / 35%), 0 26px 44px -16px rgb(0 0 0 / 80%);
   --shadow-lg: 0 2px 4px rgb(0 0 0 / 30%), 0 24px 48px -16px rgb(0 0 0 / 70%);
   color-scheme: dark;
 }
@@ -97,6 +108,8 @@ button { font: inherit; color: inherit; }
 :root { --tone-0: #2872b8; --tone-0-soft: #eef5fc; --tone-1: #0f7a55; --tone-1-soft: #e6f5ee; --tone-2: #b84a1b; --tone-2-soft: #fcece4; --tone-main: #6b6b6b; --tone-main-soft: #f0f0f0; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --tone-0: #3691cd; --tone-0-soft: #0f1f2c; --tone-1: #199e70; --tone-1-soft: #0e211a; --tone-2: #d95926; --tone-2-soft: #24120a; --tone-main: #8f8f8f; --tone-main-soft: #262626; } }
 :root[data-theme="dark"] { --tone-0: #3691cd; --tone-0-soft: #0f1f2c; --tone-1: #199e70; --tone-1-soft: #0e211a; --tone-2: #d95926; --tone-2-soft: #24120a; --tone-main: #8f8f8f; --tone-main-soft: #262626; }
+/* r2 turn-tone names (convo-v2-wireframe-r2.html) */
+:root { --t0: var(--tone-0); --ts0: var(--tone-0-soft); --t1: var(--tone-1); --ts1: var(--tone-1-soft); --t2: var(--tone-2); --ts2: var(--tone-2-soft); --tm: var(--tone-main); --tsm: var(--tone-main-soft); }
 .tone-0 { --t: var(--tone-0); --ts: var(--tone-0-soft); }
 .tone-1 { --t: var(--tone-1); --ts: var(--tone-1-soft); }
 .tone-2 { --t: var(--tone-2); --ts: var(--tone-2-soft); }

@@ -75,6 +75,8 @@ export function AgentsPanel({
   previews,
   skewMs,
   onDetailChange,
+  openId: controlledOpenId,
+  onOpenChange,
 }: {
   sessionId?: string;
   agents: SubAgent[];
@@ -82,9 +84,15 @@ export function AgentsPanel({
   skewMs?: number;
   // Opening a helper switches the panel to its wide "detail" size.
   onDetailChange?: (open: boolean) => void;
+  // Optional control of the open helper, so the scoped panel's roster can
+  // open a helper's detail view (wireframe r2 section 4, Board E).
+  openId?: string | null;
+  onOpenChange?: (threadId: string | null) => void;
 }) {
   const now = useClock(agents.some(isRunning));
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [localOpenId, setLocalOpenId] = useState<string | null>(null);
+  const openId = controlledOpenId !== undefined ? controlledOpenId : localOpenId;
+  const setOpenId = onOpenChange ?? setLocalOpenId;
   const [lit, setLit] = useState<string | null>(null);
   const ordered = spawnOrder(agents);
   const helpers: Helper[] = ordered.map((agent, i) => ({
