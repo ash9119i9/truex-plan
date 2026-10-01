@@ -9,3 +9,4 @@ dist/
 vendor/codex/
 *.tsbuildinfo
 a.json
+.claude
