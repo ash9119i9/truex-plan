@@ -65,9 +65,10 @@ COPY model-gateway/src ./model-gateway/src
 RUN npm --prefix agent-core run build && npm --prefix model-gateway run build \
     && npm --prefix agent-core prune --omit=dev && npm --prefix model-gateway prune --omit=dev
 
-FROM node:24-bookworm-slim AS runtime
+# Trixie provides glibc 2.41, including symbols needed by Ubuntu 24.04 ARM64 builds.
+FROM node:24-trixie-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates git ripgrep libssl3 libcap2 liblzma5 tini \
+    ca-certificates git ripgrep libssl3t64 libcap2 liblzma5 tini \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/agent-core
 COPY --from=services-build /app/agent-core/dist ./dist
