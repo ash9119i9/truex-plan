@@ -153,6 +153,16 @@ npm run agentcore:build
 
 The artifact target cross-compiles on the builder's native architecture and exports `.runtime/agentcore/codex` plus a manifest containing its source revision, architecture and SHA-256. It fetches the exact source in `codex.lock.json`; it does not reuse the host's x86-64 debug binary. Application image builds verify that artifact and do not rebuild Rust. Keep the artifact and rebuild it when the Codex pin changes. Cargo caches persist on the same Docker builder. Use `--build-arg CODEX_BUILD_JOBS=1` if the builder has limited memory. Image builds require an ARM64 builder or ARM64 emulation support.
 
+To reuse a binary built natively on an ARM64 Linux host with `node scripts/codex.mjs --build`, package it before building the image:
+
+```sh
+install -D -m 0755 vendor/codex/codex-rs/target/debug/codex .runtime/agentcore/codex
+node scripts/codex-artifact.mjs create .runtime/agentcore/codex .runtime/agentcore/codex.json codex.lock.json vendor/codex
+npm run agentcore:build
+```
+
+The runtime uses Debian Trixie with glibc 2.41 to support binaries built on Ubuntu 24.04 with glibc 2.39. Architecture and checksum verification run before packaging; the image build also executes `codex --version` to check shared-library compatibility.
+
 On an x86-64 Linux host whose default builder cannot run ARM64 processes, use an isolated BuildKit builder for the image:
 
 ```sh
