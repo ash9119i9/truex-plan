@@ -19,6 +19,7 @@ import type { Adapter, GatewayProfile } from "./adapter";
 import { proxyChat } from "./adapters/chat";
 import { proxyAnthropic } from "./adapters/anthropic";
 import { proxyGemini } from "./adapters/gemini";
+import { cachePolicyError } from "./prompt-cache";
 export type { GatewayProfile } from "./adapter";
 
 export interface GatewayOptions {
@@ -167,6 +168,20 @@ export function createGateway(options: GatewayOptions) {
         `The gateway has no adapter for wireApi "${profile.wireApi ?? "responses"}".`,
         "unsupported_wire_api",
       );
+    const cacheError = cachePolicyError(profile.promptCache, profile.wireApi);
+    if (cacheError)
+      return sendError(res, 422, cacheError, "invalid_cache_configuration");
+    if (
+      profile.promptCache?.type === "chat" &&
+      profile.promptCache.keyScope === "prefix" &&
+      !claims.tenantId
+    )
+      return sendError(
+        res,
+        422,
+        "Prefix cache sharing requires a tenant-scoped gateway token.",
+        "invalid_cache_configuration",
+      );
     const abort = new AbortController();
     // Stop the upstream call when Codex disconnects (interrupt or timeout).
     res.on("close", () => abort.abort());
@@ -184,6 +199,7 @@ export function createGateway(options: GatewayOptions) {
       ),
       signal: abort.signal,
       log,
+      tenantId: claims.tenantId,
     });
   }
 }

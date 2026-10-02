@@ -66,7 +66,7 @@ The pinned runtime speaks only the OpenAI Responses API. Providers that don't (C
 | `anthropic` | Gateway: Anthropic Messages API |
 | `gemini` | Gateway: Gemini `streamGenerateContent` |
 
-Optional profile fields: `route` (`gateway` forces a Responses profile through the gateway), `contextWindow`, `autoCompactTokenLimit`, `maxOutputTokens`, `thinking`, and `apiKeySecretArn` (read the key from AWS Secrets Manager instead of `apiKey`).
+Optional profile fields: `route` (`gateway` forces a Responses profile through the gateway), `contextWindow`, `autoCompactTokenLimit`, `maxOutputTokens`, `thinking`, `apiKeySecretArn` (read the key from AWS Secrets Manager instead of `apiKey`), and `promptCache` ([provider controls and live benchmarking](docs/PROMPT_CACHING.md)).
 
 For gateway profiles the platform never sends the provider key to agent-core. Codex receives the gateway URL `MODEL_GATEWAY_URL/p/<profileId>/v1` and a token signed with `MODEL_GATEWAY_SECRET` that is valid only for that profile. The gateway checks the token, loads the profile and key from `truex_models`, and calls the provider. Tokens do not expire, because Codex keeps a thread's provider config for the life of the thread. Revoke access by disabling the profile (`enabled: false`) or rotating the secret.
 

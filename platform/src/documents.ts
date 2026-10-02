@@ -1,6 +1,7 @@
 import { ObjectId } from "mongodb";
 import type { Agent } from "../../shared/contracts";
 import type { EncryptedSecret } from "./secrets";
+import type { PromptCachePolicy } from "../../shared/prompt-cache";
 export type DatabaseId = string | ObjectId;
 export interface AgentDocument extends Omit<
   Partial<Agent>,
@@ -33,6 +34,7 @@ export interface ModelDocument {
   reasoningEffort?: string;
   serviceTier?: string;
   webSearch?: "disabled" | "cached" | "live";
+  promptCache?: PromptCachePolicy;
   enabled?: boolean;
 }
 export type McpScope = "tenant" | "user";

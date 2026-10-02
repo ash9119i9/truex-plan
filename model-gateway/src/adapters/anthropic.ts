@@ -25,7 +25,10 @@ export interface AnthropicRequest {
 
 export function toAnthropicRequest(
   input: any,
-  profile: Pick<GatewayProfile, "modelName" | "maxOutputTokens" | "thinking">,
+  profile: Pick<
+    GatewayProfile,
+    "modelName" | "maxOutputTokens" | "thinking" | "promptCache"
+  >,
 ): AnthropicRequest {
   const tools = new ToolNames();
   const anthropicTools: Anthropic.Tool[] = [];
@@ -40,19 +43,47 @@ export function toAnthropicRequest(
     // OpenAI's Responses backend, so they are not offered to Claude.
   }
   const { system, messages } = toMessages(input, tools);
+  const policy =
+    profile.promptCache?.type === "anthropic" ? profile.promptCache : undefined;
+  const cache =
+    policy?.enabled === false
+      ? undefined
+      : {
+          type: "ephemeral" as const,
+          ...(policy?.ttl ? { ttl: policy.ttl } : {}),
+        };
   const params: Anthropic.MessageCreateParamsStreaming = {
     model: profile.modelName,
     max_tokens: profile.maxOutputTokens || DEFAULT_MAX_TOKENS,
     messages,
     stream: true,
-    cache_control: { type: "ephemeral" },
+    ...(cache ? { cache_control: cache } : {}),
   };
   // An explicit breakpoint caches tools + system, the part every request of a
   // conversation shares. Proxies that drop top-level auto-caching keep it.
   if (system)
     params.system = [
-      { type: "text", text: system, cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: system,
+        ...(cache ? { cache_control: cache } : {}),
+      },
     ];
+  // Optional fallback for proxies that omit top-level automatic caching.
+  // Same TTL at every breakpoint; no changes to text or message ordering.
+  if (cache && policy?.conversationBreakpoint) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const content = messages[i].content;
+      if (!Array.isArray(content)) continue;
+      const block = [...content]
+        .reverse()
+        .find((b) => b.type === "text" || b.type === "tool_result");
+      if (block) {
+        block.cache_control = cache;
+        break;
+      }
+    }
+  }
   if (anthropicTools.length) {
     params.tools = anthropicTools;
     const choice = toolChoice(input);
@@ -373,6 +404,26 @@ export async function streamAnthropic(
   // max_tokens stop means they were cut off and are dropped.
   const held: HeldCall[] = [];
   const tokens = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+  let cacheWriteReported = false;
+  let cacheReadReported = false;
+  let cacheWrite5m: number | undefined;
+  let cacheWrite1h: number | undefined;
+  const cacheWrites = (usage: {
+    cache_creation_input_tokens?: number | null;
+    cache_creation?: {
+      ephemeral_5m_input_tokens: number;
+      ephemeral_1h_input_tokens: number;
+    } | null;
+  }) => {
+    if (usage.cache_creation_input_tokens != null) {
+      tokens.cacheWrite = usage.cache_creation_input_tokens;
+      cacheWriteReported = true;
+    }
+    if (usage.cache_creation) {
+      cacheWrite5m = usage.cache_creation.ephemeral_5m_input_tokens;
+      cacheWrite1h = usage.cache_creation.ephemeral_1h_input_tokens;
+    }
+  };
   let stopReason: Anthropic.StopReason | null = null;
   let stopDetails: Anthropic.RefusalStopDetails | null = null;
 
@@ -389,7 +440,9 @@ export async function streamAnthropic(
         const usage = event.message.usage;
         tokens.input = usage.input_tokens ?? 0;
         tokens.cacheRead = usage.cache_read_input_tokens ?? 0;
+        cacheReadReported = usage.cache_read_input_tokens != null;
         tokens.cacheWrite = usage.cache_creation_input_tokens ?? 0;
+        cacheWrites(usage);
         tokens.output = usage.output_tokens ?? 0;
         break;
       }
@@ -468,10 +521,13 @@ export async function streamAnthropic(
         stopDetails = event.delta.stop_details ?? stopDetails;
         const usage = event.usage;
         if (usage.input_tokens != null) tokens.input = usage.input_tokens;
-        if (usage.cache_read_input_tokens != null)
+        if (usage.cache_read_input_tokens != null) {
           tokens.cacheRead = usage.cache_read_input_tokens;
+          cacheReadReported = true;
+        }
         if (usage.cache_creation_input_tokens != null)
           tokens.cacheWrite = usage.cache_creation_input_tokens;
+        cacheWrites(usage);
         if (usage.output_tokens != null) tokens.output = usage.output_tokens;
         break;
       }
@@ -498,7 +554,12 @@ export async function streamAnthropic(
           input_tokens: input,
           output_tokens: tokens.output,
           total_tokens: input + tokens.output,
-          cached_tokens: tokens.cacheRead,
+          ...(cacheReadReported ? { cached_tokens: tokens.cacheRead } : {}),
+          ...(cacheWriteReported
+            ? { cache_write_tokens: tokens.cacheWrite }
+            : {}),
+          cache_write_5m_tokens: cacheWrite5m,
+          cache_write_1h_tokens: cacheWrite1h,
         };
         out.complete(usage);
         return;
