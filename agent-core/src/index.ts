@@ -81,6 +81,9 @@ app.get("/healthz", async (_req, res) => {
     codexHomeWritable: writable,
     unknownMethods: manager.unknownMethods,
     threads: manager.threads.size,
+    activeThreads: [...manager.threads.values()].filter(
+      (thread) => thread.state.kind !== "idle",
+    ).length,
   });
 });
 app.get("/capabilities", (_req, res) => res.json(inventory));

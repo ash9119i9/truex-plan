@@ -145,7 +145,9 @@ docker build -f frontend/Dockerfile -t truex-frontend:local .
 docker build -f model-gateway/Dockerfile -t truex-model-gateway:local .
 ```
 
-The model gateway is stateless and scales horizontally. Run it privately next to the platform, reachable from the agent-core runtime but not from the internet (for AWS AgentCore: VPC mode, an internal ALB, and a security group that admits only the runtime subnets). Model calls are long-lived streams, so keep load-balancer idle timeouts at 300 seconds or more and give deployments enough deregistration delay for in-flight streams to finish. Health: `GET /health` (liveness) and `GET /ready` (readiness, fails while draining or when MongoDB is unreachable).
+The model gateway is stateless and scales horizontally. In a conventional deployment, run it privately next to the platform, reachable from the agent-core runtime but not from the internet. Model calls are long-lived streams, so keep load-balancer idle timeouts at 300 seconds or more and give deployments enough deregistration delay for in-flight streams to finish. Health: `GET /health` (liveness) and `GET /ready` (readiness, fails while draining or when MongoDB is unreachable).
+
+For Bedrock AgentCore Runtime, [the combined image](deploy/agentcore/README.md) runs agent-core, its pinned Codex binary, and model-gateway together. The local entrypoint and Docker Compose setup remain available. The platform's AgentCore invocation transport is still required for an end-to-end AWS deployment.
 
 `deploy/kubernetes.yaml` provides stable per-pod DNS and per-pod `/data` PVCs. `/data/codex` and `/data/workspace` must both survive restarts. Configure the `platform-config` Secret's `MONGO_URI`, image registry/tags, storage class and browser-facing platform URL before deployment. The frontend URL is a build-time `NEXT_PUBLIC_PLATFORM_URL` value. No deployment has been applied.
 
