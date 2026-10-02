@@ -1,9 +1,10 @@
-FROM rust:1.95-bookworm AS codex-build
-RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev clang cmake && rm -rf /var/lib/apt/lists/*
-WORKDIR /src
-COPY vendor/codex/ ./
-WORKDIR /src/codex-rs
-RUN cargo build --locked --release -p codex-cli --bin codex
+FROM node:24-bookworm-slim AS codex-artifact
+WORKDIR /artifact
+COPY codex.lock.json ./codex.lock.json
+COPY deploy/agentcore/bin/codex ./codex
+COPY deploy/agentcore/bin/codex.json ./codex.json
+COPY deploy/agentcore/verify-binary.mjs ./verify-binary.mjs
+RUN node verify-binary.mjs codex codex.json codex.lock.json
 
 FROM node:24-bookworm-slim AS core-build
 WORKDIR /app/agent-core
@@ -30,10 +31,11 @@ COPY --from=core-build /app/agent-core /app/agent-core
 COPY --from=gateway-build /app/model-gateway /app/model-gateway
 COPY shared/schema /app/shared/schema
 COPY codex.lock.json /app/codex.lock.json
-COPY --from=codex-build /src/codex-rs/target/release/codex /app/vendor/codex/codex-rs/target/debug/codex
+COPY --chmod=0755 --from=codex-artifact /artifact/codex /app/vendor/codex/codex-rs/target/debug/codex
 COPY deploy/agentcore/start.mjs /app/deploy/agentcore/start.mjs
 RUN mkdir -p /data/codex /data/workspace && chown -R node:node /data /app
 USER node
 ENV PROJECT_ROOT=/app CODEX_HOME=/data/codex AGENT_WORKSPACE=/data/workspace
+RUN /app/vendor/codex/codex-rs/target/debug/codex --version
 EXPOSE 8080
 CMD ["node", "/app/deploy/agentcore/start.mjs"]
