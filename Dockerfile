@@ -57,13 +57,11 @@ RUN test "$TARGETARCH" = arm64
 WORKDIR /app
 COPY shared ./shared
 COPY agent-core/package.json agent-core/package-lock.json agent-core/tsconfig.json ./agent-core/
-COPY model-gateway/package.json model-gateway/package-lock.json model-gateway/tsconfig.json ./model-gateway/
 RUN --mount=type=cache,id=truex-agentcore-npm,target=/root/.npm \
-    npm --prefix agent-core ci && npm --prefix model-gateway ci
+    npm --prefix agent-core ci
 COPY agent-core/src ./agent-core/src
-COPY model-gateway/src ./model-gateway/src
-RUN npm --prefix agent-core run build && npm --prefix model-gateway run build \
-    && npm --prefix agent-core prune --omit=dev && npm --prefix model-gateway prune --omit=dev
+RUN npm --prefix agent-core run build \
+    && npm --prefix agent-core prune --omit=dev
 
 # Trixie provides glibc 2.41, including symbols needed by Ubuntu 24.04 ARM64 builds.
 FROM node:24-trixie-slim AS runtime
@@ -73,8 +71,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app/agent-core
 COPY --from=services-build /app/agent-core/dist ./dist
 COPY --from=services-build /app/agent-core/node_modules ./node_modules
-COPY --from=services-build /app/model-gateway/dist /app/model-gateway/dist
-COPY --from=services-build /app/model-gateway/node_modules /app/model-gateway/node_modules
 COPY shared/schema /app/shared/schema
 COPY codex.lock.json /app/codex.lock.json
 COPY --chmod=0755 --from=artifact-check /artifact/codex /app/vendor/codex/codex-rs/target/debug/codex

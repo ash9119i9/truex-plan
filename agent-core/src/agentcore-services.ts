@@ -5,7 +5,6 @@ import { join } from "node:path";
 // Start storage-dependent processes once, on the first valid invocation.
 export class AgentCoreServices {
   state: "cold" | "starting" | "ready" | "stopping" = "cold";
-  readonly gatewayEnabled = Boolean(process.env.MODEL_GATEWAY_SECRET);
   private children = new Set<ChildProcess>();
   private pending?: Promise<void>;
   private failure?: Error;
@@ -47,31 +46,21 @@ export class AgentCoreServices {
   }
 
   private async initialize() {
-    if (
-      this.gatewayEnabled &&
-      (process.env.MODEL_GATEWAY_SECRET?.length ?? 0) < 32
-    )
-      throw new Error(
-        "MODEL_GATEWAY_SECRET must contain at least 32 characters",
-      );
     this.launch("agent-core", 4100);
-    if (this.gatewayEnabled) this.launch("model-gateway", 4200);
-    const urls = ["http://127.0.0.1:4100/healthz"];
-    if (this.gatewayEnabled) urls.push("http://127.0.0.1:4200/ready");
     const deadline = Date.now() + 60_000;
     while (Date.now() < deadline) {
       this.checkRunning();
-      const ready = await Promise.all(
-        urls.map(async (url) => {
-          try {
-            return (await fetch(url, { signal: AbortSignal.timeout(2000) })).ok;
-          } catch {
-            return false;
-          }
-        }),
-      );
+      let ready = false;
+      try {
+        ready = (await fetch("http://127.0.0.1:4100/healthz", {
+          signal: AbortSignal.timeout(2000),
+        })).ok;
+      } catch {
+        // The local core may still be starting. External model endpoints do
+        // not participate in container readiness.
+      }
       this.checkRunning();
-      if (ready.every(Boolean)) {
+      if (ready) {
         this.state = "ready";
         return;
       }
