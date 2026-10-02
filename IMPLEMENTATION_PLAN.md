@@ -17,11 +17,11 @@ Deliver the full verified Codex app-server capability surface through a TypeScri
 | `agent-core/` | Express; Codex child process, protocol adapter, threads, turn coordination | 4100 |
 | `shared/` | Shared TypeScript contracts imported by relative path | — |
 
-Each application installs and builds independently. No workspace tooling or shared package publishing is required. Verify that each application's compiler and deployment build include relative imports from `shared/`.
+Each application installs and builds independently. No workspace tooling or shared package publishing is required. Verify that each application's compiler and build include relative imports from `shared/`.
 
-Keep these decisions: TypeScript adapter; official MongoDB driver; SSE output with POST commands; one Codex child process serving multiple threads; direct routing through the session's `agentCoreHost`; StatefulSet, headless Service and per-pod `CODEX_HOME` storage; lazy same-pod resume.
+Keep these decisions: TypeScript adapter; official MongoDB driver; SSE output with POST commands; one Codex child process serving multiple threads; direct routing through the session's `agentCoreHost`; persistent local `CODEX_HOME` and workspace storage; lazy same-owner resume.
 
-Out of scope: authentication, multi-tenancy, message brokers, WebSockets, cross-pod migration, an agent administration UI, state-machine frameworks, an ORM, and a metrics/tracing platform. Deployment must reflect the intentionally unauthenticated scope rather than implying a public production service.
+Out of scope: deployment infrastructure, message brokers, WebSockets, cross-owner migration, state-machine frameworks, an ORM, and a metrics/tracing platform. Services run locally through `npm run dev`.
 
 ## 2. Rules that apply to every phase
 
@@ -32,7 +32,7 @@ Out of scope: authentication, multi-tenancy, message brokers, WebSockets, cross-
 - Accept a message during a running turn as a steer. Define behavior during starting, interrupting and recovery explicitly.
 - POST responses acknowledge commands or return identifiers; model output arrives over SSE. Apply finite RPC deadlines and report failures clearly.
 - Every domain event has a type, timestamp, cursor and applicable session/thread/turn/item identifiers. Multiple output items must never share a bubble merely because they belong to one turn.
-- Use environment configuration with documented defaults; never hardcode deployment URLs in application logic. Disable compression and proxy buffering on SSE routes.
+- Use environment configuration with documented defaults; never hardcode service URLs in application logic. Disable compression and proxy buffering on SSE routes.
 - Keep provider credentials in model profiles as requested, exclude them from browser responses and logs, and verify the per-thread credential configuration path before adopting it.
 - Use bounded buffers and explicit cleanup for threads, subscribers, pending RPCs and runtime requests.
 - Persist user messages and authoritative final messages, not token deltas. Persistence must continue when no browser is subscribed.
@@ -132,7 +132,7 @@ Platform and frontend:
 
 - [x] Define MongoDB document contracts and indexes for truex_agents, truex_models, truex_mcp, sessions and messages.
 - [x] Store the owning `agentCoreHost`, thread ID, workspace and session lifecycle status. Validate the stored destination against configured internal hosts.
-- [x] Define pod discovery and selection for new sessions. Try a different pod only after an explicit capacity rejection before creation; do not blindly retry ambiguous creates or existing-session commands.
+- [x] Define runtime discovery and selection for new sessions. Try a different runtime only after an explicit capacity rejection before creation; do not blindly retry ambiguous creates or existing-session commands.
 - [x] Add session create/read, message, interrupt and SSE routes, preserving meaningful upstream status codes.
 - [x] Persist user-message acceptance status and final assistant messages idempotently using stable identifiers.
 - [x] Keep final-message ingestion independent of browser subscriptions; handle repeated delivery and failed writes explicitly.
@@ -165,22 +165,21 @@ Exit gate: each request variant has a validated handler; acceptance, denial, exp
 - [x] Use non-overlapping chart segments: pre-output + streaming + finalization = total, with absent segments labelled appropriately.
 - [ ] Measure platform spans locally; subtract only matching nested durations and label the remainder as platform/transport overhead, not pure platform CPU time.
 - [x] Persist completed-turn metrics and expose the timings endpoint, per-turn rows and clearly defined session averages.
-- [ ] Load-test concurrent threads while measuring TTFT distribution, parent/child RSS, event-loop delay and slow-client behavior. Use results to set admission limits and pod resources.
+- [ ] Load-test concurrent threads while measuring TTFT distribution, parent/child RSS, event-loop delay and slow-client behavior. Use results to set admission limits and process resources.
 
 Exit gate: streamed and non-streamed timing rows are internally consistent, and capacity recommendations cite measured results rather than assumed latency ranges.
 
-### Phase 6 — Persistent deployment and restart recovery
+### Phase 6 — Local persistence and restart recovery
 
-- [ ] Add container builds and StatefulSet/headless Service manifests with a per-pod PVC for `CODEX_HOME`; deploy platform as a stateless Deployment.
 - [ ] Identify and persist any workspace files required in addition to runtime state. Stable DNS alone does not preserve conversation files or in-flight turns.
 - [x] Separate liveness from readiness, configure graceful shutdown and stop admission while draining.
 - [x] On an unloaded thread, serialize lazy resume before accepting a turn; avoid duplicate resume and restore required configuration.
-- [x] Distinguish transient pod/storage errors from a confirmed missing or unrecoverable thread. Apply bounded recovery attempts and clear user-visible status.
+- [x] Distinguish transient runtime/storage errors from a confirmed missing or unrecoverable thread. Apply bounded recovery attempts and clear user-visible status.
 - [x] Implement active → orphaned → active recovery and orphaned → dead only on confirmed permanent failure.
 - [x] Add the verified runtime history endpoint; serve persisted messages on cold open and reconcile runtime items idempotently.
 - [ ] Implement snapshot-plus-stream handoff with a cursor/watermark so loading history neither loses nor duplicates concurrent events.
 - [x] Reset or version event cursors across process restarts and reconcile interrupted turns and obsolete runtime requests.
-- [ ] Validate recovery on the same stable pod identity with retained storage; validate lost-storage behavior in a disposable test environment.
+- [ ] Validate recovery on the same runtime address with retained local storage; validate lost-storage behavior in a disposable test environment.
 
 Exit gate: after an agent-core restart, the next message retains prior context, cold open restores history, and confirmed storage loss produces a clear terminal status. This does not promise continuation of an in-flight turn unless Phase 0 verifies that behavior.
 
@@ -238,20 +237,19 @@ Exit gate: a real multi-step request produces a plan, waits for approval, applie
 
 ## 5. Release acceptance checklist
 
-These checks validate the agreed deployment scope; they do not expand it to authentication or cross-pod failover.
+These checks validate local application behavior and recovery; deployment infrastructure and cross-owner failover are outside this scope.
 
 - [ ] Each application installs and builds independently from a clean checkout; setup, configuration, MongoDB document setup and protocol regeneration are documented.
-- [ ] A real-runtime scenario covers selection, session creation, output, steering, interruption, approval, history and same-pod recovery.
+- [ ] A real-runtime scenario covers selection, session creation, output, steering, interruption, approval, history and same-owner recovery.
 - [x] Concurrent POSTs cannot start overlapping turns; stale completions cannot reset a newer turn.
 - [ ] Browser disconnect/reload, replay overflow and runtime restart produce complete recovery or an explicit resync path.
 - [x] Final messages and decisions persist without a connected browser; replay/reconciliation does not duplicate records.
 - [ ] Request expiry, response races, child exit and failed persistence do not leave silent indefinite waits.
 - [ ] Slow subscribers and admission limits keep memory bounded; measured capacity supports configured resources.
 - [x] No provider keys appear in browser payloads, public diagnostics or logs.
-- [ ] Session routing stays on the recorded owner; temporary failure does not reroute existing threads to unrelated pods.
-- [ ] Actual deployment proxy settings preserve streaming and heartbeat behavior.
+- [ ] Session routing stays on the recorded owner; temporary failure does not reroute existing threads to unrelated runtimes.
 - [ ] The pinned protocol coverage table is complete; unexpected-method counters are zero during the full capability exercise.
-- [ ] Deployment, graceful shutdown, rollback compatibility and storage backup/restore procedures are documented and exercised where applicable.
+- [ ] Graceful shutdown, runtime compatibility and local storage backup/restore procedures are documented and exercised where applicable.
 - [ ] All milestone evidence links and remaining limitations are recorded before release review.
 
 ## 6. Execution and tracking
@@ -265,8 +263,8 @@ For each phase, use this task brief:
 | M1 | Codex | 2026-09-19 | Implemented; verified locally | Pinned local build, generated protocol, live MongoDB picker |
 | M2 | Codex | 2026-09-19 | Implemented; integration tested | Streaming, concurrency, interruption guards and persistence tests |
 | M3 | Codex | 2026-09-19 | Implemented; partial runtime coverage | Real command-approval denial verified; full variant/load matrix remains |
-| M4 | Codex | 2026-09-19 | Local restart verified | HTTP recovery passes; cluster/PVC validation remains |
-| M5 | Codex | TBD | Acceptance incomplete | Full protocol console available; full capability/deployment matrix pending |
+| M4 | Codex | 2026-09-19 | Local restart verified | HTTP recovery passes; local storage-loss validation remains |
+| M5 | Codex | TBD | Acceptance incomplete | Full protocol console available; full capability matrix pending |
 | M6 | Claude | 2026-09-28 | Implemented; unit tested | agent-core 130, platform 55, frontend 100 tests pass; live approval run pending |
 
 Record changes to architecture decisions alongside their evidence. Keep this checklist and the capability coverage table current as implementation proceeds.

@@ -15,9 +15,9 @@ Status: planned, not implemented (drafted 2026-10-01). Built from seven read-onl
 
 ## Current state
 
-- **Deploy:**
-  - platform runs 2 replicas, model-gateway 2, agent-core a 2-pod StatefulSet, frontend 1 (`deploy/kubernetes.yaml:18,52,90,117`).
-  - Mongo 8 is the only datastore. There is no Redis, CDN or ingress.
+- **Local services:**
+  - `npm run dev` runs platform, agent-core, frontend and the optional model-gateway as local Node processes.
+  - MongoDB is the only datastore. There is no Redis, CDN or ingress.
 - **Existing caches:** all are in-process and per replica, and nothing invalidates them across replicas.
   - platform tenant registry: 5s TTL (`platform/src/store.ts:80-87,170-183`).
   - gateway profiles: 30s TTL, stale up to 1h, 5s negative cache. Secrets are cached 5 min. The gateway has a `clear()` (`model-gateway/src/profiles.ts:47-146`), but nothing calls it.
@@ -115,11 +115,10 @@ Redis is not needed for SSE fan-out or session ownership. Each session's events 
 | `sse:persisted:{sessionId}` | Last persisted stream cursor | 1h | Repeated writes (harmless) |
 | `idem:{tenant}:cmd:{clientId}` | Fast duplicate check | 10 min | Mongo unique index catches it |
 
-### Deploy
+### Local configuration
 
-- Add a `redis` (or `valkey/valkey`) service to `deploy/compose.yaml`.
-- On AWS, use ElastiCache for Valkey or Redis OSS.
-- Add `REDIS_URL` to platform (`deploy/kubernetes.yaml:62-76`) and gateway (`deploy/kubernetes.yaml:132-135`).
+- Run Redis or Valkey separately for local development.
+- Add `REDIS_URL` to the platform and gateway environment configuration.
 - Expose `redis: boolean` from `/api/features`.
 
 ## Layer 5: Mongo
@@ -302,7 +301,7 @@ vLLM automatic prefix caching, SGLang RadixAttention, KV cache offloading (LMCac
    - Apply the Mongo fixes, remove the ingest calls on GET, and stop the duplicate session fetch.
    - Skip `/resume` when the thread is already loaded, and batch the lookups.
 1. **Frontend app cache** (Layer 2).
-2. **Redis setup:** the shared module, compose and k8s changes, poller lease, pub/sub invalidation, stream write dedupe.
+2. **Redis setup:** the shared module, local service configuration, poller lease, pub/sub invalidation, stream write dedupe.
 3. **Server read caches and ETags** (Layers 1 and 3, plus the Redis keys).
 4. **Document cache** (Layer 7) and the agent-core changes that go with it.
 5. **Streaming and render work, and the LLM prompt cache** (Layer 8, in its own order in 8.10), in parallel once Phase 0 numbers are in. The proxy fix in 8.1 can start right away; it doesn't depend on the other phases.
