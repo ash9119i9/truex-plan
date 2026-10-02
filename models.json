@@ -1,0 +1,18 @@
+{
+  _id: ObjectId('6aaa97bb71c8cc9e29e08d9c'),
+  provider: 'NVIDIA',
+  baseUrl: 'https://integrate.api.nvidia.com/v1',
+  modelName: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+  apikey: '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',
+  wireApi: 'chat'
+}
+
+
+{
+  _id: ObjectId('6ab96c62077a84a32b05b734'),
+  provider: 'CLAUDE',
+  baseUrl: 'https://ashok-kiro-gw.duckdns.org/v1',
+  modelName: 'claude-opus-5.5',
+  apikey: '47750d7d9f095631595e50e37893f25d4a0bd4c97a3cc720b0577b2d52e25244',
+  wireApi: 'anthropic'
+}

@@ -236,7 +236,7 @@ export function AgentDialog({
               onChange={(e) => set("name", e.target.value)}
             />
           </label>
-          <label className="field">
+          {/* <label className="field">
             <span className="field-label">Purpose</span>
             <input
               className="input"
@@ -245,7 +245,7 @@ export function AgentDialog({
               placeholder="What this specialist owns"
               onChange={(e) => set("description", e.target.value)}
             />
-          </label>
+          </label> */}
           <label className="field">
             <span className="field-label">Instructions</span>
             <textarea
