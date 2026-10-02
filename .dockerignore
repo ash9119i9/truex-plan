@@ -13,12 +13,6 @@
 !agent-core/tsconfig.json
 !agent-core/src/
 !agent-core/src/**
-!model-gateway/
-!model-gateway/package.json
-!model-gateway/package-lock.json
-!model-gateway/tsconfig.json
-!model-gateway/src/
-!model-gateway/src/**
 !.runtime/
 !.runtime/agentcore/
 !.runtime/agentcore/codex

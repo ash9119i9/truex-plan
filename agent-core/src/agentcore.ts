@@ -93,7 +93,6 @@ function parseInvocation(value: unknown): Invocation {
 
 export interface AgentCoreOptions {
   coreUrl?: string;
-  gatewayUrl?: string | null;
   fetch?: typeof fetch;
   streamMs?: number;
   ensureServices?: () => Promise<void>;
@@ -104,10 +103,6 @@ export function createAgentCoreApp(options: AgentCoreOptions = {}): Express {
   const app = express();
   const call = options.fetch ?? fetch;
   const coreUrl = options.coreUrl ?? "http://127.0.0.1:4100";
-  const gatewayUrl =
-    options.gatewayUrl === null
-      ? null
-      : (options.gatewayUrl ?? "http://127.0.0.1:4200");
   app.disable("x-powered-by");
   app.use(express.json({ limit: "2mb" }));
 
@@ -122,14 +117,10 @@ export function createAgentCoreApp(options: AgentCoreOptions = {}): Express {
       return;
     }
     try {
-      const [core, gateway] = await Promise.all([
-        call(`${coreUrl}/healthz`, { signal: AbortSignal.timeout(5000) }),
-        gatewayUrl
-          ? call(`${gatewayUrl}/ready`, { signal: AbortSignal.timeout(5000) })
-          : Promise.resolve({ ok: true }),
-      ]);
-      if (!core.ok || !gateway.ok)
-        throw new Error("A runtime service is unavailable");
+      const core = await call(`${coreUrl}/healthz`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!core.ok) throw new Error("The local core is unavailable");
       const health = (await core.json()) as { activeThreads?: number };
       res.json({
         status: (health.activeThreads ?? 0) > 0 ? "HealthyBusy" : "Healthy",
@@ -237,7 +228,6 @@ if (require.main === module) {
   const services = new AgentCoreServices();
   const port = Number(process.env.PORT || 8080);
   const server = createAgentCoreApp({
-    gatewayUrl: services.gatewayEnabled ? "http://127.0.0.1:4200" : null,
     ensureServices: () => services.start(),
     serviceState: () => services.state,
   }).listen(port, process.env.HOST || "0.0.0.0", () =>

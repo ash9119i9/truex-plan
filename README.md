@@ -141,7 +141,7 @@ The tests include protocol/schema checks, concurrency, request expiry, disk-spoo
 
 ## Bedrock AgentCore image
 
-The root `Dockerfile` is the only deployment Dockerfile. It builds the pinned Codex executable for Linux ARM64, then packages agent-core, the optional model-gateway and the AgentCore HTTP entrypoint. Frontend, platform and MongoDB run separately.
+The root `Dockerfile` is the only deployment Dockerfile. It builds the pinned Codex executable for Linux ARM64, then packages Codex, agent-core and the AgentCore HTTP entrypoint. Model-gateway, frontend, platform and MongoDB run separately. The runtime image does not include model-gateway source or dependencies.
 
 Build the reusable binary first, then the runtime image:
 
@@ -172,7 +172,11 @@ BUILDX_BUILDER=truex-agentcore-builder npm run agentcore:build
 
 The container exposes `0.0.0.0:8080` with `GET /ping` and `POST /invocations`, as required by the [AgentCore HTTP contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html). It starts internal services on the first valid invocation because [AgentCore filesystem mounts are available at invocation time](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-filesystem-configurations.html), rather than during container initialization.
 
-For a direct Responses provider, no gateway configuration is needed. To enable the bundled gateway, supply `MODEL_GATEWAY_SECRET` (at least 32 characters), `MONGO_URI`, `MONGO_DB` and optionally `CATALOG_MONGO_DB` as runtime environment variables. The platform must use the same secret and a `MODEL_GATEWAY_URL` of `http://127.0.0.1:4200` for profiles handled by the bundled gateway; Codex resolves that URL inside the runtime. Provider keys remain in MongoDB or Secrets Manager. Secrets and local `.env` files are excluded from the image build context.
+For a direct Responses provider, no gateway configuration is needed. For gateway-backed profiles, deploy model-gateway as a shared private service reachable from AgentCore. Configure the platform with that service's `MODEL_GATEWAY_URL` and a matching `MODEL_GATEWAY_SECRET` (at least 32 characters). Use a reachable hostname, not `127.0.0.1`; a private endpoint requires appropriate AgentCore VPC connectivity. The platform passes the gateway URL and a scoped access token in each thread's model configuration.
+
+Configure `MODEL_GATEWAY_SECRET`, `MONGO_URI`, `MONGO_DB` and optionally `CATALOG_MONGO_DB` on the separate gateway service. Set its `HOST=0.0.0.0` and `PORT=4200` when serving requests through a private network endpoint. Do not put the gateway signing secret or database credentials in the AgentCore runtime environment. Provider keys remain in MongoDB or Secrets Manager. Secrets and local `.env` files are excluded from the image build context.
+
+The runtime starts only agent-core and checks only local core health. A gateway outage surfaces when a model request uses the gateway; it does not prevent the runtime from starting or handling other local operations.
 
 Invocation payloads wrap local runtime operations:
 

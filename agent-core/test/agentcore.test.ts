@@ -15,7 +15,7 @@ async function close(server: Server) {
 
 test("AgentCore invocations preserve local operations and event streams", async (t) => {
   let activeThreads = 0;
-  let gatewayReady = true;
+  let coreReady = true;
   const received: Array<{
     method: string;
     path: string;
@@ -24,7 +24,7 @@ test("AgentCore invocations preserve local operations and event streams", async 
   }> = [];
   const core = createServer(async (req, res) => {
     if (req.url === "/healthz") {
-      res.writeHead(200, { "content-type": "application/json" });
+      res.writeHead(coreReady ? 200 : 503, { "content-type": "application/json" });
       res.end(JSON.stringify({ ok: true, activeThreads }));
       return;
     }
@@ -51,21 +51,13 @@ test("AgentCore invocations preserve local operations and event streams", async 
       ),
     );
   });
-  const gateway = createServer((_req, res) => {
-    res.writeHead(gatewayReady ? 200 : 503, {
-      "content-type": "application/json",
-    });
-    res.end(JSON.stringify({ status: gatewayReady ? "ok" : "unavailable" }));
-  });
   const coreUrl = await listen(core);
-  const gatewayUrl = await listen(gateway);
-  const app = createAgentCoreApp({ coreUrl, gatewayUrl });
+  const app = createAgentCoreApp({ coreUrl });
   const runtime = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => runtime.once("listening", resolve));
   const runtimeUrl = `http://127.0.0.1:${(runtime.address() as { port: number }).port}`;
   t.after(async () => {
     await close(runtime);
-    await close(gateway);
     await close(core);
   });
 
@@ -138,7 +130,7 @@ test("AgentCore invocations preserve local operations and event streams", async 
   assert.deepEqual(await (await fetch(`${runtimeUrl}/ping`)).json(), {
     status: "HealthyBusy",
   });
-  gatewayReady = false;
+  coreReady = false;
   assert.equal((await fetch(`${runtimeUrl}/ping`)).status, 503);
 });
 
@@ -146,7 +138,6 @@ test("cold runtime stays healthy without touching storage; invalid invocations d
   let starts = 0;
   let state: "cold" | "starting" | "ready" | "stopping" = "cold";
   const app = createAgentCoreApp({
-    gatewayUrl: null,
     serviceState: () => state,
     ensureServices: async () => {
       starts++;
