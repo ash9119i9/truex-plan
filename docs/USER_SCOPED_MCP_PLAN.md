@@ -33,7 +33,7 @@ Checked on 2026-09-30:
   - `Session` (`shared/contracts.ts:81`) and `Project` (`contracts.ts:371`) have no user field.
   - `GET /api/sessions` (`service.ts:683`) is unfiltered.
   - None of the `/api/sessions/:id/*` routes (`index.ts:146-479`) check ownership.
-- **Deploy:** `deploy/kubernetes.yaml` has no Ingress. The frontend image bakes in `http://localhost:4000`. The platform binds `HOST || 127.0.0.1` (`index.ts:621`).
+- **Local configuration:** the frontend uses `NEXT_PUBLIC_PLATFORM_URL` (default `http://localhost:4000`). The platform binds `HOST || 127.0.0.1` (`index.ts:621`).
 
 ## End-to-end flow
 
@@ -60,7 +60,7 @@ Checked on 2026-09-30:
 
 - **App:** a new top-level Next app in `admin/`, port 3001, served on its own host (`admin.<domain>`). It forwards `/api/*` and `/auth/*` to the platform the same way the main app does.
 - **Code sharing:** it imports `frontend/styles/v2/tokens.css`, `base.css`, `icon` and `popover` by relative path, like `shared/`. The Next, React and lucide versions must be identical to the frontend's.
-- **Wiring:** added to `scripts/dev.mjs`, the root `install:all`/`build`/`format` scripts, `deploy/compose.yaml` and `deploy/kubernetes.yaml`.
+- **Wiring:** added to `scripts/dev.mjs` and the root `install:all`/`build`/`format` scripts.
 - **Screens:** the login page, the tenants list, create tenant, tenant settings, and each tenant's invites and members. It needs a design pass first; `docs/truex-design-spec.html` has no screens for it.
 
 | Method | Path | Behavior |

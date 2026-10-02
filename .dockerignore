@@ -1,9 +1,0 @@
-**/node_modules
-**/dist
-**/.next
-**/.env
-**/.env.local
-**/.git
-vendor/codex/codex-rs/target
-.runtime
-*.log

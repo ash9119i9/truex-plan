@@ -74,7 +74,7 @@ Setup: set `MODEL_GATEWAY_URL` and `MODEL_GATEWAY_SECRET` in `platform/.env`, an
 
 The platform does not silently change a provider or rewrite database records. Missing sandbox/approval settings default to read-only/never.
 
-Local MongoDB can be started separately with `docker compose -f deploy/compose.yaml up -d mongo` when Docker is running. The repository does not alter unrelated MongoDB data or borrow credentials from other projects.
+Run MongoDB separately or use an existing MongoDB instance, and point `MONGO_URI` at it. The repository does not alter unrelated MongoDB data or borrow credentials from other projects.
 
 ## Credential-free demo
 
@@ -116,7 +116,6 @@ DEMO_FRONTEND_PORT=3100 DEMO_PLATFORM_PORT=4200 DEMO_CORE_PORT=4300 npm run demo
 | `frontend/` | Chat, picker, session list, approvals, events, plans, diffs, timings and capability inspection |
 | `shared/` | Contracts plus generated protocol types, schemas and inventory |
 | `vendor/codex/` | Independently pinned local Codex source and compiled binary |
-| `deploy/` | Compose and Kubernetes deployment templates |
 | `docs/protocol.md` | Source-generated protocol inventory and verified limitations |
 | `docs/capability-coverage.md` | Per-method implementation surface; runtime coverage remains explicit |
 | `docs/VALIDATION.md` | Checks run, evidence and outstanding verification |
@@ -132,27 +131,10 @@ npm test
 npm run format:check
 ```
 
-The tests include protocol/schema checks, concurrency, request expiry, disk-spool recovery, Mongo idempotency, real Codex streaming and provider-key isolation, and HTTP-level restart recovery. Test provider responses are simulated. A live OpenRouter greeting has also been verified with the user-managed MongoDB profile. Full capability and deployment acceptance are still open; see `docs/VALIDATION.md`.
+The tests include protocol/schema checks, concurrency, request expiry, disk-spool recovery, Mongo idempotency, real Codex streaming and provider-key isolation, and HTTP-level restart recovery. Test provider responses are simulated. A live OpenRouter greeting has also been verified with the user-managed MongoDB profile. Full capability acceptance is still open; see `docs/VALIDATION.md`.
 
-## Deployment and operations
+## Local runtime state
 
-Build each image with the repository root as its context. The agent-core Dockerfile compiles the vendored Rust source inside the image build; it does not download a global Codex package.
+`npm run dev` starts the services as local Node processes. `CODEX_HOME` and `AGENT_WORKSPACE` retain runtime history and conversation files across restarts; keep these directories and MongoDB data when stopping the app.
 
-```sh
-docker build -f agent-core/Dockerfile -t truex-agent-core:local .
-docker build -f platform/Dockerfile -t truex-platform:local .
-docker build -f frontend/Dockerfile -t truex-frontend:local .
-docker build -f model-gateway/Dockerfile -t truex-model-gateway:local .
-```
-
-The model gateway is stateless and scales horizontally. In a conventional deployment, run it privately next to the platform, reachable from the agent-core runtime but not from the internet. Model calls are long-lived streams, so keep load-balancer idle timeouts at 300 seconds or more and give deployments enough deregistration delay for in-flight streams to finish. Health: `GET /health` (liveness) and `GET /ready` (readiness, fails while draining or when MongoDB is unreachable).
-
-For Bedrock AgentCore Runtime, [the combined image](deploy/agentcore/README.md) runs agent-core, its pinned Codex binary, and model-gateway together. The local entrypoint and Docker Compose setup remain available. The platform's AgentCore invocation transport is still required for an end-to-end AWS deployment.
-
-`deploy/kubernetes.yaml` provides stable per-pod DNS and per-pod `/data` PVCs. `/data/codex` and `/data/workspace` must both survive restarts. Configure the `platform-config` Secret's `MONGO_URI`, image registry/tags, storage class and browser-facing platform URL before deployment. The frontend URL is a build-time `NEXT_PUBLIC_PLATFORM_URL` value. No deployment has been applied.
-
-`AGENT_CORE_URLS` enumerates owners eligible for new sessions and existing-session routing. Keep old owner addresses configured while their sessions exist. Adding replicas also requires updating this list. Readiness stops new admission while draining; shutdown waits up to `DRAIN_TIMEOUT_MS` (default 30 seconds) for active turns. The memory/thread resource defaults are provisional, not production sizing evidence.
-
-SSE routes require buffering and compression disabled in any added ingress/reverse proxy, with idle timeouts longer than the 15-second heartbeat. The supplied services expose no public ingress. Apply an appropriate network policy in a cluster with policy enforcement.
-
-Before runtime upgrades, stop admission, drain turns, back up each runtime/workspace volume and MongoDB, and retain the previous images and pin. Validate new storage compatibility against restored copies before rolling out. Do not downgrade a volume whose runtime schema changed without restoring a compatible snapshot. Backups, restores, Kubernetes behavior and container builds have not been exercised in this environment.
+`AGENT_CORE_URLS` lists the local runtime addresses used for session ownership. Existing sessions stay attached to their recorded owner. Readiness stops new admission while draining; shutdown waits up to `DRAIN_TIMEOUT_MS` (default 30 seconds) for active turns.

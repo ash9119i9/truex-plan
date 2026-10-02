@@ -4,9 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "dev:agentcore": "tsx watch src/agentcore.ts",
     "start": "node dist/agent-core/src/index.js",
-    "start:agentcore": "node dist/agent-core/src/agentcore.js",
     "build": "tsc",
     "test": "tsx --test test/*.test.ts"
   },
