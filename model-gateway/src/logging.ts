@@ -6,6 +6,7 @@ import type { Usage } from "./responses";
 // the server logs one line per request without adapters reporting anything.
 interface Recorded {
   firstByteAt?: number;
+  firstTextAt?: number;
   outcome?: string;
   errorCode?: string;
   usage?: Usage;
@@ -45,6 +46,7 @@ export function record(res: ServerResponse, facts: Recorded) {
     ...current,
     ...facts,
     firstByteAt: current.firstByteAt ?? facts.firstByteAt,
+    firstTextAt: current.firstTextAt ?? facts.firstTextAt,
   });
 }
 
@@ -87,7 +89,28 @@ export function accessLogLine(
       input_tokens: r.usage.input_tokens,
       output_tokens: r.usage.output_tokens,
       total_tokens: r.usage.total_tokens,
+      cached_tokens: r.usage.cached_tokens,
+      cache_write_tokens: r.usage.cache_write_tokens,
+      cache_write_5m_tokens: r.usage.cache_write_5m_tokens,
+      cache_write_1h_tokens: r.usage.cache_write_1h_tokens,
+      // Absent write counts mean unknown, not zero. Don't publish a fabricated
+      // uncached count when the provider doesn't expose the billing breakdown.
+      ...(r.usage.cached_tokens !== undefined &&
+      r.usage.cache_write_tokens !== undefined
+        ? {
+            uncached_input_tokens: Math.max(
+              0,
+              r.usage.input_tokens -
+                r.usage.cached_tokens -
+                r.usage.cache_write_tokens,
+            ),
+          }
+        : {}),
     },
+    ttftMs:
+      r.firstTextAt === undefined
+        ? undefined
+        : Math.round(r.firstTextAt - startedAt),
     rateLimit: r.rateLimit,
   });
 }

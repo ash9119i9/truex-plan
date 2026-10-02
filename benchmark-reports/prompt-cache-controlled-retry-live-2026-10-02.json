@@ -1,0 +1,736 @@
+{
+  "kind": "real-provider-gateway-ab",
+  "started": "2026-10-02T13:18:26.594Z",
+  "baselineRef": "2417dff195b22f19b3dc5c29a48d6a30d3c02354",
+  "blocks": 2,
+  "requestsPerArmPerBlock": 3,
+  "rates": null,
+  "policyMode": "explicit",
+  "samples": [
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 3242,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12772,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12772,
+        "output_tokens": 0,
+        "total_tokens": 12772,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "e46076e148c00f1127d025cbf9d707de50d4a798aa614c05c3feaae5ba125cf9",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 0,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 1936,
+      "ttftMs": 1718,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0018\",\"amount\":1289,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12783,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12783,
+        "output_tokens": 28,
+        "total_tokens": 12811
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "9b128b57e9bc3c702ae066035e756db6bad8fa3ea961ca2c6408d4c90f23f7e6",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2632,
+      "ttftMs": 1617,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0084\",\"amount\":2411,\"status\":\"pending\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12772,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12772,
+        "output_tokens": 28,
+        "total_tokens": 12800,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 8,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "c5db2f0e0922b303567d6babeb7b1b6b46eb74af82b47460428abad2093072f7",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 0,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2815,
+      "ttftMs": 1733,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0084\",\"amount\":2411,\"status\":\"pending\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12783,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12783,
+        "output_tokens": 28,
+        "total_tokens": 12811
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 8,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "49ae9b56ca6566183c7e3891be9e1429e45a305ae9d486b01abac11afd005f22",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1725,
+      "ttftMs": 1503,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0220\",\"amount\":4723,\"status\":\"overdue\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12772,
+        "output_tokens": 29
+      },
+      "gatewayUsage": {
+        "input_tokens": 12772,
+        "output_tokens": 29,
+        "total_tokens": 12801,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "fa5c55d3c50a60f530a27c2b07d1fe88720a7ebacb2236f868e06711d88a702e",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 0,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2129,
+      "ttftMs": 1829,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0220\",\"amount\":4723,\"status\":\"overdue\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12783,
+        "output_tokens": 29
+      },
+      "gatewayUsage": {
+        "input_tokens": 12783,
+        "output_tokens": 29,
+        "total_tokens": 12812
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 7,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "31227f3f31735d17dbe87b1aff41c7d8343a811b55fe4b767fe91e0efdd7c85b",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 1,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 2014,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12781,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12781,
+        "output_tokens": 0,
+        "total_tokens": 12781
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "43d87b498c74a26a4756d6e30012efccbfd7947127930bdf3aafd36ce9a8c055",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 1,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 1991,
+      "ttftMs": 1656,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0018\",\"amount\":1289,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12770,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12770,
+        "output_tokens": 28,
+        "total_tokens": 12798,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 8,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "648f01bf20f3331b3c03477b13bf60c1d54f699df30f19293765797138387f2f",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 1,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2489,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12781,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12781,
+        "output_tokens": 0,
+        "total_tokens": 12781
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "cb9175dbc4fc558febdf17e93119f49133dc87a9eebd043bb268037e1732f6c7",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 1,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1835,
+      "ttftMs": 1532,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0084\",\"amount\":2411,\"status\":\"pending\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12770,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12770,
+        "output_tokens": 28,
+        "total_tokens": 12798,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 8,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "587765a0d5e8730d2abcb6bc2d766183fc2ba8b5314cc04c185a63dd5c58553e",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 1,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2180,
+      "ttftMs": 1879,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0220\",\"amount\":4723,\"status\":\"overdue\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12781,
+        "output_tokens": 29
+      },
+      "gatewayUsage": {
+        "input_tokens": 12781,
+        "output_tokens": 29,
+        "total_tokens": 12810
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 8,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "2d606f31b1b996ccd2efc90f554e607cb5aaf0dbcaf9c25cb78e2d02d7ac0333",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 1,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1885,
+      "ttftMs": 1626,
+      "correct": true,
+      "answer": "```json\n{\n  \"id\": \"INV-0220\",\n  \"amount\": 4723,\n  \"status\": \"overdue\",\n  \"region\": \"west\"\n}\n```",
+      "rawUsage": {
+        "input_tokens": 12770,
+        "output_tokens": 44
+      },
+      "gatewayUsage": {
+        "input_tokens": 12770,
+        "output_tokens": 44,
+        "total_tokens": 12814,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 7,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "a0e0bab601548df4c09528e0c55f6db306d2d45f0a8cab7e390dc25c8f57d654",
+      "estimatedCost": null
+    }
+  ],
+  "workload": {
+    "invoices": 240,
+    "referenceBytes": 47551,
+    "referenceSha256": "4bdc5560904005c55351ab520ff6c14b7583a8f9bb1ace7f9fafebf623118a16",
+    "maxOutputTokens": 512,
+    "reasoningEffort": "low"
+  },
+  "limitations": [
+    "Synthetic invoice extraction through gateways, not a full UI or agent workload.",
+    "Short repeated-request test; it does not evaluate reuse after five minutes or one hour.",
+    "Baseline already requests caching. Automatic caching was not artificially disabled.",
+    "Each arm uses an equal-length unique partition in its initial instructions to isolate caches. Business reference and questions are identical.",
+    "Small sample; latency differences are descriptive and not a statistical guarantee.",
+    "Single-call answer scoring; requests for tools are recorded as no final text, not silently counted as fast answers.",
+    "Provider-reported tokens are not an invoice. Monetary estimates require actual endpoint rates."
+  ],
+  "contentEquivalent": true,
+  "model": "claude-sonnet-5",
+  "wireApi": "anthropic",
+  "providerHost": "ashok-kiro-gw.duckdns.org",
+  "baselineSha": "2417dff195b22f19b3dc5c29a48d6a30d3c02354",
+  "candidateHead": "2417dff195b22f19b3dc5c29a48d6a30d3c02354",
+  "candidateDigests": {
+    "shared/prompt-cache.ts": "1db9f21daa3e91201fedfc627f4c8bb1e915d303aa31b357a65c460172fe8f87",
+    "model-gateway/src/prompt-cache.ts": "fdf213f4a0b68888c4d07b450fd27a9846890d3cb6294023755aca5206a81d84",
+    "model-gateway/src/adapter.ts": "c07297a5b40961e69e2d4fdd9a33856efe61aa8647c271e31f337ac5fb2c055c",
+    "model-gateway/src/server.ts": "816b8c254f3ae4270e5704ab63378abb755a01ac544fb3babd0c8c1129deef86",
+    "model-gateway/src/responses.ts": "364d00da06cb05bc56b72f114000bbe8f1c9f3d596a14f0e7e5a6673394f441e",
+    "model-gateway/src/logging.ts": "3dde2585ca7b03190b5947e2ef839a0415fee011ddc47d0dde86673564863ddf",
+    "model-gateway/src/adapters/chat.ts": "ef6f6d2f874484e89380b2ab9c3206675ae8344c09471198da51633f0ba364f4",
+    "model-gateway/src/adapters/anthropic.ts": "524e3b05488cf6dfc89442b4edb36720758c0073835fa176845a643468eef437"
+  },
+  "gatewayLogs": {
+    "baseline": [
+      {
+        "ts": "2026-10-02T13:18:32.827Z",
+        "type": "access",
+        "requestId": "418db302-109d-44f2-9eee-fa81e3fe13f1",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 3219,
+        "ttfbMs": 3215,
+        "usage": {
+          "input_tokens": 12772,
+          "output_tokens": 0,
+          "total_tokens": 12772
+        }
+      },
+      {
+        "ts": "2026-10-02T13:18:37.397Z",
+        "type": "access",
+        "requestId": "3c988f22-c0a3-46f2-aa13-1e3d3f8b8468",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2630,
+        "ttfbMs": 1615,
+        "usage": {
+          "input_tokens": 12772,
+          "output_tokens": 28,
+          "total_tokens": 12800
+        }
+      },
+      {
+        "ts": "2026-10-02T13:18:41.938Z",
+        "type": "access",
+        "requestId": "8183bce0-1d39-4245-8f74-606971aeb07e",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1723,
+        "ttfbMs": 1501,
+        "usage": {
+          "input_tokens": 12772,
+          "output_tokens": 29,
+          "total_tokens": 12801
+        }
+      },
+      {
+        "ts": "2026-10-02T13:18:48.073Z",
+        "type": "access",
+        "requestId": "1e3f45e3-220b-4b6b-b4d4-51067661d618",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1988,
+        "ttfbMs": 1654,
+        "usage": {
+          "input_tokens": 12770,
+          "output_tokens": 28,
+          "total_tokens": 12798
+        }
+      },
+      {
+        "ts": "2026-10-02T13:18:52.399Z",
+        "type": "access",
+        "requestId": "8368769c-08d6-4855-a349-b6617e3a1506",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1834,
+        "ttfbMs": 1530,
+        "usage": {
+          "input_tokens": 12770,
+          "output_tokens": 28,
+          "total_tokens": 12798
+        }
+      },
+      {
+        "ts": "2026-10-02T13:18:56.671Z",
+        "type": "access",
+        "requestId": "876b12e5-8c3e-4b45-a2d2-07afe649fff7",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1883,
+        "ttfbMs": 1624,
+        "usage": {
+          "input_tokens": 12770,
+          "output_tokens": 44,
+          "total_tokens": 12814
+        }
+      }
+    ],
+    "candidate": [
+      {
+        "ts": "2026-10-02T13:18:34.765Z",
+        "type": "access",
+        "requestId": "4410b93e-3586-4e0d-a342-7a439c5d2d51",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1934,
+        "ttfbMs": 1715,
+        "usage": {
+          "input_tokens": 12783,
+          "output_tokens": 28,
+          "total_tokens": 12811
+        },
+        "ttftMs": 1715
+      },
+      {
+        "ts": "2026-10-02T13:18:40.212Z",
+        "type": "access",
+        "requestId": "1f4a278b-c3dc-4854-bcae-3dcdc9c5e80e",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2812,
+        "ttfbMs": 1730,
+        "usage": {
+          "input_tokens": 12783,
+          "output_tokens": 28,
+          "total_tokens": 12811
+        },
+        "ttftMs": 1730
+      },
+      {
+        "ts": "2026-10-02T13:18:44.066Z",
+        "type": "access",
+        "requestId": "023b11be-f0b5-44d7-bb43-3fe400595efe",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2127,
+        "ttfbMs": 1828,
+        "usage": {
+          "input_tokens": 12783,
+          "output_tokens": 29,
+          "total_tokens": 12812
+        },
+        "ttftMs": 1828
+      },
+      {
+        "ts": "2026-10-02T13:18:46.081Z",
+        "type": "access",
+        "requestId": "ff1c724e-804e-4fc2-86b3-5fcae225f95e",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2011,
+        "ttfbMs": 2010,
+        "usage": {
+          "input_tokens": 12781,
+          "output_tokens": 0,
+          "total_tokens": 12781
+        }
+      },
+      {
+        "ts": "2026-10-02T13:18:50.563Z",
+        "type": "access",
+        "requestId": "a9ed15a2-6e48-4e25-b564-f3b2e1cac8b6",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2487,
+        "ttfbMs": 2486,
+        "usage": {
+          "input_tokens": 12781,
+          "output_tokens": 0,
+          "total_tokens": 12781
+        }
+      },
+      {
+        "ts": "2026-10-02T13:18:54.581Z",
+        "type": "access",
+        "requestId": "17758763-8dbd-4c8a-aa37-c8a3f9da7035",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2178,
+        "ttfbMs": 1877,
+        "usage": {
+          "input_tokens": 12781,
+          "output_tokens": 29,
+          "total_tokens": 12810
+        },
+        "ttftMs": 1877
+      }
+    ]
+  },
+  "finished": "2026-10-02T13:18:56.679Z",
+  "summary": {
+    "baseline": {
+      "requests": 6,
+      "correct": 5,
+      "emptyAnswers": 1,
+      "toolRequestResponses": 1,
+      "reportedInputTokens": 76626,
+      "cacheUsageReported": false,
+      "cacheReadTokens": null,
+      "cacheWriteTokens": null,
+      "uncachedInputTokens": null,
+      "outputTokens": 157,
+      "tokenCacheReadFraction": null,
+      "medianColdTtftMs": 1656,
+      "medianWarmTtftMs": 1575,
+      "medianWarmDurationMs": 1860,
+      "medianCorrectWarmDurationMs": 1860,
+      "p95DurationMs": 3242,
+      "estimatedCost": null
+    },
+    "candidate": {
+      "requests": 6,
+      "correct": 4,
+      "emptyAnswers": 2,
+      "toolRequestResponses": 2,
+      "reportedInputTokens": 76692,
+      "cacheUsageReported": false,
+      "cacheReadTokens": null,
+      "cacheWriteTokens": null,
+      "uncachedInputTokens": null,
+      "outputTokens": 114,
+      "tokenCacheReadFraction": null,
+      "medianColdTtftMs": 1718,
+      "medianWarmTtftMs": 1829,
+      "medianWarmDurationMs": 2335,
+      "medianCorrectWarmDurationMs": 2180,
+      "p95DurationMs": 2815,
+      "estimatedCost": null
+    }
+  }
+}

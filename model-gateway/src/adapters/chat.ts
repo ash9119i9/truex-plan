@@ -3,6 +3,7 @@ import { UpstreamTimeoutError } from "../upstream";
 import type { AdapterContext } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
 import { ToolNames } from "../tool-names";
+import { chatCacheOptions } from "../prompt-cache";
 
 // OpenAI Chat Completions (and the many providers that copy it).
 // Codex sends the full conversation every turn with store=false, so each
@@ -274,6 +275,7 @@ function chatUsage(usage: any): Usage {
     output_tokens: output,
     total_tokens: Number(usage.total_tokens) || input + output,
     cached_tokens: usage.prompt_tokens_details?.cached_tokens,
+    cache_write_tokens: usage.prompt_tokens_details?.cache_write_tokens,
     reasoning_tokens: usage.completion_tokens_details?.reasoning_tokens,
   };
 }
@@ -297,6 +299,13 @@ export function isContextError(code: string, message: string) {
 export async function proxyChat(ctx: AdapterContext) {
   const { profile, apiKey, res, signal, log } = ctx;
   const { body, tools } = toChatRequest(ctx.input, profile.modelName);
+  Object.assign(
+    body,
+    chatCacheOptions(profile.promptCache, ctx.input, body, {
+      profileId: String(profile._id),
+      tenantId: ctx.tenantId,
+    }),
+  );
   let upstream: Response;
   try {
     upstream = await ctx.fetch(chatUrl(profile.baseUrl), {
