@@ -65,6 +65,19 @@ when the builder has enough memory. Keep the resulting executable and manifest
 in artifact storage and reuse them for application image builds. Rebuild the
 artifact when the pinned Codex revision changes.
 
+The artifact builder installs the Rust toolchain in its own cached layer and
+uses persistent BuildKit cache mounts for Cargo downloads, Git dependencies,
+and compilation output. Retries on the same builder can reuse that work after
+an interrupted compilation. Keep the same Docker builder and avoid pruning its
+cache while building. Cache eviction or moving to another builder can still
+require a full compilation. An already running build uses the Dockerfile it
+loaded at startup; this change applies to the next build invocation.
+
+The finished executable is copied out of the compilation cache before export,
+so both artifact files are available in `deploy/agentcore/bin/` only after the
+artifact build completes successfully. Application image builds then use
+`deploy/agentcore/Dockerfile` to reuse the artifact.
+
 For an executable from an existing trusted build of the pinned revision, copy
 it to `deploy/agentcore/bin/codex` and generate the sidecar once:
 
