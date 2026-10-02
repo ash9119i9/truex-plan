@@ -6,7 +6,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/model-gateway/src/index.js",
     "build": "tsc",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "benchmark:cache": "tsx scripts/benchmark-prompt-cache.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.128.0",

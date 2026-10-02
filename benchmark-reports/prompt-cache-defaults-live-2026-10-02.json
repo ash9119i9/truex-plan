@@ -1,0 +1,1380 @@
+{
+  "kind": "real-provider-gateway-ab",
+  "started": "2026-10-02T13:12:23.631Z",
+  "baselineRef": "2417dff195b22f19b3dc5c29a48d6a30d3c02354",
+  "blocks": 3,
+  "requestsPerArmPerBlock": 4,
+  "rates": null,
+  "policyMode": "default",
+  "samples": [
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 4027,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 0,
+        "total_tokens": 12732,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "52569268ccb3f242d5daae3c160be238c7f3dffeecb8de46b86cb7cca6187ff7",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 0,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 2541,
+      "ttftMs": 2224,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0018\",\"amount\":1289,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 28,
+        "total_tokens": 12757
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 8,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "80f19b9af88c920de525e86a55221fac4c19d360df4c65e12790f42dff47c709",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2044,
+      "ttftMs": 1767,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0084\",\"amount\":2411,\"status\":\"pending\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 28,
+        "total_tokens": 12760,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "d84deca91663fbb26c42b0169383b5cb86f8f1e455035a37d52b0bfb7cf41e47",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 0,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1775,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 0,
+        "total_tokens": 12729
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "1fdefe98813fd055fb5b63c44df222933ffe665dfd3291c7b17b80633a5f0d18",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1809,
+      "ttftMs": 1575,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0220\",\"amount\":4723,\"status\":\"overdue\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 29
+      },
+      "gatewayUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 29,
+        "total_tokens": 12761,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "87a59027c0de8458e55a66205a97094fdf1eb8423ad7490b474e9d876598895b",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 0,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1839,
+      "ttftMs": 1604,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0220\",\"amount\":4723,\"status\":\"overdue\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 29
+      },
+      "gatewayUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 29,
+        "total_tokens": 12758
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "6f171f2e0e41c45f65b8d0e9c51c1e1b4acfad09a2be0c037b51c7a60a06fc5a",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 3,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1840,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12732,
+        "output_tokens": 0,
+        "total_tokens": 12732,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "ce94a3c556f76f7e705b4d44fc391ca272fe981deff66a7c229f3bfefa3ea386",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 0,
+      "question": 3,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2125,
+      "ttftMs": 1863,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0042\",\"amount\":1697,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12729,
+        "output_tokens": 28,
+        "total_tokens": 12757
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "326fbaa5562ad1bc7c7b184ac7d631c96a5fe9c829bfb5d4d9cdbde5995ae6fd",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 1,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 1893,
+      "ttftMs": 1666,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0018\",\"amount\":1289,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28,
+        "total_tokens": 12759
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "2f94fd16d671f4be4b095ebcdfa2847423103981719cb176dc35a47086815566",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 1,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 1967,
+      "ttftMs": 1744,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0018\",\"amount\":1289,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28,
+        "total_tokens": 12759,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "9958f3e46dd68ad8016e90860ad7a5f1a08274b0f7a699b3327f743cbce750ae",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 1,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1828,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 0,
+        "total_tokens": 12731
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "b04c6e68f071aa828583692eab579d0ac19fb6e994757951ee5bdad8108176dd",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 1,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1912,
+      "ttftMs": 1658,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0084\",\"amount\":2411,\"status\":\"pending\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28,
+        "total_tokens": 12759,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "6a74d7fb208e58dbc4a4e5b25b47bd786b81161681ce3842190f7a7d46712594",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 1,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 3339,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 0,
+        "total_tokens": 12731
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "e60590478179a2f67d1c918f13a3104bbce637a57e63231c760be964ce01864d",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 1,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1899,
+      "ttftMs": 1710,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0220\",\"amount\":4723,\"status\":\"overdue\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 29
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 29,
+        "total_tokens": 12760,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "a11a02946d1acdf2491570893f796fcce4a895ff29940882a1684f9f363a322b",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 1,
+      "question": 3,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2123,
+      "ttftMs": 2123,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0042\",\"amount\":1697,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28,
+        "total_tokens": 12759
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 7,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "294aa0c0c13ab79ff91b3f86e3fe5dd3a5806ede3dc3ff92534e532fc2213b8b",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 1,
+      "question": 3,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 4794,
+      "ttftMs": 2802,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0042\",\"amount\":1697,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12731,
+        "output_tokens": 28,
+        "total_tokens": 12759,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 7,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "5c27688741ed0d69579f74d808530d8d061333f60a8ef7bc533e1acc998c7c93",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 2,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 3120,
+      "ttftMs": 3120,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0018\",\"amount\":1289,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 28,
+        "total_tokens": 12762,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "864044f5711368cfb74d0eb18ec8e8d6f851e9c6bb76a6a1fe64e3d4d6050d39",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 2,
+      "question": 0,
+      "phase": "cold",
+      "outcome": "completed",
+      "durationMs": 3235,
+      "ttftMs": 1806,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0018\",\"amount\":1289,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 28,
+        "total_tokens": 12756
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "b27ab50c209ba0b8a63b30426393fbde2118e1eb414d622b48827ba8228af6d5",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 2,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1959,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 0,
+        "total_tokens": 12734,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "0d69b32e3fddf6ceaab9d5ca1286561b658f5a620a701712bfe8463d7ac46edd",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 2,
+      "question": 1,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2073,
+      "ttftMs": 1857,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0084\",\"amount\":2411,\"status\":\"pending\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 28,
+        "total_tokens": 12756
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "1551cc427b783a8d98882a020392261069b8f93ab50be86f83ec7abb0c51484d",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 2,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2507,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 0,
+        "total_tokens": 12734,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "482512bdad8ecc060728ac49b242b645f8a3b81d2d950d0f4bee9727ca392a3d",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 2,
+      "question": 2,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 3715,
+      "ttftMs": 1385,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0220\",\"amount\":4723,\"status\":\"overdue\",\"region\":\"west\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 29
+      },
+      "gatewayUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 29,
+        "total_tokens": 12757
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 6,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "8563a82dad5e8563effd547e300ea897b9698ff3750fc298b7ecf887789f597d",
+      "estimatedCost": null
+    },
+    {
+      "arm": "baseline",
+      "block": 2,
+      "question": 3,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 1904,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "rawUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 0
+      },
+      "gatewayUsage": {
+        "input_tokens": 12734,
+        "output_tokens": 0,
+        "total_tokens": 12734,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        }
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "tool_use",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 1,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "3f9910928a3cb25e18780378ae7b7b177422f2e54ae6510575431052f10bd988",
+      "estimatedCost": null
+    },
+    {
+      "arm": "candidate",
+      "block": 2,
+      "question": 3,
+      "phase": "warm",
+      "outcome": "completed",
+      "durationMs": 2312,
+      "ttftMs": 2312,
+      "correct": true,
+      "answer": "```json\n{\"id\":\"INV-0042\",\"amount\":1697,\"status\":\"pending\",\"region\":\"south\"}\n```",
+      "rawUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 28
+      },
+      "gatewayUsage": {
+        "input_tokens": 12728,
+        "output_tokens": 28,
+        "total_tokens": 12756
+      },
+      "providerModel": "claude-sonnet-5",
+      "providerStatus": 200,
+      "providerStopReason": "end_turn",
+      "providerEventCounts": {
+        "message_start": 1,
+        "content_block_start": 1,
+        "content_block_delta": 8,
+        "content_block_stop": 1,
+        "message_delta": 1,
+        "message_stop": 1
+      },
+      "upstreamCalls": 1,
+      "requestSha256": "57b9e2e4792a18c74ea4ea964ffcc407846b78daa89369500767ed14f529a3c2",
+      "estimatedCost": null
+    }
+  ],
+  "workload": {
+    "invoices": 240,
+    "referenceBytes": 47551,
+    "referenceSha256": "4bdc5560904005c55351ab520ff6c14b7583a8f9bb1ace7f9fafebf623118a16",
+    "maxOutputTokens": 512,
+    "reasoningEffort": "low"
+  },
+  "limitations": [
+    "Synthetic invoice extraction through gateways, not a full UI or agent workload.",
+    "Short repeated-request test; it does not evaluate reuse after five minutes or one hour.",
+    "Baseline already requests caching. Automatic caching was not artificially disabled.",
+    "Each arm uses an equal-length unique partition in its initial instructions to isolate caches. Business reference and questions are identical.",
+    "Small sample; latency differences are descriptive and not a statistical guarantee.",
+    "Provider-reported tokens are not an invoice. Monetary estimates require actual endpoint rates."
+  ],
+  "contentEquivalent": true,
+  "model": "claude-sonnet-5",
+  "wireApi": "anthropic",
+  "providerHost": "ashok-kiro-gw.duckdns.org",
+  "baselineSha": "2417dff195b22f19b3dc5c29a48d6a30d3c02354",
+  "candidateHead": "2417dff195b22f19b3dc5c29a48d6a30d3c02354",
+  "candidateDigests": {
+    "shared/prompt-cache.ts": "1db9f21daa3e91201fedfc627f4c8bb1e915d303aa31b357a65c460172fe8f87",
+    "model-gateway/src/prompt-cache.ts": "fdf213f4a0b68888c4d07b450fd27a9846890d3cb6294023755aca5206a81d84",
+    "model-gateway/src/adapter.ts": "c07297a5b40961e69e2d4fdd9a33856efe61aa8647c271e31f337ac5fb2c055c",
+    "model-gateway/src/server.ts": "816b8c254f3ae4270e5704ab63378abb755a01ac544fb3babd0c8c1129deef86",
+    "model-gateway/src/responses.ts": "364d00da06cb05bc56b72f114000bbe8f1c9f3d596a14f0e7e5a6673394f441e",
+    "model-gateway/src/logging.ts": "3dde2585ca7b03190b5947e2ef839a0415fee011ddc47d0dde86673564863ddf",
+    "model-gateway/src/adapters/chat.ts": "ef6f6d2f874484e89380b2ab9c3206675ae8344c09471198da51633f0ba364f4",
+    "model-gateway/src/adapters/anthropic.ts": "524e3b05488cf6dfc89442b4edb36720758c0073835fa176845a643468eef437"
+  },
+  "gatewayLogs": {
+    "baseline": [
+      {
+        "ts": "2026-10-02T13:12:31.030Z",
+        "type": "access",
+        "requestId": "304f4963-cdf6-4071-8d3f-5878c4af844e",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 4010,
+        "ttfbMs": 4009,
+        "usage": {
+          "input_tokens": 12732,
+          "output_tokens": 0,
+          "total_tokens": 12732
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:35.641Z",
+        "type": "access",
+        "requestId": "4241eb66-fe3d-4e17-83e8-1c550feedb2a",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2043,
+        "ttfbMs": 1766,
+        "usage": {
+          "input_tokens": 12732,
+          "output_tokens": 28,
+          "total_tokens": 12760
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:39.269Z",
+        "type": "access",
+        "requestId": "ce121481-4938-4448-8339-96853285eaba",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1808,
+        "ttfbMs": 1574,
+        "usage": {
+          "input_tokens": 12732,
+          "output_tokens": 29,
+          "total_tokens": 12761
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:42.970Z",
+        "type": "access",
+        "requestId": "5cae38a0-ec81-4780-a252-313c22c2169d",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1840,
+        "ttfbMs": 1837,
+        "usage": {
+          "input_tokens": 12732,
+          "output_tokens": 0,
+          "total_tokens": 12732
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:48.990Z",
+        "type": "access",
+        "requestId": "8595dcac-1093-4817-85e8-934347f8c96d",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1965,
+        "ttfbMs": 1743,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 28,
+          "total_tokens": 12759
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:52.731Z",
+        "type": "access",
+        "requestId": "8c4fc20b-d199-47bc-b2f1-250a421624fe",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1910,
+        "ttfbMs": 1656,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 28,
+          "total_tokens": 12759
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:57.971Z",
+        "type": "access",
+        "requestId": "cbe17bb6-d800-40e5-8864-5a63eafee246",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1898,
+        "ttfbMs": 1708,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 29,
+          "total_tokens": 12760
+        }
+      },
+      {
+        "ts": "2026-10-02T13:13:04.890Z",
+        "type": "access",
+        "requestId": "e8d38d76-f3fc-4dcd-a1cf-36cfbb983b59",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 4791,
+        "ttfbMs": 2799,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 28,
+          "total_tokens": 12759
+        }
+      },
+      {
+        "ts": "2026-10-02T13:13:08.011Z",
+        "type": "access",
+        "requestId": "eb8117fa-2fc0-420c-9818-d28f926f8f97",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 3118,
+        "ttfbMs": 3116,
+        "usage": {
+          "input_tokens": 12734,
+          "output_tokens": 28,
+          "total_tokens": 12762
+        }
+      },
+      {
+        "ts": "2026-10-02T13:13:13.207Z",
+        "type": "access",
+        "requestId": "59da8d80-d2e7-4030-9583-4458ad28baee",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1957,
+        "ttfbMs": 1956,
+        "usage": {
+          "input_tokens": 12734,
+          "output_tokens": 0,
+          "total_tokens": 12734
+        }
+      },
+      {
+        "ts": "2026-10-02T13:13:17.788Z",
+        "type": "access",
+        "requestId": "f87cced6-8912-4c84-8b44-20b490566f5a",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2504,
+        "ttfbMs": 2502,
+        "usage": {
+          "input_tokens": 12734,
+          "output_tokens": 0,
+          "total_tokens": 12734
+        }
+      },
+      {
+        "ts": "2026-10-02T13:13:23.410Z",
+        "type": "access",
+        "requestId": "b9e2b153-2646-4f6f-9dc8-49bfe44c9bbd",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1903,
+        "ttfbMs": 1902,
+        "usage": {
+          "input_tokens": 12734,
+          "output_tokens": 0,
+          "total_tokens": 12734
+        }
+      }
+    ],
+    "candidate": [
+      {
+        "ts": "2026-10-02T13:12:33.588Z",
+        "type": "access",
+        "requestId": "f6d905ca-b863-45c8-86ae-95318b325377",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2539,
+        "ttfbMs": 2222,
+        "usage": {
+          "input_tokens": 12729,
+          "output_tokens": 28,
+          "total_tokens": 12757
+        },
+        "ttftMs": 2223
+      },
+      {
+        "ts": "2026-10-02T13:12:37.442Z",
+        "type": "access",
+        "requestId": "cb86b552-c7af-4a22-bab1-5509dd42a5cf",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1773,
+        "ttfbMs": 1771,
+        "usage": {
+          "input_tokens": 12729,
+          "output_tokens": 0,
+          "total_tokens": 12729
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:41.118Z",
+        "type": "access",
+        "requestId": "20b531fd-c7d2-416b-9eba-0a67ff9fc3a9",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1838,
+        "ttfbMs": 1603,
+        "usage": {
+          "input_tokens": 12729,
+          "output_tokens": 29,
+          "total_tokens": 12758
+        },
+        "ttftMs": 1603
+      },
+      {
+        "ts": "2026-10-02T13:12:45.106Z",
+        "type": "access",
+        "requestId": "9f768d94-30ee-474e-826e-571254098551",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2124,
+        "ttfbMs": 1863,
+        "usage": {
+          "input_tokens": 12729,
+          "output_tokens": 28,
+          "total_tokens": 12757
+        },
+        "ttftMs": 1863
+      },
+      {
+        "ts": "2026-10-02T13:12:47.018Z",
+        "type": "access",
+        "requestId": "6f822164-3faf-4d82-8f4b-bd13e6001747",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1892,
+        "ttfbMs": 1664,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 28,
+          "total_tokens": 12759
+        },
+        "ttftMs": 1664
+      },
+      {
+        "ts": "2026-10-02T13:12:50.818Z",
+        "type": "access",
+        "requestId": "e8c98576-1fea-49d0-97c1-f4ab3e792190",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 1826,
+        "ttfbMs": 1824,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 0,
+          "total_tokens": 12731
+        }
+      },
+      {
+        "ts": "2026-10-02T13:12:56.070Z",
+        "type": "access",
+        "requestId": "c82e3cf5-bb39-462e-94b4-7faebe5c56b0",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 3336,
+        "ttfbMs": 3335,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 0,
+          "total_tokens": 12731
+        }
+      },
+      {
+        "ts": "2026-10-02T13:13:00.095Z",
+        "type": "access",
+        "requestId": "66959018-b59d-4d47-bf36-da8ef5a49d61",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2121,
+        "ttfbMs": 2119,
+        "usage": {
+          "input_tokens": 12731,
+          "output_tokens": 28,
+          "total_tokens": 12759
+        },
+        "ttftMs": 2120
+      },
+      {
+        "ts": "2026-10-02T13:13:11.247Z",
+        "type": "access",
+        "requestId": "73d1cc06-98c2-4b2d-ac3b-afcf7592dd5e",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 3233,
+        "ttfbMs": 1804,
+        "usage": {
+          "input_tokens": 12728,
+          "output_tokens": 28,
+          "total_tokens": 12756
+        },
+        "ttftMs": 1804
+      },
+      {
+        "ts": "2026-10-02T13:13:15.281Z",
+        "type": "access",
+        "requestId": "c1a93c94-4aaf-4ebb-9898-fc7a9948f72a",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2071,
+        "ttfbMs": 1854,
+        "usage": {
+          "input_tokens": 12728,
+          "output_tokens": 28,
+          "total_tokens": 12756
+        },
+        "ttftMs": 1854
+      },
+      {
+        "ts": "2026-10-02T13:13:21.505Z",
+        "type": "access",
+        "requestId": "14a604e3-0967-497f-9acb-e370d389b440",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 3714,
+        "ttfbMs": 1383,
+        "usage": {
+          "input_tokens": 12728,
+          "output_tokens": 29,
+          "total_tokens": 12757
+        },
+        "ttftMs": 1383
+      },
+      {
+        "ts": "2026-10-02T13:13:25.722Z",
+        "type": "access",
+        "requestId": "88723d31-5e2f-46a5-8192-ce7345e56d41",
+        "profileId": "6ab96fa2077a84a32b05b738",
+        "tenantId": "benchmark",
+        "wireApi": "anthropic",
+        "model": "claude-sonnet-5",
+        "status": 200,
+        "outcome": "completed",
+        "durationMs": 2310,
+        "ttfbMs": 2309,
+        "usage": {
+          "input_tokens": 12728,
+          "output_tokens": 28,
+          "total_tokens": 12756
+        },
+        "ttftMs": 2309
+      }
+    ]
+  },
+  "finished": "2026-10-02T13:13:25.730Z",
+  "summary": {
+    "baseline": {
+      "requests": 12,
+      "correct": 7,
+      "emptyAnswers": 5,
+      "reportedInputTokens": 152788,
+      "cacheUsageReported": false,
+      "cacheReadTokens": null,
+      "cacheWriteTokens": null,
+      "uncachedInputTokens": null,
+      "outputTokens": 198,
+      "tokenCacheReadFraction": null,
+      "medianColdTtftMs": 2432,
+      "medianWarmTtftMs": 1710,
+      "medianWarmDurationMs": 1912,
+      "medianCorrectWarmDurationMs": 1912,
+      "p95DurationMs": 4794,
+      "estimatedCost": null
+    },
+    "candidate": {
+      "requests": 12,
+      "correct": 9,
+      "emptyAnswers": 3,
+      "reportedInputTokens": 152752,
+      "cacheUsageReported": false,
+      "cacheReadTokens": null,
+      "cacheWriteTokens": null,
+      "uncachedInputTokens": null,
+      "outputTokens": 254,
+      "tokenCacheReadFraction": null,
+      "medianColdTtftMs": 1806,
+      "medianWarmTtftMs": 1860,
+      "medianWarmDurationMs": 2123,
+      "medianCorrectWarmDurationMs": 2124,
+      "p95DurationMs": 3715,
+      "estimatedCost": null
+    }
+  }
+}

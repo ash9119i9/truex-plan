@@ -1,4 +1,5 @@
 import type { ServerResponse } from "node:http";
+import type { PromptCachePolicy } from "../../shared/prompt-cache";
 
 export interface GatewayProfile {
   _id: unknown;
@@ -23,6 +24,7 @@ export interface GatewayProfile {
    * that thinks for a long time before its first chunk. 0 disables.
    */
   firstByteTimeoutMs?: number;
+  promptCache?: PromptCachePolicy;
 }
 
 // Everything an adapter needs for one Codex request. The adapter owns the
@@ -38,6 +40,8 @@ export interface AdapterContext {
   /** Aborted when Codex disconnects (interrupt, timeout). */
   signal: AbortSignal;
   log: (line: string) => void;
+  /** Tenant from the verified gateway token, never the request body. */
+  tenantId?: string;
 }
 
 export type Adapter = (ctx: AdapterContext) => Promise<void>;
