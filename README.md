@@ -138,3 +138,40 @@ The tests include protocol/schema checks, concurrency, request expiry, disk-spoo
 `npm run dev` starts the services as local Node processes. `CODEX_HOME` and `AGENT_WORKSPACE` retain runtime history and conversation files across restarts; keep these directories and MongoDB data when stopping the app.
 
 `AGENT_CORE_URLS` lists the local runtime addresses used for session ownership. Existing sessions stay attached to their recorded owner. Readiness stops new admission while draining; shutdown waits up to `DRAIN_TIMEOUT_MS` (default 30 seconds) for active turns.
+
+## Bedrock AgentCore image
+
+The root `Dockerfile` is the only deployment Dockerfile. It builds the pinned Codex executable for Linux ARM64, then packages agent-core, the optional model-gateway and the AgentCore HTTP entrypoint. Frontend, platform and MongoDB run separately.
+
+Build the reusable binary first, then the runtime image:
+
+```sh
+npm run codex:artifact
+node scripts/codex-artifact.mjs verify .runtime/agentcore/codex .runtime/agentcore/codex.json codex.lock.json
+npm run agentcore:build
+```
+
+The artifact target cross-compiles on the builder's native architecture and exports `.runtime/agentcore/codex` plus a manifest containing its source revision, architecture and SHA-256. It fetches the exact source in `codex.lock.json`; it does not reuse the host's x86-64 debug binary. Application image builds verify that artifact and do not rebuild Rust. Keep the artifact and rebuild it when the Codex pin changes. Cargo caches persist on the same Docker builder. Use `--build-arg CODEX_BUILD_JOBS=1` if the builder has limited memory. Image builds require an ARM64 builder or ARM64 emulation support.
+
+On an x86-64 Linux host whose default builder cannot run ARM64 processes, use an isolated BuildKit builder for the image:
+
+```sh
+docker buildx create --name truex-agentcore-builder --driver docker-container --bootstrap
+BUILDX_BUILDER=truex-agentcore-builder npm run agentcore:build
+```
+
+The container exposes `0.0.0.0:8080` with `GET /ping` and `POST /invocations`, as required by the [AgentCore HTTP contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html). It starts internal services on the first valid invocation because [AgentCore filesystem mounts are available at invocation time](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-filesystem-configurations.html), rather than during container initialization.
+
+For a direct Responses provider, no gateway configuration is needed. To enable the bundled gateway, supply `MODEL_GATEWAY_SECRET` (at least 32 characters), `MONGO_URI`, `MONGO_DB` and optionally `CATALOG_MONGO_DB` as runtime environment variables. The platform must use the same secret and a `MODEL_GATEWAY_URL` of `http://127.0.0.1:4200` for profiles handled by the bundled gateway; Codex resolves that URL inside the runtime. Provider keys remain in MongoDB or Secrets Manager. Secrets and local `.env` files are excluded from the image build context.
+
+Invocation payloads wrap local runtime operations:
+
+```json
+{"method":"POST","path":"/threads","body":{"model":"your-model","modelProvider":"your-provider","config":{}}}
+```
+
+JSON responses preserve the local HTTP status inside `{ "status": 201, "body": { ... } }`. To subscribe to a thread, invoke `{ "method": "GET", "path": "/threads/<id>/events", "cursor": "<last-event-id>" }`; the response streams SSE frames and closes after 55 minutes for reconnection. Unsupported paths are rejected.
+
+Reuse the same AgentCore `runtimeSessionId` for all operations in a conversation. Configure persistent storage at `/mnt/state`; `CODEX_HOME` and `AGENT_WORKSPACE` point there. The image alone does not persist data across session termination. Managed session storage also resets on runtime version changes; choose storage and backups to match the required retention.
+
+The existing platform uses direct HTTP runtime addresses. Connecting it to Bedrock still requires an `InvokeAgentRuntime` transport and stable session-ID mapping; building this image does not implement that integration or publish anything to AWS.
