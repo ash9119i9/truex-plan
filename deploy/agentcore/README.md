@@ -6,14 +6,78 @@ entrypoint on port 8080. Both use the same running local service, so thread,
 tool, approval, document, and Codex behavior stays the same. The image also
 starts `model-gateway` on loopback port 4200.
 
-Build from the repository root after `npm run codex:setup` has fetched and
-verified the pinned source. The builder must support ARM64, either natively or
-through an installed emulator:
+## Prebuilt Codex binary
+
+The runtime image uses a prebuilt Codex executable. It builds the Node services
+without compiling Rust or requiring a host checkout of `vendor/codex`.
+
+Place these two files from a trusted artifact producer in
+`deploy/agentcore/bin/`:
+
+- `codex`: a Linux ARM64 ELF executable that runs on Debian Bookworm.
+- `codex.json`: its revision, platform, and SHA-256 checksum:
+
+```json
+{
+  "revision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
+  "platform": "linux/arm64",
+  "sha256": "<SHA-256 of the codex executable>"
+}
+```
+
+The revision must match `codex.lock.json`. The manifest records the producer's
+build revision; the producer must establish that the executable came from that
+source. A version string alone cannot establish the Git revision. The image
+build checks the ELF architecture, manifest revision, and checksum, then runs
+`codex --version` as the runtime user to catch incompatible shared libraries.
+These local artifact files are ignored by Git.
+
+Validate the artifact from the repository root:
+
+```sh
+node deploy/agentcore/verify-binary.mjs \
+  deploy/agentcore/bin/codex deploy/agentcore/bin/codex.json codex.lock.json
+```
+
+Build the runtime image from the repository root. The builder must support
+ARM64, either natively or through an installed emulator:
 
 ```sh
 docker buildx build --platform linux/arm64 --load \
   -f deploy/agentcore/Dockerfile -t truex-agentcore:local .
 ```
+
+## Build the Codex artifact once
+
+If no compatible artifact exists, build one with the separate artifact
+Dockerfile. It fetches and verifies the exact source in `codex.lock.json`,
+compiles the ARM64 release executable, and exports both artifact files:
+
+```sh
+docker buildx build --platform linux/arm64 \
+  --build-arg CODEX_BUILD_JOBS=1 \
+  -f deploy/agentcore/Dockerfile.codex \
+  --output type=local,dest=deploy/agentcore/bin .
+```
+
+Prefer a native ARM64 builder for compilation. Increase `CODEX_BUILD_JOBS`
+when the builder has enough memory. Keep the resulting executable and manifest
+in artifact storage and reuse them for application image builds. Rebuild the
+artifact when the pinned Codex revision changes.
+
+For an executable from an existing trusted build of the pinned revision, copy
+it to `deploy/agentcore/bin/codex` and generate the sidecar once:
+
+```sh
+node deploy/agentcore/verify-binary.mjs --write-manifest \
+  deploy/agentcore/bin/codex deploy/agentcore/bin/codex.json codex.lock.json
+```
+
+This records the supplied lock revision; it cannot determine the source
+revision from an arbitrary executable. The binary must already have a known
+build origin. If an image build is already compiling the required ARM64 Codex,
+let it finish unless you have a verified replacement artifact ready. Removing
+the compile stage does not provide that artifact.
 
 The runtime needs `MODEL_GATEWAY_SECRET` (at least 32 characters), `MONGO_URI`,
 `CATALOG_MONGO_DB`, and network access to the model providers and MongoDB. A

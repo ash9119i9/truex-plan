@@ -1,0 +1,25 @@
+# Build this artifact once per pinned revision on an ARM64 builder.
+FROM node:24-bookworm AS codex-source
+WORKDIR /src
+COPY codex.lock.json ./codex.lock.json
+COPY scripts/codex.mjs ./scripts/codex.mjs
+RUN node scripts/codex.mjs
+
+FROM rust:1.95-bookworm AS codex-build
+RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev clang cmake && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY --from=codex-source /src/vendor/codex/ ./
+WORKDIR /src/codex-rs
+ARG CODEX_BUILD_JOBS=1
+RUN cargo build --jobs "$CODEX_BUILD_JOBS" --locked --release -p codex-cli --bin codex
+
+FROM node:24-bookworm-slim AS codex-package
+WORKDIR /artifact
+COPY --from=codex-build /src/codex-rs/target/release/codex ./codex
+COPY codex.lock.json ./codex.lock.json
+COPY deploy/agentcore/verify-binary.mjs ./verify-binary.mjs
+RUN node verify-binary.mjs --write-manifest codex codex.json codex.lock.json
+
+FROM scratch AS artifact
+COPY --from=codex-package /artifact/codex /codex
+COPY --from=codex-package /artifact/codex.json /codex.json
