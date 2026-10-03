@@ -1,0 +1,106 @@
+{
+  "kind": "real-google-implicit-cache-gateway-ab",
+  "started": "2026-10-02T14:52:26.952Z",
+  "baselineRef": "2417dff195b22f19b3dc5c29a48d6a30d3c02354",
+  "candidateHead": "7b2c4d6591d7eda26d9fc964d60e0b379a2c26cd",
+  "model": "gemini-flash-latest",
+  "profileId": "6abfc2c3cac1e27f48b52b25",
+  "providerHost": "generativelanguage.googleapis.com",
+  "suppliedWireApi": "google",
+  "testedWireApi": "gemini",
+  "policy": "Google implicit caching; identical provider settings in both gateways",
+  "blocks": 2,
+  "requestsPerArmPerBlock": 3,
+  "workload": {
+    "invoices": 240,
+    "referenceBytes": 47551,
+    "referenceSha256": "4bdc5560904005c55351ab520ff6c14b7583a8f9bb1ace7f9fafebf623118a16",
+    "maxOutputTokens": 1024,
+    "reasoningEffort": "low"
+  },
+  "candidateDigests": {
+    "model-gateway/src/adapters/gemini.ts": "bd31b62e20b3f10f124b43d29218111122f51663109b10f8a18a1979505e84b2",
+    "model-gateway/src/server.ts": "816b8c254f3ae4270e5704ab63378abb755a01ac544fb3babd0c8c1129deef86",
+    "model-gateway/src/responses.ts": "364d00da06cb05bc56b72f114000bbe8f1c9f3d596a14f0e7e5a6673394f441e",
+    "model-gateway/scripts/benchmark-gemini-cache.ts": "136ae79a65f9810ddfc266d8912df89ea57a58bbe68003bc66739efd0d80dbae"
+  },
+  "samples": [
+    {
+      "arm": "baseline",
+      "block": 0,
+      "question": 0,
+      "phase": "first-observed",
+      "outcome": "http_504",
+      "durationMs": 60029,
+      "ttftMs": null,
+      "correct": false,
+      "answer": "",
+      "gatewayUsage": null,
+      "providerModelVersion": null,
+      "providerStatus": null,
+      "providerFinishReason": null,
+      "toolCall": false,
+      "providerError": null,
+      "requestSha256": "65dd10058e094ce87195b278fa379259c5e1e65899edc9ecedf26d6df78f9371",
+      "upstreamCalls": 1
+    }
+  ],
+  "limitations": [
+    "Synthetic invoice extraction, not a full application agent or tool execution test.",
+    "Implicit caching is provider controlled; first requests are first-observed, not guaranteed cold.",
+    "Fresh equal-length partitions isolate each arm and block; reference content, tools and questions are identical.",
+    "Missing cachedContentTokenCount stays unknown; gateway fallback zero alone is not cache evidence.",
+    "No explicit cache objects or storage charges were created; no new Gemini cache controls are implemented by the earlier application changes.",
+    "No billing tier or endpoint rates supplied; monetary savings remain unverified.",
+    "Small sample; latency differences are descriptive and do not establish causal improvement or all-task quality.",
+    "The latest model alias may change; response modelVersion is recorded when supplied."
+  ],
+  "contentEquivalent": true,
+  "error": "First baseline request timed out with gateway HTTP 504 after 60 seconds; no provider headers or usage received. Benchmark stopped.",
+  "reportingCorrection": "Failure-summary generation initially failed because unavailable raw usage was undefined. Raw recorded samples are unchanged; this summary records the failure without inventing cache counters.",
+  "summary": {
+    "baseline": {
+      "requests": 1,
+      "correct": 0,
+      "failures": 1,
+      "cacheReadTokens": null,
+      "monetarySavings": null
+    },
+    "candidate": {
+      "requests": 0,
+      "correct": 0,
+      "failures": 0,
+      "cacheReadTokens": null,
+      "monetarySavings": null
+    }
+  },
+  "diagnostics": [
+    {
+      "operation": "GET model metadata",
+      "status": 200,
+      "model": "models/gemini-flash-latest",
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ]
+    },
+    {
+      "operation": "POST short generateContent via Node fetch",
+      "timeoutMs": 30000,
+      "elapsedMs": 30008,
+      "result": "TimeoutError",
+      "answerOrUsageReceived": false
+    },
+    {
+      "operation": "POST short generateContent via curl",
+      "timeoutMs": 30000,
+      "elapsedMs": 30006,
+      "curlExitCode": 28,
+      "httpCode": 0,
+      "responseBytes": 0,
+      "answerOrUsageReceived": false
+    }
+  ]
+}

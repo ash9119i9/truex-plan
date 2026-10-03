@@ -1,0 +1,15 @@
+{
+  "createdAt": "2026-10-03T02:55:03.020Z",
+  "evidence": "Read-only MCP catalog health check; no business actions or model calls",
+  "available": false,
+  "toolCount": 0,
+  "error": "The operation was aborted due to timeout",
+  "attempts": [
+    {
+      "method": "initialize",
+      "at": "2026-10-03T02:54:33.009Z",
+      "failure": "TimeoutError",
+      "durationToHeadersMs": 30004.377917
+    }
+  ]
+}

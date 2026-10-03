@@ -1,0 +1,24 @@
+{
+  _id: ObjectId('6aaa7db671c8cc9e29e08d93'),
+  name: 'qlik',
+  transport: 'http',
+  url: 'https://quality.ktern.com/qlik-mcp/',
+  apiKey: 'qbepmdPxEPFvetWPRw4tS80yvPyb2YJO4kueEeNaA',
+  auth: {
+    kind: 'header',
+    headerName: 'x-api-qlik-key'
+  },
+  capabilities: {
+    tools: true,
+    resources: false,
+    prompts: false,
+    elicitation: false,
+    connectTimeoutMs: NumberInt('30000'),
+    requestTimeoutMs: NumberInt('120000')
+  },
+  enabled: true,
+  autoConnect: false,
+  createdAt: '2026-08-20T16:09:04.763Z',
+  updatedAt: '2026-08-20T16:12:47.678Z',
+  createdBy: 'agent-console'
+}

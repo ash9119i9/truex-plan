@@ -1,0 +1,8 @@
+{
+  _id: ObjectId('6ab96fa2077a84a32b05b738'),
+  provider: 'CLAUDE SONNET',
+  baseUrl: 'https://ashok-kiro-gw.duckdns.org/v1',
+  modelName: 'claude-sonnet-5',
+  apikey: '47750d7d9f095631595e50e37893f25d4a0bd4c97a3cc720b0577b2d52e25244',
+  wireApi: 'anthropic'
+}

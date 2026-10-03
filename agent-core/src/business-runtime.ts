@@ -20,6 +20,11 @@ import {
 import { visualizationInstructions } from "../../shared/visualizations";
 import { suggestionInstructions } from "../../shared/suggestions";
 import {
+  OmniMcpGateway,
+  omniInstructions,
+  type ConnectorConfig,
+} from "./omni-mcp-gateway";
+import {
   DEFAULT_TENANT,
   skillInstructions,
   skillSet,
@@ -90,6 +95,12 @@ export function subAgentOptions(value: any): SubAgentOptions {
 // This adapter is the only runtime used by the service. No browser-controlled
 // config, history import, path, environment or arbitrary RPC can reach the engine.
 export class BusinessRuntime extends CodexClient {
+  private readonly threadGateways = new Map<string, OmniMcpGateway>();
+  private readonly activeGateways = new Set<OmniMcpGateway>();
+  // Operators can observe the gateway without exposing connector credentials.
+  get omniGateways(): ReadonlyMap<string, OmniMcpGateway> {
+    return this.threadGateways;
+  }
   // Helper agent threads spawned by conversations. They have no workspace of
   // their own and may only be interrupted.
   readonly helpers = new Set<string>();
@@ -118,6 +129,70 @@ export class BusinessRuntime extends CodexClient {
       if (existsSync(this.marker(id)))
         this.workspaceFiles.clearTemp(id).catch(() => {});
     });
+    this.on("exit", () => void this.closeOmniGateways());
+  }
+  private async prepareOmni(
+    profile: ReturnType<BusinessRuntime["configuration"]>,
+  ): Promise<OmniMcpGateway | undefined> {
+    if (process.env.TRUEX_MCP_GATEWAY_MODE !== "omni") return;
+    const connectors: Record<string, ConnectorConfig> = {};
+    for (const [key, value] of Object.entries(profile.config)) {
+      if (key.startsWith("mcp_servers."))
+        connectors[key.slice("mcp_servers.".length)] = value;
+    }
+    if (!Object.keys(connectors).length) return;
+    const gatewayId = randomUUID();
+    const projectionRequired =
+      process.env.TRUEX_MCP_GATEWAY_PROJECTION === "required";
+    const gateway = new OmniMcpGateway(
+      connectors,
+      (event) => {
+        this.emit("omniGatewayEvent", {
+          ...event,
+          gatewayId,
+          threadIds: [...this.threadGateways]
+            .filter(([, attached]) => attached === gateway)
+            .map(([id]) => id),
+        });
+      },
+      fetch,
+      { requireProjection: projectionRequired },
+    );
+    this.activeGateways.add(gateway);
+    try {
+      const server = await gateway.start();
+      for (const key of Object.keys(profile.config)) {
+        if (key.startsWith("mcp_servers.")) delete profile.config[key];
+      }
+      profile.config["mcp_servers.omni"] = server;
+      profile.baseInstructions += omniInstructions;
+      if (projectionRequired)
+        profile.baseInstructions +=
+          '\nFor invoke_tool, fields is required. Select the smallest set of dotted JSON paths needed to answer; use ["*"] only when the complete result is necessary or the result is not structured JSON.';
+      return gateway;
+    } catch (error) {
+      this.activeGateways.delete(gateway);
+      await gateway.close();
+      throw error;
+    }
+  }
+  private async releaseGateway(id: string) {
+    const gateway = this.threadGateways.get(id);
+    this.threadGateways.delete(id);
+    if (gateway && ![...this.threadGateways.values()].includes(gateway)) {
+      this.activeGateways.delete(gateway);
+      await gateway.close();
+    }
+  }
+  async closeOmniGateways() {
+    const gateways = [...this.activeGateways];
+    this.activeGateways.clear();
+    this.threadGateways.clear();
+    await Promise.all(gateways.map((gateway) => gateway.close()));
+  }
+  override stop() {
+    void this.closeOmniGateways();
+    super.stop();
   }
   get scriptsEnabled() {
     return !(this.scriptRunner instanceof DisabledScriptRunner);
@@ -362,32 +437,47 @@ export class BusinessRuntime extends CodexClient {
       const cwd = join(tenantWorkspaces(this.home, tenant), randomUUID());
       const profile = this.configuration(params, cwd);
       mkdirSync(cwd, { recursive: true, mode: 0o700 });
-      const result = await super.request(method, {
-        ...profile,
-        dynamicTools: this.dynamicTools(),
-        environments: [],
-        selectedCapabilityRoots: [],
-        experimentalRawEvents: false,
-      });
+      const gateway = await this.prepareOmni(profile);
+      let result: any;
+      try {
+        result = await super.request(method, {
+          ...profile,
+          dynamicTools: this.dynamicTools(),
+          environments: [],
+          selectedCapabilityRoots: [],
+          experimentalRawEvents: false,
+        });
+      } catch (error) {
+        if (gateway) this.activeGateways.delete(gateway);
+        await gateway?.close();
+        throw error;
+      }
+      if (gateway) this.threadGateways.set(result.thread.id, gateway);
       this.profiles.set(result.thread.id, profile);
-      mkdirSync(join(this.home, "business-threads"), {
-        recursive: true,
-        mode: 0o700,
-      });
-      writeFileSync(
-        this.marker(result.thread.id),
-        JSON.stringify({
-          cwd,
-          tenantId: tenant,
-          documentTools: 1,
-          visualizationTools: 1,
-          subAgents: subAgentOptions(params.subAgents),
-          skills,
-        }),
-        {
-          mode: 0o600,
-        },
-      );
+      try {
+        mkdirSync(join(this.home, "business-threads"), {
+          recursive: true,
+          mode: 0o700,
+        });
+        writeFileSync(
+          this.marker(result.thread.id),
+          JSON.stringify({
+            cwd,
+            tenantId: tenant,
+            documentTools: 1,
+            visualizationTools: 1,
+            subAgents: subAgentOptions(params.subAgents),
+            skills,
+          }),
+          {
+            mode: 0o600,
+          },
+        );
+      } catch (error) {
+        this.profiles.delete(result.thread.id);
+        await this.releaseGateway(result.thread.id);
+        throw error;
+      }
       return result;
     }
     if (method === "thread/resume") {
@@ -406,10 +496,20 @@ export class BusinessRuntime extends CodexClient {
         },
         cwd,
       );
-      const result = await super.request(method, {
-        ...profile,
-        threadId: params.threadId,
-      });
+      const gateway = await this.prepareOmni(profile);
+      let result: any;
+      try {
+        result = await super.request(method, {
+          ...profile,
+          threadId: params.threadId,
+        });
+      } catch (error) {
+        if (gateway) this.activeGateways.delete(gateway);
+        await gateway?.close();
+        throw error;
+      }
+      await this.releaseGateway(params.threadId);
+      if (gateway) this.threadGateways.set(params.threadId, gateway);
       this.profiles.set(params.threadId, profile);
       return result;
     }
@@ -436,7 +536,11 @@ export class BusinessRuntime extends CodexClient {
       this.workspace(params.threadId);
       if (method === "thread/fork") {
         const source = this.profiles.get(params.threadId);
-        if (!source)
+        if (
+          !source ||
+          (source.config["mcp_servers.omni"] &&
+            !this.threadGateways.has(params.threadId))
+        )
           throw new HttpError(409, "Resume the conversation before forking");
         const tenant = this.tenant(params.threadId);
         const cwd = join(tenantWorkspaces(this.home, tenant), randomUUID());
@@ -469,11 +573,15 @@ export class BusinessRuntime extends CodexClient {
           },
         );
         this.profiles.set(result.thread.id, { ...source, cwd });
+        const gateway = this.threadGateways.get(params.threadId);
+        if (gateway) this.threadGateways.set(result.thread.id, gateway);
         await this.files.copy(params.threadId, result.thread.id);
         await this.workspaceFiles.copy(params.threadId, result.thread.id);
         return result;
       }
       const result = await super.request(method, params);
+      if (method === "thread/archive")
+        await this.releaseGateway(params.threadId);
       if (method === "thread/settings/update") {
         const profile = this.profiles.get(params.threadId);
         if (profile) {
@@ -487,7 +595,9 @@ export class BusinessRuntime extends CodexClient {
     // Only agent-core calls this, to reload a thread with a new MCP config.
     if (method === "thread/unsubscribe") {
       this.workspace(params.threadId);
-      return super.request(method, { threadId: params.threadId });
+      const result = await super.request(method, { threadId: params.threadId });
+      await this.releaseGateway(params.threadId);
+      return result;
     }
     // Approval modes read tool annotations; only agent-core calls this.
     if (method === "mcpServerStatus/list") {
@@ -508,7 +618,10 @@ export class BusinessRuntime extends CodexClient {
       ].includes(method)
     ) {
       this.workspace(params.threadId);
-      return super.request(method, params);
+      const result = await super.request(method, params);
+      if (method === "thread/delete")
+        await this.releaseGateway(params.threadId);
+      return result;
     }
     throw new HttpError(
       403,

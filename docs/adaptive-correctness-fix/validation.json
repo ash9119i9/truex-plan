@@ -1,0 +1,212 @@
+{
+  "createdAt": "2026-10-03T10:31:46.754495+00:00",
+  "status": "local_checks_pass_live_acceptance_blocked",
+  "testSuites": [
+    {
+      "name": "agent-core",
+      "command": "./node_modules/.bin/tsx --test --test-concurrency=1 test/*.test.ts",
+      "cwd": "agent-core",
+      "exitCode": 0,
+      "tests": 302,
+      "pass": 302,
+      "fail": 0,
+      "skipped": 0
+    },
+    {
+      "name": "platform",
+      "command": "npm --prefix platform test",
+      "exitCode": 0,
+      "tests": 152,
+      "pass": 152,
+      "fail": 0,
+      "skipped": 0
+    },
+    {
+      "name": "model-gateway",
+      "command": "npm --prefix model-gateway test",
+      "exitCode": 0,
+      "tests": 64,
+      "pass": 64,
+      "fail": 0,
+      "skipped": 0
+    }
+  ],
+  "totals": {
+    "tests": 518,
+    "pass": 518,
+    "fail": 0,
+    "skipped": 0
+  },
+  "initialParallelAgentCoreRun": {
+    "tests": 298,
+    "pass": 293,
+    "fail": 5,
+    "skipped": 0,
+    "failure": "Existing pinned-runtime temporary-directory teardown ENOTEMPTY races; affected files passed16/16 serial and final full suite passed302/302 serial. Teardown code unchanged."
+  },
+  "builds": [
+    {
+      "command": "npm --prefix agent-core run build -- --outDir /tmp/truex-correctness-agent-build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm --prefix platform run build -- --outDir /tmp/truex-correctness-platform-build",
+      "exitCode": 0
+    },
+    {
+      "command": "npm --prefix model-gateway run build -- --outDir /tmp/truex-correctness-model-build",
+      "exitCode": 0
+    }
+  ],
+  "strictTypeChecks": {
+    "changedTests": {
+      "passed": true,
+      "fileCount": 6
+    },
+    "experimentScripts": {
+      "passed": true,
+      "fileCount": 8
+    },
+    "options": [
+      "--noEmit",
+      "--strict",
+      "--esModuleInterop",
+      "--resolveJsonModule",
+      "--skipLibCheck",
+      "--target ES2022",
+      "--module commonjs",
+      "--moduleResolution node"
+    ],
+    "finalCombinedCommandPassed": true
+  },
+  "formatting": {
+    "changedCodePassed": true,
+    "changedCodeFiles": 19,
+    "repositoryWide": {
+      "exitCode": 1,
+      "preexistingUnchangedViolationFiles": 58,
+      "unrelatedFilesReformatted": false
+    }
+  },
+  "lint": {
+    "status": "not_configured",
+    "scope": ["agent-core", "platform", "model-gateway"],
+    "detail": "No separate lint command configured for these packages; TypeScript and Prettier checks ran."
+  },
+  "gitDiffCheck": {
+    "exitCode": 0
+  },
+  "codexIntegrity": {
+    "revision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
+    "clean": true,
+    "statusPorcelain": ""
+  },
+  "baselineIntegrity": {
+    "filesChecked": 1693,
+    "modifiedSinceTaskStart": [
+      "agent-core/src/adaptive-mcp-gateway-v2.ts",
+      "agent-core/src/adaptive-model-boundary-v2.ts",
+      "agent-core/src/adaptive-session-v2.ts",
+      "agent-core/src/mcp-transport-v2.ts",
+      "agent-core/src/tool-router-v2.ts",
+      "agent-core/test/adaptive-mcp-gateway-v2.test.ts",
+      "agent-core/test/adaptive-model-boundary-v2.test.ts",
+      "agent-core/test/adaptive-session-v2.test.ts",
+      "agent-core/test/tool-router-v2.test.ts",
+      "platform/scripts/benchmark-five-message-mcp-v2.ts",
+      "platform/scripts/report-five-message-mcp-v2.ts"
+    ],
+    "missingSinceTaskStart": [],
+    "newSinceTaskStart": [
+      "agent-core/test/adaptive-correctness-security.test.ts",
+      "agent-core/test/mcp-transport-v2.test.ts",
+      "docs/adaptive-correctness-fix/IMPLEMENTATION_REPORT.md",
+      "docs/adaptive-correctness-fix/ROOT_CAUSE.md",
+      "docs/adaptive-correctness-fix/captured-catalog-routing-trace.json",
+      "docs/adaptive-correctness-fix/captured-catalog-routing-trace.md",
+      "docs/adaptive-correctness-fix/catalog-readiness-recheck.json",
+      "docs/adaptive-correctness-fix/catalog-readiness.json",
+      "docs/adaptive-correctness-fix/codex-protocol-capture.json",
+      "docs/adaptive-correctness-fix/direct-rust-catalog-health.json",
+      "docs/adaptive-correctness-fix/hydration-diagnostic.json",
+      "docs/adaptive-correctness-fix/hydration-rust-counterfactual.json",
+      "docs/adaptive-correctness-fix/live/CORRECTNESS_GATE.md",
+      "docs/adaptive-correctness-fix/live/correctness-verification.json",
+      "docs/adaptive-correctness-fix/service-access-audit.json",
+      "docs/adaptive-correctness-fix/validation.json",
+      "platform/scripts/check-adaptive-catalog.ts",
+      "platform/scripts/diagnose-codex-mcp-protocol.ts",
+      "platform/scripts/diagnose-direct-codex-mcp.ts",
+      "platform/scripts/diagnose-mcp-hydration.ts",
+      "platform/scripts/trace-adaptive-correctness-routing.ts",
+      "platform/scripts/verify-adaptive-correctness.ts",
+      "docs/adaptive-correctness-fix/service-http-status.json"
+    ],
+    "protectedFilesChecked": 117,
+    "protectedFilesUnchanged": true,
+    "detail": "Baseline contains tracked and non-ignored untracked existing files. Ignored production env files were not written by this task; they are not represented as baseline hashes."
+  },
+  "liveGate": {
+    "status": "blocked",
+    "performanceClaimsAllowed": false,
+    "newProviderCalls": null,
+    "newInputTokens": null,
+    "newOutputTokens": null,
+    "businessEvidenceParity": "not_verified",
+    "reason": "Fresh authenticated MCP initialize times out before HTTP headers; no identified service log/admin access.",
+    "lastProbe": {
+      "path": "catalog-readiness-recheck.json",
+      "createdAt": "2026-10-03T10:19:33.110Z",
+      "completedAt": "2026-10-03T10:20:35.575Z",
+      "ready": false,
+      "registryState": "failed",
+      "upstreamToolCount": 0,
+      "attempts": 2,
+      "error": {
+        "message": "The operation was aborted due to timeout",
+        "kind": "timeout",
+        "stage": "initialize",
+        "retryable": true
+      },
+      "modelCalls": 0,
+      "businessCalls": 0
+    },
+    "serviceStatusEvidence": "service-http-status.json"
+  },
+  "capturedCatalogDemo": {
+    "path": "captured-catalog-routing-trace.json",
+    "evidenceKind": "captured-catalog-only",
+    "networkCalls": 0,
+    "modelCalls": 0,
+    "businessCalls": 0,
+    "countsAreNotLiveBenchmark": true
+  },
+  "productionChanges": {
+    "environmentFilesWritten": false,
+    "databaseRecordsWritten": false,
+    "remoteRestarts": false,
+    "pinnedCodexModified": false,
+    "defaultRoutingChanged": false
+  },
+  "sourceSha256": {
+    "agent-core/src/adaptive-mcp-gateway-v2.ts": "d6cb5ea102c907b62ea6d626e2541ab63670471ed5c8203e5956ce9564b4f796",
+    "agent-core/src/adaptive-model-boundary-v2.ts": "86570ba664905905dc684e39e93f3040ae7d6a0817a32a367b025b6a2c51a2e6",
+    "agent-core/src/adaptive-session-v2.ts": "106910a418b9ea002a86a7bfb72bdc1dd0e4f8eda8b4f9e00968b84f34210da7",
+    "agent-core/src/mcp-transport-v2.ts": "40ff3abd9cb79ca2f4437518e399393e92f88a6b779a7105c97513cc65cb2bcc",
+    "agent-core/src/tool-router-v2.ts": "17a665b60af1d71eeff825b62e731db248ead96a930fe82f5c14c40d819dda2a",
+    "agent-core/test/adaptive-mcp-gateway-v2.test.ts": "3f6ac72805b11e1b4f1816139c8ded5aef2ee9ca54c8d733fd4ddb88e0a031f0",
+    "agent-core/test/adaptive-model-boundary-v2.test.ts": "aaf93e555c097152f97a0ddb6245dc30c46bb77e0da6bfd0ba98d09611893253",
+    "agent-core/test/adaptive-session-v2.test.ts": "a9004f3b031f345e591f4a79694a80039c58eb513720c72aab4d0e90930e0bcc",
+    "agent-core/test/tool-router-v2.test.ts": "488190dc07338ad1e26ce2b546aac7e9005c9df636019478a988bc2c44e632e6",
+    "platform/scripts/benchmark-five-message-mcp-v2.ts": "986f4b66c45466523cc10c813de22a0f2ff3e621e1bbaf249dcbe6f262dbfbe8",
+    "platform/scripts/report-five-message-mcp-v2.ts": "c0e51a6d4e157c4eaafd80d448df3a7a5c1f6008b931fdd7f3c16179c464b43e",
+    "agent-core/test/adaptive-correctness-security.test.ts": "e287bf5ffd8158cdee620931064a3f6da39d612d11cdfe21dd3cb460a27e56a7",
+    "agent-core/test/mcp-transport-v2.test.ts": "da62ae72bf2f370db247c537276a60baacee69cc6822d20596800fbd398c69e4",
+    "platform/scripts/check-adaptive-catalog.ts": "7c6c8d25cfb15a132be209bf93d31c76f00d34b319aa38916e13961aab552274",
+    "platform/scripts/diagnose-codex-mcp-protocol.ts": "6259f9c89f58cb76b8bf5096d894572ad0b2176873af0eeab8af3d50c0b749f5",
+    "platform/scripts/diagnose-direct-codex-mcp.ts": "bb2905a06f4ff7ae49a31b44944d613cbbb8ee8f29c3fa68a9d44279ad0a25d1",
+    "platform/scripts/diagnose-mcp-hydration.ts": "2d52a4b05f9b335b6b183409c7389ff7bd96e5ebe4eeadc9c49c126ed9ec864c",
+    "platform/scripts/trace-adaptive-correctness-routing.ts": "d6109f24fad6ab2be145ca9e49528aaf417a92581b0a42a06b134799e82243bd",
+    "platform/scripts/verify-adaptive-correctness.ts": "a1658d759675e95b26ce2c0a75e84ca1bd1dba2fdf443485f482eecf2c305b7f"
+  }
+}
