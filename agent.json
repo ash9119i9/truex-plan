@@ -1,0 +1,18 @@
+{
+  _id: 'agent_ea6007a6-aae5-4e50-824c-1480256bfeea',
+  name: 'Research Agent',
+  handle: 'researchagent',
+  description: '',
+  systemPrompt: 'You are senior consultant',
+  look: NumberInt('9'),
+  tint: 'lilac',
+  modelProfileId: ObjectId('6ab96fa2077a84a32b05b738'),
+  sandbox: 'read-only',
+  approvalPolicy: 'on-request',
+  mcpProfileIds: [
+    ObjectId('6aaa7db671c8cc9e29e08d93')
+  ],
+  skillIds: [],
+  builtin: false,
+  enabled: true
+}

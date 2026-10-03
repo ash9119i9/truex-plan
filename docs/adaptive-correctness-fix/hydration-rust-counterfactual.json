@@ -1,0 +1,239 @@
+{
+  "createdAt": "2026-10-03T09:48:39.396Z",
+  "evidence": "Read-only protocol/transport diagnostics; no model calls or business tool execution; credentials and raw session IDs excluded",
+  "endpoint": "https://quality.ktern.com/qlik-mcp/",
+  "nodeVersion": "v24.21.0",
+  "timeoutMs": 20000,
+  "proxyEnvironmentPresence": {
+    "HTTP_PROXY": false,
+    "HTTPS_PROXY": false,
+    "ALL_PROXY": false,
+    "NO_PROXY": false,
+    "http_proxy": false,
+    "https_proxy": false,
+    "all_proxy": false,
+    "no_proxy": false
+  },
+  "dns": [
+    {
+      "type": "A",
+      "addresses": [
+        "52.91.220.245"
+      ]
+    },
+    {
+      "type": "AAAA",
+      "error": {
+        "name": "Error",
+        "code": "ENODATA"
+      }
+    },
+    {
+      "type": "lookup",
+      "addresses": [
+        {
+          "address": "52.91.220.245",
+          "family": 4
+        }
+      ]
+    }
+  ],
+  "attempts": [
+    {
+      "client": "node-fetch",
+      "label": "concurrent-gateway-baseline",
+      "method": "initialize",
+      "requestedProtocol": "2025-03-26",
+      "at": "2026-10-03T09:48:18.880Z",
+      "timeoutMs": 20000,
+      "error": {
+        "name": "TimeoutError",
+        "code": 23
+      },
+      "failureStage": "before-headers",
+      "totalMs": 20005.558291999998
+    },
+    {
+      "client": "node-fetch",
+      "label": "actual-rust-body-headers",
+      "method": "initialize",
+      "requestedProtocol": "2025-06-18",
+      "at": "2026-10-03T09:48:18.898Z",
+      "timeoutMs": 20000,
+      "error": {
+        "name": "TimeoutError",
+        "code": 23
+      },
+      "failureStage": "before-headers",
+      "totalMs": 19999.962457999998
+    },
+    {
+      "client": "node-https",
+      "label": "actual-rust-body-headers",
+      "method": "initialize",
+      "requestedProtocol": "2025-06-18",
+      "at": "2026-10-03T09:48:18.899Z",
+      "timeoutMs": 20000,
+      "lookupMs": 11.811833999999635,
+      "tcpConnectMs": 247.6725419999998,
+      "remoteAddress": "52.91.220.245",
+      "tlsConnectMs": 490.6587089999998,
+      "error": {
+        "name": "TimeoutError"
+      },
+      "failureStage": "before-headers",
+      "totalMs": 20497.086709
+    },
+    {
+      "client": "curl-http1.1",
+      "label": "actual-rust-body-headers",
+      "method": "initialize",
+      "requestedProtocol": "2025-06-18",
+      "at": "2026-10-03T09:48:18.902Z",
+      "timeoutMs": 20000,
+      "exitCode": 28,
+      "totalMs": 20021.901875,
+      "failureStage": "before-headers",
+      "error": {
+        "name": "CurlFailure",
+        "code": 28,
+        "message": "curl: (28) Operation timed out after 20005 milliseconds with 0 bytes received"
+      }
+    },
+    {
+      "client": "node-fetch",
+      "label": "rust-plus-initialize-protocol-header",
+      "method": "initialize",
+      "requestedProtocol": "2025-06-18",
+      "at": "2026-10-03T09:48:18.906Z",
+      "timeoutMs": 20000,
+      "error": {
+        "name": "TimeoutError",
+        "code": 23
+      },
+      "failureStage": "before-headers",
+      "totalMs": 20000.533292
+    },
+    {
+      "client": "node-fetch",
+      "label": "gateway-body-rust-headers",
+      "method": "initialize",
+      "requestedProtocol": "2025-03-26",
+      "at": "2026-10-03T09:48:18.907Z",
+      "timeoutMs": 20000,
+      "error": {
+        "name": "TimeoutError",
+        "code": 23
+      },
+      "failureStage": "before-headers",
+      "totalMs": 20000.260833
+    }
+  ],
+  "networkEvents": [
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:18.907Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:18.908Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:18.908Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:18.909Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:19.368Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:19.384Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:19.393Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:19.401Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    },
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:38.887Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:38.898Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:38.907Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:beforeConnect",
+      "at": "2026-10-03T09:48:38.908Z",
+      "hostname": "quality.ktern.com",
+      "port": ""
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:39.358Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:39.360Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:39.360Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    },
+    {
+      "type": "undici:client:connected",
+      "at": "2026-10-03T09:48:39.372Z",
+      "hostname": "quality.ktern.com",
+      "port": "",
+      "remoteAddress": "52.91.220.245"
+    }
+  ],
+  "caveat": "Sequential protocol arms and concurrent client probes are diagnostic counterfactuals; differing outcomes establish the observed transport boundary, not automatically the upstream implementation's reason."
+}

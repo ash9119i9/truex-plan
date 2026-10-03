@@ -1,0 +1,178 @@
+{
+  "at": "2026-10-03T00:24:57.227Z",
+  "agentId": "agent_ea6007a6-aae5-4e50-824c-1480256bfeea",
+  "inputMode": "documents",
+  "stage": "turn-wait",
+  "tenant": "default",
+  "calls": [
+    {
+      "index": 1,
+      "parts": [
+        {
+          "label": "Instructions (platform + Codex runtime)",
+          "chars": 8740,
+          "estimatedTokens": 2185
+        },
+        {
+          "label": "developer instructions",
+          "chars": 4106,
+          "estimatedTokens": 1027
+        },
+        {
+          "label": "User messages / environment context",
+          "chars": 137,
+          "estimatedTokens": 35
+        },
+        {
+          "label": "Tool schema: list_mcp_resources",
+          "chars": 628,
+          "estimatedTokens": 157
+        },
+        {
+          "label": "Tool schema: list_mcp_resource_templates",
+          "chars": 717,
+          "estimatedTokens": 180
+        },
+        {
+          "label": "Tool schema: read_mcp_resource",
+          "chars": 526,
+          "estimatedTokens": 132
+        },
+        {
+          "label": "Tool schema: update_plan",
+          "chars": 733,
+          "estimatedTokens": 184
+        },
+        {
+          "label": "Tool schema: request_user_input",
+          "chars": 1366,
+          "estimatedTokens": 342
+        },
+        {
+          "label": "Tool schema: multi_agent_v1",
+          "chars": 10072,
+          "estimatedTokens": 2518
+        },
+        {
+          "label": "Tool schema: get_goal",
+          "chars": 281,
+          "estimatedTokens": 71
+        },
+        {
+          "label": "Tool schema: create_goal",
+          "chars": 760,
+          "estimatedTokens": 190
+        },
+        {
+          "label": "Tool schema: update_goal",
+          "chars": 1940,
+          "estimatedTokens": 485
+        },
+        {
+          "label": "Tool schema: create_visualization",
+          "chars": 635,
+          "estimatedTokens": 159
+        },
+        {
+          "label": "Tool schema: conversation_files",
+          "chars": 244,
+          "estimatedTokens": 61
+        },
+        {
+          "label": "Tool schema: read_conversation_file",
+          "chars": 443,
+          "estimatedTokens": 111
+        },
+        {
+          "label": "Tool schema: create_document",
+          "chars": 1223,
+          "estimatedTokens": 306
+        },
+        {
+          "label": "Tool schema: write_file",
+          "chars": 776,
+          "estimatedTokens": 194
+        },
+        {
+          "label": "Tool schema: append_file",
+          "chars": 675,
+          "estimatedTokens": 169
+        },
+        {
+          "label": "Tool schema: edit_file",
+          "chars": 786,
+          "estimatedTokens": 197
+        },
+        {
+          "label": "Tool schema: read_file",
+          "chars": 687,
+          "estimatedTokens": 172
+        },
+        {
+          "label": "Tool schema: list_files",
+          "chars": 528,
+          "estimatedTokens": 132
+        },
+        {
+          "label": "Tool schema: search_files",
+          "chars": 818,
+          "estimatedTokens": 205
+        },
+        {
+          "label": "Tool schema: delete_file",
+          "chars": 457,
+          "estimatedTokens": 115
+        },
+        {
+          "label": "Tool schema: export_workspace_file",
+          "chars": 635,
+          "estimatedTokens": 159
+        }
+      ],
+      "usage": {
+        "input": 7949,
+        "cached": 0,
+        "output": 103,
+        "reasoning": 0,
+        "total": 8052
+      },
+      "status": 200,
+      "outputParts": [
+        {
+          "label": "Assistant messages",
+          "chars": 579,
+          "estimatedTokens": 145
+        }
+      ]
+    }
+  ],
+  "outcome": "completed",
+  "inventory": [
+    {
+      "label": "Base instructions + connector instructions",
+      "chars": 1372,
+      "estimatedTokens": 343
+    },
+    {
+      "label": "Attached connector names (configuration only)",
+      "chars": 20,
+      "estimatedTokens": 5
+    }
+  ],
+  "model": "claude-sonnet-5",
+  "threadId": "01a0ff26-56ac-7790-874a-712ad30933a1",
+  "turnId": "01a0ff26-571f-7ba0-8e7f-bd659cd02446",
+  "response": "Hi, I'm your Truex assistant. I can help with:\n\n- Answering questions and summarizing documents you share with me\n- Researching current information via web search, with sourced links\n- Creating downloadable documents (PDF, Word, Excel, PowerPoint)\n- Building interactive visuals and explainers within our conversation\n- Pulling and explaining business data through connected systems like Qlik, when relevant\n\nWhat would you like help with today?",
+  "terminal": true,
+  "runtimeUsage": {
+    "inputTokens": 7949,
+    "cachedInputTokens": 0,
+    "outputTokens": 103,
+    "reasoningOutputTokens": 0,
+    "totalTokens": 8052,
+    "contextWindow": 258400,
+    "contextUsedTokens": 7949
+  },
+  "helperUsage": null,
+  "durationMs": 7159
+}
