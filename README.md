@@ -72,6 +72,26 @@ For gateway profiles the platform never sends the provider key to agent-core. Co
 
 Setup: set `MODEL_GATEWAY_URL` and `MODEL_GATEWAY_SECRET` in `platform/.env`, and the same `MODEL_GATEWAY_SECRET` plus `MONGO_URI`/`MONGO_DB` in `model-gateway/.env`. `npm run dev` starts the gateway when `model-gateway/.env` exists and warns if the two secrets differ. Without the gateway configured, gateway profiles fail with a 422 `GATEWAY_NOT_CONFIGURED` error and direct profiles are unaffected. Codex's built-in web search is disabled for non-Responses providers.
 
+### Model gateway container
+
+Build from the repository root. On the ARM64 EC2 instance:
+
+```sh
+docker buildx build --platform linux/arm64 --load \
+  -f model-gateway/Dockerfile -t truex-model-gateway:local .
+
+docker run -d --name truex-model-gateway --restart unless-stopped \
+  --init --stop-timeout 45 \
+  --env-file model-gateway/.env -e HOST=0.0.0.0 -e PORT=4200 \
+  -p 127.0.0.1:4200:4200 truex-model-gateway:local
+
+curl --fail http://127.0.0.1:4200/ready
+```
+
+The image compiles TypeScript and includes production dependencies and the shared token implementation. It runs as the `node` user and checks `/ready`, including MongoDB connectivity. The Dockerfile-specific build context excludes credentials, local dependencies and Codex artifacts; supply settings with `--env-file` at startup. Set `MONGO_URI` to a database reachable from the container; `127.0.0.1` inside the container refers to the container itself.
+
+The command binds port 4200 to the EC2 host's loopback address for an HTTPS reverse proxy on that host. Configure the proxy to forward to `http://127.0.0.1:4200`, preserve streaming (disable response buffering) and allow long model responses. Set `MODEL_GATEWAY_URL` in `platform/.env` to the reachable HTTPS base URL, restart the platform and create a new conversation. Its signing secret must match the gateway's. For an internal load balancer, publish the port on the appropriate interface and restrict its security group to the load balancer.
+
 The platform does not silently change a provider or rewrite database records. Missing sandbox/approval settings default to read-only/never.
 
 Run MongoDB separately or use an existing MongoDB instance, and point `MONGO_URI` at it. The repository does not alter unrelated MongoDB data or borrow credentials from other projects.
@@ -141,7 +161,7 @@ The tests include protocol/schema checks, concurrency, request expiry, disk-spoo
 
 ## Bedrock AgentCore image
 
-The root `Dockerfile` is the only deployment Dockerfile. It builds the pinned Codex executable for Linux ARM64, then packages Codex, agent-core and the AgentCore HTTP entrypoint. Model-gateway, frontend, platform and MongoDB run separately. The runtime image does not include model-gateway source or dependencies.
+The root `Dockerfile` builds the pinned Codex executable for Linux ARM64, then packages Codex, agent-core and the AgentCore HTTP entrypoint. The separate `model-gateway/Dockerfile` packages the gateway for EC2 or another container host. Frontend, platform and MongoDB run separately. The runtime image does not include model-gateway source or dependencies.
 
 Build the reusable binary first, then the runtime image:
 
@@ -188,4 +208,23 @@ JSON responses preserve the local HTTP status inside `{ "status": 201, "body": {
 
 Reuse the same AgentCore `runtimeSessionId` for all operations in a conversation. Configure persistent storage at `/mnt/state`; `CODEX_HOME` and `AGENT_WORKSPACE` point there. The image alone does not persist data across session termination. Managed session storage also resets on runtime version changes; choose storage and backups to match the required retention.
 
-The existing platform uses direct HTTP runtime addresses. Connecting it to Bedrock still requires an `InvokeAgentRuntime` transport and stable session-ID mapping; building this image does not implement that integration or publish anything to AWS.
+To run the frontend, platform and model-gateway locally while invoking Codex on Bedrock, configure `platform/.env`:
+
+```env
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:502055890667:runtime/truex_codex-Z4fv9HDC8F
+MODEL_GATEWAY_URL=https://your-reachable-gateway.example.com
+```
+
+Keep the existing shared `MODEL_GATEWAY_SECRET` and MongoDB settings. The gateway URL must be reachable from AgentCore; a gateway on the developer laptop's `127.0.0.1` cannot receive requests from AWS. Private gateway endpoints require AgentCore VPC connectivity. Gateway-backed profiles with a loopback gateway URL are rejected before starting a conversation.
+
+Authenticate with AWS (`aws login` for local console credentials, or configure a role/profile), then run `npm run dev`. When `AGENTCORE_RUNTIME_ARN` is configured, the launcher starts platform, frontend and model-gateway (when its `.env` exists), and the platform invokes the remote runtime using the AWS SDK. Each new conversation stores an `agentCoreSessionId` in MongoDB; creation, resume, messages, event streams and background ingestion reuse it. Streaming reconnects forward the event cursor. JSON envelopes preserve agent-core's original status and errors. AWS credentials stay in the platform process.
+
+Existing conversations keep their original runtime owner. Start a new conversation after switching from local HTTP to Bedrock; old local conversations are not moved into the remote runtime. The direct HTTP transport remains available when `AGENTCORE_RUNTIME_ARN` is unset. Building the image does not publish anything to AWS.
+
+After deploying the image, test the runtime using AWS CLI v2 and Node:
+
+```sh
+npm run agentcore:test -- arn:aws:bedrock-agentcore:us-east-1:502055890667:runtime/truex_codex-Z4fv9HDC8F
+```
+
+The script calls `InvokeAgentRuntime` with JSON operation envelopes, starts Codex through `/healthz`, verifies the deployed revision against `codex.lock.json` and writable storage, checks `/capabilities`, then repeats health in the same runtime session. It exits nonzero on a failed check and saves requests, responses and a summary under `.runtime/agentcore-tests/<session-id>/`. Pass a session ID as a second argument to reuse a session. AWS CLI uses your configured credentials (or `AWS_PROFILE`); the caller needs `bedrock-agentcore:InvokeAgentRuntime` permission on the runtime. This smoke test does not call a model or test model-gateway connectivity.

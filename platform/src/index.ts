@@ -634,18 +634,14 @@ async function main() {
       res.on("close", () => abort.abort());
       let upstream: globalThis.Response;
       try {
-        upstream = await fetch(
-          `${s.agentCoreHost}/threads/${s.threadId}/events`,
-          {
-            signal: abort.signal,
-            headers: {
-              [REQUEST_ID_HEADER]: requestId,
-              "Last-Event-ID":
-                req.get("Last-Event-ID") || String(req.query.cursor || ""),
-            },
-          },
+        upstream = await service.events(
+          s,
+          req.get("Last-Event-ID") || String(req.query.cursor || ""),
+          abort.signal,
+          requestId,
         );
       } catch (error) {
+        if (error instanceof ApiError) throw error;
         throw new ApiError(
           503,
           "Live updates cannot connect to the assistant service. Reopen the conversation when the service is available.",

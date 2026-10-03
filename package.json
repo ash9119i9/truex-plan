@@ -11,6 +11,7 @@
     "codex:verify": "node scripts/codex.mjs",
     "codex:artifact": "docker buildx build --platform linux/arm64 --target codex-artifact --output type=local,dest=.runtime/agentcore .",
     "agentcore:build": "docker buildx build --platform linux/arm64 --target runtime --load -t truex-agentcore:local .",
+    "agentcore:test": "node scripts/agentcore-smoke.mjs",
     "demo": "node scripts/demo.mjs",
     "tenant": "node scripts/tenant.mjs",
     "admin": "node scripts/admin.mjs",

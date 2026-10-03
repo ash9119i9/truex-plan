@@ -42,7 +42,7 @@ import {
 import { ApiError } from "./errors";
 export { ApiError } from "./errors";
 import { currentRequestId } from "./http";
-import { errorFields, log, REQUEST_ID_HEADER } from "../../shared/logging";
+import { errorFields, log } from "../../shared/logging";
 // Owner failures the platform acts on (failover, orphaned/dead sessions) or
 // that tell the user what to do; they keep their upstream status.
 const OWNER_CODES = new Set([
@@ -98,6 +98,11 @@ import {
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
 import { currentTenant, currentTenantId } from "./tenant";
 import { currentUser, userId } from "./user";
+import {
+  RuntimeTransport,
+  isAgentCoreRuntime,
+  runtimeHosts,
+} from "./runtime-transport";
 import { checkProject, checkSession, ownerFilter, type Access } from "./access";
 // Codex edits an objective in place, so the creation time identifies a goal.
 function sameGoal(saved: SessionGoal | undefined, goal: Goal) {
@@ -274,12 +279,9 @@ export class PlatformService {
   private nextHost = 0;
   constructor(
     readonly store: Store,
-    hosts = (
-      process.env.AGENT_CORE_URLS ||
-      process.env.AGENT_CORE_URL ||
-      "http://127.0.0.1:4100"
-    ).split(","),
+    hosts = runtimeHosts(),
     readonly approvalModes = approvalModesConfig(),
+    readonly transport = new RuntimeTransport(),
   ) {
     this.hosts = hosts.map((x) => x.trim().replace(/\/$/, ""));
   }
@@ -288,28 +290,30 @@ export class PlatformService {
     path: string,
     method = "GET",
     body?: unknown,
+    runtimeSessionId?: string,
   ): Promise<any> {
     if (!this.hosts.includes(host))
       throw new ApiError(
         503,
-        "Session owner is not in AGENT_CORE_URLS",
+        "This conversation's runtime is not configured. Start a new conversation.",
         "OWNER_UNCONFIGURED",
       );
     let response: Response;
     try {
-      response = await fetch(host + path, {
+      response = await this.transport.request({
+        owner: host,
+        path,
         method,
-        headers: {
-          "Content-Type": "application/json",
-          ...(currentRequestId()
-            ? { [REQUEST_ID_HEADER]: currentRequestId()! }
-            : {}),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(35000),
+        body,
+        requestId: currentRequestId(),
+        sessionId: runtimeSessionId,
       });
     } catch (error) {
-      if (error instanceof Error && error.name === "TimeoutError")
+      if (error instanceof ApiError) throw error;
+      if (
+        error instanceof Error &&
+        ["TimeoutError", "AbortError"].includes(error.name)
+      )
         throw new ApiError(
           504,
           "The assistant service timed out. Check the conversation before retrying; the request may have been accepted.",
@@ -521,6 +525,30 @@ export class PlatformService {
         "GATEWAY_NOT_CONFIGURED",
       );
     const id = String(profile._id);
+    if (this.hosts.some(isAgentCoreRuntime)) {
+      let hostname: string;
+      try {
+        hostname = new URL(gateway.url).hostname.toLowerCase();
+      } catch {
+        throw new ApiError(
+          422,
+          "The model gateway address is invalid. Ask your administrator to configure it.",
+          "GATEWAY_NOT_CONFIGURED",
+        );
+      }
+      if (
+        hostname === "localhost" ||
+        hostname === "localhost." ||
+        hostname === "[::1]" ||
+        hostname === "0.0.0.0" ||
+        /^127\./.test(hostname)
+      )
+        throw new ApiError(
+          422,
+          "The model gateway address cannot be reached from the deployed assistant. Ask your administrator to configure a reachable gateway.",
+          "GATEWAY_UNREACHABLE",
+        );
+    }
     return {
       // Codex's built-in web search runs only on OpenAI's Responses backend.
       web_search:
@@ -1081,10 +1109,17 @@ export class PlatformService {
     Object.assign(config, this.modeOptions());
     let host = "",
       thread: any;
+    const runtimeSessionId = randomUUID();
     for (let n = 0; n < this.hosts.length; n++) {
       host = this.hosts[this.nextHost++ % this.hosts.length];
       try {
-        thread = await this.call(host, "/threads", "POST", config);
+        thread = await this.call(
+          host,
+          "/threads",
+          "POST",
+          config,
+          runtimeSessionId,
+        );
         break;
       } catch (e) {
         if (
@@ -1102,6 +1137,9 @@ export class PlatformService {
       agentId,
       threadId: thread.threadId,
       agentCoreHost: host,
+      ...(isAgentCoreRuntime(host)
+        ? { agentCoreSessionId: runtimeSessionId }
+        : {}),
       status: "active",
       cwd: config.cwd,
       createdAt: new Date().toISOString(),
@@ -1115,9 +1153,13 @@ export class PlatformService {
     try {
       await this.store.sessions.insertOne(session);
     } catch (e) {
-      await this.call(host, `/threads/${thread.threadId}`, "DELETE").catch(
-        () => {},
-      );
+      await this.call(
+        host,
+        `/threads/${thread.threadId}`,
+        "DELETE",
+        undefined,
+        runtimeSessionId,
+      ).catch(() => {});
       throw e;
     }
     if (session.projectId) await this.touchProject(session.projectId);
@@ -1243,6 +1285,7 @@ export class PlatformService {
         `/threads/${session.threadId}${path}`,
         method,
         body,
+        session.agentCoreSessionId,
       );
     } catch (e) {
       if (
@@ -1266,6 +1309,27 @@ export class PlatformService {
     return (Array.isArray(agents) ? agents : [])
       .map(publicSubAgent)
       .filter(Boolean);
+  }
+  async events(
+    session: Session,
+    cursor: string,
+    signal: AbortSignal,
+    requestId?: string,
+  ) {
+    if (!this.hosts.includes(session.agentCoreHost))
+      throw new ApiError(
+        503,
+        "Session owner is not configured",
+        "OWNER_UNCONFIGURED",
+      );
+    return this.transport.request({
+      owner: session.agentCoreHost,
+      path: `/threads/${session.threadId}/events`,
+      sessionId: session.agentCoreSessionId,
+      cursor,
+      requestId,
+      signal,
+    });
   }
   async subAgent(id: string, agentId: string) {
     const transcript = publicSubAgentTranscript(
@@ -1556,10 +1620,7 @@ export class PlatformService {
     };
   }
   async ingest(s: Session) {
-    const records = await this.call(
-      s.agentCoreHost,
-      `/threads/${s.threadId}/records`,
-    );
+    const records = await this.owned(s, "/records");
     for (const record of records) {
       const event = record.event;
       if (event?.type === "goal.updated" || event?.type === "goal.cleared") {
@@ -1579,12 +1640,9 @@ export class PlatformService {
       await this.store.persist(s._id, event);
     }
     if (records.length)
-      await this.call(
-        s.agentCoreHost,
-        `/threads/${s.threadId}/records/ack`,
-        "POST",
-        { keys: records.map((r: any) => r.key) },
-      );
+      await this.owned(s, "/records/ack", "POST", {
+        keys: records.map((r: any) => r.key),
+      });
   }
   startIngestion() {
     this.timer = setInterval(() => {
@@ -1609,6 +1667,7 @@ export class PlatformService {
           for await (const s of this.store.sessions.find({
             status: { $ne: "dead" },
             runtimePolicyVersion: POLICY_VERSION,
+            agentCoreHost: { $in: this.hosts },
           }))
             await this.ingest(s).catch((error) =>
               log("warn", "persistence ingestion failed", {
@@ -1625,6 +1684,7 @@ export class PlatformService {
   }
   stop() {
     if (this.timer) clearInterval(this.timer);
+    this.transport.close();
   }
   async command(
     id: string,
