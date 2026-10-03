@@ -96,6 +96,30 @@ The platform does not silently change a provider or rewrite database records. Mi
 
 Run MongoDB separately or use an existing MongoDB instance, and point `MONGO_URI` at it. The repository does not alter unrelated MongoDB data or borrow credentials from other projects.
 
+## Platform container
+
+Build the platform backend from the repository root on the ARM64 EC2 instance:
+
+```sh
+docker buildx build --platform linux/arm64 --load \
+  -f platform/Dockerfile -t truex-platform:local .
+
+docker run -d --name truex-platform --restart unless-stopped \
+  --init --stop-timeout 15 \
+  --env-file platform/.env -e HOST=0.0.0.0 -e PORT=4000 \
+  -p 127.0.0.1:4000:4000 truex-platform:local
+
+curl --fail http://127.0.0.1:4000/livez
+```
+
+The image compiles the backend and shared code, includes production dependencies, and runs as the `node` user. Supply configuration at startup; `.env` files and local build artifacts are excluded from the build context.
+
+For this AgentCore deployment, set `AGENTCORE_RUNTIME_ARN`, a reachable `MONGO_URI`, `MONGO_DB`, `MODEL_GATEWAY_URL` and the matching `MODEL_GATEWAY_SECRET` in `platform/.env`. The production platform requires `AUTH_MODE=google`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, the deployed `FRONTEND_ORIGIN`, and `RESEND_API_KEY`; set `APP_PUBLIC_URL` and `INVITE_FROM_EMAIL` to your public app URL and verified sender. Existing development `.env` defaults need to be updated before starting the production container.
+
+Attach an EC2 instance role with `bedrock-agentcore:InvokeAgentRuntime` permission for the configured runtime. The AWS SDK reads that role's credentials at runtime; set the [EC2 metadata response hop limit](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-IMDS-new-instances.html) to 2 for Docker access. The image contains no AWS credentials. Configure an HTTPS reverse proxy to `http://127.0.0.1:4000`, disable response buffering for SSE, and allow at least 180 seconds for cold AgentCore requests. The frontend runs separately.
+
+The container health check uses `/livez` to check the platform process without repeatedly invoking AgentCore. Use `/healthz` separately to verify MongoDB and AgentCore connectivity.
+
 ## Credential-free demo
 
 ```sh
