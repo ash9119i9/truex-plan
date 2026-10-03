@@ -1,6 +1,40 @@
 # Prompt-cache verification with a new provider
 
-Status: **PENDING — rerun after a new model provider is configured.**
+Status: **ATTEMPTED — Google generation timed out; caching verification remains pending.**
+
+## Google retest on 2026-10-02
+
+The user supplied Google profile `6abfc2c3cac1e27f48b52b25`, model
+`gemini-flash-latest`, at the direct Google `v1beta` endpoint. Model metadata
+lookup succeeded with HTTP 200 and advertised `createCachedContent` support.
+The supplied `wireApi: "google"` is unsupported by this application; the test
+used `wireApi: "gemini"` in memory, without changing the stored profile.
+
+The first original-gateway generation request timed out after 60 seconds
+(HTTP 504) without provider response headers or usage. A separate short
+non-streaming generation request also timed out after 30 seconds. Cache reuse,
+cost savings and answer-quality comparisons remain **unverified**. See the
+[recorded attempt](../benchmark-reports/gemini-cache-live-retry-2026-10-02.md).
+
+The new Google benchmark compares the original and current gateways using
+identical Gemini requests and automatic caching. The earlier application changes
+do not add Gemini cache controls. Positive raw `cachedContentTokenCount` values
+can establish provider reuse; missing fields stay unknown even if the gateway
+response substitutes zero. This test creates no explicit cache objects.
+
+To repeat with private profile credentials in an ignored file:
+
+```sh
+npm --prefix model-gateway run benchmark:cache:gemini -- \
+  --profile-file ../.runtime/google-model-profile.json \
+  --blocks 2 --requests 3 \
+  --output ../benchmark-reports/gemini-cache-new-run
+```
+
+Use a fresh output name. Restrict credential-file permissions and remove the file
+after testing. The script records provider usage, actual model version when
+available, request/source hashes, answer correctness and failures. Billing tier
+and applicable rates are still needed to quantify monetary savings.
 
 Recorded on 2026-10-02 at the user's request. Preserve the current implementation
 and benchmark evidence on `feat/application-prompt-caching`; verify caching,
@@ -54,9 +88,10 @@ npm --prefix model-gateway run benchmark:cache -- \
 Use a fresh output name for each run. Optional `--rates <path>` supplies the
 endpoint's documented rates; see the configuration guide for its JSON schema.
 Also run with `--policy default` to measure the new implementation using the
-original settings. The current live benchmark harness supports Anthropic-compatible
-profiles only; extend it for the new API format if the provider uses Chat,
-Responses or Gemini. Do not silently substitute a different provider or model.
+original settings. The `benchmark:cache` harness supports Anthropic-compatible
+profiles; `benchmark:cache:gemini` supports the direct Google endpoint as described
+above. Extend the harness for Chat or Responses. Do not silently substitute a
+different provider or model.
 
 ## Completion criteria
 

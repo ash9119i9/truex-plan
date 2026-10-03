@@ -1,0 +1,9 @@
+✔ tmp/ is cleared when a turn completes (61.419042ms)
+ℹ tests 273
+ℹ suites 0
+ℹ pass 273
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 32968.177334

@@ -43,7 +43,9 @@ import {
   grantKey,
   indexTools,
   isToolQuestion,
+  isOmniInvocation,
   parseToolQuestion,
+  singleCallApprovals,
   withChatGrant,
   type ToolIndex,
   type ToolRef,
@@ -1887,14 +1889,25 @@ export class ThreadManager {
       requestId,
       rawId: msg.id,
       method,
-      detail: this.redactor.clean(msg.params),
+      detail: singleCallApprovals(this.redactor.clean(msg.params)),
       expiresAt: new Date(Date.now() + this.requestTimeoutMs).toISOString(),
       responseSchema: responseSchema(method),
       timer: setTimeout(() => {
         // An unanswered question proceeds with its recommended option.
+        const questions = pending.detail?.questions;
+        const dispatcherOnly =
+          Array.isArray(questions) &&
+          questions.length > 0 &&
+          questions.every(isOmniInvocation);
         const auto =
           method === "item/tool/requestUserInput"
-            ? autoAnswer(pending.detail)
+            ? dispatcherOnly
+              ? {
+                  answers: Object.fromEntries(
+                    questions.map((q: any) => [q.id, { answers: ["Cancel"] }]),
+                  ),
+                }
+              : autoAnswer(pending.detail)
             : null;
         if (auto) this.settle(t, pending, auto, "auto-recommended");
         else this.settle(t, pending, defaults[method], "expired");
@@ -2008,7 +2021,7 @@ export class ThreadManager {
           q.options.some((o: any) => o?.label === "Allow");
         if (!ref || !offered) return null;
         answers[q.id] = { answers: ["Allow"] };
-        if (state.grants.has(grantKey(ref))) continue;
+        if (!isOmniInvocation(q) && state.grants.has(grantKey(ref))) continue;
         granted = false;
         if (mode === "auto") continue;
         if (mode === "readOnly" && (await this.readOnly(id, state, ref)))
@@ -2095,6 +2108,24 @@ export class ThreadManager {
         "STALE_REQUEST",
       );
     validateResponse(pending.method, result);
+    for (const q of Array.isArray(pending.detail?.questions)
+      ? pending.detail.questions
+      : []) {
+      if (!isOmniInvocation(q)) continue;
+      const values = (result as any)?.answers?.[q.id]?.answers;
+      if (
+        Array.isArray(values) &&
+        values.some(
+          (v: unknown) =>
+            v === ALLOW_FOR_CHAT || v === "Allow for this session",
+        )
+      )
+        throw new HttpError(
+          400,
+          "Dispatcher approval must apply to this call only",
+          "INVALID_APPROVAL_SCOPE",
+        );
+    }
     const wire = this.grant(t, pending, result);
     this.settle(t, pending, result, "user", true, wire);
     // A new grant may cover requests that are still waiting.

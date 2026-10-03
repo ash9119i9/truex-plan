@@ -1,0 +1,226 @@
+{
+  "createdAt": "2026-10-03T09:47:17.235Z",
+  "evidence": "Pinned Codex handshakes against a local capture server; no turn/start or inference request",
+  "revision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
+  "actualRequests": [
+    {
+      "at": "2026-10-03T09:47:17.218Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "215"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {
+            "elicitation": {
+              "form": {},
+              "url": {}
+            }
+          },
+          "clientInfo": {
+            "name": "codex-mcp-client",
+            "title": "Codex",
+            "version": "0.0.0"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-10-03T09:47:17.224Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "mcp-protocol-version": "2025-06-18",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "54"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+      }
+    },
+    {
+      "at": "2026-10-03T09:47:17.226Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "mcp-protocol-version": "2025-06-18",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "85"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": {
+          "_meta": {
+            "progressToken": 0
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-10-03T09:47:17.230Z",
+      "httpMethod": "GET",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "mcp-protocol-version": "2024-11-05",
+        "accept": "*/*",
+        "host": "127.0.0.1:58516"
+      },
+      "rpc": {}
+    },
+    {
+      "at": "2026-10-03T09:47:17.232Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "215"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "id": 0,
+        "method": "initialize",
+        "params": {
+          "protocolVersion": "2025-06-18",
+          "capabilities": {
+            "elicitation": {
+              "form": {},
+              "url": {}
+            }
+          },
+          "clientInfo": {
+            "name": "codex-mcp-client",
+            "title": "Codex",
+            "version": "0.0.0"
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-10-03T09:47:17.232Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "mcp-protocol-version": "2025-06-18",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "54"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized"
+      }
+    },
+    {
+      "at": "2026-10-03T09:47:17.233Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "mcp-protocol-version": "2025-06-18",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "85"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": {
+          "_meta": {
+            "progressToken": 0
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-10-03T09:47:17.234Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "mcp-protocol-version": "2025-06-18",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "89"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "resources/list",
+        "params": {
+          "_meta": {
+            "progressToken": 1
+          }
+        }
+      }
+    },
+    {
+      "at": "2026-10-03T09:47:17.234Z",
+      "httpMethod": "POST",
+      "headers": {
+        "user-agent": "codex-mcp-client/0.0.0",
+        "mcp-protocol-version": "2025-06-18",
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+        "host": "127.0.0.1:58516",
+        "content-length": "99"
+      },
+      "rpc": {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "method": "resources/templates/list",
+        "params": {
+          "_meta": {
+            "progressToken": 2
+          }
+        }
+      }
+    }
+  ],
+  "localModelCatalogRequests": [
+    {
+      "method": "GET",
+      "path": "/.well-known/oauth-protected-resource/mcp"
+    }
+  ],
+  "inferenceRequestCount": 0,
+  "status": {
+    "data": [
+      {
+        "name": "handshake_capture",
+        "pluginId": null,
+        "serverInfo": {
+          "name": "diagnostic-capture",
+          "title": null,
+          "version": "1",
+          "description": null,
+          "icons": null,
+          "websiteUrl": null
+        },
+        "tools": {},
+        "resources": [],
+        "resourceTemplates": [],
+        "authStatus": "unknown"
+      }
+    ],
+    "nextCursor": null
+  }
+}

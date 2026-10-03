@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-10-03T10:10:58.064Z",
+  "sourceDirectory": "/Users/ashok/truex-plan/docs/adaptive-correctness-fix/live",
+  "status": "blocked",
+  "performanceClaimsAllowed": false,
+  "exactMessages": [
+    "hi this is ashok ?",
+    "What is the capital of India ?",
+    "what are the Qlik apps ?",
+    "What is the capital of tamilnadu ?",
+    "Explain this qlik app T_DCF_BANKREC_P"
+  ],
+  "checks": [
+    {
+      "name": "direct: capture present",
+      "status": "blocked",
+      "detail": "No new live capture exists. Local fixtures and historical benchmark files are not a live rerun."
+    },
+    {
+      "name": "omni: capture present",
+      "status": "blocked",
+      "detail": "No new live capture exists. Local fixtures and historical benchmark files are not a live rerun."
+    },
+    {
+      "name": "adaptive: capture present",
+      "status": "blocked",
+      "detail": "No new live capture exists. Local fixtures and historical benchmark files are not a live rerun."
+    },
+    {
+      "name": "Direct/Adaptive: equal listing page",
+      "status": "blocked",
+      "detail": "Compare actual page size/limit/offset/returned/total and every app name/GUID/stream; reload timestamps are not a stable equality key."
+    },
+    {
+      "name": "Direct/Adaptive: same named-app identities",
+      "status": "blocked",
+      "detail": "Preserve duplicate-name alternatives and compare the actual GUID selected for details."
+    },
+    {
+      "name": "All modes: same pinned runtime",
+      "status": "blocked",
+      "detail": "Use the same pinned Codex revision; do not modify vendor code."
+    }
+  ],
+  "modes": {},
+  "limitations": [
+    "Provider counters are not independently verified billing; tool calls with reported output=0 are anomalous.",
+    "Exact per-component token attribution is unavailable; request component characters/bytes belong to the companion offline report.",
+    "Fixture and historical capture evidence cannot establish a new successful live replay.",
+    "This conservative gate requires full technical evidence; metadata-only parity is not complete task success.",
+    "Automated checks cover source identity, evidence parity and known false-claim patterns; they do not independently certify every sentence of the assistant's prose."
+  ]
+}
