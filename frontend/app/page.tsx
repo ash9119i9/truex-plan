@@ -67,6 +67,7 @@ import {
 import { AgentsPanel } from "@/components/agents-panel";
 import { SessionMenu, useProjects } from "@/components/project-sidebar";
 import { createSessionBody, draftProject } from "@/lib/projects";
+import { SessionPreparation } from "@/lib/session-preparation";
 import { HelperChip } from "@/components/helper-chip";
 import { transport } from "@/lib/transport";
 import { ApprovalModePicker } from "@/components/approval-mode-picker";
@@ -155,7 +156,13 @@ export default function Home() {
     [goalBudget, setGoalBudget] = useState<number | null>(null),
     [goalBudgetValid, setGoalBudgetValid] = useState(true),
     // The project a new chat will be created in (from a project's "+").
-    [draftProjectId, setDraftProjectId] = useState<string | null>(null);
+    [draftProjectId, setDraftProjectId] = useState<string | null>(null),
+    [draftActive, setDraftActive] = useState(true),
+    [draftVersion, setDraftVersion] = useState(0),
+    [preparationStatus, setPreparationStatus] = useState<{
+      key: string;
+      state: "pending" | "ready" | "failed";
+    } | null>(null);
   // Both panels start collapsed; the user opens them from the header.
   const [panels, setPanels] = useState({ sidebar: false, activity: false }),
     [panelSizes, setPanelSizes] = useState<
@@ -207,6 +214,8 @@ export default function Home() {
     composer = useRef<HTMLTextAreaElement>(null),
     following = useRef(true),
     generation = useRef(0),
+    preparation = useRef(new SessionPreparation<Session>()),
+    openingSession = useRef(false),
     sessionRef = useRef<Session | null>(null),
     seen = useRef(new Set<string>()),
     sending = useRef(false),
@@ -236,6 +245,23 @@ export default function Home() {
   const pendingProject = session
     ? null
     : draftProject(draftProjectId, projects.projects);
+  const preparationKey = JSON.stringify([
+    draftVersion,
+    agentId,
+    draftProjectId,
+    delegation.mode,
+    delegation.maxConcurrent,
+  ]);
+  const preparing =
+    draftActive &&
+    !session &&
+    preparationStatus?.key === preparationKey &&
+    preparationStatus.state === "pending";
+  const preparationFailed =
+    draftActive &&
+    !session &&
+    preparationStatus?.key === preparationKey &&
+    preparationStatus.state === "failed";
   // Mirror goal changes into the conversation list without a refetch.
   const syncSessionGoal = (id: string, next: Goal | null) =>
     setSessions((old) =>
@@ -252,6 +278,11 @@ export default function Home() {
     );
   const open = useCallback(async (id: string) => {
     const token = ++generation.current;
+    preparation.current.reset();
+    openingSession.current = true;
+    sending.current = false;
+    setDraftActive(false);
+    setPreparationStatus(null);
     setView("chat");
     setBusy(true);
     setError("");
@@ -329,7 +360,10 @@ export default function Home() {
     } catch (e) {
       if (token === generation.current) reportError(e);
     } finally {
-      if (token === generation.current) setBusy(false);
+      if (token === generation.current) {
+        openingSession.current = false;
+        setBusy(false);
+      }
     }
   }, []);
   // Browser-only preference; read after mount so server and client render match.
@@ -351,7 +385,10 @@ export default function Home() {
     api("/api/agents")
       .then((data) => {
         setAgents(data);
-        setAgentId(data[0]?.id || "");
+        // Restoring a saved chat owns its selection, regardless of which GET
+        // finishes first. Never prepare a default agent alongside that restore.
+        if (!openingSession.current && !sessionRef.current)
+          setAgentId((current) => current || data[0]?.id || "");
       })
       .catch(reportError)
       .finally(() => setLoading(false));
@@ -359,6 +396,37 @@ export default function Home() {
     const id = new URLSearchParams(location.search).get("session");
     if (id) void open(id);
   }, [open]);
+  useEffect(() => {
+    if (
+      loading ||
+      !agentId ||
+      view !== "chat" ||
+      !draftActive ||
+      sessionRef.current ||
+      openingSession.current
+    )
+      return;
+    let live = true;
+    const attempt = prepareSession();
+    setPreparationStatus({ key: attempt.key, state: "pending" });
+    void attempt.promise.then(
+      () => {
+        if (live && preparation.current.isCurrent(attempt))
+          setPreparationStatus({ key: attempt.key, state: "ready" });
+      },
+      (e) => {
+        if (live && preparation.current.isCurrent(attempt)) {
+          setPreparationStatus({ key: attempt.key, state: "failed" });
+          reportError(e);
+          void refreshSessions();
+        }
+      },
+    );
+    return () => {
+      live = false;
+      // Effect replay and leaving the board must reuse this draft's POST.
+    };
+  }, [preparationKey, loading, view, draftActive]);
   useEffect(() => {
     if (!session) return;
     const id = session._id;
@@ -545,6 +613,12 @@ export default function Home() {
   // A plain new chat clears any project; a project's "+" passes its id.
   function startDraft(projectId: string | null = null) {
     generation.current++;
+    preparation.current.reset();
+    openingSession.current = false;
+    sending.current = false;
+    setDraftActive(true);
+    setDraftVersion(generation.current);
+    setPreparationStatus(null);
     setView("chat");
     setDraftProjectId(projectId);
     setText("");
@@ -607,6 +681,13 @@ export default function Home() {
     setSession(next);
   }
   function changeDelegation(next: DelegationPrefs) {
+    if (busy || sending.current) return;
+    if (
+      !sessionRef.current &&
+      (next.mode !== delegation.mode ||
+        next.maxConcurrent !== delegation.maxConcurrent)
+    )
+      invalidatePreparation();
     setDelegation(next);
     saveDelegation(next);
   }
@@ -641,15 +722,43 @@ export default function Home() {
         );
     }
   }
+  function invalidatePreparation() {
+    generation.current++;
+    preparation.current.reset();
+    setDraftVersion(generation.current);
+    setPreparationStatus(null);
+    setError("");
+  }
+  function changeDraftProject(projectId: string | null) {
+    if (busy || sending.current) return;
+    invalidatePreparation();
+    setDraftProjectId(projectId);
+  }
+  function prepareSession() {
+    return preparation.current.prepare(preparationKey, async () => {
+      const created: Session = await api(
+        "/api/sessions",
+        createSessionBody(agentId, delegation, draftProjectId),
+      );
+      // Even abandoned drafts are real conversations and should be recoverable
+      // from Recents. Only ensureSession attaches one to the active composer.
+      void refreshSessions();
+      return created;
+    });
+  }
   async function ensureSession(): Promise<Session> {
     if (sessionRef.current) return sessionRef.current;
     const token = generation.current;
-    const projectId = draftProject(draftProjectId, projects.projects)?._id;
-    const created: Session = await api(
-      "/api/sessions",
-      createSessionBody(agentId, delegation, projectId),
-    );
-    if (token !== generation.current) return created;
+    const projectId = draftProjectId;
+    const attempt = prepareSession();
+    const created = await attempt.promise;
+    if (
+      token !== generation.current ||
+      !preparation.current.isCurrent(attempt)
+    )
+      return created;
+    setDraftActive(false);
+    setPreparationStatus(null);
     sessionRef.current = created;
     setSession(created);
     history.replaceState(null, "", "?session=" + created._id);
@@ -668,6 +777,7 @@ export default function Home() {
   async function send(value = text) {
     if (
       sending.current ||
+      preparationFailed ||
       !value.trim() ||
       busy ||
       (!sessionRef.current && !agentId)
@@ -714,8 +824,10 @@ export default function Home() {
         ),
       );
     } finally {
-      sending.current = false;
-      if (token === generation.current) setBusy(false);
+      if (token === generation.current) {
+        sending.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -756,6 +868,7 @@ export default function Home() {
     if (
       busy ||
       sending.current ||
+      preparationFailed ||
       !text.trim() ||
       (!sessionRef.current && !agentId)
     )
@@ -820,6 +933,7 @@ export default function Home() {
       );
       return;
     }
+    const token = generation.current;
     let active = sessionRef.current;
     if (!active) {
       // A goal can open a conversation; other commands need an existing one.
@@ -832,15 +946,19 @@ export default function Home() {
         return;
       }
       try {
+        sending.current = true;
         setBusy(true);
         active = await ensureSession();
+        if (token !== generation.current) return;
       } catch (e) {
-        reportError(e);
-        setBusy(false);
+        if (token === generation.current) {
+          sending.current = false;
+          reportError(e);
+          setBusy(false);
+        }
         return;
       }
     }
-    const token = generation.current;
     const commandText = text;
     const previous = commandAttempt.current;
     const clientId =
@@ -926,8 +1044,10 @@ export default function Home() {
         reportError(e);
       }
     } finally {
-      sending.current = false;
-      if (token === generation.current) setBusy(false);
+      if (token === generation.current) {
+        sending.current = false;
+        setBusy(false);
+      }
     }
   }
   const agent = agents.find((a) => a.id === agentId);
@@ -983,7 +1103,7 @@ export default function Home() {
     setPanels((p) => ({ ...p, activity: !p.activity }));
   }
   function newChat() {
-    if (!busy) startDraft();
+    if (!busy && !sending.current) startDraft();
   }
   useHotkeys({
     "mod+k": () => setPaletteOpen((o) => !o),
@@ -994,7 +1114,13 @@ export default function Home() {
   // Board "Chat": back to the conversation with that agent, fresh if the
   // open session belongs to another one.
   function chatWith(a: AgentSummary) {
-    if (session && session.agentId !== a.id) newChat();
+    if (busy || sending.current) return;
+    if (
+      (sessionRef.current && sessionRef.current.agentId !== a.id) ||
+      (!sessionRef.current && !draftActive)
+    )
+      startDraft();
+    else if (agentId !== a.id) invalidatePreparation();
     setAgentId(a.id);
     setView("chat");
     setNotice("");
@@ -1061,7 +1187,9 @@ export default function Home() {
         onGoalToggle={() => (goalMode ? setGoalMode(false) : startGoal(text))}
         onGoalCancel={() => setGoalMode(false)}
         busy={running}
-        canSend={!!text.trim() && !busy && (!!session || !!agentId)}
+        canSend={
+          !!text.trim() && !busy && !preparationFailed && (!!session || !!agentId)
+        }
         onStop={stopTurn}
         stopTitle={
           goal?.status === "active"
@@ -1080,11 +1208,20 @@ export default function Home() {
                 <button
                   type="button"
                   className="icon-btn ghost"
-                  onClick={() => setDraftProjectId(null)}
+                  onClick={() => changeDraftProject(null)}
                   aria-label={`Don't add to ${pendingProject.name}`}
                 >
                   <Icon name="x" size={13} />
                 </button>
+              </div>
+            )}
+            {preparing && (
+              <div className="composer-project" role="status" aria-live="polite">
+                <span>
+                  {busy
+                    ? "Preparing agent… Your message will send when it’s ready."
+                    : "Preparing agent… You can keep typing."}
+                </span>
               </div>
             )}
             <PrivacyNote draft={text} />
@@ -1150,6 +1287,7 @@ export default function Home() {
             {picker && (
               <ApprovalModePicker
                 picker={picker}
+                disabled={busy}
                 errorId={modeError ? "approval-mode-error" : undefined}
                 onChange={(mode) => void changeApprovalMode(mode)}
               />
@@ -1433,9 +1571,9 @@ export default function Home() {
                 }))}
                 currentId={agentId}
                 onPick={(id) => {
-                  setAgentId(id);
+                  const picked = agents.find((a) => a.id === id);
+                  if (picked) chatWith(picked);
                   setPop(null);
-                  setView("chat");
                 }}
                 onAll={() => {
                   setPop(null);
@@ -1585,6 +1723,7 @@ export default function Home() {
         onCreated={(a) => setAgents((list) => [...list, a])}
         // Source: close, start a new chat with the agent, pre-fill "@handle hi, ".
         onSayHi={(a) => {
+          if (busy || sending.current) return;
           setAgentDialogOpen(false);
           newChat();
           setAgentId(a.id);
