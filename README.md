@@ -98,10 +98,10 @@ Run MongoDB separately or use an existing MongoDB instance, and point `MONGO_URI
 
 ## Platform container
 
-Build the platform backend from the repository root on the ARM64 EC2 instance:
+Build the platform backend from the repository root on EC2. The build uses the instance's native architecture (AMD64 or ARM64):
 
 ```sh
-docker buildx build --platform linux/arm64 --load \
+docker buildx build --load \
   -f platform/Dockerfile -t truex-platform:local .
 
 docker run -d --name truex-platform --restart unless-stopped \
@@ -114,7 +114,11 @@ curl --fail http://127.0.0.1:4000/livez
 
 The image compiles the backend and shared code, includes production dependencies, and runs as the `node` user. Supply configuration at startup; `.env` files and local build artifacts are excluded from the build context.
 
-For this AgentCore deployment, set `AGENTCORE_RUNTIME_ARN`, a reachable `MONGO_URI`, `MONGO_DB`, `MODEL_GATEWAY_URL` and the matching `MODEL_GATEWAY_SECRET` in `platform/.env`. The production platform requires `AUTH_MODE=google`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, the deployed `FRONTEND_ORIGIN`, and `RESEND_API_KEY`; set `APP_PUBLIC_URL` and `INVITE_FROM_EMAIL` to your public app URL and verified sender. Existing development `.env` defaults need to be updated before starting the production container.
+For this AgentCore deployment, set `AGENTCORE_RUNTIME_ARN`, a reachable `MONGO_URI`, `MONGO_DB`, `MODEL_GATEWAY_URL`, the matching `MODEL_GATEWAY_SECRET`, and your deployed `FRONTEND_ORIGIN` in `platform/.env`. Set `AUTH_MODE=poc` for this POC. The image defaults to that mode and keeps `NODE_ENV=production`. Google sign-in, invitation lookup, admin login and the admin API are disabled; Google and Resend keys can be removed from the environment.
+
+POC mode uses one shared user (`DEV_USER_ID=dev-user`, `DEV_USER_ROLE=admin` by default) and one tenant (`DEV_TENANT_ID=default` by default), preserving the existing POC conversation ownership. It ignores client user, role and tenant override headers. All five testers share this identity and its conversations. Existing environments with `AUTH_MODE=dev` or `google` must be changed to `poc` for this deployment.
+
+The Google/invitation implementation remains available through `AUTH_MODE=google` for a later authenticated deployment. That mode still requires `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FRONTEND_ORIGIN`, and a `RESEND_API_KEY` when `NODE_ENV=production`.
 
 Attach an EC2 instance role with `bedrock-agentcore:InvokeAgentRuntime` permission for the configured runtime. The AWS SDK reads that role's credentials at runtime; set the [EC2 metadata response hop limit](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-IMDS-new-instances.html) to 2 for Docker access. The image contains no AWS credentials. Configure an HTTPS reverse proxy to `http://127.0.0.1:4000`, disable response buffering for SSE, and allow at least 180 seconds for cold AgentCore requests. The frontend runs separately.
 

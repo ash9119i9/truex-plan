@@ -346,7 +346,7 @@ export async function revokeInvite(store: Store, tenantId: string, id: string) {
   return inviteView(doc);
 }
 
-// ---- Public lookup: GET /auth/invites/:token (every AUTH_MODE) ----
+// ---- Public lookup: GET /auth/invites/:token (dev and Google modes) ----
 
 export interface InviteLookup {
   status: "valid" | "expired" | "used" | "revoked" | "not_found";

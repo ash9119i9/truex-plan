@@ -89,6 +89,7 @@ test("devUserResolver: refuses production unless ALLOW_DEV_TENANT=on", () => {
 
 test("authMode: dev by default, google only with its keys", () => {
   assert.equal(authMode({}), "dev");
+  assert.equal(authMode({ AUTH_MODE: " POC ", NODE_ENV: "production" }), "poc");
   assert.equal(authMode({ AUTH_MODE: " DEV " }), "dev");
   assert.throws(() => authMode({ AUTH_MODE: "saml" }), /not supported/);
   assert.throws(

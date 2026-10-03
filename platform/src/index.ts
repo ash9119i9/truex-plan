@@ -28,8 +28,13 @@ import {
   tenantMiddleware,
   userMiddleware,
 } from "./http";
-import { currentTenant, devTenantResolver } from "./tenant";
-import { authMode, currentUser, devUserResolver } from "./user";
+import { currentTenant, devTenantResolver, pocTenantResolver } from "./tenant";
+import {
+  authMode,
+  currentUser,
+  devUserResolver,
+  pocUserResolver,
+} from "./user";
 import { googleRoutes } from "./google";
 import { adminApiRoutes, adminAuthRoutes, adminGate } from "./admin";
 import { inviteLookupRoutes, inviteMailer } from "./invites";
@@ -52,8 +57,8 @@ async function main() {
   // Refuses an unknown mode, or google without its keys, before anything
   // else is built.
   const mode = authMode();
-  // Refuses NODE_ENV=production without RESEND_API_KEY.
-  const mailer = inviteMailer();
+  // POC mode does not register invitation routes or initialize email delivery.
+  const mailer = mode === "poc" ? undefined : inviteMailer();
   const origins = [
     process.env.FRONTEND_ORIGIN || "http://localhost:3000",
     process.env.ADMIN_ORIGIN,
@@ -136,27 +141,38 @@ async function main() {
       next();
     },
   );
-  // State-changing requests need a known Origin and JSON in both modes. Dev
-  // mode also lets a request without any Origin through, so curl and the
+  if (mode === "poc") {
+    log("info", "POC mode: shared identity; sign-in and invitations disabled");
+    http.use(["/auth", "/api/admin"], (_req: Request, res: Response) =>
+      res.status(404).json({
+        error: "Sign-in and invitations are disabled for this POC.",
+        code: "AUTH_DISABLED",
+      }),
+    );
+  }
+  // State-changing requests need a known Origin and JSON. Dev and POC
+  // modes also let a request without any Origin through, so curl and the
   // test suite work; a foreign Origin is refused in every mode.
   http.use(
     ["/api", "/auth"],
-    csrfMiddleware({ origins, allowMissingOrigin: mode === "dev" }),
+    csrfMiddleware({ origins, allowMissingOrigin: mode !== "google" }),
   );
   // Per req.ip; see TRUST_PROXY above.
   http.use("/auth", rateLimit({ windowMs: 60_000, max: 60 }));
   // Admin login, the admin API and the public invite lookup work the same in
-  // both modes, so the dashboard can be tried locally. The admin gate needs
+  // dev and Google modes. The admin gate needs
   // an admin session cookie and never reads the dev tenant or user headers;
   // the admin router answers every /api/admin request (404 for unknown
   // paths), so the dev resolvers and authMiddleware below never see one.
-  http.use("/auth/admin", adminAuthRoutes(store));
-  http.use("/auth/invites", inviteLookupRoutes(store));
-  http.use(
-    "/api/admin",
-    adminGate(store),
-    adminApiRoutes(store, service, mailer),
-  );
+  if (mode !== "poc") {
+    http.use("/auth/admin", adminAuthRoutes(store));
+    http.use("/auth/invites", inviteLookupRoutes(store));
+    http.use(
+      "/api/admin",
+      adminGate(store),
+      adminApiRoutes(store, service, mailer!),
+    );
+  }
   if (mode === "google") {
     // Every API request resolves its tenant and user from the session
     // cookie. The dev resolvers are never built in this mode.
@@ -167,10 +183,16 @@ async function main() {
     // Every API request works on exactly one tenant's database.
     http.use(
       "/api",
-      tenantMiddleware(devTenantResolver(), (id) => store.resolveTenant(id)),
+      tenantMiddleware(
+        mode === "poc" ? pocTenantResolver() : devTenantResolver(),
+        (id) => store.resolveTenant(id),
+      ),
     );
-    // Every API request also has exactly one user, fixed in dev mode.
-    http.use("/api", userMiddleware(devUserResolver()));
+    // Every API request also has exactly one user in dev and POC modes.
+    http.use(
+      "/api",
+      userMiddleware(mode === "poc" ? pocUserResolver() : devUserResolver()),
+    );
   }
   http.get(
     "/api/me",
