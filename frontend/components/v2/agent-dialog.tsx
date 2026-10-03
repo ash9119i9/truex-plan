@@ -103,7 +103,14 @@ export function AgentDialog({
     !!handle && (handleTaken(handle, agents) || handle === serverTaken);
   const list = models.state === "ready" ? models.list : [];
   const selectedModel = list.find((m) => m.id === f.modelProfileId);
-  const valid = !!handle && !taken && !!selectedModel && !submitting;
+  const valid =
+    !!f.name.trim() &&
+    !!f.description.trim() &&
+    !!f.systemPrompt.trim() &&
+    !!handle &&
+    !taken &&
+    !!selectedModel &&
+    !submitting;
 
   const submit = async () => {
     if (!valid) return;
@@ -219,7 +226,7 @@ export function AgentDialog({
 
           <label className="field">
             <span className="field-label">
-              Name
+              Agent name (required)
               {handle && (
                 <span className={"field-hint" + (taken ? " is-bad" : "")}>
                   {taken ? `@${handle} is taken` : `@${handle}`}
@@ -230,6 +237,7 @@ export function AgentDialog({
               ref={nameRef}
               className="input"
               value={f.name}
+              required
               maxLength={AGENT_NAME_MAX}
               placeholder="Research Scout"
               aria-invalid={taken}
@@ -237,20 +245,22 @@ export function AgentDialog({
             />
           </label>
           <label className="field">
-            <span className="field-label">Purpose</span>
+            <span className="field-label">Purpose (required)</span>
             <input
               className="input"
               value={f.description}
+              required
               maxLength={AGENT_PURPOSE_MAX}
               placeholder="What this specialist owns"
               onChange={(e) => set("description", e.target.value)}
             />
           </label>
           <label className="field">
-            <span className="field-label">Instructions</span>
+            <span className="field-label">Instructions (required)</span>
             <textarea
               className="input"
               value={f.systemPrompt}
+              required
               rows={3}
               placeholder="Standing instructions injected into every one of its turns"
               onChange={(e) => set("systemPrompt", e.target.value)}

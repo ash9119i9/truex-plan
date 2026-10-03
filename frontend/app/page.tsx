@@ -83,7 +83,11 @@ import {
   type ObservabilityState,
 } from "@/lib/observability";
 import { PrivacyNote } from "@/components/observability/privacy-note";
-import { parseChatInput, suggestCommands } from "@/lib/slash-commands";
+import {
+  parseChatInput,
+  suggestCommands,
+  SLASH_COMMANDS_ENABLED,
+} from "@/lib/slash-commands";
 import type {
   AgentSummary,
   ApprovalMode,
@@ -740,7 +744,8 @@ export default function Home() {
     }, 350);
   }
 
-  const commandSuggestions = commandOpen ? suggestCommands(text) : [];
+  const commandSuggestions =
+    SLASH_COMMANDS_ENABLED && commandOpen ? suggestCommands(text) : [];
   function selectCommand(name: string) {
     setText(`${name} `);
     setCommandOpen(false);
@@ -767,7 +772,9 @@ export default function Home() {
     }
     const parsed = goalMode
       ? goalCommand(text, goalBudget)
-      : parseChatInput(text);
+      : SLASH_COMMANDS_ENABLED
+        ? parseChatInput(text)
+        : { kind: "message" as const, text };
     // Setting an objective edits an existing goal in place, so a new goal
     // from the composer clears the old one first and starts fresh.
     const replaceGoal = goalMode && !!goal;
@@ -1086,7 +1093,8 @@ export default function Home() {
         below={
           <>
             <span id="composer-hint" className="sr-only">
-              Type / for commands. Enter to send, Shift + Enter for a new line.
+              {SLASH_COMMANDS_ENABLED && "Type / for commands. "}
+              Enter to send, Shift + Enter for a new line.
             </span>
             {commandSuggestions.length > 0 && (
               <div
@@ -1156,8 +1164,10 @@ export default function Home() {
           aria-controls={
             commandSuggestions.length ? "chat-commands" : undefined
           }
-          aria-haspopup="listbox"
-          aria-expanded={commandSuggestions.length > 0}
+          aria-haspopup={SLASH_COMMANDS_ENABLED ? "listbox" : undefined}
+          aria-expanded={
+            SLASH_COMMANDS_ENABLED ? commandSuggestions.length > 0 : undefined
+          }
           aria-activedescendant={
             commandSuggestions.length
               ? `chat-command-${commandIndex}`
@@ -1176,7 +1186,11 @@ export default function Home() {
           disabled={busy || (!session && !agentId)}
           onChange={(e) => {
             setText(e.target.value);
-            setCommandOpen(!goalMode && e.target.value.startsWith("/"));
+            setCommandOpen(
+              SLASH_COMMANDS_ENABLED &&
+                !goalMode &&
+                e.target.value.startsWith("/"),
+            );
             setCommandIndex(0);
             if (notice) setNotice("");
           }}

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type FocusEvent, type ReactNode } from "react";
 import { Icon } from "./icon";
+import { SLASH_COMMANDS_ENABLED } from "@/lib/slash-commands";
 
 // Composer frame from docs/truex-design-spec.html (Core components §2).
 // Presentational only: the page owns the <form>, the textarea (children) and
@@ -8,7 +9,7 @@ import { Icon } from "./icon";
 
 // Spec copy (Core §2, Placeholder rotation).
 export const PLACEHOLDERS = [
-  "Ask anything, or type / for commands",
+  SLASH_COMMANDS_ENABLED ? "Ask anything, or type / for commands" : "Ask anything",
   "Summarize last week's pipeline changes",
   "Compare Q2 vs Q3 revenue by region",
   "Draft a reply to the customer escalation",
