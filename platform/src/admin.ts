@@ -71,7 +71,7 @@ const sameText = (a: string, b: string) =>
     createHash("sha256").update(b).digest(),
   );
 
-// ---- /auth/admin/* (mounted in every AUTH_MODE) ----
+// ---- /auth/admin/* (mounted in dev and Google modes) ----
 
 export function adminAuthRoutes(store: Store, env: NodeJS.ProcessEnv = process.env) {
   const username = env.ADMIN_USERNAME?.trim() ?? "";

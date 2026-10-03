@@ -14,7 +14,7 @@ RUN npm run build && npm prune --omit=dev
 
 FROM node:24-bookworm-slim AS runtime
 WORKDIR /app/platform
-ENV NODE_ENV=production HOST=0.0.0.0 PORT=4000
+ENV NODE_ENV=production AUTH_MODE=poc HOST=0.0.0.0 PORT=4000
 COPY --from=build /app/platform/package.json ./package.json
 COPY --from=build /app/platform/dist ./dist
 COPY --from=build /app/platform/node_modules ./node_modules

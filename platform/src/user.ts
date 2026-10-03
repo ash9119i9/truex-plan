@@ -39,27 +39,38 @@ export function userRole(role: unknown): UserRole {
   return role;
 }
 
-export type AuthMode = "dev" | "google";
+export type AuthMode = "poc" | "dev" | "google";
 const GOOGLE_KEYS = [
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
   "FRONTEND_ORIGIN",
 ] as const;
 
-// "dev" (fixed tenant and user) or "google" (session cookies). Any other
+// "poc" (shared identity), "dev" (test headers), or "google" (session cookies). Any other
 // value, or google without its keys, is refused at startup rather than
 // silently running without authentication.
 export function authMode(env: NodeJS.ProcessEnv = process.env): AuthMode {
   const mode = env.AUTH_MODE?.trim().toLowerCase() || "dev";
-  if (mode === "dev") return mode;
+  if (mode === "dev" || mode === "poc") return mode;
   if (mode !== "google")
     throw new Error(
-      `AUTH_MODE=${mode} is not supported. Use AUTH_MODE=dev or AUTH_MODE=google.`,
+      `AUTH_MODE=${mode} is not supported. Use AUTH_MODE=poc, dev, or google.`,
     );
   const missing = GOOGLE_KEYS.filter((key) => !env[key]?.trim());
   if (missing.length)
     throw new Error(`AUTH_MODE=google requires ${missing.join(", ")}.`);
   return mode;
+}
+
+// Explicit POC deployment: one configured identity, with no client overrides.
+export function pocUserResolver(
+  env: NodeJS.ProcessEnv = process.env,
+): UserResolver {
+  return devUserResolver({
+    ...env,
+    ALLOW_DEV_TENANT: "on",
+    DEV_USER_HEADER: "off",
+  });
 }
 
 // Development only: a fixed user, optionally overridden by headers so two

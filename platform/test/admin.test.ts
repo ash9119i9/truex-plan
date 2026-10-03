@@ -10,6 +10,7 @@ import { tenantDbName } from "../src/tenant";
 import { emailKey, hashToken, newToken } from "../src/auth";
 import { parsePasswordHash, verifyPassword } from "../src/admin";
 import { lookupInvite } from "../src/invites";
+import { insertFixtures } from "./fixtures";
 
 const root = resolve("..");
 const FRONTEND = "http://localhost:3000";
@@ -272,6 +273,95 @@ test("NODE_ENV=production refuses to start without RESEND_API_KEY", { timeout: 3
   assert.equal(code, 1);
   assert.match(logs(), /RESEND_API_KEY is required in production/);
 });
+
+test(
+  "production POC starts without Google or Resend, uses one identity, and disables auth and invitations",
+  { timeout: 60000 },
+  async (t) => {
+    const mongo = await MongoMemoryServer.create();
+    const store = await new Store(mongo.getUri(), "poc", "poc").connect();
+    await insertFixtures(store);
+    const env = await platformEnv(mongo.getUri(), "poc", {
+      AUTH_MODE: "poc",
+      NODE_ENV: "production",
+      ALLOW_DEV_TENANT: "off",
+      GOOGLE_CLIENT_ID: "",
+      GOOGLE_CLIENT_SECRET: "",
+      RESEND_API_KEY: "",
+      AGENTCORE_RUNTIME_ARN: "",
+      DEV_TENANT_ID: "default",
+      DEV_USER_ID: "dev-user",
+      DEV_USER_ROLE: "admin",
+      DEV_USER_EMAIL: "dev-user@dev.local",
+      // POC must ignore these overrides even when a previous env enabled them.
+      DEV_USER_HEADER: "on",
+      DEV_TENANT_HEADER: "on",
+    });
+    const { child, logs } = launch(env);
+    t.after(async () => {
+      await stop(child);
+      await store.client.close();
+      await mongo.stop();
+    });
+    const base = `http://127.0.0.1:${env.PORT}`;
+    await wait(async () => (await fetch(`${base}/livez`)).ok).catch((e) => {
+      throw new Error(`${e.message}\n${logs()}`);
+    });
+    const me = await fetch(`${base}/api/me`, {
+      headers: {
+        "x-truex-user": "another-user",
+        "x-truex-role": "user",
+        "x-truex-tenant": "another-tenant",
+      },
+    });
+    assert.equal(me.status, 200);
+    const identity = (await me.json()) as any;
+    assert.equal(identity.user.id, "dev-user");
+    assert.equal(identity.role, "admin");
+    assert.equal(identity.tenant.id, "default");
+    const agents = await fetch(`${base}/api/agents`);
+    assert.equal(agents.status, 200);
+    assert.equal(((await agents.json()) as any[]).length, 2);
+
+    for (const [method, path] of [
+      ["GET", "/auth/me"],
+      ["GET", "/auth/google/start"],
+      ["GET", "/auth/invites/fixture"],
+      ["POST", "/auth/admin/login"],
+      ["GET", "/api/admin/tenants"],
+      ["POST", "/api/admin/tenants/default/invites"],
+    ]) {
+      const response = await fetch(base + path, { method });
+      assert.equal(response.status, 404, path);
+      assert.equal(
+        ((await response.json()) as any).code,
+        "AUTH_DISABLED",
+        path,
+      );
+    }
+    const project = { name: "POC project" };
+    const foreign = await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://foreign.test",
+      },
+      body: JSON.stringify(project),
+    });
+    assert.equal(foreign.status, 403);
+    const created = await fetch(`${base}/api/projects`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: FRONTEND },
+      body: JSON.stringify(project),
+    });
+    assert.equal(created.status, 201);
+    assert.equal(await store.invites.countDocuments(), 0);
+    assert.doesNotMatch(
+      logs(),
+      /RESEND_API_KEY is not set|invite link \(not emailed\)/,
+    );
+  },
+);
 
 test("admin login disabled without ADMIN_PASSWORD_HASH; dev logs invite links", { timeout: 60000 }, async (t) => {
   const mongo = await MongoMemoryServer.create();
