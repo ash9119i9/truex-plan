@@ -3,7 +3,7 @@ export interface PreparedSession<T> {
   promise: Promise<T>;
 }
 
-// Opening a draft and pressing Send share one creation request. Retain failed
+// Requests from Send share one conversation creation. Retain failed
 // requests too: a timed-out POST may already have created the conversation.
 // Reset explicitly when the user chooses another draft or configuration.
 export class SessionPreparation<T> {

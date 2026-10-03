@@ -141,7 +141,6 @@ export default function Home() {
     // Codex is retrying the turn on its own after a transient error.
     [retrying, setRetrying] = useState(false),
     [sessionsFailed, setSessionsFailed] = useState(false),
-    [health, setHealth] = useState<any>(null),
     [panel, setPanel] = useState<"mcp" | "tools" | "agents" | null>(null),
     [inspectorTab, setInspectorTab] = useState("activity"),
     [subAgents, setSubAgents] = useState<SubAgentState>(emptySubAgents),
@@ -161,7 +160,7 @@ export default function Home() {
     [draftVersion, setDraftVersion] = useState(0),
     [preparationStatus, setPreparationStatus] = useState<{
       key: string;
-      state: "pending" | "ready" | "failed";
+      state: "failed";
     } | null>(null);
   // Both panels start collapsed; the user opens them from the header.
   const [panels, setPanels] = useState({ sidebar: false, activity: false }),
@@ -186,8 +185,13 @@ export default function Home() {
     vw,
     fitsOpen:
       !panels.sidebar ||
-      fitPanel(vw, PANEL_W[panelSizes.list], CHAT_MIN[panelSizes.list], true, true)
-        .sidebar,
+      fitPanel(
+        vw,
+        PANEL_W[panelSizes.list],
+        CHAT_MIN[panelSizes.list],
+        true,
+        true,
+      ).sidebar,
     tab: inspectorTab,
     showTab: (tab, open) => {
       setInspectorTab(tab);
@@ -230,16 +234,23 @@ export default function Home() {
     setErrorDetail(message ? detail : null);
   };
   const reportError = (e: unknown) => setError(userMessage(e), errorRef(e));
-  const refreshSessions = () =>
-    api("/api/sessions")
-      .then((list) => {
-        setSessions(list);
-        setSessionsFailed(false);
-      })
-      .catch((e) => {
-        warnFailure("session list", e);
-        setSessionsFailed(true);
-      });
+  const refreshSessions = useCallback(
+    () =>
+      api("/api/sessions")
+        .then((list) => {
+          setSessions(list);
+          setSessionsFailed(false);
+        })
+        .catch((e) => {
+          warnFailure("session list", e);
+          setSessionsFailed(true);
+        }),
+    [],
+  );
+  // Recents and search load on demand; mounting the chat creates no session.
+  useEffect(() => {
+    if (panels.sidebar || paletteOpen) void refreshSessions();
+  }, [panels.sidebar, paletteOpen, refreshSessions]);
   const projects = useProjects(refreshSessions);
   const picker = modePicker(approvalModes, session, draftMode);
   const pendingProject = session
@@ -252,11 +263,6 @@ export default function Home() {
     delegation.mode,
     delegation.maxConcurrent,
   ]);
-  const preparing =
-    draftActive &&
-    !session &&
-    preparationStatus?.key === preparationKey &&
-    preparationStatus.state === "pending";
   const preparationFailed =
     draftActive &&
     !session &&
@@ -376,57 +382,19 @@ export default function Home() {
     };
   }, []);
   useEffect(() => {
-    api("/healthz")
-      .then(setHealth)
-      .catch((e) => {
-        warnFailure("health check", e);
-        setHealth({ ok: false });
-      });
     api("/api/agents")
       .then((data) => {
         setAgents(data);
         // Restoring a saved chat owns its selection, regardless of which GET
-        // finishes first. Never prepare a default agent alongside that restore.
+        // finishes first. Never select a default agent alongside that restore.
         if (!openingSession.current && !sessionRef.current)
           setAgentId((current) => current || data[0]?.id || "");
       })
       .catch(reportError)
       .finally(() => setLoading(false));
-    void refreshSessions();
     const id = new URLSearchParams(location.search).get("session");
     if (id) void open(id);
   }, [open]);
-  useEffect(() => {
-    if (
-      loading ||
-      !agentId ||
-      view !== "chat" ||
-      !draftActive ||
-      sessionRef.current ||
-      openingSession.current
-    )
-      return;
-    let live = true;
-    const attempt = prepareSession();
-    setPreparationStatus({ key: attempt.key, state: "pending" });
-    void attempt.promise.then(
-      () => {
-        if (live && preparation.current.isCurrent(attempt))
-          setPreparationStatus({ key: attempt.key, state: "ready" });
-      },
-      (e) => {
-        if (live && preparation.current.isCurrent(attempt)) {
-          setPreparationStatus({ key: attempt.key, state: "failed" });
-          reportError(e);
-          void refreshSessions();
-        }
-      },
-    );
-    return () => {
-      live = false;
-      // Effect replay and leaving the board must reuse this draft's POST.
-    };
-  }, [preparationKey, loading, view, draftActive]);
   useEffect(() => {
     if (!session) return;
     const id = session._id;
@@ -740,8 +708,8 @@ export default function Home() {
         "/api/sessions",
         createSessionBody(agentId, delegation, draftProjectId),
       );
-      // Even abandoned drafts are real conversations and should be recoverable
-      // from Recents. Only ensureSession attaches one to the active composer.
+      // A submitted creation that finishes after navigation stays in Recents.
+      // Only ensureSession attaches it to the active composer.
       void refreshSessions();
       return created;
     });
@@ -751,11 +719,22 @@ export default function Home() {
     const token = generation.current;
     const projectId = draftProjectId;
     const attempt = prepareSession();
-    const created = await attempt.promise;
-    if (
-      token !== generation.current ||
-      !preparation.current.isCurrent(attempt)
-    )
+    let created: Session;
+    try {
+      created = await attempt.promise;
+    } catch (error) {
+      if (
+        token === generation.current &&
+        preparation.current.isCurrent(attempt)
+      ) {
+        // A timed-out POST may have succeeded. Recover from Recents instead
+        // of allowing another creation request for this draft.
+        setPreparationStatus({ key: attempt.key, state: "failed" });
+        void refreshSessions();
+      }
+      throw error;
+    }
+    if (token !== generation.current || !preparation.current.isCurrent(attempt))
       return created;
     setDraftActive(false);
     setPreparationStatus(null);
@@ -1188,7 +1167,10 @@ export default function Home() {
         onGoalCancel={() => setGoalMode(false)}
         busy={running}
         canSend={
-          !!text.trim() && !busy && !preparationFailed && (!!session || !!agentId)
+          !!text.trim() &&
+          !busy &&
+          !preparationFailed &&
+          (!!session || !!agentId)
         }
         onStop={stopTurn}
         stopTitle={
@@ -1213,15 +1195,6 @@ export default function Home() {
                 >
                   <Icon name="x" size={13} />
                 </button>
-              </div>
-            )}
-            {preparing && (
-              <div className="composer-project" role="status" aria-live="polite">
-                <span>
-                  {busy
-                    ? "Preparing agent… Your message will send when it’s ready."
-                    : "Preparing agent… You can keep typing."}
-                </span>
               </div>
             )}
             <PrivacyNote draft={text} />
