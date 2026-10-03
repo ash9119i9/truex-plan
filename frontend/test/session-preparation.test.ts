@@ -12,7 +12,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-test("opening chat, effect replay and immediate Send share one pending startup", async () => {
+test("concurrent submissions share one pending conversation creation", async () => {
   const preparation = new SessionPreparation<{ id: string }>();
   const startup = deferred<{ id: string }>();
   let requests = 0;
@@ -35,7 +35,7 @@ test("opening chat, effect replay and immediate Send share one pending startup",
   assert.deepEqual(messages, ["conversation-a"]);
 });
 
-test("Send after preparation has finished reuses the ready conversation", async () => {
+test("a later submission reuses the created conversation", async () => {
   const preparation = new SessionPreparation<string>();
   let requests = 0;
   const create = async () => `conversation-${++requests}`;
@@ -53,9 +53,10 @@ test("switching drafts ignores an old startup even if it finishes last", async (
   preparation.reset();
   const current = preparation.prepare("agent-b", () => newStartup.promise);
   let attached = "";
-  const attach = (attempt: typeof old) => attempt.promise.then((session) => {
-    if (preparation.isCurrent(attempt)) attached = session;
-  });
+  const attach = (attempt: typeof old) =>
+    attempt.promise.then((session) => {
+      if (preparation.isCurrent(attempt)) attached = session;
+    });
   const oldDone = attach(old);
   const newDone = attach(current);
   newStartup.resolve("conversation-b");
@@ -93,7 +94,7 @@ test("a changed draft configuration never reuses the previous conversation", asy
   assert.equal(preparation.isCurrent(old), false);
 });
 
-test("a timed-out creation is not retried by Send or effect replay", async () => {
+test("a timed-out creation is not retried by another submission", async () => {
   const preparation = new SessionPreparation<string>();
   const startup = deferred<string>();
   let requests = 0;
