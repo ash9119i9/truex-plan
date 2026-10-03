@@ -1,0 +1,15 @@
+# Repository-root context, limited to the platform and shared build inputs.
+**
+!platform/
+!platform/Dockerfile
+!platform/Dockerfile.dockerignore
+!platform/package.json
+!platform/package-lock.json
+!platform/tsconfig.json
+!platform/src/
+!platform/src/**
+!shared/
+!shared/**
+**/.env
+**/.env.*
+**/node_modules
