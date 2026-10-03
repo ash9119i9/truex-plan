@@ -338,11 +338,7 @@ export default function Home() {
     };
   }, []);
   useEffect(() => {
-    fetch(base + "/healthz", { signal: AbortSignal.timeout(10000) })
-      .then((r) => {
-        if (!r.ok) throw new Error(`Health check returned HTTP ${r.status}`);
-        return r.json();
-      })
+    api("/healthz")
       .then(setHealth)
       .catch((e) => {
         warnFailure("health check", e);

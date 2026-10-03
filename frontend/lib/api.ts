@@ -97,6 +97,12 @@ function statusMessage(status: number): string {
 
 export async function api(path: string, body?: unknown) {
   const method = body === undefined ? "GET" : "POST";
+  // AgentCore can cold-start on session creation or restoration. Its backend
+  // invocation deadline is 150 seconds; let that response reach the browser.
+  const runtimeRequest =
+    path === "/healthz" ||
+    (path === "/api/sessions" && method === "POST") ||
+    path.startsWith("/api/sessions/");
   const fail = (error: ApiRequestError): never => {
     logFailure(method, path, error);
     throw error;
@@ -107,7 +113,7 @@ export async function api(path: string, body?: unknown) {
       method,
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(45000),
+      signal: AbortSignal.timeout(runtimeRequest ? 180_000 : 45_000),
     });
   } catch (error) {
     const timeout = error instanceof Error && error.name === "TimeoutError";

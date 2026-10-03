@@ -2,6 +2,70 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { api, ApiRequestError, errorRef, userMessage } from "../lib/api.ts";
 
+test("cold runtime requests can finish after 45 seconds without resubmitting", async (t) => {
+  t.mock.method(console, "error", () => {});
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(AbortSignal, "timeout", (ms: number) => {
+    const controller = new AbortController();
+    setTimeout(
+      () => controller.abort(new DOMException("timeout", "TimeoutError")),
+      ms,
+    );
+    return controller.signal;
+  });
+  const fetched = t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: string | URL | Request, options?: RequestInit) => {
+      const signal = options?.signal;
+      assert.ok(signal);
+      return new Promise<Response>((resolve, reject) => {
+        signal.addEventListener("abort", () => reject(signal.reason));
+        setTimeout(() => resolve(new Response('{"ok":true}')), 60_000);
+      });
+    },
+  );
+  for (const [path, body] of [
+    ["/api/sessions", {}],
+    ["/api/sessions/s1", undefined],
+    ["/api/sessions/s1/messages", { text: "hello", clientId: "c1" }],
+    ["/healthz", undefined],
+  ] as const) {
+    const response = api(path, body);
+    t.mock.timers.tick(60_000);
+    assert.deepEqual(await response, { ok: true });
+  }
+  assert.equal(fetched.mock.callCount(), 4);
+
+  const catalog = api("/api/agents");
+  t.mock.timers.tick(45_000);
+  await assert.rejects(catalog, { code: "REQUEST_TIMEOUT" });
+  assert.equal(fetched.mock.callCount(), 5);
+});
+
+test("runtime timeouts retain the server reference without retrying the mutation", async (t) => {
+  t.mock.method(console, "error", () => {});
+  const fetched = t.mock.method(
+    globalThis,
+    "fetch",
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: "The assistant service timed out.",
+          code: "OWNER_TIMEOUT",
+          requestId: "req-timeout",
+        }),
+        { status: 504 },
+      ),
+  );
+  await assert.rejects(api("/api/sessions", {}), {
+    status: 504,
+    code: "OWNER_TIMEOUT",
+    requestId: "req-timeout",
+  });
+  assert.equal(fetched.mock.callCount(), 1);
+});
+
 test("API errors retain server detail and metadata", async (t) => {
   t.mock.method(
     globalThis,
