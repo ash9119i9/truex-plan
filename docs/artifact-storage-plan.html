@@ -129,7 +129,7 @@ ol.phases > li { margin-bottom: 14px; }
 <tr><td>Disk layout</td><td><code>&lt;home&gt;/business-workspaces/&lt;tenant&gt;/&lt;uuid&gt;/files/&lt;id&gt;.bin|.json|.source</code>; scratch lives in <code>work/</code>. There is no user level.</td><td><code>tenancy.ts</code>, <code>business-runtime.ts</code></td></tr>
 <tr><td>Limits</td><td>1 MB per conversation file, 50 files / 25 MB per conversation, 2 MB per workspace file. Exporting a workspace file over 1 MB fails.</td><td><code>file-tools.ts:22</code>, <code>workspace-tools.ts:21</code></td></tr>
 <tr><td>Transport</td><td>Upload is JSON <code>{name, base64}</code> under the 2 MB body limit. Download buffers base64 JSON from agent-core in platform memory.</td><td><code>platform/src/index.ts:146-207</code></td></tr>
-<tr><td>Durability</td><td>A 20 Gi ReadWriteOnce PVC per agent-core pod in k8s. Files can't move between pods. The sweeper removes whole workspaces (documents included) when <code>WORKSPACE_TTL_DAYS</code> is set.</td><td><code>deploy/kubernetes.yaml</code>, <code>workspace-sweeper.ts</code></td></tr>
+<tr><td>Durability</td><td>Files live on the local agent-core filesystem. Files can't move between runtime instances. The sweeper removes whole workspaces (documents included) when <code>WORKSPACE_TTL_DAYS</code> is set.</td><td><code>workspace-sweeper.ts</code></td></tr>
 <tr><td>Metadata</td><td>Not in Mongo. The UI polls <code>/documents</code>, and visualizations are found through a <code>[truex-visualization:id]</code> text token.</td><td><code>shared/assistant-capabilities.ts:52</code></td></tr>
 <tr><td>Frontend</td><td>The upload list only appears in a sheet opened by slash command. There is no composer attach, no preview, no delete, and Share is inert.</td><td><code>assistant-tools.tsx</code>, <code>v2/topbar.tsx:65</code></td></tr>
 <tr><td>Identity</td><td>No auth. Sessions have no owner. The tenant comes from the dev resolver or a header.</td><td><code>platform/src/tenant.ts</code>, <code>USER_SCOPED_MCP_PLAN.md</code></td></tr>
@@ -267,7 +267,7 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
 <h2>Security and tenancy</h2>
 <ul>
   <li><strong>Key construction is server-only.</strong> Tenant and session in a key come from the thread marker (agent-core) or the resolved tenant context (platform). Model output and user filenames never shape a key.</li>
-  <li><strong>Least-privilege IAM.</strong> agent-core's role gets Get, Put and Copy on <code>t/*/s/*</code>. Platform's role gets presign rights (Get, and Put through the POST policy) plus Delete. Neither role gets bucket-wide List. Both use IRSA or a task role, with no static keys in <code>.env</code>.</li>
+  <li><strong>Least-privilege IAM.</strong> agent-core's credentials grant Get, Put and Copy on <code>t/*/s/*</code>. Platform's credentials grant presign rights (Get, and Put through the POST policy) plus Delete. Neither grants bucket-wide List. Supply credentials separately from this application's source.</li>
   <li><strong>Signed URLs.</strong> GET URLs last 5 minutes and uploads 15 minutes. Uploads carry <code>content-length-range</code> and a fixed key. Responses use <code>no-store</code> and <code>nosniff</code>. HTML and SVG are always served as attachments, and visualizations keep rendering in the sandboxed iframe.</li>
   <li><strong>Content checks on upload complete.</strong> Check the extension allow-list, sniff magic bytes against the claimed type, and optionally scan with GuardDuty Malware Protection for S3 before <code>ready</code>.</li>
   <li><strong>Auth dependency.</strong> Until <code>USER_SCOPED_MCP_PLAN</code> lands, anyone who can reach platform can fetch any tenant file by id, same as every other <code>/api</code> route today. Phases 1 to 3 are fine for the internal team. Library, share and anything for outside users waits for auth, and <code>ownerId</code> plus <code>chatVisibility</code> enforcement is added then.</li>
@@ -295,7 +295,7 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
 <h2>Phased rollout</h2>
 <p>Each phase ships behind <code>ARTIFACT_STORE=s3</code> and can be turned off without data loss, because the local copy is always written first.</p>
 <ol class="phases">
-  <li><strong>Foundations.</strong> Bucket, KMS and IAM (IaC, Terraform or CDK to be decided). <code>ArtifactStore</code> interface, MinIO service in <code>deploy/compose.yaml</code> for dev, <code>artifactConfig</code>, <code>artifacts</code> collection, and pinned <code>@aws-sdk/client-s3</code>, <code>s3-presigned-post</code> and <code>s3-request-presigner</code> on the same release as the existing Secrets Manager client. No user-visible change.</li>
+  <li><strong>Foundations.</strong> Separately provisioned bucket, KMS and IAM. <code>ArtifactStore</code> interface, separately started local object storage for dev, <code>artifactConfig</code>, <code>artifacts</code> collection, and pinned <code>@aws-sdk/client-s3</code>, <code>s3-presigned-post</code> and <code>s3-request-presigner</code> on the same release as the existing Secrets Manager client. No user-visible change.</li>
   <li><strong>Durable files and downloads.</strong> Write-through for all producers, artifact records into Mongo, 302 downloads, file cards in chat, Files tab. Fixes the 1 MB export mismatch. Backfill script uploads existing <code>business-workspaces/*/*/files</code>.</li>
   <li><strong>Attach in chat.</strong> Presigned POST, composer attach, drag and drop, paste, <code>attachmentIds</code> on messages, attachment chips on user messages. Backlog: "Document Attaching in the Chat".</li>
   <li><strong>Preview.</strong> Images, PDF (pdf.js), Markdown, CSV and text. Office files first show extracted text, then a LibreOffice worker renders PDF previews. Backlog: "Document Preview", "Chat Rich Preview".</li>
@@ -321,14 +321,14 @@ tenants   + { storage: { quotaBytes, usedBytes, retentionDays, maxUploadMB, allo
 <div class="scroll"><table>
 <thead><tr><th>Question</th><th>Recommendation</th></tr></thead>
 <tbody>
-<tr><td>AWS account, region, and where the services run (EKS, ECS, AgentCore)</td><td>Same region as users and the model gateway. This drives IAM style (IRSA vs task role).</td></tr>
+<tr><td>AWS account, region, and application credentials for artifact storage</td><td>Choose a region near users and the model gateway. Grant the application access to the required bucket and keys.</td></tr>
 <tr><td>Should agent-core hold S3 credentials, or only presigned URLs from platform?</td><td>Scoped role on agent-core. Presigned-only is possible but adds a platform round trip on every tool write.</td></tr>
 <tr><td>Max upload size and allowed types</td><td>25 MB, today's allow-list plus png, jpg, gif and webp.</td></tr>
 <tr><td>Default retention</td><td>Keep until deleted, with a tenant-level override.</td></tr>
 <tr><td>Office preview via a LibreOffice worker</td><td>Yes in Phase 3b. It is a separate container with no network.</td></tr>
 <tr><td>Share scope</td><td>Tenant-internal only at first. Public links later with expiry.</td></tr>
 <tr><td>Per-tenant KMS keys</td><td>One key per environment now. Per-tenant keys only if an enterprise customer asks.</td></tr>
-<tr><td>IaC tool</td><td>Terraform or CDK. The repo has none today.</td></tr>
+<tr><td>Infrastructure provisioning</td><td>Managed separately from this application's source.</td></tr>
 </tbody></table></div>
 </section>
 

@@ -245,7 +245,7 @@ These depend on the SAP MCP tools and on a `push_workspace_file` bridge that sen
 
 - Plain Docker shares the host kernel. For multi-tenant use, run scripts under gVisor or a microVM, or in a separate runner service. Never mount the Docker socket into agent-core.
 - Scripts can write to `work/` without a disk quota. The file tools cap a workspace at 50 MB, but scripts bypass them.
-- In compose, the named `runtime` volume path does not match the host path Docker mounts for the runner. It needs a bind mount at the same path on both sides.
+- The optional Docker script runner requires a separately supplied sandbox image (`SCRIPT_RUNNER_IMAGE`) and a daemon that can access the workspace's absolute host path. Script execution is disabled by default; this repository does not provide a runner image build.
 - Workspaces live on each agent-core pod's own volume. More than one replica needs sticky routing per thread, and final deliverables should also go to shared storage.
 - Workspace files can be up to 2 MB but conversation files are capped at 1 MB, so exporting a large file can fail (WS-13).
 - The regex time budget protects the event loop per call, but many slow searches in a row still cost CPU.

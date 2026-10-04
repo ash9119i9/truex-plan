@@ -1,5 +1,8 @@
 import { parseTokenBudget } from "./goal.ts";
 
+// Temporary composer switch; set to true to restore slash commands.
+export const SLASH_COMMANDS_ENABLED = false;
+
 export const slashCommands = [
   {
     name: "/goal",

@@ -96,6 +96,8 @@ export interface Session {
   title?: string;
   threadId: string;
   agentCoreHost: string;
+  /** Bedrock runtime session, allocated on create and reused for every call. */
+  agentCoreSessionId?: string;
   status: "active" | "orphaned" | "dead";
   cwd: string;
   createdAt: string;

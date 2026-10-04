@@ -30,7 +30,7 @@ Run `npm test` and `npm run build` for current results. The runtime test reports
 - A real runtime-generated command approval was surfaced, denied, audited and completed in integration testing. Other approval/tool/elicitation variants have schema/adapter coverage, but not a complete runtime exercise.
 - Full method-by-method capability acceptance, including experimental backend-gated operations. The generic schema-driven console is available; focused goal, model settings, terminal and lifecycle controls and distinct command/file/MCP/reasoning item cards are implemented. Attachment lifecycle methods are absent from this pin.
 - A production concurrency benchmark, TTFT degradation curve or resource sizing. Local fixture timing must not be used to certify provider capacity.
-- Multi-pod routing/failure scenarios, Kubernetes deployment, container image builds, volume-loss tests, backup/restore or rollout/rollback rehearsals. Docker's daemon was unavailable at inspection time.
+- Local storage-loss tests and backup/restore rehearsals. Deployment infrastructure is outside the current scope.
 - Complete replay/snapshot race and prolonged backpressure stress coverage across the browser, platform and adapter.
 - Full latency attribution for platform CPU versus transport, and exhaustive non-streaming/failed/no-output timing tests.
 - Operational bounds/retention policies for transcript history, audit/timing arrays, spool disk consumption and idle thread metadata under sustained use.

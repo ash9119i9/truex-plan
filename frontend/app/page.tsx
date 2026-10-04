@@ -67,6 +67,7 @@ import {
 import { AgentsPanel } from "@/components/agents-panel";
 import { SessionMenu, useProjects } from "@/components/project-sidebar";
 import { createSessionBody, draftProject } from "@/lib/projects";
+import { SessionPreparation } from "@/lib/session-preparation";
 import { HelperChip } from "@/components/helper-chip";
 import { transport } from "@/lib/transport";
 import { ApprovalModePicker } from "@/components/approval-mode-picker";
@@ -83,7 +84,11 @@ import {
   type ObservabilityState,
 } from "@/lib/observability";
 import { PrivacyNote } from "@/components/observability/privacy-note";
-import { parseChatInput, suggestCommands } from "@/lib/slash-commands";
+import {
+  parseChatInput,
+  suggestCommands,
+  SLASH_COMMANDS_ENABLED,
+} from "@/lib/slash-commands";
 import type {
   AgentSummary,
   ApprovalMode,
@@ -136,7 +141,6 @@ export default function Home() {
     // Codex is retrying the turn on its own after a transient error.
     [retrying, setRetrying] = useState(false),
     [sessionsFailed, setSessionsFailed] = useState(false),
-    [health, setHealth] = useState<any>(null),
     [panel, setPanel] = useState<"mcp" | "tools" | "agents" | null>(null),
     [inspectorTab, setInspectorTab] = useState("activity"),
     [subAgents, setSubAgents] = useState<SubAgentState>(emptySubAgents),
@@ -151,7 +155,13 @@ export default function Home() {
     [goalBudget, setGoalBudget] = useState<number | null>(null),
     [goalBudgetValid, setGoalBudgetValid] = useState(true),
     // The project a new chat will be created in (from a project's "+").
-    [draftProjectId, setDraftProjectId] = useState<string | null>(null);
+    [draftProjectId, setDraftProjectId] = useState<string | null>(null),
+    [draftActive, setDraftActive] = useState(true),
+    [draftVersion, setDraftVersion] = useState(0),
+    [preparationStatus, setPreparationStatus] = useState<{
+      key: string;
+      state: "failed";
+    } | null>(null);
   // Both panels start collapsed; the user opens them from the header.
   const [panels, setPanels] = useState({ sidebar: false, activity: false }),
     [panelSizes, setPanelSizes] = useState<
@@ -175,8 +185,13 @@ export default function Home() {
     vw,
     fitsOpen:
       !panels.sidebar ||
-      fitPanel(vw, PANEL_W[panelSizes.list], CHAT_MIN[panelSizes.list], true, true)
-        .sidebar,
+      fitPanel(
+        vw,
+        PANEL_W[panelSizes.list],
+        CHAT_MIN[panelSizes.list],
+        true,
+        true,
+      ).sidebar,
     tab: inspectorTab,
     showTab: (tab, open) => {
       setInspectorTab(tab);
@@ -203,6 +218,8 @@ export default function Home() {
     composer = useRef<HTMLTextAreaElement>(null),
     following = useRef(true),
     generation = useRef(0),
+    preparation = useRef(new SessionPreparation<Session>()),
+    openingSession = useRef(false),
     sessionRef = useRef<Session | null>(null),
     seen = useRef(new Set<string>()),
     sending = useRef(false),
@@ -217,21 +234,40 @@ export default function Home() {
     setErrorDetail(message ? detail : null);
   };
   const reportError = (e: unknown) => setError(userMessage(e), errorRef(e));
-  const refreshSessions = () =>
-    api("/api/sessions")
-      .then((list) => {
-        setSessions(list);
-        setSessionsFailed(false);
-      })
-      .catch((e) => {
-        warnFailure("session list", e);
-        setSessionsFailed(true);
-      });
+  const refreshSessions = useCallback(
+    () =>
+      api("/api/sessions")
+        .then((list) => {
+          setSessions(list);
+          setSessionsFailed(false);
+        })
+        .catch((e) => {
+          warnFailure("session list", e);
+          setSessionsFailed(true);
+        }),
+    [],
+  );
+  // Recents and search load on demand; mounting the chat creates no session.
+  useEffect(() => {
+    if (panels.sidebar || paletteOpen) void refreshSessions();
+  }, [panels.sidebar, paletteOpen, refreshSessions]);
   const projects = useProjects(refreshSessions);
   const picker = modePicker(approvalModes, session, draftMode);
   const pendingProject = session
     ? null
     : draftProject(draftProjectId, projects.projects);
+  const preparationKey = JSON.stringify([
+    draftVersion,
+    agentId,
+    draftProjectId,
+    delegation.mode,
+    delegation.maxConcurrent,
+  ]);
+  const preparationFailed =
+    draftActive &&
+    !session &&
+    preparationStatus?.key === preparationKey &&
+    preparationStatus.state === "failed";
   // Mirror goal changes into the conversation list without a refetch.
   const syncSessionGoal = (id: string, next: Goal | null) =>
     setSessions((old) =>
@@ -248,6 +284,11 @@ export default function Home() {
     );
   const open = useCallback(async (id: string) => {
     const token = ++generation.current;
+    preparation.current.reset();
+    openingSession.current = true;
+    sending.current = false;
+    setDraftActive(false);
+    setPreparationStatus(null);
     setView("chat");
     setBusy(true);
     setError("");
@@ -325,7 +366,10 @@ export default function Home() {
     } catch (e) {
       if (token === generation.current) reportError(e);
     } finally {
-      if (token === generation.current) setBusy(false);
+      if (token === generation.current) {
+        openingSession.current = false;
+        setBusy(false);
+      }
     }
   }, []);
   // Browser-only preference; read after mount so server and client render match.
@@ -338,24 +382,16 @@ export default function Home() {
     };
   }, []);
   useEffect(() => {
-    fetch(base + "/healthz", { signal: AbortSignal.timeout(10000) })
-      .then((r) => {
-        if (!r.ok) throw new Error(`Health check returned HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(setHealth)
-      .catch((e) => {
-        warnFailure("health check", e);
-        setHealth({ ok: false });
-      });
     api("/api/agents")
       .then((data) => {
         setAgents(data);
-        setAgentId(data[0]?.id || "");
+        // Restoring a saved chat owns its selection, regardless of which GET
+        // finishes first. Never select a default agent alongside that restore.
+        if (!openingSession.current && !sessionRef.current)
+          setAgentId((current) => current || data[0]?.id || "");
       })
       .catch(reportError)
       .finally(() => setLoading(false));
-    void refreshSessions();
     const id = new URLSearchParams(location.search).get("session");
     if (id) void open(id);
   }, [open]);
@@ -545,6 +581,12 @@ export default function Home() {
   // A plain new chat clears any project; a project's "+" passes its id.
   function startDraft(projectId: string | null = null) {
     generation.current++;
+    preparation.current.reset();
+    openingSession.current = false;
+    sending.current = false;
+    setDraftActive(true);
+    setDraftVersion(generation.current);
+    setPreparationStatus(null);
     setView("chat");
     setDraftProjectId(projectId);
     setText("");
@@ -607,6 +649,13 @@ export default function Home() {
     setSession(next);
   }
   function changeDelegation(next: DelegationPrefs) {
+    if (busy || sending.current) return;
+    if (
+      !sessionRef.current &&
+      (next.mode !== delegation.mode ||
+        next.maxConcurrent !== delegation.maxConcurrent)
+    )
+      invalidatePreparation();
     setDelegation(next);
     saveDelegation(next);
   }
@@ -641,15 +690,54 @@ export default function Home() {
         );
     }
   }
+  function invalidatePreparation() {
+    generation.current++;
+    preparation.current.reset();
+    setDraftVersion(generation.current);
+    setPreparationStatus(null);
+    setError("");
+  }
+  function changeDraftProject(projectId: string | null) {
+    if (busy || sending.current) return;
+    invalidatePreparation();
+    setDraftProjectId(projectId);
+  }
+  function prepareSession() {
+    return preparation.current.prepare(preparationKey, async () => {
+      const created: Session = await api(
+        "/api/sessions",
+        createSessionBody(agentId, delegation, draftProjectId),
+      );
+      // A submitted creation that finishes after navigation stays in Recents.
+      // Only ensureSession attaches it to the active composer.
+      void refreshSessions();
+      return created;
+    });
+  }
   async function ensureSession(): Promise<Session> {
     if (sessionRef.current) return sessionRef.current;
     const token = generation.current;
-    const projectId = draftProject(draftProjectId, projects.projects)?._id;
-    const created: Session = await api(
-      "/api/sessions",
-      createSessionBody(agentId, delegation, projectId),
-    );
-    if (token !== generation.current) return created;
+    const projectId = draftProjectId;
+    const attempt = prepareSession();
+    let created: Session;
+    try {
+      created = await attempt.promise;
+    } catch (error) {
+      if (
+        token === generation.current &&
+        preparation.current.isCurrent(attempt)
+      ) {
+        // A timed-out POST may have succeeded. Recover from Recents instead
+        // of allowing another creation request for this draft.
+        setPreparationStatus({ key: attempt.key, state: "failed" });
+        void refreshSessions();
+      }
+      throw error;
+    }
+    if (token !== generation.current || !preparation.current.isCurrent(attempt))
+      return created;
+    setDraftActive(false);
+    setPreparationStatus(null);
     sessionRef.current = created;
     setSession(created);
     history.replaceState(null, "", "?session=" + created._id);
@@ -668,6 +756,7 @@ export default function Home() {
   async function send(value = text) {
     if (
       sending.current ||
+      preparationFailed ||
       !value.trim() ||
       busy ||
       (!sessionRef.current && !agentId)
@@ -714,8 +803,10 @@ export default function Home() {
         ),
       );
     } finally {
-      sending.current = false;
-      if (token === generation.current) setBusy(false);
+      if (token === generation.current) {
+        sending.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -744,7 +835,8 @@ export default function Home() {
     }, 350);
   }
 
-  const commandSuggestions = commandOpen ? suggestCommands(text) : [];
+  const commandSuggestions =
+    SLASH_COMMANDS_ENABLED && commandOpen ? suggestCommands(text) : [];
   function selectCommand(name: string) {
     setText(`${name} `);
     setCommandOpen(false);
@@ -755,6 +847,7 @@ export default function Home() {
     if (
       busy ||
       sending.current ||
+      preparationFailed ||
       !text.trim() ||
       (!sessionRef.current && !agentId)
     )
@@ -771,7 +864,9 @@ export default function Home() {
     }
     const parsed = goalMode
       ? goalCommand(text, goalBudget)
-      : parseChatInput(text);
+      : SLASH_COMMANDS_ENABLED
+        ? parseChatInput(text)
+        : { kind: "message" as const, text };
     // Setting an objective edits an existing goal in place, so a new goal
     // from the composer clears the old one first and starts fresh.
     const replaceGoal = goalMode && !!goal;
@@ -817,6 +912,7 @@ export default function Home() {
       );
       return;
     }
+    const token = generation.current;
     let active = sessionRef.current;
     if (!active) {
       // A goal can open a conversation; other commands need an existing one.
@@ -829,15 +925,19 @@ export default function Home() {
         return;
       }
       try {
+        sending.current = true;
         setBusy(true);
         active = await ensureSession();
+        if (token !== generation.current) return;
       } catch (e) {
-        reportError(e);
-        setBusy(false);
+        if (token === generation.current) {
+          sending.current = false;
+          reportError(e);
+          setBusy(false);
+        }
         return;
       }
     }
-    const token = generation.current;
     const commandText = text;
     const previous = commandAttempt.current;
     const clientId =
@@ -923,8 +1023,10 @@ export default function Home() {
         reportError(e);
       }
     } finally {
-      sending.current = false;
-      if (token === generation.current) setBusy(false);
+      if (token === generation.current) {
+        sending.current = false;
+        setBusy(false);
+      }
     }
   }
   const agent = agents.find((a) => a.id === agentId);
@@ -980,7 +1082,7 @@ export default function Home() {
     setPanels((p) => ({ ...p, activity: !p.activity }));
   }
   function newChat() {
-    if (!busy) startDraft();
+    if (!busy && !sending.current) startDraft();
   }
   useHotkeys({
     "mod+k": () => setPaletteOpen((o) => !o),
@@ -991,7 +1093,13 @@ export default function Home() {
   // Board "Chat": back to the conversation with that agent, fresh if the
   // open session belongs to another one.
   function chatWith(a: AgentSummary) {
-    if (session && session.agentId !== a.id) newChat();
+    if (busy || sending.current) return;
+    if (
+      (sessionRef.current && sessionRef.current.agentId !== a.id) ||
+      (!sessionRef.current && !draftActive)
+    )
+      startDraft();
+    else if (agentId !== a.id) invalidatePreparation();
     setAgentId(a.id);
     setView("chat");
     setNotice("");
@@ -1058,7 +1166,12 @@ export default function Home() {
         onGoalToggle={() => (goalMode ? setGoalMode(false) : startGoal(text))}
         onGoalCancel={() => setGoalMode(false)}
         busy={running}
-        canSend={!!text.trim() && !busy && (!!session || !!agentId)}
+        canSend={
+          !!text.trim() &&
+          !busy &&
+          !preparationFailed &&
+          (!!session || !!agentId)
+        }
         onStop={stopTurn}
         stopTitle={
           goal?.status === "active"
@@ -1077,7 +1190,7 @@ export default function Home() {
                 <button
                   type="button"
                   className="icon-btn ghost"
-                  onClick={() => setDraftProjectId(null)}
+                  onClick={() => changeDraftProject(null)}
                   aria-label={`Don't add to ${pendingProject.name}`}
                 >
                   <Icon name="x" size={13} />
@@ -1090,7 +1203,8 @@ export default function Home() {
         below={
           <>
             <span id="composer-hint" className="sr-only">
-              Type / for commands. Enter to send, Shift + Enter for a new line.
+              {SLASH_COMMANDS_ENABLED && "Type / for commands. "}
+              Enter to send, Shift + Enter for a new line.
             </span>
             {commandSuggestions.length > 0 && (
               <div
@@ -1146,6 +1260,7 @@ export default function Home() {
             {picker && (
               <ApprovalModePicker
                 picker={picker}
+                disabled={busy}
                 errorId={modeError ? "approval-mode-error" : undefined}
                 onChange={(mode) => void changeApprovalMode(mode)}
               />
@@ -1160,8 +1275,10 @@ export default function Home() {
           aria-controls={
             commandSuggestions.length ? "chat-commands" : undefined
           }
-          aria-haspopup="listbox"
-          aria-expanded={commandSuggestions.length > 0}
+          aria-haspopup={SLASH_COMMANDS_ENABLED ? "listbox" : undefined}
+          aria-expanded={
+            SLASH_COMMANDS_ENABLED ? commandSuggestions.length > 0 : undefined
+          }
           aria-activedescendant={
             commandSuggestions.length
               ? `chat-command-${commandIndex}`
@@ -1180,7 +1297,11 @@ export default function Home() {
           disabled={busy || (!session && !agentId)}
           onChange={(e) => {
             setText(e.target.value);
-            setCommandOpen(!goalMode && e.target.value.startsWith("/"));
+            setCommandOpen(
+              SLASH_COMMANDS_ENABLED &&
+                !goalMode &&
+                e.target.value.startsWith("/"),
+            );
             setCommandIndex(0);
             if (notice) setNotice("");
           }}
@@ -1423,9 +1544,9 @@ export default function Home() {
                 }))}
                 currentId={agentId}
                 onPick={(id) => {
-                  setAgentId(id);
+                  const picked = agents.find((a) => a.id === id);
+                  if (picked) chatWith(picked);
                   setPop(null);
-                  setView("chat");
                 }}
                 onAll={() => {
                   setPop(null);
@@ -1575,6 +1696,7 @@ export default function Home() {
         onCreated={(a) => setAgents((list) => [...list, a])}
         // Source: close, start a new chat with the agent, pre-fill "@handle hi, ".
         onSayHi={(a) => {
+          if (busy || sending.current) return;
           setAgentDialogOpen(false);
           newChat();
           setAgentId(a.id);

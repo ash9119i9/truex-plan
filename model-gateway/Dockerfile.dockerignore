@@ -1,0 +1,15 @@
+# This Dockerfile uses a repository-root context and its own allowlist.
+**
+!model-gateway/
+!model-gateway/Dockerfile
+!model-gateway/Dockerfile.dockerignore
+!model-gateway/package.json
+!model-gateway/package-lock.json
+!model-gateway/tsconfig.json
+!model-gateway/src/
+!model-gateway/src/**
+!shared/
+!shared/gateway-token.ts
+**/.env
+**/.env.*
+**/node_modules

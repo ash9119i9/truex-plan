@@ -2,17 +2,21 @@ import { spawn, execFileSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import net from "node:net";
-const services = [
-  ["agent-core", 4100],
-  ["platform", 4000],
-  ["frontend", 3000],
-];
 const read = (name) => {
   const file = resolve(name, ".env");
   return existsSync(file) ? readFileSync(file, "utf8") : "";
 };
 const value = (env, key) =>
   env.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1].trim();
+const remoteRuntime =
+  process.env.AGENTCORE_RUNTIME_ARN ||
+  value(read("platform"), "AGENTCORE_RUNTIME_ARN");
+const services = [
+  ...(remoteRuntime ? [] : [["agent-core", 4100]]),
+  ["platform", 4000],
+  ["frontend", 3000],
+];
+if (remoteRuntime) console.log(`Runtime: Bedrock AgentCore ${remoteRuntime}`);
 // The model gateway is a separate service: it starts only once
 // model-gateway/.env exists. Its secret must match platform's, or every
 // gateway request fails with 401.

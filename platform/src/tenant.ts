@@ -63,6 +63,17 @@ export interface TenantResolver {
 const on = (value: string | undefined) => value?.trim().toLowerCase() === "on";
 export const TENANT_HEADER = "x-truex-tenant";
 
+// Explicit POC deployment: one configured tenant, with no client overrides.
+export function pocTenantResolver(
+  env: NodeJS.ProcessEnv = process.env,
+): TenantResolver {
+  return devTenantResolver({
+    ...env,
+    ALLOW_DEV_TENANT: "on",
+    DEV_TENANT_HEADER: "off",
+  });
+}
+
 // Development only: a fixed tenant, optionally overridden by a header so
 // several tenants can be tried locally. Refuses to run in production.
 export function devTenantResolver(

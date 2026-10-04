@@ -72,9 +72,57 @@ For gateway profiles the platform never sends the provider key to agent-core. Co
 
 Setup: set `MODEL_GATEWAY_URL` and `MODEL_GATEWAY_SECRET` in `platform/.env`, and the same `MODEL_GATEWAY_SECRET` plus `MONGO_URI`/`MONGO_DB` in `model-gateway/.env`. `npm run dev` starts the gateway when `model-gateway/.env` exists and warns if the two secrets differ. Without the gateway configured, gateway profiles fail with a 422 `GATEWAY_NOT_CONFIGURED` error and direct profiles are unaffected. Codex's built-in web search is disabled for non-Responses providers.
 
+### Model gateway container
+
+Build from the repository root. On the ARM64 EC2 instance:
+
+```sh
+docker buildx build --platform linux/arm64 --load \
+  -f model-gateway/Dockerfile -t truex-model-gateway:local .
+
+docker run -d --name truex-model-gateway --restart unless-stopped \
+  --init --stop-timeout 45 \
+  --env-file model-gateway/.env -e HOST=0.0.0.0 -e PORT=4200 \
+  -p 127.0.0.1:4200:4200 truex-model-gateway:local
+
+curl --fail http://127.0.0.1:4200/ready
+```
+
+The image compiles TypeScript and includes production dependencies and the shared token implementation. It runs as the `node` user and checks `/ready`, including MongoDB connectivity. The Dockerfile-specific build context excludes credentials, local dependencies and Codex artifacts; supply settings with `--env-file` at startup. Set `MONGO_URI` to a database reachable from the container; `127.0.0.1` inside the container refers to the container itself.
+
+The command binds port 4200 to the EC2 host's loopback address for an HTTPS reverse proxy on that host. Configure the proxy to forward to `http://127.0.0.1:4200`, preserve streaming (disable response buffering) and allow long model responses. Set `MODEL_GATEWAY_URL` in `platform/.env` to the reachable HTTPS base URL, restart the platform and create a new conversation. Its signing secret must match the gateway's. For an internal load balancer, publish the port on the appropriate interface and restrict its security group to the load balancer.
+
 The platform does not silently change a provider or rewrite database records. Missing sandbox/approval settings default to read-only/never.
 
-Local MongoDB can be started separately with `docker compose -f deploy/compose.yaml up -d mongo` when Docker is running. The repository does not alter unrelated MongoDB data or borrow credentials from other projects.
+Run MongoDB separately or use an existing MongoDB instance, and point `MONGO_URI` at it. The repository does not alter unrelated MongoDB data or borrow credentials from other projects.
+
+## Platform container
+
+Build the platform backend from the repository root on EC2. The build uses the instance's native architecture (AMD64 or ARM64):
+
+```sh
+docker buildx build --load \
+  -f platform/Dockerfile -t truex-platform:local .
+
+docker run -d --name truex-platform --restart unless-stopped \
+  --init --stop-timeout 15 \
+  --env-file platform/.env -e HOST=0.0.0.0 -e PORT=4000 \
+  -p 127.0.0.1:4000:4000 truex-platform:local
+
+curl --fail http://127.0.0.1:4000/livez
+```
+
+The image compiles the backend and shared code, includes production dependencies, and runs as the `node` user. Supply configuration at startup; `.env` files and local build artifacts are excluded from the build context.
+
+For this AgentCore deployment, set `AGENTCORE_RUNTIME_ARN`, a reachable `MONGO_URI`, `MONGO_DB`, `MODEL_GATEWAY_URL`, the matching `MODEL_GATEWAY_SECRET`, and your deployed `FRONTEND_ORIGIN` in `platform/.env`. Set `AUTH_MODE=poc` for this POC. The image defaults to that mode and keeps `NODE_ENV=production`. Google sign-in, invitation lookup, admin login and the admin API are disabled; Google and Resend keys can be removed from the environment.
+
+POC mode uses one shared user (`DEV_USER_ID=dev-user`, `DEV_USER_ROLE=admin` by default) and one tenant (`DEV_TENANT_ID=default` by default), preserving the existing POC conversation ownership. It ignores client user, role and tenant override headers. All five testers share this identity and its conversations. Existing environments with `AUTH_MODE=dev` or `google` must be changed to `poc` for this deployment.
+
+The Google/invitation implementation remains available through `AUTH_MODE=google` for a later authenticated deployment. That mode still requires `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FRONTEND_ORIGIN`, and a `RESEND_API_KEY` when `NODE_ENV=production`.
+
+Attach an EC2 instance role with `bedrock-agentcore:InvokeAgentRuntime` permission for the configured runtime. The AWS SDK reads that role's credentials at runtime; set the [EC2 metadata response hop limit](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-IMDS-new-instances.html) to 2 for Docker access. The image contains no AWS credentials. Configure an HTTPS reverse proxy to `http://127.0.0.1:4000`, disable response buffering for SSE, and allow at least 180 seconds for cold AgentCore requests. The frontend runs separately.
+
+The container health check uses `/livez` to check the platform process without repeatedly invoking AgentCore. Use `/healthz` separately to verify MongoDB and AgentCore connectivity.
 
 ## Credential-free demo
 
@@ -116,7 +164,6 @@ DEMO_FRONTEND_PORT=3100 DEMO_PLATFORM_PORT=4200 DEMO_CORE_PORT=4300 npm run demo
 | `frontend/` | Chat, picker, session list, approvals, events, plans, diffs, timings and capability inspection |
 | `shared/` | Contracts plus generated protocol types, schemas and inventory |
 | `vendor/codex/` | Independently pinned local Codex source and compiled binary |
-| `deploy/` | Compose and Kubernetes deployment templates |
 | `docs/protocol.md` | Source-generated protocol inventory and verified limitations |
 | `docs/capability-coverage.md` | Per-method implementation surface; runtime coverage remains explicit |
 | `docs/VALIDATION.md` | Checks run, evidence and outstanding verification |
@@ -132,25 +179,80 @@ npm test
 npm run format:check
 ```
 
-The tests include protocol/schema checks, concurrency, request expiry, disk-spool recovery, Mongo idempotency, real Codex streaming and provider-key isolation, and HTTP-level restart recovery. Test provider responses are simulated. A live OpenRouter greeting has also been verified with the user-managed MongoDB profile. Full capability and deployment acceptance are still open; see `docs/VALIDATION.md`.
+The tests include protocol/schema checks, concurrency, request expiry, disk-spool recovery, Mongo idempotency, real Codex streaming and provider-key isolation, and HTTP-level restart recovery. Test provider responses are simulated. A live OpenRouter greeting has also been verified with the user-managed MongoDB profile. Full capability acceptance is still open; see `docs/VALIDATION.md`.
 
-## Deployment and operations
+## Local runtime state
 
-Build each image with the repository root as its context. The agent-core Dockerfile compiles the vendored Rust source inside the image build; it does not download a global Codex package.
+`npm run dev` starts the services as local Node processes. `CODEX_HOME` and `AGENT_WORKSPACE` retain runtime history and conversation files across restarts; keep these directories and MongoDB data when stopping the app.
+
+`AGENT_CORE_URLS` lists the local runtime addresses used for session ownership. Existing sessions stay attached to their recorded owner. Readiness stops new admission while draining; shutdown waits up to `DRAIN_TIMEOUT_MS` (default 30 seconds) for active turns.
+
+## Bedrock AgentCore image
+
+The root `Dockerfile` builds the pinned Codex executable for Linux ARM64, then packages Codex, agent-core and the AgentCore HTTP entrypoint. The separate `model-gateway/Dockerfile` packages the gateway for EC2 or another container host. Frontend, platform and MongoDB run separately. The runtime image does not include model-gateway source or dependencies.
+
+Build the reusable binary first, then the runtime image:
 
 ```sh
-docker build -f agent-core/Dockerfile -t truex-agent-core:local .
-docker build -f platform/Dockerfile -t truex-platform:local .
-docker build -f frontend/Dockerfile -t truex-frontend:local .
-docker build -f model-gateway/Dockerfile -t truex-model-gateway:local .
+npm run codex:artifact
+node scripts/codex-artifact.mjs verify .runtime/agentcore/codex .runtime/agentcore/codex.json codex.lock.json
+npm run agentcore:build
 ```
 
-The model gateway is stateless and scales horizontally. Run it privately next to the platform, reachable from the agent-core runtime but not from the internet (for AWS AgentCore: VPC mode, an internal ALB, and a security group that admits only the runtime subnets). Model calls are long-lived streams, so keep load-balancer idle timeouts at 300 seconds or more and give deployments enough deregistration delay for in-flight streams to finish. Health: `GET /health` (liveness) and `GET /ready` (readiness, fails while draining or when MongoDB is unreachable).
+The artifact target cross-compiles on the builder's native architecture and exports `.runtime/agentcore/codex` plus a manifest containing its source revision, architecture and SHA-256. It fetches the exact source in `codex.lock.json`; it does not reuse the host's x86-64 debug binary. Application image builds verify that artifact and do not rebuild Rust. Keep the artifact and rebuild it when the Codex pin changes. Cargo caches persist on the same Docker builder. Use `--build-arg CODEX_BUILD_JOBS=1` if the builder has limited memory. Image builds require an ARM64 builder or ARM64 emulation support.
 
-`deploy/kubernetes.yaml` provides stable per-pod DNS and per-pod `/data` PVCs. `/data/codex` and `/data/workspace` must both survive restarts. Configure the `platform-config` Secret's `MONGO_URI`, image registry/tags, storage class and browser-facing platform URL before deployment. The frontend URL is a build-time `NEXT_PUBLIC_PLATFORM_URL` value. No deployment has been applied.
+To reuse a binary built natively on an ARM64 Linux host with `node scripts/codex.mjs --build`, package it before building the image:
 
-`AGENT_CORE_URLS` enumerates owners eligible for new sessions and existing-session routing. Keep old owner addresses configured while their sessions exist. Adding replicas also requires updating this list. Readiness stops new admission while draining; shutdown waits up to `DRAIN_TIMEOUT_MS` (default 30 seconds) for active turns. The memory/thread resource defaults are provisional, not production sizing evidence.
+```sh
+install -D -m 0755 vendor/codex/codex-rs/target/debug/codex .runtime/agentcore/codex
+node scripts/codex-artifact.mjs create .runtime/agentcore/codex .runtime/agentcore/codex.json codex.lock.json vendor/codex
+npm run agentcore:build
+```
 
-SSE routes require buffering and compression disabled in any added ingress/reverse proxy, with idle timeouts longer than the 15-second heartbeat. The supplied services expose no public ingress. Apply an appropriate network policy in a cluster with policy enforcement.
+The runtime uses Debian Trixie with glibc 2.41 to support binaries built on Ubuntu 24.04 with glibc 2.39. Architecture and checksum verification run before packaging; the image build also executes `codex --version` to check shared-library compatibility.
 
-Before runtime upgrades, stop admission, drain turns, back up each runtime/workspace volume and MongoDB, and retain the previous images and pin. Validate new storage compatibility against restored copies before rolling out. Do not downgrade a volume whose runtime schema changed without restoring a compatible snapshot. Backups, restores, Kubernetes behavior and container builds have not been exercised in this environment.
+On an x86-64 Linux host whose default builder cannot run ARM64 processes, use an isolated BuildKit builder for the image:
+
+```sh
+docker buildx create --name truex-agentcore-builder --driver docker-container --bootstrap
+BUILDX_BUILDER=truex-agentcore-builder npm run agentcore:build
+```
+
+The container exposes `0.0.0.0:8080` with `GET /ping` and `POST /invocations`, as required by the [AgentCore HTTP contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html). It starts internal services on the first valid invocation because [AgentCore filesystem mounts are available at invocation time](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-filesystem-configurations.html), rather than during container initialization.
+
+For a direct Responses provider, no gateway configuration is needed. For gateway-backed profiles, deploy model-gateway as a shared private service reachable from AgentCore. Configure the platform with that service's `MODEL_GATEWAY_URL` and a matching `MODEL_GATEWAY_SECRET` (at least 32 characters). Use a reachable hostname, not `127.0.0.1`; a private endpoint requires appropriate AgentCore VPC connectivity. The platform passes the gateway URL and a scoped access token in each thread's model configuration.
+
+Configure `MODEL_GATEWAY_SECRET`, `MONGO_URI`, `MONGO_DB` and optionally `CATALOG_MONGO_DB` on the separate gateway service. Set its `HOST=0.0.0.0` and `PORT=4200` when serving requests through a private network endpoint. Do not put the gateway signing secret or database credentials in the AgentCore runtime environment. Provider keys remain in MongoDB or Secrets Manager. Secrets and local `.env` files are excluded from the image build context.
+
+The runtime starts only agent-core and checks only local core health. A gateway outage surfaces when a model request uses the gateway; it does not prevent the runtime from starting or handling other local operations.
+
+Invocation payloads wrap local runtime operations:
+
+```json
+{"method":"POST","path":"/threads","body":{"model":"your-model","modelProvider":"your-provider","config":{}}}
+```
+
+JSON responses preserve the local HTTP status inside `{ "status": 201, "body": { ... } }`. To subscribe to a thread, invoke `{ "method": "GET", "path": "/threads/<id>/events", "cursor": "<last-event-id>" }`; the response streams SSE frames and closes after 55 minutes for reconnection. Unsupported paths are rejected.
+
+Reuse the same AgentCore `runtimeSessionId` for all operations in a conversation. Configure persistent storage at `/mnt/state`; `CODEX_HOME` and `AGENT_WORKSPACE` point there. The image alone does not persist data across session termination. Managed session storage also resets on runtime version changes; choose storage and backups to match the required retention.
+
+To run the frontend, platform and model-gateway locally while invoking Codex on Bedrock, configure `platform/.env`:
+
+```env
+AGENTCORE_RUNTIME_ARN=arn:aws:bedrock-agentcore:us-east-1:502055890667:runtime/truex_codex-Z4fv9HDC8F
+MODEL_GATEWAY_URL=https://your-reachable-gateway.example.com
+```
+
+Keep the existing shared `MODEL_GATEWAY_SECRET` and MongoDB settings. The gateway URL must be reachable from AgentCore; a gateway on the developer laptop's `127.0.0.1` cannot receive requests from AWS. Private gateway endpoints require AgentCore VPC connectivity. Gateway-backed profiles with a loopback gateway URL are rejected before starting a conversation.
+
+Authenticate with AWS (`aws login` for local console credentials, or configure a role/profile), then run `npm run dev`. When `AGENTCORE_RUNTIME_ARN` is configured, the launcher starts platform, frontend and model-gateway (when its `.env` exists), and the platform invokes the remote runtime using the AWS SDK. Each new conversation stores an `agentCoreSessionId` in MongoDB; creation, resume, messages, event streams and background ingestion reuse it. Streaming reconnects forward the event cursor. JSON envelopes preserve agent-core's original status and errors. AWS credentials stay in the platform process.
+
+Existing conversations keep their original runtime owner. Start a new conversation after switching from local HTTP to Bedrock; old local conversations are not moved into the remote runtime. The direct HTTP transport remains available when `AGENTCORE_RUNTIME_ARN` is unset. Building the image does not publish anything to AWS.
+
+After deploying the image, test the runtime using AWS CLI v2 and Node:
+
+```sh
+npm run agentcore:test -- arn:aws:bedrock-agentcore:us-east-1:502055890667:runtime/truex_codex-Z4fv9HDC8F
+```
+
+The script calls `InvokeAgentRuntime` with JSON operation envelopes, starts Codex through `/healthz`, verifies the deployed revision against `codex.lock.json` and writable storage, checks `/capabilities`, then repeats health in the same runtime session. It exits nonzero on a failed check and saves requests, responses and a summary under `.runtime/agentcore-tests/<session-id>/`. Pass a session ID as a second argument to reuse a session. AWS CLI uses your configured credentials (or `AWS_PROFILE`); the caller needs `bedrock-agentcore:InvokeAgentRuntime` permission on the runtime. This smoke test does not call a model or test model-gateway connectivity.
