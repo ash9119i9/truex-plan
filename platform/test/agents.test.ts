@@ -33,6 +33,7 @@ test("agent validation rejects bad input and server-owned fields", () => {
   assert.equal(agent.tint, "ice");
   assert.equal(agent.builtin, false);
   assert.equal(agent.sandbox, "read-only");
+  assert.equal(agent.scope, "general");
 });
 
 test(
@@ -82,10 +83,12 @@ test(
     const stored = await store.agents.findOne({ _id: created.id });
     assert.equal(stored?.systemPrompt, "Cite sources.");
     assert.equal(stored?.builtin, false);
+    assert.equal(stored?.scope, "general");
 
     // It works as a chat agent: instructions become the system prompt.
     const config = await service.configuration(created.id);
     assert.match(config.baseInstructions, /^Cite sources\./);
+    assert.equal(config.scope, "general");
 
     const listed = (await service.agents()).find((a) => a.id === created.id);
     assert.deepEqual(

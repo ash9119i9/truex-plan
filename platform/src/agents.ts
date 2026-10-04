@@ -65,6 +65,7 @@ export function newAgent(body: unknown): AgentDocument {
     handle,
     description: text(input.description, "Purpose", AGENT_PURPOSE_MAX),
     systemPrompt: text(input.systemPrompt, "Instructions", AGENT_INSTRUCTIONS_MAX),
+    scope: "general",
     look: look as number,
     tint: tint as AgentTint,
     modelProfileId: input.modelProfileId.trim(),
