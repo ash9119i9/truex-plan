@@ -134,3 +134,30 @@ test("userMessage shows API messages and hides unexpected errors", (t) => {
   });
   assert.equal(errorRef(bug), null);
 });
+
+test("caller cancellation aborts background loads without logging a false network failure", async (t) => {
+  const logged = t.mock.method(console, "error", () => {});
+  let signal: AbortSignal | undefined;
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (_url: RequestInfo | URL, init?: RequestInit) => {
+      signal = init?.signal ?? undefined;
+      return new Promise<Response>((_, reject) =>
+        signal!.addEventListener(
+          "abort",
+          () => reject(new DOMException("Stopped", "AbortError")),
+          { once: true },
+        ),
+      );
+    },
+  );
+  const controller = new AbortController();
+  const pending = api("/api/sessions/chat/crawls", undefined, {
+    signal: controller.signal,
+  });
+  controller.abort();
+  await assert.rejects(pending, { name: "AbortError" });
+  assert.equal(signal?.aborted, true);
+  assert.equal(logged.mock.callCount(), 0);
+});

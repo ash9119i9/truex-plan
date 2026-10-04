@@ -666,21 +666,99 @@ fieldset.quick-tools {
   line-height: 1.5;
 }
 .conversation-documents,
-.conversation-visualizations {
+.conversation-visualizations,
+.conversation-crawls {
   padding: 12px 0 0;
 }
 .conversation-documents h3,
-.conversation-visualizations h3 {
+.conversation-visualizations h3,
+.conversation-crawls h3 {
   display: flex;
   align-items: center;
   gap: 6px;
   margin: 8px 0 8px;
 }
 .conversation-documents .muted,
-.conversation-visualizations .muted {
+.conversation-visualizations .muted,
+.conversation-crawls .muted {
   margin: 6px 0;
   font-size: 12px;
   color: var(--muted);
+}
+.crawl-card {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.crawl-card header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.crawl-card header strong {
+  min-width: 0;
+}
+.crawl-card a {
+  color: var(--accent);
+}
+.crawl-state {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 12px;
+  color: var(--muted);
+  background: var(--surface-hover);
+  font-size: 11px;
+}
+.crawl-state-running,
+.crawl-state-queued {
+  color: var(--accent);
+}
+.crawl-state-failed,
+.crawl-state-partial {
+  color: var(--danger);
+}
+.crawl-counts {
+  line-height: 1.5;
+}
+.crawl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+.crawl-warning {
+  color: var(--muted);
+  font-size: 12px;
+}
+.crawl-page,
+.crawl-failures {
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.crawl-page summary,
+.crawl-failures summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.crawl-markdown {
+  line-height: 1.6;
+  max-height: 500px;
+  overflow: auto;
+  margin-top: 10px;
+}
+.crawl-markdown pre {
+  max-width: 100%;
+  overflow: auto;
+}
+.crawl-markdown table {
+  display: block;
+  max-width: 100%;
+  overflow: auto;
 }
 .document-upload {
   display: flex;

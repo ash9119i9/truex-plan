@@ -3,7 +3,9 @@
 **/.next
 **/.env
 **/.env.local
+deploy/websearch.env
 **/.git
 vendor/codex/codex-rs/target
 .runtime
 *.log
+**/__pycache__

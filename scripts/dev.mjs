@@ -25,6 +25,10 @@ if (existsSync(resolve("model-gateway", ".env"))) {
       "warning: MODEL_GATEWAY_SECRET differs between platform/.env and model-gateway/.env",
     );
 }
+// Optional host-running search API. With the Docker WebSearch stack instead,
+// leave web-service/.env absent to avoid binding the same port twice.
+if (existsSync(resolve("web-service", ".env")))
+  services.push(["web-service", 4400]);
 for (const [name, fallback] of services) {
   const port = Number(read(name).match(/^PORT=(\d+)/m)?.[1] || fallback);
   await new Promise((resolve, reject) => {

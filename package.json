@@ -4,9 +4,9 @@
   "scripts": {
     "protocol:gen": "node scripts/protocol.mjs",
     "dev": "node scripts/dev.mjs",
-    "install:all": "npm --prefix agent-core ci && npm --prefix platform ci && npm --prefix model-gateway ci && npm --prefix frontend ci",
-    "build": "npm --prefix agent-core run build && npm --prefix platform run build && npm --prefix model-gateway run build && npm --prefix frontend run build",
-    "test": "npm --prefix agent-core test && npm --prefix platform test && npm --prefix model-gateway test",
+    "install:all": "npm --prefix agent-core ci && npm --prefix platform ci && npm --prefix model-gateway ci && npm --prefix frontend ci && npm --prefix web-service ci",
+    "build": "npm --prefix agent-core run build && npm --prefix platform run build && npm --prefix model-gateway run build && npm --prefix frontend run build && npm --prefix web-service run build",
+    "test": "npm --prefix agent-core test && npm --prefix platform test && npm --prefix model-gateway test && npm --prefix web-service test",
     "codex:setup": "node scripts/codex.mjs --build",
     "codex:verify": "node scripts/codex.mjs",
     "demo": "node scripts/demo.mjs",
@@ -15,8 +15,12 @@
     "migrate:tenancy": "node scripts/migrate-tenancy.mjs",
     "migrate:mcp-scopes": "node scripts/migrate-mcp-scopes.mjs",
     "purge:chats": "node scripts/purge-chats.mjs",
-    "format": "prettier --write \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\"",
-    "format:check": "prettier --check \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\""
+    "format": "prettier --write \"{agent-core,platform,model-gateway,web-service}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token,web-search,web-read,web-crawl}.ts\"",
+    "format:check": "prettier --check \"{agent-core,platform,model-gateway,web-service}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token,web-search,web-read,web-crawl}.ts\"",
+    "websearch:smoke": "node --env-file=deploy/websearch.env scripts/websearch-smoke.mjs",
+    "websearch:runtime-smoke": "cd agent-core && WEBSEARCH_LIVE_TEST=on node --env-file=../deploy/websearch.env --import tsx --test test/websearch-live.test.ts",
+    "webread:smoke": "node --env-file=deploy/websearch.env scripts/webread-smoke.mjs",
+    "webcrawl:smoke": "node --env-file=deploy/websearch.env scripts/webcrawl-smoke.mjs"
   },
   "devDependencies": {
     "prettier": "^3.9.8"

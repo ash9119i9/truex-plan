@@ -1,0 +1,39 @@
+# Only the authenticated web-service can reach this private instance.
+# SEARXNG_SECRET is supplied by Compose; never put a real secret in this file.
+use_default_settings:
+  engines:
+    keep_only:
+      - brave
+      - duckduckgo
+      - google
+      - bing
+
+general:
+  instance_name: Truex WebSearch
+  debug: false
+
+server:
+  secret_key: ""
+  limiter: false
+  public_instance: false
+  image_proxy: false
+
+search:
+  safe_search: 1
+  default_lang: en
+  formats:
+    - json
+
+outgoing:
+  request_timeout: 8.0
+  max_request_timeout: 12.0
+
+engines:
+  - name: brave
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: google
+    disabled: false
+  - name: bing
+    disabled: false

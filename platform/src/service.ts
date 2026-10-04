@@ -432,7 +432,10 @@ export class PlatformService {
     const reserved = userMcps.length ? await this.tenantNames() : new Set();
     const names = new Set<string>();
     for (const mcp of [...tenantMcps, ...userMcps]) {
-      if (names.has(mcp.name) || (mcp.scope === "user" && reserved.has(mcp.name))) {
+      if (
+        names.has(mcp.name) ||
+        (mcp.scope === "user" && reserved.has(mcp.name))
+      ) {
         if (mcp.scope === "user") {
           log("warn", "user MCP skipped: a tenant MCP uses its name", {
             op: "configuration",
@@ -467,6 +470,15 @@ export class PlatformService {
     const skills = await this.skills(agent.skillIds || []);
     return {
       tenantId: currentTenantId(),
+      // SearXNG performs live searches. Preserve cached-only hosted search
+      // and explicit opt-out, including on resume; only default/live profiles
+      // may register the built-in tool when its web service is configured.
+      webSearchEnabled:
+        profile.webSearch === undefined || profile.webSearch === "live",
+      // Cached search policy permits reading an explicit URL; disabled blocks
+      // all built-in web access. This is independent of provider-hosted search.
+      webReadEnabled: profile.webSearch !== "disabled",
+      webCrawlEnabled: profile.webSearch !== "disabled",
       model: profile.modelName,
       modelProvider: provider,
       config,
@@ -620,7 +632,12 @@ export class PlatformService {
         `@${agent.handle} is taken. Choose a different name.`,
         "AGENT_HANDLE_TAKEN",
       );
-    if (await this.store.agents.findOne({ handle: agent.handle }, { projection: { _id: 1 } }))
+    if (
+      await this.store.agents.findOne(
+        { handle: agent.handle },
+        { projection: { _id: 1 } },
+      )
+    )
       throw taken();
     try {
       await this.store.agents.insertOne(agent);
@@ -648,7 +665,11 @@ export class PlatformService {
   private mcpCaller() {
     const user = currentUser();
     if (!user)
-      throw new ApiError(401, "Sign in to manage MCP servers", "UNAUTHENTICATED");
+      throw new ApiError(
+        401,
+        "Sign in to manage MCP servers",
+        "UNAUTHENTICATED",
+      );
     return user;
   }
   private tenantAdmin() {
@@ -1938,12 +1959,7 @@ export class PlatformService {
     if (feedback.length > 4000)
       throw new ApiError(400, "Feedback is too long", "INVALID_REVIEW");
     const session = await this.sessionFor(id, "write");
-    const { goal } = await this.capability(
-      id,
-      "thread/goal/get",
-      {},
-      session,
-    );
+    const { goal } = await this.capability(id, "thread/goal/get", {}, session);
     if (!goal || goal.status !== "complete")
       throw new ApiError(
         409,

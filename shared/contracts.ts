@@ -391,6 +391,8 @@ export type StepKind =
   | "tool"
   | "fileChange"
   | "webSearch"
+  | "webRead"
+  | "webCrawl"
   | "agent"
   | "other";
 export interface StepSpan {

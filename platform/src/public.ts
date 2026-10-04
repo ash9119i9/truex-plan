@@ -449,6 +449,8 @@ const STEP_KINDS = [
   "tool",
   "fileChange",
   "webSearch",
+  "webRead",
+  "webCrawl",
   "agent",
   "other",
 ] as const;
@@ -705,6 +707,51 @@ export function publicEvent(e: any): any | null {
             ? "Document request finished"
             : "Working with conversation documents",
         };
+        if (d.item.type === "dynamicToolCall" && d.item.tool === "web_search")
+          labels.dynamicToolCall = complete
+            ? d.item.success === false
+              ? "Web search could not be completed"
+              : "Web search finished"
+            : "Searching the web";
+        if (d.item.type === "dynamicToolCall" && d.item.tool === "web_read")
+          labels.dynamicToolCall = complete
+            ? d.item.success === false
+              ? "Web page could not be read"
+              : "Web page read"
+            : "Reading the web";
+        if (d.item.type === "dynamicToolCall" && d.item.tool === "web_crawl") {
+          let action: unknown;
+          try {
+            const args =
+              typeof d.item.arguments === "string"
+                ? JSON.parse(d.item.arguments)
+                : d.item.arguments;
+            action = args?.action;
+          } catch {
+            /* Unknown actions receive a generic safe label. */
+          }
+          const labelsByAction: Record<string, [string, string]> = {
+            start: ["Starting a web crawl", "Background web crawl started"],
+            status: [
+              "Checking web crawl progress",
+              "Web crawl progress checked",
+            ],
+            results: ["Reading web crawl results", "Web crawl results read"],
+            cancel: [
+              "Cancelling a web crawl",
+              "Web crawl cancellation requested",
+            ],
+          };
+          const pair =
+            typeof action === "string" && Object.hasOwn(labelsByAction, action)
+              ? labelsByAction[action]
+              : undefined;
+          labels.dynamicToolCall = complete
+            ? d.item.success === false
+              ? "Web crawl request could not be completed"
+              : (pair?.[1] ?? "Web crawl request finished")
+            : (pair?.[0] ?? "Working with a web crawl");
+        }
         if (
           d.item.type === "dynamicToolCall" &&
           d.item.tool === "create_visualization"

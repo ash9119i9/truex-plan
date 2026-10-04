@@ -181,7 +181,7 @@ const stalledMessage =
 const helperQuestionAnswer =
   "Helper agents cannot ask the user. The main agent handles clarifications; proceed with reasonable assumptions and list open questions in your result.";
 const helperToolFailure =
-  "Helper agents cannot use conversation documents or workspace files. Return your findings to the main agent, which handles documents and workspace files.";
+  "Helper agents cannot use conversation documents, workspace files, or native web search/read/crawl. Return your findings and any web research requests to the main agent, which handles these tools.";
 interface GoalTokens {
   key: string | null;
   observed: number;
@@ -471,6 +471,9 @@ export class ThreadManager {
       approvalNameHeuristic,
       tenantId,
       skills,
+      webSearchEnabled,
+      webReadEnabled,
+      webCrawlEnabled,
       mcpFingerprint,
       ...start
     } = params || {};
@@ -478,6 +481,12 @@ export class ThreadManager {
     parseFingerprint(mcpFingerprint);
     const tenant = parseTenant(tenantId);
     skillSet(skills);
+    if (webSearchEnabled !== undefined && typeof webSearchEnabled !== "boolean")
+      throw new HttpError(400, "Invalid web search setting");
+    if (webReadEnabled !== undefined && typeof webReadEnabled !== "boolean")
+      throw new HttpError(400, "Invalid web read setting");
+    if (webCrawlEnabled !== undefined && typeof webCrawlEnabled !== "boolean")
+      throw new HttpError(400, "Invalid web crawl setting");
     validateRequest("thread/start", start);
     this.redactor.remember(start);
     this.reserve();
@@ -490,6 +499,9 @@ export class ThreadManager {
         ...(scope === undefined ? {} : { scope }),
         ...(tenantId === undefined ? {} : { tenantId: tenant }),
         ...(skills === undefined ? {} : { skills }),
+        ...(webSearchEnabled === undefined ? {} : { webSearchEnabled }),
+        ...(webReadEnabled === undefined ? {} : { webReadEnabled }),
+        ...(webCrawlEnabled === undefined ? {} : { webCrawlEnabled }),
       });
       const t = this.thread(result.thread.id);
       t.tenantId = tenant;
@@ -505,19 +517,45 @@ export class ThreadManager {
   }
   async resume(id: string, input: any = {}) {
     // Approval mode fields are Truex settings, not runtime parameters.
-    const {
-      approvalMode,
-      approvalNameHeuristic,
-      mcpFingerprint,
-      ...params
-    } = input || {};
+    const { approvalMode, approvalNameHeuristic, mcpFingerprint, ...params } =
+      input || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
     parseFingerprint(mcpFingerprint);
     if (params.tenantId !== undefined) parseTenant(params.tenantId);
     if (params.skills !== undefined) skillSet(params.skills);
+    if (
+      params.webSearchEnabled !== undefined &&
+      typeof params.webSearchEnabled !== "boolean"
+    )
+      throw new HttpError(400, "Invalid web search setting");
+    if (
+      params.webReadEnabled !== undefined &&
+      typeof params.webReadEnabled !== "boolean"
+    )
+      throw new HttpError(400, "Invalid web read setting");
+    if (
+      params.webCrawlEnabled !== undefined &&
+      typeof params.webCrawlEnabled !== "boolean"
+    )
+      throw new HttpError(400, "Invalid web crawl setting");
     return this.serial(id, async () => {
       const t = this.thread(id);
       this.ownedBy(t, params.tenantId);
+      if (
+        params.webSearchEnabled !== undefined &&
+        this.runtime instanceof BusinessRuntime
+      )
+        this.runtime.setWebSearchEnabled(id, params.webSearchEnabled);
+      if (
+        params.webReadEnabled !== undefined &&
+        this.runtime instanceof BusinessRuntime
+      )
+        this.runtime.setWebReadEnabled(id, params.webReadEnabled);
+      if (
+        params.webCrawlEnabled !== undefined &&
+        this.runtime instanceof BusinessRuntime
+      )
+        this.runtime.setWebCrawlEnabled(id, params.webCrawlEnabled);
       const moded = this.modes.has(id) || approvalMode !== undefined;
       this.setMode(id, approvalMode, approvalNameHeuristic);
       if (moded) this.reevaluate(t);

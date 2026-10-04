@@ -6,6 +6,11 @@ import type { Request, Response, NextFunction } from "express";
 import { json } from "express";
 import { assistantCapabilities } from "../../shared/assistant-capabilities";
 import {
+  parseWebCrawlJobId,
+  parseWebCrawlResultsQuery,
+  WebCrawlInputError,
+} from "../../shared/web-crawl";
+import {
   publicSession,
   publicTiming,
   publicTrace,
@@ -42,6 +47,19 @@ import {
 } from "./auth";
 @Module({})
 class AppModule {}
+function crawlJobId(value: unknown): string {
+  try {
+    return parseWebCrawlJobId(value);
+  } catch (error) {
+    throw new ApiError(
+      400,
+      error instanceof WebCrawlInputError
+        ? error.message
+        : "Invalid crawl job.",
+      "INVALID_INPUT",
+    );
+  }
+}
 async function main() {
   const app = await NestFactory.create(AppModule, {
     logger: ["error", "warn"],
@@ -254,6 +272,77 @@ async function main() {
           ),
         ),
     ),
+  );
+  http.get(
+    "/api/sessions/:id/crawls",
+    route(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(
+        await service.owned(
+          await service.sessionFor(String(req.params.id), "read"),
+          "/crawls",
+        ),
+      );
+    }),
+  );
+  http.get(
+    "/api/sessions/:id/crawls/:jobId",
+    route(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(
+        await service.owned(
+          await service.sessionFor(String(req.params.id), "read"),
+          "/crawls/" + encodeURIComponent(crawlJobId(req.params.jobId)),
+        ),
+      );
+    }),
+  );
+  http.get(
+    "/api/sessions/:id/crawls/:jobId/results",
+    route(async (req, res) => {
+      const session = await service.sessionFor(String(req.params.id), "read");
+      const query = new URLSearchParams();
+      try {
+        for (const [key, value] of Object.entries(
+          parseWebCrawlResultsQuery(req.query),
+        ))
+          query.set(key, String(value));
+      } catch (error) {
+        throw new ApiError(
+          400,
+          error instanceof WebCrawlInputError
+            ? error.message
+            : "Invalid crawl result page.",
+          "INVALID_INPUT",
+        );
+      }
+      res.setHeader("Cache-Control", "no-store");
+      res.json(
+        await service.owned(
+          session,
+          "/crawls/" +
+            encodeURIComponent(crawlJobId(req.params.jobId)) +
+            "/results?" +
+            query,
+        ),
+      );
+    }),
+  );
+  http.post(
+    "/api/sessions/:id/crawls/:jobId/cancel",
+    route(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.json(
+        await service.owned(
+          await service.sessionFor(String(req.params.id), "write"),
+          "/crawls/" +
+            encodeURIComponent(crawlJobId(req.params.jobId)) +
+            "/cancel",
+          "POST",
+          {},
+        ),
+      );
+    }),
   );
   http.get(
     "/api/sessions/:id/documents/:fileId",

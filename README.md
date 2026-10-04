@@ -70,7 +70,7 @@ Optional profile fields: `route` (`gateway` forces a Responses profile through t
 
 For gateway profiles the platform never sends the provider key to agent-core. Codex receives the gateway URL `MODEL_GATEWAY_URL/p/<profileId>/v1` and a token signed with `MODEL_GATEWAY_SECRET` that is valid only for that profile. The gateway checks the token, loads the profile and key from `truex_models`, and calls the provider. Tokens do not expire, because Codex keeps a thread's provider config for the life of the thread. Revoke access by disabling the profile (`enabled: false`) or rotating the secret.
 
-Setup: set `MODEL_GATEWAY_URL` and `MODEL_GATEWAY_SECRET` in `platform/.env`, and the same `MODEL_GATEWAY_SECRET` plus `MONGO_URI`/`MONGO_DB` in `model-gateway/.env`. `npm run dev` starts the gateway when `model-gateway/.env` exists and warns if the two secrets differ. Without the gateway configured, gateway profiles fail with a 422 `GATEWAY_NOT_CONFIGURED` error and direct profiles are unaffected. Codex's built-in web search is disabled for non-Responses providers.
+Setup: set `MODEL_GATEWAY_URL` and `MODEL_GATEWAY_SECRET` in `platform/.env`, and the same `MODEL_GATEWAY_SECRET` plus `MONGO_URI`/`MONGO_DB` in `model-gateway/.env`. `npm run dev` starts the gateway when `model-gateway/.env` exists and warns if the two secrets differ. Without the gateway configured, gateway profiles fail with a 422 `GATEWAY_NOT_CONFIGURED` error and direct profiles are unaffected. Provider-hosted web search is disabled for non-Responses providers; optional [SearXNG WebSearch](docs/WEBSEARCH.md) and [Crawl4AI WebRead](docs/WEBREAD.md) work through ordinary function tools across supported provider routes.
 
 The platform does not silently change a provider or rewrite database records. Missing sandbox/approval settings default to read-only/never.
 
@@ -103,6 +103,8 @@ DEMO_FRONTEND_PORT=3100 DEMO_PLATFORM_PORT=4200 DEMO_CORE_PORT=4300 npm run demo
 - Final messages, decisions and completed-turn metrics are written to a small adapter record spool on the Codex volume. Platform consumes and acknowledges these records independently of browser streams. This is a local persistence handoff, not a turn scheduling queue or broker.
 - Mongo writes deduplicate records. Message submission requires `clientId`; ambiguous failures are not blindly retried.
 - HTTP MCP tools and connector configuration are available; local stdio connectors are rejected.
+- Opt-in [Crawl4AI WebRead](docs/WEBREAD.md): read one public page into bounded Markdown with direct citations, retrieval metadata and cancellation. Start a new conversation after enabling; WebCrawl remains planned.
+- Opt-in [SearXNG WebSearch](docs/WEBSEARCH.md): provider-independent source discovery with bounded snippets, direct citations, partial-engine warnings and cancellation. Start a new conversation after enabling.
 - Per-thread provider and MCP configuration. Concurrent provider-key isolation is tested against the real runtime with local fixtures.
 - Lazy same-owner resume with retained runtime/workspace storage and cold-open transcript reconciliation.
 - Conversation tools expose fork, compact, goals, model/reasoning settings and archive through a restricted API. Raw schema/configuration and host execution methods remain private.
@@ -112,6 +114,7 @@ DEMO_FRONTEND_PORT=3100 DEMO_PLATFORM_PORT=4200 DEMO_CORE_PORT=4300 npm run demo
 | Path | Purpose |
 |---|---|
 | `agent-core/` | Child process transport, protocol validation, thread coordination, requests, SSE, persistence handoff |
+| `web-service/` | Private Search/Read API, SearXNG adapter and isolated Crawl4AI browser egress |
 | `platform/` | MongoDB, profiles, sessions, owner routing, HTTP API and SSE relay |
 | `frontend/` | Chat, picker, session list, approvals, events, plans, diffs, timings and capability inspection |
 | `shared/` | Contracts plus generated protocol types, schemas and inventory |
@@ -154,3 +157,7 @@ The model gateway is stateless and scales horizontally. Run it privately next to
 SSE routes require buffering and compression disabled in any added ingress/reverse proxy, with idle timeouts longer than the 15-second heartbeat. The supplied services expose no public ingress. Apply an appropriate network policy in a cluster with policy enforcement.
 
 Before runtime upgrades, stop admission, drain turns, back up each runtime/workspace volume and MongoDB, and retain the previous images and pin. Validate new storage compatibility against restored copies before rolling out. Do not downgrade a volume whose runtime schema changed without restoring a compatible snapshot. Backups, restores, Kubernetes behavior and container builds have not been exercised in this environment.
+
+### WebCrawl
+
+Native `web_crawl` runs bounded background Crawlee jobs using the isolated Crawl4AI reader. Set `WEB_CRAWL=on` in the service and agent-core environments, rebuild the existing Docker stack, and create a new conversation. Jobs and saved Markdown survive restarts in a private Docker volume. See [WebCrawl setup, limits and testing](docs/WEBCRAWL.md); run `npm run webcrawl:smoke` for a real three-page crawl.

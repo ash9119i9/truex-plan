@@ -54,6 +54,26 @@ export function stepOf(item: any): { kind: StepKind; label: string } | null {
       };
     }
     case "dynamicToolCall":
+      if (item.tool === "web_search")
+        return { kind: "webSearch", label: "Searched the web" };
+      if (item.tool === "web_crawl") {
+        const action = item.arguments?.action;
+        const labels: Record<string, string> = {
+          start: "Started a web crawl",
+          status: "Checked a web crawl",
+          results: "Read crawl results",
+          cancel: "Cancelled a web crawl",
+        };
+        return {
+          kind: "webCrawl",
+          label:
+            typeof action === "string" && Object.hasOwn(labels, action)
+              ? labels[action]
+              : "Used web crawl",
+        };
+      }
+      if (item.tool === "web_read")
+        return { kind: "webRead", label: "Read a web page" };
       return { kind: "tool", label: `Used ${name(item.tool) ?? "a tool"}` };
     case "fileChange": {
       const n = Array.isArray(item.changes) ? item.changes.length : 0;

@@ -20,6 +20,7 @@ import { startWorkspaceSweeper } from "./workspace-sweeper";
 import { ThreadManager } from "./manager";
 import { readItems } from "./history";
 import { HttpError } from "./errors";
+import { parseWebCrawlResultsQuery } from "../../shared/web-crawl";
 import { inventory, schema, validateRequest } from "./schema";
 const root = resolve(process.env.PROJECT_ROOT || "..");
 const pin = JSON.parse(readFileSync(join(root, "codex.lock.json"), "utf8"));
@@ -88,8 +89,31 @@ app.get("/threads/:id/documents", async (req, res) =>
   res.json({
     available: client.documentToolsAvailable(req.params.id),
     visualizationAvailable: client.visualizationToolsAvailable(req.params.id),
+    webSearchAvailable: client.webSearchToolsAvailable(req.params.id),
+    webReadAvailable: client.webReadToolsAvailable(req.params.id),
+    webCrawlAvailable: client.webCrawlToolsAvailable(req.params.id),
     files: await client.files.list(req.params.id),
   }),
+);
+app.get("/threads/:id/crawls", async (req, res) =>
+  res.json(await client.listCrawls(req.params.id)),
+);
+app.get("/threads/:id/crawls/:jobId", async (req, res) =>
+  res.json(await client.crawlStatus(req.params.id, req.params.jobId)),
+);
+app.get("/threads/:id/crawls/:jobId/results", async (req, res) => {
+  let query;
+  try {
+    query = parseWebCrawlResultsQuery(req.query);
+  } catch {
+    throw new HttpError(400, "Invalid crawl results query", "INVALID_ARGUMENT");
+  }
+  res.json(
+    await client.crawlResults(req.params.id, req.params.jobId, { ...query }),
+  );
+});
+app.post("/threads/:id/crawls/:jobId/cancel", async (req, res) =>
+  res.json(await client.cancelCrawl(req.params.id, req.params.jobId)),
 );
 app.post("/threads/:id/documents", async (req, res) => {
   if (!client.documentToolsAvailable(req.params.id))

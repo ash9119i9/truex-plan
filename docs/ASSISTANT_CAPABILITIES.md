@@ -1,8 +1,8 @@
 # Truex assistant capabilities
 
 Open **Capabilities, documents & visuals** above the transcript to choose a task, upload
-documents, download generated files, explore saved visuals, and manage a goal. The seven capabilities are
-explanations/planning, clarification questions, web research, documents, goal
+documents, download generated files, explore saved visuals, and manage a goal. The nine capabilities are
+explanations/planning, clarification questions, web search, web page reading, web crawling, documents, goal
 tracking, Visualize, and helper-agent collaboration. Project development, Git, and command
 execution are excluded.
 
@@ -20,12 +20,40 @@ restricted runtime configuration; the main agent handles document calls and
 clarifications. Collaboration and web/document tool activity appear in the activity
 panel without exposing raw arguments or internal runtime metadata.
 
-`truex_models.webSearch` accepts `live` (default), `cached`, or `disabled`.
-Native web research requires a Responses provider supporting hosted web search.
-For providers without it, set `webSearch: "disabled"` and attach a web research
-HTTP MCP connector through Connected tools. A configured feature is not a guarantee
-that a provider supports it. The assistant is instructed to use real sources,
-provide direct Markdown citations, and disclose unavailable search.
+Opt-in built-in [WebSearch](WEBSEARCH.md) uses a private SearXNG service through
+adapter-owned `web_search`, independently of provider-hosted search. It returns
+ranked source URLs and snippets. Built-in [WebRead](WEBREAD.md) uses adapter-owned
+`web_read` to read one explicit public HTTP(S) URL as actual page Markdown,
+bounded to 20,000 characters by default and 50,000 at most. It returns no page
+handles and does not crawl, paginate, or persist a page cache. Enable
+it in agent-core and start a new conversation. Helpers ask the main agent to
+search or read in this release. Interrupted turns cancel pending search and read requests.
+
+Built-in [WebCrawl](WEBCRAWL.md) uses adapter-owned `web_crawl` to collect linked
+public HTML pages on the seed hostname in a durable background job. The assistant
+can start, check, read saved results, and cancel a crawl. Defaults are 25 pages and
+depth 2; hard limits are 100 pages, depth 3, five minutes, and 10 MB. Saved jobs
+expire after seven days. Helpers ask the main agent to crawl.
+
+The **Web crawls** section in the tools panel reconnects to the original chat's
+saved jobs and shows progress, source URLs, failures, and limit reasons. It polls
+active jobs at three-second intervals, pauses while the page is hidden, and stops
+when jobs become terminal. Stopping a model turn or closing the page leaves
+background jobs running; **Cancel crawl** requests cancellation. Saved pages can
+be read in bounded result batches or downloaded as Markdown. Truncated downloads
+are labelled as excerpts. Crawl jobs are not copied into forked conversations.
+
+`truex_models.webSearch` accepts `live` (default), `cached`, or `disabled`. Default
+and live profiles allow configured SearXNG search; disabled blocks it. Cached
+profiles retain hosted cached behavior without enabling live SearXNG calls, while
+allowing configured WebRead and WebCrawl for explicit public URLs. Disabled blocks
+starting built-in web access. Existing crawl jobs remain readable and cancellable
+through the original chat's ownership checks.
+Otherwise hosted research requires a Responses provider supporting web search;
+HTTP MCP research connectors remain available through Connected tools. A configured
+feature is not a guarantee of successful search. The assistant cites direct source
+URLs, distinguishes snippets from full-page reading and discloses failed/partial
+searches.
 
 Document tools are registered with `thread/start.dynamicTools` and executed by the
 adapter through `item/tool/call`, following the
@@ -59,9 +87,9 @@ are rejected; document arguments are validated independently of the model.
 Files and metadata live in generated conversation workspaces on the agent-core
 runtime volume. Preserve that volume across restarts. Forks copy the source
 conversation's documents to the new workspace. Downloads and uploads route through
-the session's existing owner and policy checks. The application still has no user
-authentication or tenant authorization; keep the existing internal deployment
-boundary. Local shell/file runtime tools remain disabled.
+the session's existing ownership and tenant checks. Crawl status and saved results
+require permission to read the original chat; cancellation requires its owner.
+Local shell/file runtime tools remain disabled.
 
 ## Verification
 

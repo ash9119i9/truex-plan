@@ -95,7 +95,11 @@ function statusMessage(status: number): string {
   );
 }
 
-export async function api(path: string, body?: unknown) {
+export async function api(
+  path: string,
+  body?: unknown,
+  options: { signal?: AbortSignal } = {},
+) {
   const method = body === undefined ? "GET" : "POST";
   const fail = (error: ApiRequestError): never => {
     logFailure(method, path, error);
@@ -107,9 +111,12 @@ export async function api(path: string, body?: unknown) {
       method,
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: AbortSignal.timeout(45000),
+      signal: options.signal
+        ? AbortSignal.any([options.signal, AbortSignal.timeout(45000)])
+        : AbortSignal.timeout(45000),
     });
   } catch (error) {
+    if (options.signal?.aborted) throw error;
     const timeout = error instanceof Error && error.name === "TimeoutError";
     return fail(
       new ApiRequestError(
@@ -128,6 +135,7 @@ export async function api(path: string, body?: unknown) {
   try {
     data = await res.json();
   } catch (error) {
+    if (options.signal?.aborted) throw error;
     return fail(
       new ApiRequestError(
         res.ok

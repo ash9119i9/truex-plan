@@ -3,6 +3,7 @@ dist/
 .next/
 .env
 .env.local
+deploy/websearch.env
 .runtime/
 *.log
 .DS_Store
@@ -10,3 +11,4 @@ vendor/codex/
 *.tsbuildinfo
 a.json
 .claude
+__pycache__/

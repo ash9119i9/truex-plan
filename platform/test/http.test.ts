@@ -153,6 +153,10 @@ test(
       PORT: String(corePort),
       PROJECT_ROOT: root,
       CODEX_HOME: join(home, "codex"),
+      WEB_SEARCH: "off",
+      WEB_READ: "on",
+      WEB_SERVICE_URL: "http://webread-fixture.invalid",
+      WEB_SERVICE_TOKEN: "fixture-webread-service-token-32-chars",
       AGENT_WORKSPACE: join(home, "workspace"),
     };
     let core = launch("agent-core", coreEnv);
@@ -187,6 +191,8 @@ test(
     await wait(async () => {
       const res = await fetch(`http://127.0.0.1:${platformPort}/healthz`);
       return res.ok;
+    }).catch((error) => {
+      throw new Error(`${error.message}\n${logs}`);
     });
     const invalidRequest = await fetch(
       `http://127.0.0.1:${platformPort}/api/sessions`,
@@ -266,6 +272,8 @@ test(
         "explain",
         "questions",
         "web",
+        "webRead",
+        "webCrawl",
         "documents",
         "visualize",
         "goals",
@@ -278,6 +286,7 @@ test(
     });
     const documents = await call(`/api/sessions/${session._id}/documents`);
     assert.equal(documents.available, true);
+    assert.equal(documents.webReadAvailable, true);
     assert.equal(documents.files[0].id, document.id);
     assert.doesNotMatch(
       JSON.stringify(documents),
@@ -293,7 +302,19 @@ test(
     );
     assert.equal(download.headers.get("x-content-type-options"), "nosniff");
     assert.equal(await download.text(), "Conversation document");
+    await store.profiles.updateOne(
+      { _id: "default" },
+      { $set: { webSearch: "disabled" } },
+    );
     const otherSession = await call("/api/sessions", { agentId: "assistant" });
+    const disabledDocuments = await call(
+      `/api/sessions/${otherSession._id}/documents`,
+    );
+    assert.equal(disabledDocuments.webReadAvailable, false);
+    await store.profiles.updateOne(
+      { _id: "default" },
+      { $unset: { webSearch: "" } },
+    );
     const inaccessible = await fetch(
       `http://127.0.0.1:${platformPort}/api/sessions/${otherSession._id}/documents/${document.id}`,
     );

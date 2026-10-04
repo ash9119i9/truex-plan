@@ -1,0 +1,144 @@
+# Standalone WebSearch services for a host-running agent-core.
+# docker compose --env-file deploy/websearch.env -f deploy/websearch.compose.yaml up -d --build
+name: truex-websearch
+
+services:
+  searxng:
+    # Official multi-architecture GHCR manifest resolved 2026-10-04.
+    image: ghcr.io/searxng/searxng@sha256:c642712fcedcdaa78fac44f71eada86aff510745826ba1bd1a368211fea2ce7f
+    restart: unless-stopped
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set a random SEARXNG_SECRET in deploy/websearch.env}
+      SEARXNG_BASE_URL: http://searxng:8080/
+      GRANIAN_HOST: 0.0.0.0
+      GRANIAN_PORT: "8080"
+      GRANIAN_WORKERS: "2"
+      FORCE_OWNERSHIP: "false"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-cache:/var/cache/searxng
+    # No published port. The bridge still allows outbound search engine traffic.
+    networks: [websearch]
+    healthcheck:
+      test:
+        [
+          CMD,
+          python3,
+          -c,
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/config', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+
+  web-service:
+    build: { context: .., dockerfile: web-service/Dockerfile }
+    restart: unless-stopped
+    init: true
+    ports: ["127.0.0.1:4400:4400"]
+    environment:
+      PORT: "4400"
+      HOST: 0.0.0.0
+      WEB_SERVICE_TOKEN: ${WEB_SERVICE_TOKEN:?Set a random WEB_SERVICE_TOKEN in deploy/websearch.env}
+      SEARXNG_URL: http://searxng:8080
+      CRAWL4AI_URL: http://crawl4ai:11235
+      CRAWL4AI_API_TOKEN: ${CRAWL4AI_API_TOKEN:-}
+      READ_TIMEOUT_MS: "35000"
+      READ_MAX_CONCURRENT: "2"
+      WEB_CRAWL: ${WEB_CRAWL:-off}
+      WEB_CRAWL_DATA_DIR: /data/webcrawl
+    volumes:
+      - webcrawl-data:/data/webcrawl
+    depends_on:
+      searxng:
+        condition: service_healthy
+    networks: [websearch, read-control]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:4400/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+
+  crawl4ai:
+    profiles: [webread]
+    build: { context: .., dockerfile: deploy/crawl4ai/Dockerfile }
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    shm_size: 512mb
+    mem_limit: 2g
+    cpus: 2
+    pids_limit: 256
+    tmpfs: ["/tmp:size=256m,mode=1777"]
+    environment:
+      CRAWL4AI_API_TOKEN: ${CRAWL4AI_API_TOKEN:-}
+      EGRESS_PROXY_URL: http://browser-egress:3128
+    # Only API-control and proxy networks. Neither has an internet route or platform DB.
+    networks: [read-control, browser-egress]
+    depends_on:
+      browser-egress:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          "import os,urllib.request; r=urllib.request.Request('http://127.0.0.1:11235/ready',headers={'Authorization':'Bearer '+os.environ['CRAWL4AI_API_TOKEN']}); urllib.request.urlopen(r,timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 10s
+
+  browser-egress:
+    profiles: [webread]
+    build: { context: .., dockerfile: web-service/Dockerfile }
+    command: [node, dist/web-service/src/egress-index.js]
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+    cpus: 1
+    pids_limit: 64
+    # No host port. This is the only browser-facing service with external egress.
+    networks: [browser-egress, public-egress]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "const s=require('node:net').connect(3128,'127.0.0.1',()=>{s.end();process.exit(0)});s.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),2000)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+
+networks:
+  websearch:
+    driver: bridge
+  read-control:
+    driver: bridge
+    internal: true
+  browser-egress:
+    driver: bridge
+    internal: true
+  public-egress:
+    driver: bridge
+
+volumes:
+  searxng-cache:
+  webcrawl-data:

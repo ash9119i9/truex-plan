@@ -14,11 +14,26 @@ export const assistantCapabilities = [
   },
   {
     id: "web",
-    name: "Web research",
+    name: "Web search",
     description:
-      "Research current information and cite sources. Requires provider web support or a connected web tool.",
+      "Search the web for current information and cite result links. Built-in WebSearch works across model providers when enabled.",
     prompt:
-      "Research the latest information about this and cite your sources: ",
+      "Search the web for the latest information about this and cite your sources: ",
+  },
+  {
+    id: "webRead",
+    name: "Web read",
+    description:
+      "Read a public web page from its URL as bounded Markdown, then summarize or discuss its content.",
+    prompt: "Read this public web page URL and summarize its content: ",
+  },
+  {
+    id: "webCrawl",
+    name: "Web crawl",
+    description:
+      "Collect pages from a public website in the background. Track progress, cancel the crawl, and read or download its saved Markdown.",
+    prompt:
+      "Crawl this public website and collect its pages in the background: ",
   },
   {
     id: "documents",
@@ -48,6 +63,24 @@ export const assistantCapabilities = [
     prompt: "Use helper agents to work on independent parts of this task: ",
   },
 ] as const;
+
+export function webReadAvailabilityMessage(
+  available: boolean | null,
+): string | null {
+  if (available === null) return null;
+  return available
+    ? "Built-in WebRead is available in this conversation."
+    : "Built-in WebRead is unavailable in this conversation. Start a new conversation after WebRead is enabled.";
+}
+
+export function webCrawlAvailabilityMessage(
+  available: boolean | null,
+): string | null {
+  if (available === null) return null;
+  return available
+    ? "Built-in WebCrawl is available in this conversation."
+    : "Built-in WebCrawl is unavailable in this conversation. Start a new conversation after WebCrawl is enabled.";
+}
 
 export interface ConversationFile {
   id: string;

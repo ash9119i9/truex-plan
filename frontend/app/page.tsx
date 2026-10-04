@@ -116,6 +116,7 @@ export default function Home() {
     [pending, setPending] = useState<PendingRequest[]>([]);
   const [plan, setPlan] = useState<PlanStep[]>([]);
   const [timings, setTimings] = useState<TurnTiming[]>([]);
+  const [crawlUpdates, setCrawlUpdates] = useState(0);
   const [observability, setObservability] =
       useState<ObservabilityState>(emptyObservability),
     [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
@@ -175,8 +176,13 @@ export default function Home() {
     vw,
     fitsOpen:
       !panels.sidebar ||
-      fitPanel(vw, PANEL_W[panelSizes.list], CHAT_MIN[panelSizes.list], true, true)
-        .sidebar,
+      fitPanel(
+        vw,
+        PANEL_W[panelSizes.list],
+        CHAT_MIN[panelSizes.list],
+        true,
+        true,
+      ).sidebar,
     tab: inspectorTab,
     showTab: (tab, open) => {
       setInspectorTab(tab);
@@ -415,6 +421,12 @@ export default function Home() {
         )
           setEvents((old) => [...old.slice(-99), event]);
         const d = event.data;
+        if (
+          event.type === "activity.updated" &&
+          typeof d.label === "string" &&
+          /web crawl/i.test(d.label)
+        )
+          setCrawlUpdates((old) => old + 1);
         setEntries((old) => applyChatEvent(old, event));
         setSubAgents((old) => applySubAgentEvent(old, event));
         setObservability((old) => applyObservabilityEvent(old, event));
@@ -1597,7 +1609,7 @@ export default function Home() {
         <AssistantTools
           key={session?._id || "new"}
           sessionId={session?._id}
-          refreshKey={timings.length}
+          refreshKey={timings.length + crawlUpdates}
           running={running}
           onPrompt={applyPrompt}
           onFork={(id) => {

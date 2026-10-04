@@ -3,6 +3,8 @@ import { useCallback, useEffect, useState } from "react";
 import { FileText, Upload, Download } from "lucide-react";
 import {
   assistantCapabilities,
+  webReadAvailabilityMessage,
+  webCrawlAvailabilityMessage,
   type ConversationFile,
 } from "../../shared/assistant-capabilities";
 import { api, base } from "@/lib/api";
@@ -11,6 +13,7 @@ import { DocumentIcon } from "./document-icon";
 import { Button } from "./ui/button";
 import { QuickTools } from "./quick-tools";
 import { Visualization } from "./visualization";
+import { CrawlJobs } from "./crawl-jobs";
 
 export function AssistantTools({
   sessionId,
@@ -28,6 +31,15 @@ export function AssistantTools({
   const [files, setFiles] = useState<ConversationFile[]>([]);
   const [available, setAvailable] = useState(false);
   const [visualizationAvailable, setVisualizationAvailable] = useState(false);
+  const [webSearchAvailable, setWebSearchAvailable] = useState<boolean | null>(
+    null,
+  );
+  const [webReadAvailable, setWebReadAvailable] = useState<boolean | null>(
+    null,
+  );
+  const [webCrawlAvailable, setWebCrawlAvailable] = useState<boolean | null>(
+    null,
+  );
   const [selectedVisual, setSelectedVisual] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -37,9 +49,15 @@ export function AssistantTools({
     setFiles(data.files);
     setAvailable(data.available);
     setVisualizationAvailable(data.visualizationAvailable === true);
+    setWebSearchAvailable(data.webSearchAvailable === true);
+    setWebReadAvailable(data.webReadAvailable === true);
+    setWebCrawlAvailable(data.webCrawlAvailable === true);
   }, [sessionId]);
   useEffect(() => {
     let cancelled = false;
+    setWebSearchAvailable(null);
+    setWebReadAvailable(null);
+    setWebCrawlAvailable(null);
     if (!sessionId) {
       setFiles([]);
       setAvailable(false);
@@ -51,6 +69,9 @@ export function AssistantTools({
           setFiles(data.files);
           setAvailable(data.available);
           setVisualizationAvailable(data.visualizationAvailable === true);
+          setWebSearchAvailable(data.webSearchAvailable === true);
+          setWebReadAvailable(data.webReadAvailable === true);
+          setWebCrawlAvailable(data.webCrawlAvailable === true);
           setError("");
         }
       })
@@ -102,9 +123,28 @@ export function AssistantTools({
             >
               <strong>{capability.name}</strong>
               <span>{capability.description}</span>
+              {capability.id === "web" && webSearchAvailable !== null && (
+                <span>
+                  {webSearchAvailable
+                    ? "Built-in WebSearch is available in this conversation."
+                    : "Built-in WebSearch is unavailable in this conversation. Provider or connected web tools may still be available."}
+                </span>
+              )}
+              {capability.id === "webRead" && webReadAvailable !== null && (
+                <span>{webReadAvailabilityMessage(webReadAvailable)}</span>
+              )}
+              {capability.id === "webCrawl" && webCrawlAvailable !== null && (
+                <span>{webCrawlAvailabilityMessage(webCrawlAvailable)}</span>
+              )}
             </button>
           ))}
         </div>
+        <CrawlJobs
+          key={sessionId || "new"}
+          sessionId={sessionId}
+          refreshKey={refreshKey}
+          onPrompt={onPrompt}
+        />
         <section
           aria-label="Conversation documents"
           className="conversation-documents"
