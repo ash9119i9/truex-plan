@@ -27,6 +27,8 @@ Indexes are ensured on startup. Catalog: `tenants {dbName: 1}` (unique) and `tru
 
 ## Agent — `truex_agents` (tenant database)
 
+Agents created through the app are saved with `scope: "general"`. Existing records without a scope still use the runtime's `"business"` default; set their scope to `"general"` and start a new conversation to apply it.
+
 Example in mongosh notation; IDs below are illustrative, not existing records.
 
 ```js
