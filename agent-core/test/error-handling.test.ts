@@ -164,6 +164,9 @@ class Fake extends EventEmitter {
     if (method === "thread/start")
       return { thread: { id: `thread_${++this.threads}` } };
     if (method === "thread/resume" && this.resumeError) throw this.resumeError;
+    if (method === "thread/goal/get") return { goal: null };
+    if (method === "thread/read")
+      return { thread: { id: params.threadId, status: { type: "idle" } } };
     if (method === "turn/start") {
       const turnId = `turn_${params.threadId}`;
       this.emit("notification", {

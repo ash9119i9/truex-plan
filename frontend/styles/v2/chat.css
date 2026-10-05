@@ -295,6 +295,7 @@
 .send:disabled { opacity: .35; cursor: default; }
 .send:not(:disabled):active { transform: scale(.94); }
 .send.is-stop { background: var(--ink); color: var(--bg); }
+.send.is-retry { display: flex; align-items: center; gap: 6px; width: auto; padding: 0 10px; white-space: nowrap; }
 
 /* Notes above the textarea: pending project, privacy heads-up. */
 .composer .composer-project { margin: -4px 0 6px; padding: 0 0 0 4px; font-size: 12px; color: var(--ink-3); }

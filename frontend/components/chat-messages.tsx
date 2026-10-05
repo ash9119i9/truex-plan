@@ -35,6 +35,8 @@ export function ChatMessages({
   goalReview,
   subAgents = emptySubAgents,
   onOpenAgent,
+  onStopAgent,
+  helperStopDisabled = false,
   onSuggest,
   suggestionsEnabled = true,
   traces = [],
@@ -54,6 +56,8 @@ export function ChatMessages({
   goalReview?: GoalReview | null;
   subAgents?: SubAgentState;
   onOpenAgent?: (threadId: string) => void;
+  onStopAgent?: (threadId: string) => void;
+  helperStopDisabled?: boolean;
   onSuggest?: (question: string) => void;
   suggestionsEnabled?: boolean;
   traces?: TurnTrace[];
@@ -223,6 +227,8 @@ export function ChatMessages({
                     state={subAgents}
                     sessionId={sessionId}
                     onOpenAgent={onOpenAgent}
+                    onStopAgent={onStopAgent}
+                    stopDisabled={helperStopDisabled}
                   />
                 ) : e.kind === "message" && e.text ? (
                   <div className="answer markdown" key={e.id}>

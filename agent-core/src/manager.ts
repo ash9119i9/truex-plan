@@ -1,5 +1,6 @@
 import { businessCapabilities } from "../../shared/business-capabilities";
 import { BusinessRuntime } from "./business-runtime";
+import { StopStore, bounded, type StopIntent } from "./stop";
 import { Redactor } from "./redact";
 import { TraceBuilder, rateLimitView } from "./trace";
 import { randomUUID } from "node:crypto";
@@ -131,8 +132,11 @@ interface Thread {
   threadStartMs: number;
   // Inactivity watchdog of the running turn; paused while a request waits.
   stall?: NodeJS.Timeout;
-  // Turn failed by the watchdog; its late completion is not reported again.
-  stalledTurn?: string;
+  // Stop remains authoritative until root, helpers and local work settle.
+  stop?: StopIntent;
+  stopCompletion?: { turn: any; at: number };
+  stoppedTurns: Set<string>;
+  localWork: Set<Promise<unknown>>;
 }
 // A helper agent spawned under a root conversation. Its runtime thread is
 // never exposed as a session; its events reach clients on the root stream.
@@ -144,6 +148,8 @@ interface Child {
   transcript: SubAgentTranscript["messages"];
   // Name lookups started for this helper; Codex may name it a moment late.
   nameTries?: number;
+  stop?: StopIntent;
+  stoppedTurns?: Set<string>;
 }
 const agentStatuses: SubAgentStatus[] = [
   "pendingInit",
@@ -257,6 +263,10 @@ export class ThreadManager {
   rateLimits: RateLimitView | null = null;
   unknownMethods = 0;
   draining = false;
+  private stops: StopStore;
+  private stopAttempts = new Map<string, Promise<any>>();
+  private helperStops = new Map<string, StopStore>();
+  private helperStopAttempts = new Map<string, Promise<any>>();
   constructor(
     readonly runtime: Runtime,
     readonly home: string,
@@ -264,7 +274,10 @@ export class ThreadManager {
     readonly replayLimit = 500,
     readonly requestTimeoutMs = 120_000,
     readonly stallMs = Number(process.env.TURN_STALL_MS) || defaultStallMs,
+    readonly stopTimeoutMs = 10_000,
+    readonly stopCheckMs = 5_000,
   ) {
+    this.stops = new StopStore(home);
     mkdirSync(join(home, "adapter-records"), { recursive: true });
     runtime.on("notification", (msg) =>
       this.notification(msg.method, msg.params || {}),
@@ -285,6 +298,7 @@ export class ThreadManager {
         });
       }
       this.generation = randomUUID();
+      this.helperStopAttempts.clear();
       this.early.clear();
       for (const t of this.threads.values()) {
         t.seq = 0;
@@ -292,15 +306,28 @@ export class ThreadManager {
         for (const p of [...t.pending.values()])
           this.settle(t, p, undefined, "runtime-exit", false);
         t.loaded = false;
-        t.state = { kind: "idle" };
+        t.state = t.stop
+          ? {
+              kind: "interrupting",
+              turnId: t.stop.turnId,
+              stopStatus: "unconfirmed",
+            }
+          : { kind: "idle" };
         t.clock = undefined;
         // A new runtime may report different tools.
         const mode = this.modes.get(t.id);
         if (mode) mode.tools = undefined;
         t.trace = undefined;
-        for (const c of this.agentsOf(t.id)) c.turnId = undefined;
+        for (const c of this.agentsOf(t.id)) {
+          c.turnId = undefined;
+          if (c.stop) this.helperStopStatus(c, "unconfirmed");
+        }
         this.unwatch(t);
         const turn = cut.get(t);
+        if (t.stop) {
+          this.stopUpdate(t);
+          continue;
+        }
         if (!turn) continue;
         this.failed(
           t,
@@ -389,24 +416,11 @@ export class ThreadManager {
       turnId,
       stallMs: this.stallMs,
     });
-    this.runtime
-      .request("turn/interrupt", { threadId: t.id, turnId })
-      .catch((e) =>
-        log("debug", "stalled turn interrupt failed", {
-          threadId: t.id,
-          turnId,
-          ...errorFields(e),
-        }),
-      );
-    const done = this.finishTurn(t, turnId, "failed", performance.now());
-    t.state = { kind: "idle" };
-    t.stalledTurn = turnId;
-    for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
-    this.failed(
-      t,
-      turnId,
-      { message: stalledMessage, code: "TURN_STALLED" },
-      done,
+    void this.interrupt(t.id, "stalled").catch((e) =>
+      log("warn", "watchdog stop unconfirmed", {
+        threadId: t.id,
+        ...errorFields(e),
+      }),
     );
   }
   private thread(id: string): Thread {
@@ -434,7 +448,17 @@ export class ThreadManager {
         contexts: new Map(),
         loaded: false,
         threadStartMs: 0,
+        stoppedTurns: new Set(),
+        localWork: new Set(),
       };
+      t.stop = this.stops.read(id);
+      if (t.stop)
+        t.state = {
+          kind: "interrupting",
+          turnId: t.stop.turnId,
+          stopStatus: "unconfirmed",
+        };
+      this.restoreHelperStops(t);
       this.threads.set(id, t);
     }
     return t;
@@ -505,12 +529,8 @@ export class ThreadManager {
   }
   async resume(id: string, input: any = {}) {
     // Approval mode fields are Truex settings, not runtime parameters.
-    const {
-      approvalMode,
-      approvalNameHeuristic,
-      mcpFingerprint,
-      ...params
-    } = input || {};
+    const { approvalMode, approvalNameHeuristic, mcpFingerprint, ...params } =
+      input || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
     parseFingerprint(mcpFingerprint);
     if (params.tenantId !== undefined) parseTenant(params.tenantId);
@@ -518,6 +538,23 @@ export class ThreadManager {
     return this.serial(id, async () => {
       const t = this.thread(id);
       this.ownedBy(t, params.tenantId);
+      // Recovery must not resume a persisted active goal or reevaluate grants.
+      if (t.stop) {
+        try {
+          await this.stopTurn(t, t.stop.reason);
+        } catch {
+          return this.snapshot(id);
+        }
+      }
+      for (const c of this.agentsOf(id))
+        if (c.stop)
+          void this.interruptAgent(id, c.agent.threadId).catch((e) =>
+            log("warn", "helper stop recovery unconfirmed", {
+              threadId: id,
+              helperThreadId: c.agent.threadId,
+              ...errorFields(e),
+            }),
+          );
       const moded = this.modes.has(id) || approvalMode !== undefined;
       this.setMode(id, approvalMode, approvalNameHeuristic);
       if (moded) this.reevaluate(t);
@@ -582,9 +619,11 @@ export class ThreadManager {
       const active = result.thread?.turns?.find(
         (turn: any) => turn.status === "inProgress",
       );
-      t.state = active
-        ? { kind: "running", turnId: active.id }
-        : { kind: "idle" };
+      t.state = t.stop
+        ? { kind: "interrupting", turnId: t.stop.turnId, stopStatus: "pending" }
+        : active
+          ? { kind: "running", turnId: active.id }
+          : { kind: "idle" };
       this.watch(t);
       // Recover the goal after an agent-core restart; goals are optional.
       try {
@@ -634,6 +673,8 @@ export class ThreadManager {
   ) {
     if (!text?.trim()) throw new HttpError(400, "Message is empty");
     const t = this.thread(id);
+    if (t.stop)
+      throw new HttpError(409, "Conversation is stopping", "INTERRUPTING");
     if (!t.loaded)
       throw new HttpError(
         409,
@@ -662,6 +703,8 @@ export class ThreadManager {
       }
       if (explicitSteer) throw new HttpError(409, "No running turn to steer");
       await this.applyPending(t);
+      if (t.stop)
+        throw new HttpError(409, "Conversation is stopping", "INTERRUPTING");
       t.state = { kind: "starting" };
       t.diff = "";
       t.clock = {
@@ -675,11 +718,19 @@ export class ThreadManager {
       };
       t.input = text;
       try {
+        const generation = this.generation;
         const result = await this.runtime.request("turn/start", {
           threadId: id,
           input,
           clientUserMessageId: clientId,
         });
+        if (generation !== this.generation)
+          throw new HttpError(
+            503,
+            "Runtime changed during startup",
+            "RUNTIME_UNAVAILABLE",
+          );
+        this.attachStopTurn(t, result.turn.id);
         if (t.clock) {
           t.clock.accept = performance.now() - t.clock.start;
           t.clock.turnId = result.turn.id;
@@ -701,37 +752,439 @@ export class ThreadManager {
       }
     });
   }
-  async interrupt(id: string) {
-    return this.serial(id, async () => {
-      const t = this.thread(id);
-      if (t.state.kind === "interrupting") return { ok: true };
-      if (t.state.kind !== "running")
+  async interrupt(id: string, reason: StopIntent["reason"] = "user") {
+    const ongoing = this.stopAttempts.get(id);
+    if (ongoing) return this.waitForStop(this.thread(id), ongoing);
+    if (this.draining)
+      throw new HttpError(503, "Runtime is draining", "STOP_UNCONFIRMED");
+    const t = this.thread(id);
+    // Fence admission even while turn/start still holds the lifecycle lock.
+    if (
+      t.state.kind !== "idle" ||
+      t.stop ||
+      this.locks.has(id) ||
+      this.hasActiveHelpers(t)
+    ) {
+      this.prepareStop(t, t.stop?.reason ?? reason);
+    }
+    const attempt = this.serial(id, async () => {
+      if (t.state.kind === "idle" && !t.stop && !this.hasActiveHelpers(t))
+        return { ok: true, state: t.state };
+      if (
+        t.state.kind !== "running" &&
+        t.state.kind !== "interrupting" &&
+        t.state.kind !== "starting"
+      )
         throw new HttpError(409, "No running turn");
-      const turnId = t.state.turnId;
-      t.state = { kind: "interrupting", turnId };
-      this.unwatch(t);
-      try {
-        await this.runtime.request("turn/interrupt", { threadId: id, turnId });
-      } catch (e) {
-        if (t.state.kind === "interrupting") {
-          t.state = { kind: "running", turnId };
-          this.watch(t);
+      return this.stopTurn(t, t.stop?.reason ?? reason);
+    }).finally(() => {
+      if (this.stopAttempts.get(id) === attempt) this.stopAttempts.delete(id);
+    });
+    this.stopAttempts.set(id, attempt);
+    return this.waitForStop(t, attempt);
+  }
+  private waitForStop(t: Thread, attempt: Promise<any>) {
+    return bounded(attempt, this.stopTimeoutMs + this.stopCheckMs).catch(
+      (e) => {
+        if (t.stop) {
+          t.state = {
+            kind: "interrupting",
+            turnId: t.stop.turnId,
+            stopStatus: "unconfirmed",
+          };
+          if (!this.draining) this.stopUpdate(t);
         }
-        throw e;
+        if (e instanceof HttpError) throw e;
+        throw new HttpError(
+          503,
+          "Stop could not be confirmed. Retry Stop.",
+          "STOP_UNCONFIRMED",
+        );
+      },
+    );
+  }
+  private stopUpdate(t: Thread) {
+    this.emit(
+      t,
+      "turn.stop.updated",
+      { state: t.state, turnId: t.stop?.turnId },
+      t.stop?.turnId,
+    );
+  }
+  private discoverStop(t: Thread) {
+    const intent = t.stop!;
+    const targets = [...intent.targets];
+    let changed = false;
+    for (const c of this.agentsOf(t.id)) {
+      if (c.stop)
+        for (const target of c.stop.targets) {
+          if (!targets.some((x) => x.threadId === target.threadId)) {
+            targets.push({ ...target });
+            changed = true;
+          }
+        }
+      if (!c.stop && !c.turnId && terminal.includes(c.agent.status)) continue;
+      if (!targets.some((target) => target.threadId === c.agent.threadId)) {
+        targets.push({
+          threadId: c.agent.threadId,
+          turnId: c.turnId ?? "",
+        });
+        changed = true;
       }
-      // Stopping the conversation stops its helpers too.
-      await Promise.allSettled(
-        this.agentsOf(id)
-          .filter((c) => c.turnId)
-          .map((c) =>
-            this.runtime.request("turn/interrupt", {
-              threadId: c.agent.threadId,
-              turnId: c.turnId,
+    }
+    if (changed) {
+      this.stops.write({ ...intent, targets });
+      intent.targets = targets;
+    }
+    return changed;
+  }
+  private hasActiveHelpers(t: Thread) {
+    return this.agentsOf(t.id).some(
+      (c) => c.stop || c.turnId || !terminal.includes(c.agent.status),
+    );
+  }
+  private prepareStop(t: Thread, reason: StopIntent["reason"]) {
+    if (!t.stop) {
+      if (
+        t.state.kind === "idle" &&
+        !this.locks.has(t.id) &&
+        !this.hasActiveHelpers(t)
+      )
+        throw new HttpError(409, "No running turn");
+      const turnId =
+        t.state.kind === "starting" || t.state.kind === "idle"
+          ? t.clock?.turnId
+          : t.state.turnId;
+      t.stop = {
+        version: 1,
+        threadId: t.id,
+        turnId: turnId ?? `stop_${randomUUID()}`,
+        turnIds: turnId ? [turnId] : [],
+        reason,
+        targets: [{ threadId: t.id, turnId: turnId ?? "" }],
+      };
+      t.stopCompletion = undefined;
+      if (!t.stop.turnIds!.length) t.stop.turnIds = [t.stop.turnId];
+    }
+    t.state = {
+      kind: "interrupting",
+      turnId: t.stop.turnId,
+      stopStatus: "pending",
+    };
+    this.unwatch(t);
+    try {
+      this.discoverStop(t);
+      this.stops.write(t.stop);
+      this.stopUpdate(t);
+      for (const request of [...t.pending.values()])
+        this.settle(
+          t,
+          request,
+          defaults[request.method as ServerMethod],
+          "turn-completed",
+        );
+    } catch (e) {
+      t.state = {
+        kind: "interrupting",
+        turnId: t.stop.turnId,
+        stopStatus: "unconfirmed",
+      };
+      this.stopUpdate(t);
+      throw e;
+    }
+  }
+  private attachStopTurn(t: Thread, turnId: string) {
+    if (!t.stop) return;
+    const root = t.stop.targets.find((target) => target.threadId === t.id);
+    if (!root || root.turnId === turnId) return;
+    const current = t.turnOrder.indexOf(t.stop.turnId);
+    const candidate = t.turnOrder.indexOf(turnId);
+    if (current >= 0 && candidate >= 0 && candidate < current) return;
+    t.stop.turnId = turnId;
+    if (!t.stop.turnIds?.includes(turnId))
+      t.stop.turnIds = [...(t.stop.turnIds ?? []), turnId];
+    root.turnId = turnId;
+    t.stopCompletion = undefined;
+    t.state = {
+      kind: "interrupting",
+      turnId,
+      stopStatus:
+        t.state.kind === "interrupting" ? t.state.stopStatus : "pending",
+    };
+    try {
+      this.stops.write(t.stop);
+    } catch (e) {
+      t.state = { kind: "interrupting", turnId, stopStatus: "unconfirmed" };
+      log("error", "startup stop intent write failed", {
+        threadId: t.id,
+        ...errorFields(e),
+      });
+      throw e;
+    } finally {
+      this.stopUpdate(t);
+    }
+  }
+  private async stopTurn(t: Thread, reason: StopIntent["reason"]) {
+    if (this.draining)
+      throw new HttpError(503, "Runtime is draining", "STOP_UNCONFIRMED");
+    this.prepareStop(t, reason);
+    const intent = t.stop!;
+    const generation = this.generation;
+    const startedAt = performance.now();
+    t.state = {
+      kind: "interrupting",
+      turnId: intent.turnId,
+      stopStatus: "pending",
+    };
+    this.unwatch(t);
+    try {
+      const valid = () =>
+        !this.draining && generation === this.generation && t.stop === intent;
+      let interruptDeadline = performance.now() + this.stopTimeoutMs;
+      const interruptRemaining = () =>
+        Math.max(1, interruptDeadline - performance.now());
+      const goal = (
+        await bounded(
+          this.runtime.request("thread/goal/get", { threadId: t.id }),
+          interruptRemaining(),
+        )
+      )?.goal;
+      if (
+        goal !== null &&
+        ![
+          "active",
+          "paused",
+          "complete",
+          "blocked",
+          "budgetLimited",
+          "usageLimited",
+        ].includes(goal?.status)
+      )
+        throw new Error("Goal state unavailable");
+      if (!valid()) throw new Error("Runtime changed");
+      if (goal?.status === "active") {
+        const paused = await bounded(
+          this.runtime.request("thread/goal/set", {
+            threadId: t.id,
+            status: "paused",
+          }),
+          interruptRemaining(),
+        );
+        if (paused?.goal?.status !== "paused")
+          throw new Error("Goal pause unconfirmed");
+        this.setGoal(t, paused.goal);
+      } else this.setGoal(t, goal ?? null);
+      if (!valid()) throw new Error("Runtime changed");
+      // Persisted helper IDs are only used after the root's ownership was checked.
+      if (this.runtime instanceof BusinessRuntime)
+        for (const target of intent.targets)
+          if (target.threadId !== t.id)
+            this.runtime.helpers.add(target.threadId);
+      const interrupted = new Set<string>();
+      const archived = new Set<string>();
+      const targetKey = (target: StopIntent["targets"][number]) =>
+        `${target.threadId}:${target.turnId}`;
+      const targetVersion = () => intent.targets.map(targetKey).join("|");
+      const dispatch = async () => {
+        this.discoverStop(t);
+        const targets = intent.targets
+          .filter((target) => !interrupted.has(targetKey(target)))
+          .map((target) => ({ ...target }));
+        await Promise.all(
+          targets.map(async (target) => {
+            interrupted.add(targetKey(target));
+            try {
+              await bounded(
+                this.runtime.request("turn/interrupt", target),
+                interruptRemaining(),
+              );
+            } catch {
+              /* Metadata, not ACK, proves settlement. */
+            }
+            if (target.threadId !== t.id && valid()) {
+              try {
+                await bounded(
+                  this.runtime.request("thread/archive", {
+                    threadId: target.threadId,
+                  }),
+                  interruptRemaining(),
+                );
+                archived.add(target.threadId);
+              } catch {
+                /* Initializing helpers must also confirm shutdown. */
+              }
+            }
+          }),
+        );
+      };
+      await dispatch();
+      const deadline = performance.now() + this.stopCheckMs;
+      interruptDeadline = deadline;
+      // Detached document/script work can keep mutating the workspace after
+      // native interruption. Wait once instead of polling metadata while it runs.
+      if (t.localWork.size)
+        await bounded(Promise.allSettled([...t.localWork]), this.stopCheckMs);
+      while (valid()) {
+        const remaining = deadline - performance.now();
+        if (remaining <= 0) break;
+        this.discoverStop(t);
+        if (
+          intent.targets.some((target) => !interrupted.has(targetKey(target)))
+        ) {
+          // A helper identified during interruption belongs to this same Stop.
+          await bounded(dispatch(), remaining);
+        }
+        const version = targetVersion();
+        const targets = intent.targets.map((target) => ({ ...target }));
+        const states = await bounded(
+          Promise.all(
+            targets.map(async (target) => {
+              try {
+                const result = await this.runtime.request("thread/read", {
+                  threadId: target.threadId,
+                  includeTurns: false,
+                });
+                return ["idle", "notLoaded"].includes(
+                  result?.thread?.status?.type,
+                );
+              } catch {
+                return false;
+              }
             }),
           ),
+          Math.max(1, deadline - performance.now()),
+        );
+        if (valid() && version !== targetVersion()) continue;
+        if (
+          valid() &&
+          !this.discoverStop(t) &&
+          version === targetVersion() &&
+          states.every(Boolean) &&
+          targets.every(
+            (target) =>
+              target.threadId === t.id || archived.has(target.threadId),
+          ) &&
+          !t.localWork.size
+        ) {
+          for (const c of this.agentsOf(t.id))
+            if (
+              c.stop &&
+              c.stop.targets.every((target) =>
+                intent.targets.some((x) => x.threadId === target.threadId),
+              )
+            )
+              this.finishHelperStop(c);
+          this.stops.clear(t.id);
+          t.stop = undefined;
+          t.state = { kind: "idle" };
+          const stopped = new Set(intent.turnIds ?? [intent.turnId]);
+          for (const turnId of stopped) t.stoppedTurns.add(turnId);
+          if (t.stoppedTurns.size > this.replayLimit)
+            t.stoppedTurns.delete(t.stoppedTurns.values().next().value!);
+          for (const c of this.agentsOf(t.id)) {
+            if (
+              !intent.targets.some(
+                (target) => target.threadId === c.agent.threadId,
+              )
+            )
+              continue;
+            c.turnId = undefined;
+            if (!terminal.includes(c.agent.status))
+              this.update(c, { status: "interrupted" });
+          }
+          for (const r of t.thinking)
+            if (r.turnId && stopped.has(r.turnId)) r.done = true;
+          for (const message of t.messages) {
+            if (
+              !message.turnId ||
+              !stopped.has(message.turnId) ||
+              message.final
+            )
+              continue;
+            message.final = true;
+            this.emit(
+              t,
+              "message.final",
+              { text: message.text, messageIndex: message.messageIndex },
+              message.turnId,
+              message.id,
+            );
+          }
+          for (const request of [...t.pending.values()])
+            this.settle(
+              t,
+              request,
+              defaults[request.method as ServerMethod],
+              "turn-completed",
+            );
+          const native = t.stopCompletion;
+          const status =
+            intent.reason === "stalled"
+              ? "failed"
+              : (native?.turn?.status ?? "interrupted");
+          const done = this.finishTurn(
+            t,
+            intent.turnId,
+            status,
+            native?.at ?? performance.now(),
+          );
+          if (intent.reason === "stalled")
+            this.failed(
+              t,
+              intent.turnId,
+              { message: stalledMessage, code: "TURN_STALLED" },
+              done,
+            );
+          else
+            this.emit(
+              t,
+              "turn.completed",
+              {
+                method: "turn/completed",
+                turn: { ...native?.turn, id: intent.turnId, status },
+                ...done,
+              },
+              intent.turnId,
+            );
+          this.emit(
+            t,
+            "turn.stop.updated",
+            { state: t.state, turnId: intent.turnId },
+            intent.turnId,
+          );
+          log("info", "stop confirmed", {
+            threadId: t.id,
+            reason: intent.reason,
+            targets: intent.targets.length,
+            elapsedMs: Math.round(performance.now() - startedAt),
+          });
+          return { ok: true, state: t.state, turnId: intent.turnId };
+        }
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(50, Math.max(1, deadline - performance.now())),
+          ),
+        );
+      }
+      throw new Error("Stop not confirmed");
+    } catch (e) {
+      if (t.stop === intent) {
+        t.state = {
+          kind: "interrupting",
+          turnId: intent.turnId,
+          stopStatus: "unconfirmed",
+        };
+        if (!this.draining) this.stopUpdate(t);
+      }
+      log("warn", "stop unconfirmed", { threadId: t.id, ...errorFields(e) });
+      if (e instanceof HttpError && e.code === "STOP_STORAGE_INVALID") throw e;
+      throw new HttpError(
+        503,
+        "Stop could not be confirmed. Retry Stop; already-started connector actions may finish.",
+        "STOP_UNCONFIRMED",
       );
-      return { ok: true };
-    });
+    }
   }
   snapshot(id: string): Snapshot {
     const t = this.thread(id);
@@ -763,27 +1216,284 @@ export class ThreadManager {
       messages: c.transcript.map((m) => ({ ...m })),
     };
   }
+  private helperStopStore(rootId: string) {
+    let store = this.helperStops.get(rootId);
+    if (!store) {
+      store = new StopStore(this.home, join("helper-stop-intents", rootId));
+      this.helperStops.set(rootId, store);
+    }
+    return store;
+  }
+  private restoreHelperStops(root: Thread) {
+    const store = this.helperStopStore(root.id);
+    const intents = store.ids().map((id) => store.read(id)!);
+    for (const intent of intents)
+      for (const target of intent.targets) {
+        const known = this.children.get(target.threadId);
+        if (target.threadId === root.id || (known && known.rootId !== root.id))
+          throw new HttpError(
+            503,
+            "Invalid helper stop ownership",
+            "STOP_STORAGE_INVALID",
+          );
+      }
+    for (const intent of intents) {
+      const id = intent.threadId;
+      for (const target of intent.targets) {
+        if (target.threadId === root.id)
+          throw new HttpError(
+            503,
+            "Invalid helper stop recovery",
+            "STOP_STORAGE_INVALID",
+          );
+        if (!this.children.has(target.threadId))
+          this.children.set(target.threadId, {
+            rootId: root.id,
+            parentId: target.threadId === id ? root.id : id,
+            transcript: [],
+            agent: {
+              threadId: target.threadId,
+              path: null,
+              nickname: null,
+              role: null,
+              depth: target.threadId === id ? 1 : 2,
+              status: "pendingInit",
+              startedAt: new Date().toISOString(),
+            },
+          });
+      }
+      const c = this.children.get(id)!;
+      if (c.rootId !== root.id)
+        throw new HttpError(
+          503,
+          "Invalid helper stop ownership",
+          "STOP_STORAGE_INVALID",
+        );
+      c.stop = intent;
+      c.agent.stopStatus = "unconfirmed";
+    }
+  }
+  private helperStopStatus(c: Child, status?: "pending" | "unconfirmed") {
+    if (status) c.agent.stopStatus = status;
+    else delete c.agent.stopStatus;
+    const root = this.threads.get(c.rootId);
+    if (root)
+      this.emit(
+        root,
+        "subagent.status",
+        { agent: { ...c.agent } },
+        this.activeTurn(root),
+      );
+  }
+  // Archiving a native helper also shuts down its descendants. Verify the
+  // whole known subtree, while leaving ancestors and siblings alone.
+  private discoverHelperStop(c: Child, force = false) {
+    const intent = c.stop!;
+    const ids = new Set([
+      c.agent.threadId,
+      ...intent.targets.map((x) => x.threadId),
+    ]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const child of this.agentsOf(c.rootId))
+        if (ids.has(child.parentId) && !ids.has(child.agent.threadId)) {
+          ids.add(child.agent.threadId);
+          changed = true;
+        }
+    }
+    const targets = [...ids].map((id) => {
+      const child = this.children.get(id);
+      return {
+        threadId: id,
+        turnId:
+          child?.turnId ??
+          intent.targets.find((x) => x.threadId === id)?.turnId ??
+          "",
+      };
+    });
+    const own = targets.find((x) => x.threadId === c.agent.threadId)!;
+    const turnId = own.turnId || intent.turnId;
+    const next = {
+      ...intent,
+      targets,
+      turnId,
+      turnIds: [...new Set([...(intent.turnIds ?? []), turnId])],
+    };
+    if (!force && JSON.stringify(next) === JSON.stringify(intent)) return;
+    // Write before publishing any new target so a failed write is retried.
+    this.helperStopStore(c.rootId).write(next);
+    Object.assign(intent, next);
+  }
+  private finishHelperStop(c: Child) {
+    const intent = c.stop;
+    if (!intent) return;
+    this.helperStopStore(c.rootId).clear(c.agent.threadId);
+    c.stop = undefined;
+    for (const target of intent.targets) {
+      const child = this.children.get(target.threadId);
+      if (!child || child.rootId !== c.rootId) continue;
+      child.stoppedTurns ??= new Set();
+      for (const turnId of target.threadId === c.agent.threadId
+        ? (intent.turnIds ?? [intent.turnId])
+        : [target.turnId])
+        if (turnId) child.stoppedTurns.add(turnId);
+      while (child.stoppedTurns.size > this.replayLimit)
+        child.stoppedTurns.delete(child.stoppedTurns.values().next().value!);
+      child.turnId = undefined;
+      if (!["completed", "errored", "interrupted"].includes(child.agent.status))
+        this.update(child, { status: "interrupted" });
+      for (const m of child.transcript) m.final = true;
+    }
+    for (const child of this.agentsOf(c.rootId))
+      if (
+        child.stop &&
+        child.stop.targets.every((target) =>
+          intent.targets.some((x) => x.threadId === target.threadId),
+        )
+      )
+        this.finishHelperStop(child);
+    this.helperStopStatus(c);
+  }
   async interruptAgent(id: string, agentId: string) {
     const c = this.owned(id, agentId);
-    if (!c.turnId)
-      throw new HttpError(409, "Helper agent is not running", "AGENT_IDLE");
-    await this.runtime.request("turn/interrupt", {
-      threadId: c.agent.threadId,
-      turnId: c.turnId,
+    if (this.draining)
+      throw new HttpError(503, "Runtime is draining", "STOP_UNCONFIRMED");
+    const ongoing = this.helperStopAttempts.get(agentId);
+    if (ongoing) return ongoing;
+    if (!c.stop && !c.turnId && terminal.includes(c.agent.status))
+      return { ok: true, agent: { ...c.agent } };
+    if (!c.stop) {
+      const turnId = c.turnId ?? `stop_${randomUUID()}`;
+      c.stop = {
+        version: 1,
+        threadId: agentId,
+        turnId,
+        turnIds: [turnId],
+        reason: "user",
+        targets: [{ threadId: agentId, turnId: c.turnId ?? "" }],
+      };
+    }
+    this.helperStopStatus(c, "pending");
+    const attempt = this.stopHelper(c).finally(() => {
+      if (this.helperStopAttempts.get(agentId) === attempt)
+        this.helperStopAttempts.delete(agentId);
     });
-    // Codex treats an interrupted helper as resumable, so the main agent's
-    // wait would keep waiting on it. Shutting it down gives wait a final
-    // status and the main agent carries on without it.
-    await this.runtime
-      .request("thread/archive", { threadId: c.agent.threadId })
-      .catch((e) =>
-        log("warn", "helper shutdown after stop failed", {
-          threadId: id,
-          helperThreadId: c.agent.threadId,
-          ...errorFields(e),
-        }),
+    this.helperStopAttempts.set(agentId, attempt);
+    return attempt;
+  }
+  private async stopHelper(c: Child) {
+    const intent = c.stop!;
+    const generation = this.generation;
+    const started = performance.now();
+    const valid = () =>
+      !this.draining &&
+      this.generation === generation &&
+      c.stop === intent &&
+      this.children.get(c.agent.threadId) === c;
+    const confirmed = () => !c.stop && terminal.includes(c.agent.status);
+    try {
+      this.discoverHelperStop(c, true);
+      const interrupted = new Set<string>();
+      let archived = false;
+      let deadline = performance.now() + this.stopTimeoutMs;
+      const remaining = () => Math.max(1, deadline - performance.now());
+      const version = () => JSON.stringify(intent.targets);
+      const dispatch = async () => {
+        if (this.runtime instanceof BusinessRuntime)
+          for (const target of intent.targets)
+            this.runtime.helpers.add(target.threadId);
+        await Promise.all(
+          intent.targets.map(async (target) => {
+            const key = `${target.threadId}:${target.turnId}`;
+            if (interrupted.has(key)) return;
+            interrupted.add(key);
+            try {
+              await bounded(
+                this.runtime.request("turn/interrupt", { ...target }),
+                remaining(),
+              );
+            } catch {
+              /* Inactive metadata can confirm a lost interrupt ACK. */
+            }
+          }),
+        );
+        if (!valid()) return;
+        await bounded(
+          this.runtime.request("thread/archive", {
+            threadId: c.agent.threadId,
+          }),
+          remaining(),
+        );
+        archived = true;
+      };
+      await dispatch();
+      deadline = performance.now() + this.stopCheckMs;
+      while (valid() && performance.now() < deadline) {
+        const before = version();
+        this.discoverHelperStop(c);
+        if (
+          before !== version() ||
+          intent.targets.some(
+            (target) => !interrupted.has(`${target.threadId}:${target.turnId}`),
+          )
+        ) {
+          archived = false;
+          await dispatch();
+        }
+        const checked = version();
+        const states = await bounded(
+          Promise.all(
+            intent.targets.map(async (target) => {
+              try {
+                const result = await this.runtime.request("thread/read", {
+                  threadId: target.threadId,
+                  includeTurns: false,
+                });
+                return ["idle", "notLoaded"].includes(
+                  result?.thread?.status?.type,
+                );
+              } catch {
+                return false;
+              }
+            }),
+          ),
+          remaining(),
+        );
+        if (!valid()) break;
+        this.discoverHelperStop(c);
+        if (checked === version() && archived && states.every(Boolean)) {
+          this.finishHelperStop(c);
+          log("info", "helper stop confirmed", {
+            threadId: c.rootId,
+            helperThreadId: c.agent.threadId,
+            targets: intent.targets.length,
+            elapsedMs: Math.round(performance.now() - started),
+          });
+          return { ok: true, agent: { ...c.agent } };
+        }
+        await new Promise((resolve) =>
+          setTimeout(resolve, Math.min(50, remaining())),
+        );
+      }
+      if (confirmed()) return { ok: true, agent: { ...c.agent } };
+      throw new Error("Helper stop unconfirmed");
+    } catch (e) {
+      if (confirmed()) return { ok: true, agent: { ...c.agent } };
+      if (c.stop === intent && generation === this.generation)
+        this.helperStopStatus(c, "unconfirmed");
+      log("warn", "helper stop unconfirmed", {
+        threadId: c.rootId,
+        helperThreadId: c.agent.threadId,
+        ...errorFields(e),
+      });
+      if (e instanceof HttpError && e.code === "STOP_STORAGE_INVALID") throw e;
+      throw new HttpError(
+        503,
+        "Helper Stop could not be confirmed. Retry Stop; already-started connector actions may finish.",
+        "STOP_UNCONFIRMED",
       );
-    return { ok: true };
+    }
   }
   private owned(id: string, agentId: string) {
     this.thread(id);
@@ -847,6 +1557,22 @@ export class ThreadManager {
     this.children.set(childId, c);
     if (this.runtime instanceof BusinessRuntime)
       this.runtime.helpers.add(childId);
+    if (root.stop) {
+      try {
+        this.discoverStop(root);
+      } catch (e) {
+        root.state = {
+          kind: "interrupting",
+          turnId: root.stop.turnId,
+          stopStatus: "unconfirmed",
+        };
+        this.stopUpdate(root);
+        log("error", "helper stop intent write failed", {
+          threadId: root.id,
+          ...errorFields(e),
+        });
+      }
+    }
     this.emit(
       root,
       "subagent.spawned",
@@ -980,6 +1706,8 @@ export class ThreadManager {
   private childNotification(c: Child, method: string, p: any) {
     const root = this.threads.get(c.rootId);
     if (!root) return;
+    const nativeTurn = p.turnId || p.turn?.id;
+    if (nativeTurn && c.stoppedTurns?.has(nativeTurn)) return;
     // A helper working for the running turn keeps that turn alive.
     this.watch(root);
     const a = c.agent,
@@ -1028,6 +1756,7 @@ export class ThreadManager {
         this.lookupName(c);
         return;
       case "turn/completed": {
+        if (c.turnId && c.turnId !== turnId) return;
         if (c.turnId === turnId) c.turnId = undefined;
         const status = p.turn?.status;
         this.update(c, {
@@ -1088,8 +1817,10 @@ export class ThreadManager {
   // only a running turn can spawn a helper. Bounded per thread and overall.
   private holdEarly(id: string, method: string, p: any) {
     if (this.threads.has(id) || this.roots.has(id)) return false;
-    const spawning = [...this.roots].some(
-      (r) => this.threads.get(r)?.state.kind === "running",
+    const spawning = [...this.roots].some((r) =>
+      ["running", "interrupting"].includes(
+        this.threads.get(r)?.state.kind ?? "",
+      ),
     );
     if (!spawning || !/^[\w-]+$/.test(id)) return false;
     let held = this.early.get(id);
@@ -1409,8 +2140,17 @@ export class ThreadManager {
     const t = this.thread(id),
       turnId = p.turnId || p.turn?.id,
       itemId = p.itemId || p.item?.id;
+    if (turnId && t.stoppedTurns.has(turnId)) return;
     if (method === "thread/started") t.loaded = true;
     if (method === "turn/started") {
+      if (t.stop) {
+        if (typeof turnId === "string") this.attachStopTurn(t, turnId);
+        if (t.clock) t.clock.turnId = turnId;
+        if (turnId) this.seeTurn(t, turnId);
+        this.builder(t, turnId);
+        this.stopUpdate(t);
+        return;
+      }
       if (t.state.kind === "idle" || t.state.kind === "starting")
         t.state = { kind: "running", turnId };
       if (t.clock) t.clock.turnId = turnId;
@@ -1419,10 +2159,6 @@ export class ThreadManager {
     }
     // Any activity on the thread shows the running turn is alive.
     this.watch(t);
-    if (method === "turn/completed" && turnId && t.stalledTurn === turnId) {
-      t.stalledTurn = undefined;
-      return;
-    }
     if (
       method === "item/reasoning/summaryTextDelta" ||
       method === "item/reasoning/textDelta" ||
@@ -1556,6 +2292,12 @@ export class ThreadManager {
     }
     let data = { method, ...p };
     if (method === "turn/completed") {
+      // A root terminal event alone cannot unlock helpers or detached work.
+      if (t.stop) {
+        if (turnId === t.stop.turnId)
+          t.stopCompletion = { turn: p.turn, at: begin };
+        return;
+      }
       for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
       data = { ...data, ...this.finishTurn(t, turnId, p.turn?.status, begin) };
       if (
@@ -1598,6 +2340,23 @@ export class ThreadManager {
     // Helpers never wait on the user; the main agent handles clarifications
     // and documents, so their requests are declined at once.
     const origin = msg.params?.threadId || msg.params?.conversationId;
+    if (typeof origin === "string" && this.threads.get(origin)?.stop) {
+      if (method === "item/tool/call")
+        this.runtime.respond(msg.id, {
+          contentItems: [
+            { type: "inputText", text: "Conversation is stopping" },
+          ],
+          success: false,
+        });
+      else if (Object.hasOwn(defaults, method) && defaults[method] !== null)
+        this.runtime.respond(msg.id, defaults[method]);
+      else
+        this.runtime.respond(msg.id, undefined, {
+          code: -32601,
+          message: "Conversation is stopping",
+        });
+      return;
+    }
     // A thread that was never started, resumed or forked here is a helper
     // that has not been identified yet.
     if (
@@ -1631,10 +2390,17 @@ export class ThreadManager {
       method === "item/tool/call"
     ) {
       const generation = this.generation;
-      void this.runtime
+      const t =
+        typeof origin === "string" ? this.threads.get(origin) : undefined;
+      const turnId = msg.params?.turnId ?? (t ? this.activeTurn(t) : undefined);
+      const work = this.runtime
         .executeTool(msg.params)
         .then((result) => {
-          if (generation === this.generation) {
+          if (
+            generation === this.generation &&
+            !t?.stop &&
+            !t?.stoppedTurns.has(turnId)
+          ) {
             try {
               this.runtime.respond(msg.id, result);
             } catch (e) {
@@ -1653,6 +2419,8 @@ export class ThreadManager {
             ...errorFields(e),
           }),
         );
+      t?.localWork.add(work);
+      void work.finally(() => t?.localWork.delete(work));
       return;
     }
     if (!Object.hasOwn(defaults, method) || defaults[method] === null) {
@@ -1747,12 +2515,14 @@ export class ThreadManager {
   }
   // Runs the chat's mode again over its waiting questions.
   private reevaluate(t: Thread) {
+    if (t.stop) return;
     if (!this.modes.has(t.id)) return;
     for (const p of [...t.pending.values()])
       if (p.method === "item/tool/requestUserInput") void this.review(t, p);
   }
   // Answers a request under the chat's mode, or shows it to the user.
   private async review(t: Thread, p: Pending) {
+    const generation = this.generation;
     const run = (p.reviews = (p.reviews ?? 0) + 1);
     let decision: { result: any; reason: string } | null = null;
     try {
@@ -1767,7 +2537,13 @@ export class ThreadManager {
       });
       decision = null;
     }
-    if (!t.pending.has(p.requestId) || p.reviews !== run) return;
+    if (
+      t.stop ||
+      generation !== this.generation ||
+      !t.pending.has(p.requestId) ||
+      p.reviews !== run
+    )
+      return;
     if (decision) this.settle(t, p, decision.result, decision.reason);
     else if (p.hidden) {
       p.hidden = false;
@@ -1882,6 +2658,8 @@ export class ThreadManager {
     return wire;
   }
   answer(id: string, requestId: string, result: unknown) {
+    if (this.thread(id).stop)
+      throw new HttpError(409, "Conversation is stopping", "INTERRUPTING");
     const t = this.thread(id),
       pending = t.pending.get(requestId);
     if (!pending)
@@ -1962,6 +2740,8 @@ export class ThreadManager {
     }
   }
   async capability(id: string, method: string, params: any) {
+    if (this.thread(id).stop && method !== "thread/goal/get")
+      throw new HttpError(409, "Conversation is stopping", "INTERRUPTING");
     if (
       this.runtime instanceof BusinessRuntime &&
       method !== "thread/delete" &&
@@ -1995,11 +2775,26 @@ export class ThreadManager {
     this.redactor.remember(payload);
     return this.serial(id, async () => {
       const t = this.thread(id);
+      if (t.stop && method !== "thread/goal/get")
+        throw new HttpError(
+          409,
+          "Stop must be confirmed before continuing",
+          "INTERRUPTING",
+        );
       if (
         ["thread/delete", "thread/archive", "thread/fork"].includes(method) &&
         t.state.kind !== "idle"
       )
         throw new HttpError(409, "Finish the current turn first");
+      if (
+        ["thread/archive", "thread/delete"].includes(method) &&
+        this.agentsOf(id).some((c) => c.stop)
+      )
+        throw new HttpError(
+          409,
+          "Confirm helper Stop before archiving or deleting this conversation",
+          "STOP_UNCONFIRMED",
+        );
       if (method === "thread/fork") this.reserve();
       let result: any;
       try {

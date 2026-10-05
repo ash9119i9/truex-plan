@@ -24,7 +24,10 @@ const terminal: SubAgentStatus[] = [
   "notFound",
 ];
 export const isRunning = (a: SubAgent) =>
-  a.status === "running" || a.status === "pendingInit";
+  a.status === "running" ||
+  a.status === "pendingInit" ||
+  a.stopStatus === "pending" ||
+  a.stopStatus === "unconfirmed";
 export const isTerminal = (status: SubAgentStatus) => terminal.includes(status);
 
 export function agentName(a: Pick<SubAgent, "nickname" | "role" | "path">) {
@@ -40,15 +43,29 @@ export const statusLabels: Record<SubAgentStatus, string> = {
   notFound: "Unavailable",
 };
 
+export function helperStatusLabel(agent: SubAgent): string {
+  if (isRunning(agent) && agent.stopStatus)
+    return agent.stopStatus === "pending" ? "Stopping…" : "Stop unconfirmed";
+  return statusLabels[agent.status] || agent.status;
+}
+
 // Merge an update into the list. Events can arrive out of order after a
 // reconnect, so a finished helper never reverts to running.
 export function upsertAgent(list: SubAgent[], next: SubAgent): SubAgent[] {
+  const nextStopStatus =
+    next.stopStatus === "pending" || next.stopStatus === "unconfirmed"
+      ? next.stopStatus
+      : undefined;
   const index = list.findIndex((a) => a.threadId === next.threadId);
   if (index < 0)
     return [
       ...list,
-      isTerminal(next.status) && !next.endedAt
-        ? { ...next, endedAt: next.startedAt }
+      isTerminal(next.status)
+        ? {
+            ...next,
+            stopStatus: nextStopStatus,
+            endedAt: next.endedAt || next.startedAt,
+          }
         : next,
     ];
   const prev = list[index];
@@ -63,6 +80,14 @@ export function upsertAgent(list: SubAgent[], next: SubAgent): SubAgent[] {
     ...prev,
     ...next,
     status,
+    // Native completion can arrive before Stop's archive/persistence checks.
+    // A terminal update clears uncertainty only when it omits stopStatus.
+    // Late running replay cannot reopen or resolve an already terminal helper.
+    stopStatus: isTerminal(next.status)
+      ? nextStopStatus
+      : isTerminal(prev.status)
+        ? prev.stopStatus
+        : (nextStopStatus ?? prev.stopStatus),
     path: next.path ?? prev.path,
     nickname: next.nickname ?? prev.nickname,
     role: next.role ?? prev.role,

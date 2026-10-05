@@ -231,6 +231,8 @@ test(
         return reply([]);
       if (path.endsWith("/items")) return reply({ data: [] });
       if (path.endsWith("/turns")) return reply({ turnId: "turn-1" });
+      if (path.endsWith("/agents/a1/interrupt"))
+        return reply({ ok: true, agent: { threadId: "a1", status: "interrupted" } });
       if (path.includes("/agents/a1") && !path.endsWith("/interrupt"))
         return reply({ agent: { threadId: "a1" }, messages: [] });
       if (path.includes("/documents/"))

@@ -17,6 +17,7 @@ import type {
   RateLimitView,
   StepSpan,
   PrivacyFinding,
+  TurnState,
 } from "../../shared/contracts";
 export const POLICY_VERSION = 1;
 
@@ -160,6 +161,9 @@ export function publicSubAgent(a: any): SubAgent | null {
     role: clamp(a.role, 80),
     depth: Math.max(0, Math.min(8, Math.trunc(finite(a.depth) ?? 1))),
     status: SUB_AGENT_STATUSES.includes(a.status) ? a.status : "running",
+    ...(["pending", "unconfirmed"].includes(a.stopStatus)
+      ? { stopStatus: a.stopStatus }
+      : {}),
     ...(task ? { task } : {}),
     ...(lastMessage ? { lastMessage } : {}),
     startedAt: clamp(a.startedAt, 40) ?? new Date(0).toISOString(),
@@ -375,10 +379,29 @@ function request(p: any) {
     },
   };
 }
+function publicState(state: any): TurnState | null {
+  if (state?.kind === "idle" || state?.kind === "starting")
+    return { kind: state.kind };
+  if (
+    !["running", "interrupting"].includes(state?.kind) ||
+    typeof state.turnId !== "string" ||
+    !/^[\w-]{1,256}$/.test(state.turnId)
+  )
+    return null;
+  if (state.kind === "running")
+    return { kind: "running", turnId: state.turnId };
+  return {
+    kind: "interrupting",
+    turnId: state.turnId,
+    ...(["pending", "unconfirmed"].includes(state.stopStatus)
+      ? { stopStatus: state.stopStatus }
+      : {}),
+  };
+}
 export function publicSnapshot(s: any) {
   return {
     cursor: s.cursor,
-    state: { kind: s.state?.kind || "idle", turnId: s.state?.turnId },
+    state: publicState(s.state) ?? { kind: "idle" },
     messages: (s.messages || []).map(message),
     pending: (s.pending || []).map(request).filter(Boolean),
     plan: publicPlan(s.plan),
@@ -631,6 +654,34 @@ export function publicEvent(e: any): any | null {
       return { ...base, data: { text: d.text, messageIndex: d.messageIndex } };
     case "turn.started":
       return { ...base, data: {} };
+    case "turn.stop.updated": {
+      if (
+        d.state?.stopStatus !== undefined &&
+        (d.state.kind !== "interrupting" ||
+          !["pending", "unconfirmed"].includes(d.state.stopStatus))
+      )
+        return null;
+      const state = publicState(d.state);
+      if (!state || !["idle", "interrupting"].includes(state.kind)) return null;
+      if (
+        d.turnId !== undefined &&
+        (typeof d.turnId !== "string" || !/^[\w-]{1,256}$/.test(d.turnId))
+      )
+        return null;
+      if (
+        state.kind === "interrupting" &&
+        d.turnId !== undefined &&
+        d.turnId !== state.turnId
+      )
+        return null;
+      return {
+        ...base,
+        data: {
+          state,
+          ...(d.turnId !== undefined ? { turnId: d.turnId } : {}),
+        },
+      };
+    }
     case "turn.completed":
       return {
         ...base,

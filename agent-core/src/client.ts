@@ -114,8 +114,10 @@ export class CodexClient extends EventEmitter implements Runtime {
       stdio: "pipe",
     });
     this.child = child;
+    let acceptingFrames = true;
     child.on("error", (cause: NodeJS.ErrnoException) => {
       if (this.child !== child) return;
+      acceptingFrames = false;
       this.fail(
         new HttpError(503, unavailable, "RUNTIME_UNAVAILABLE", { cause }),
         { event: "error", errno: cause.errno, code: cause.code },
@@ -123,6 +125,7 @@ export class CodexClient extends EventEmitter implements Runtime {
     });
     child.on("exit", (exitCode, signal) => {
       if (this.child !== child) return;
+      acceptingFrames = false;
       this.fail(
         new HttpError(503, unavailable, "RUNTIME_UNAVAILABLE", {
           cause: new Error(
@@ -134,6 +137,7 @@ export class CodexClient extends EventEmitter implements Runtime {
     });
     child.stdin.on("error", (cause: NodeJS.ErrnoException) => {
       if (this.child !== child) return;
+      acceptingFrames = false;
       this.fail(
         new HttpError(503, unavailable, "RUNTIME_UNAVAILABLE", { cause }),
         { event: "stdin", errno: cause.errno, code: cause.code },
@@ -149,6 +153,9 @@ export class CodexClient extends EventEmitter implements Runtime {
       this.emit("diagnostic", clean);
     });
     createInterface({ input: child.stdout }).on("line", (line) => {
+      // Exit can precede stdio closure. Buffered frames from a failed or
+      // replaced process must not reach a new runtime generation.
+      if (!acceptingFrames || this.child !== child) return;
       let msg: any;
       try {
         msg = JSON.parse(line);

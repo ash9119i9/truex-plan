@@ -55,6 +55,8 @@ export function SessionActivity({
   tab,
   onTab,
   subAgents,
+  onStopAgent,
+  helperStopDisabled = false,
   delegation,
   onDelegation,
   agentName,
@@ -81,6 +83,8 @@ export function SessionActivity({
   tab?: SessionTab | string;
   onTab?: (tab: SessionTab) => void;
   subAgents?: SubAgentState;
+  onStopAgent?: (threadId: string) => void;
+  helperStopDisabled?: boolean;
   delegation?: DelegationPrefs;
   onDelegation?: (prefs: DelegationPrefs) => void;
   // Shown as the live meta while working ("Qlik Analyst" in the spec).
@@ -242,6 +246,8 @@ export function SessionActivity({
               previews={subAgents?.previews || {}}
               skewMs={subAgents?.skewMs}
               onDetailChange={reportDetail}
+              onStopAgent={onStopAgent}
+              stopDisabled={helperStopDisabled}
             />
             {!detail && delegation && onDelegation && (
               <DelegationSettings value={delegation} onChange={onDelegation} />

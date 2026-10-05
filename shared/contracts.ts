@@ -263,12 +263,18 @@ export interface PendingRequest {
 export type TurnState =
   | { kind: "idle" }
   | { kind: "starting" }
-  | { kind: "running" | "interrupting"; turnId: string };
+  | { kind: "running"; turnId: string }
+  | {
+      kind: "interrupting";
+      turnId: string;
+      stopStatus?: "pending" | "unconfirmed";
+    };
 export type DomainType =
   | "session.created"
   | "thread.started"
   | "turn.started"
   | "turn.completed"
+  | "turn.stop.updated"
   | "message.delta"
   | "message.final"
   | "reasoning.delta"
@@ -348,6 +354,7 @@ export interface SubAgent {
   role: string | null;
   depth: number;
   status: SubAgentStatus;
+  stopStatus?: "pending" | "unconfirmed";
   task?: string;
   lastMessage?: string;
   startedAt: string;

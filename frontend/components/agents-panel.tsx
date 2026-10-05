@@ -3,16 +3,17 @@ import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { stripSuggestions } from "@/lib/suggestions";
-import { getAgentTranscript, interruptAgent } from "@/lib/api";
+import { getAgentTranscript } from "@/lib/api";
 import { formatDuration } from "@/lib/observability";
 import {
   elapsedMs,
   groupElapsedMs,
   helperName,
+  helperStatusLabel,
   isRunning,
+  isTerminal,
   previewTail,
   spawnOrder,
-  statusLabels,
   taskTitle,
 } from "@/lib/subagents";
 import { useClock } from "./use-clock";
@@ -37,10 +38,10 @@ const chipTone: Record<SubAgentStatus, Chip> = {
 export function StatusChip({ agent }: { agent: SubAgent }) {
   const tone = chipTone[agent.status] || "is-stopped";
   return (
-    <span className={`ag-chip ${tone}`}>
+    <span className={`ag-chip ${tone}`} role="status">
       {tone === "is-running" && <span className="spinner" aria-hidden="true" />}
       {tone === "is-warn" && <span aria-hidden="true">⚠</span>}
-      {statusLabels[agent.status] || agent.status}
+      {helperStatusLabel(agent)}
     </span>
   );
 }
@@ -75,6 +76,8 @@ export function AgentsPanel({
   previews,
   skewMs,
   onDetailChange,
+  onStopAgent,
+  stopDisabled = false,
 }: {
   sessionId?: string;
   agents: SubAgent[];
@@ -82,6 +85,8 @@ export function AgentsPanel({
   skewMs?: number;
   // Opening a helper switches the panel to its wide "detail" size.
   onDetailChange?: (open: boolean) => void;
+  onStopAgent?: (threadId: string) => void;
+  stopDisabled?: boolean;
 }) {
   const now = useClock(agents.some(isRunning));
   const [openId, setOpenId] = useState<string | null>(null);
@@ -120,9 +125,11 @@ export function AgentsPanel({
   if (detailOpen)
     return (
       <HelperDetail
-        key={helpers[openIndex].agent.threadId}
+        key={`${sessionId}:${helpers[openIndex].agent.threadId}`}
         sessionId={sessionId}
         helper={helpers[openIndex]}
+        onStopAgent={onStopAgent}
+        stopDisabled={stopDisabled}
         index={openIndex}
         count={helpers.length}
         preview={previews[helpers[openIndex].agent.threadId] || ""}
@@ -241,7 +248,11 @@ function HelperRow({
   const { agent, name, tone, elapsed } = helper;
   const running = isRunning(agent);
   const role = agent.role && agent.nickname ? agent.role : "";
-  const text = previewTail(running ? preview : agent.lastMessage || "", 200, 3);
+  const text = previewTail(
+    isTerminal(agent.status) ? agent.lastMessage || preview : preview,
+    200,
+    3,
+  );
   return (
     <button
       type="button"
@@ -287,6 +298,8 @@ function HelperDetail({
   preview,
   onBack,
   onPage,
+  onStopAgent,
+  stopDisabled,
 }: {
   sessionId?: string;
   helper: Helper;
@@ -295,13 +308,14 @@ function HelperDetail({
   preview: string;
   onBack: () => void;
   onPage: (step: number) => void;
+  onStopAgent?: (threadId: string) => void;
+  stopDisabled: boolean;
 }) {
   const { agent, name, tone, elapsed } = helper;
   const running = isRunning(agent);
   const [seg, setSeg] = useState<Seg>("output");
   const [transcript, setTranscript] = useState<SubAgentTranscript | null>(null);
   const [loading, setLoading] = useState(false);
-  const [stopping, setStopping] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const back = useRef<HTMLButtonElement>(null);
@@ -330,19 +344,7 @@ function HelperDetail({
       setLoading(false);
     }
   }
-  async function stop() {
-    if (!sessionId) return;
-    setStopping(true);
-    setError("");
-    try {
-      await interruptAgent(sessionId, agent.threadId);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setStopping(false);
-    }
-  }
-  const output = running ? preview : agent.lastMessage || "";
+  const output = isTerminal(agent.status) ? agent.lastMessage || preview : preview;
   async function copy() {
     try {
       await navigator.clipboard.writeText(stripSuggestions(output));
@@ -481,6 +483,11 @@ function HelperDetail({
               </p>
             )}
             <div className="goal-actions" style={{ marginTop: 0 }}>
+              {agent.stopStatus === "unconfirmed" && (
+                <p role="status" className="muted sm">
+                  Stop is unconfirmed. Retry stop to check this helper again.
+                </p>
+              )}
               {!running && output && (
                 <button type="button" className="btn-soft" onClick={() => void copy()}>
                   <Icon name={copied ? "check" : "doc"} size={14} />
@@ -491,12 +498,21 @@ function HelperDetail({
                 <button
                   type="button"
                   className="btn-soft"
-                  onClick={() => void stop()}
-                  disabled={stopping || !sessionId}
-                  aria-label={`Stop ${name}`}
+                  onClick={() => onStopAgent?.(agent.threadId)}
+                  disabled={
+                    stopDisabled ||
+                    agent.stopStatus === "pending" ||
+                    !sessionId ||
+                    !onStopAgent
+                  }
+                  aria-label={`${agent.stopStatus === "unconfirmed" ? "Retry stop for" : "Stop"} ${name}`}
                 >
                   <Icon name="stop" size={13} />
-                  {stopping ? "Stopping…" : "Stop"}
+                  {agent.stopStatus === "pending"
+                    ? "Stopping…"
+                    : agent.stopStatus === "unconfirmed"
+                      ? "Retry stop"
+                      : "Stop"}
                 </button>
               )}
             </div>

@@ -19,6 +19,8 @@ import { tintOf } from "@/lib/agent-look";
 import { UserMenu } from "@/components/v2/user-menu";
 import { fitPanel, PANEL_W, CHAT_MIN, type PanelSize } from "@/lib/fit-panel";
 import { useFollowActivity } from "@/lib/use-follow-activity";
+import { TurnStop, type StopStatus } from "@/lib/turn-stop";
+import { confirmHelperStop, markHelperStop } from "@/lib/helper-stop";
 import { useHotkeys } from "@/lib/use-hotkeys";
 import { useTheme } from "@/lib/use-theme";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -48,6 +50,7 @@ import {
   base,
   errorRef,
   getTraces,
+  interruptAgent,
   listAgents,
   userMessage,
   warnFailure,
@@ -58,6 +61,7 @@ import {
   applySubAgentEvent,
   defaultDelegation,
   emptySubAgents,
+  isRunning,
   loadDelegation,
   rehydrate,
   saveDelegation,
@@ -100,6 +104,7 @@ import type {
   PendingRequest,
   TraceSummary,
   TurnTiming,
+  TurnState,
 } from "../../shared/contracts";
 import { agentHandle } from "../../shared/contracts";
 // The public payload includes the alpha approval mode when it is enabled.
@@ -134,6 +139,7 @@ export default function Home() {
     [loading, setLoading] = useState(true),
     [busy, setBusy] = useState(false),
     [running, setRunning] = useState(false),
+    [stopStatus, setStopStatus] = useState<StopStatus>(null),
     [status, setStatus] = useState("Not connected"),
     // Bumped by "Retry" to open a fresh stream after it disconnected.
     [streamKey, setStreamKey] = useState(0),
@@ -223,11 +229,28 @@ export default function Home() {
     sessionRef = useRef<Session | null>(null),
     seen = useRef(new Set<string>()),
     sending = useRef(false),
+    turnStop = useRef(new TurnStop()),
+    subAgentsRef = useRef<SubAgentState>(emptySubAgents),
+    helperStopAttempts = useRef(new Map<string, symbol>()),
     commandAttempt = useRef<{
       sessionId: string;
       text: string;
       clientId: string;
     } | null>(null);
+  const updateSubAgents = (
+    update: SubAgentState | ((old: SubAgentState) => SubAgentState),
+  ) => {
+    const next =
+      typeof update === "function" ? update(subAgentsRef.current) : update;
+    subAgentsRef.current = next;
+    setSubAgents(next);
+  };
+  const observeTurnState = (state: TurnState, turnId?: string) => {
+    if (!turnStop.current.observe(state, turnId)) return false;
+    setStopStatus(turnStop.current.status);
+    setRunning(state.kind !== "idle");
+    return true;
+  };
   // Setting a message always replaces the reference of the previous error.
   const setError = (message: string, detail: ErrorRefValue | null = null) => {
     setErrorText(message);
@@ -287,6 +310,9 @@ export default function Home() {
     preparation.current.reset();
     openingSession.current = true;
     sending.current = false;
+    turnStop.current.reset();
+    setStopStatus(null);
+    helperStopAttempts.current.clear();
     setDraftActive(false);
     setPreparationStatus(null);
     setView("chat");
@@ -319,7 +345,9 @@ export default function Home() {
 
       seen.current.clear();
       setPending(data.snapshot?.pending || []);
-      setSubAgents(rehydrate(emptySubAgents, data.snapshot?.subAgents || []));
+      updateSubAgents(
+        rehydrate(emptySubAgents, data.snapshot?.subAgents || []),
+      );
       // The saved plan stays available when agent-core is unreachable.
       setPlan(data.snapshot?.plan || data.plan?.steps || []);
       setGoal(data.snapshot?.goal || null);
@@ -359,7 +387,7 @@ export default function Home() {
         })
         .catch((e) => warnFailure("timings", e));
 
-      setRunning(!!data.snapshot && data.snapshot.state.kind !== "idle");
+      observeTurnState(data.snapshot?.state ?? { kind: "idle" });
       if (data.recoveryError)
         setError(data.recoveryError, data.recoveryErrorRef ?? null);
       history.replaceState(null, "", "?session=" + id);
@@ -422,7 +450,7 @@ export default function Home() {
       void listAgents(id)
         .then((list) => {
           if (sessionRef.current?._id === id && Array.isArray(list))
-            setSubAgents((old) => rehydrate(old, list));
+            updateSubAgents((old) => rehydrate(old, list));
         })
         .catch((e) => warnFailure("helper agents", e));
     };
@@ -452,13 +480,13 @@ export default function Home() {
           setEvents((old) => [...old.slice(-99), event]);
         const d = event.data;
         setEntries((old) => applyChatEvent(old, event));
-        setSubAgents((old) => applySubAgentEvent(old, event));
+        updateSubAgents((old) => applySubAgentEvent(old, event));
         setObservability((old) => applyObservabilityEvent(old, event));
         setPlan((old) => applyPlanEvent(old, event));
         switch (event.type) {
           case "snapshot":
             setPending(d.pending);
-            setRunning(d.state.kind !== "idle");
+            observeTurnState(d.state);
             setGoal(d.goal || null);
             syncSessionGoal(id, d.goal || null);
             setTimings((old) => [
@@ -476,7 +504,11 @@ export default function Home() {
             resync();
             break;
           case "turn.started":
-            setRunning(true);
+            observeTurnState(
+              event.turnId
+                ? { kind: "running", turnId: event.turnId }
+                : { kind: "starting" },
+            );
             setFailure(null);
             setRetrying(false);
 
@@ -493,7 +525,7 @@ export default function Home() {
             setGoalReview(null);
             break;
           case "turn.completed":
-            setRunning(false);
+            observeTurnState({ kind: "idle" }, event.turnId ?? d.turn?.id);
             setRetrying(false);
             if (d.turn?.error?.message) {
               const turnId = d.turn.id ?? event.turnId;
@@ -510,6 +542,9 @@ export default function Home() {
                 ...old.filter((t) => t.turnId !== d.timing.turnId),
                 d.timing,
               ]);
+            break;
+          case "turn.stop.updated":
+            observeTurnState(d.state, d.turnId);
             break;
           case "approval.requested":
             setPending((old) => [
@@ -584,6 +619,8 @@ export default function Home() {
     preparation.current.reset();
     openingSession.current = false;
     sending.current = false;
+    turnStop.current.reset();
+    setStopStatus(null);
     setDraftActive(true);
     setDraftVersion(generation.current);
     setPreparationStatus(null);
@@ -602,7 +639,8 @@ export default function Home() {
     setEvents([]);
 
     setPending([]);
-    setSubAgents(emptySubAgents);
+    helperStopAttempts.current.clear();
+    updateSubAgents(emptySubAgents);
     setPlan([]);
     setTimings([]);
     setObservability(emptyObservability);
@@ -756,6 +794,7 @@ export default function Home() {
   async function send(value = text) {
     if (
       sending.current ||
+      turnStop.current.status !== null ||
       preparationFailed ||
       !value.trim() ||
       busy ||
@@ -847,6 +886,7 @@ export default function Home() {
     if (
       busy ||
       sending.current ||
+      turnStop.current.status !== null ||
       preparationFailed ||
       !text.trim() ||
       (!sessionRef.current && !agentId)
@@ -1115,8 +1155,11 @@ export default function Home() {
     : entries.length
       ? "New conversation"
       : "";
-  const stateText =
-    session && status === "Reconnecting"
+  const stateText = stopStatus
+    ? stopStatus === "pending"
+      ? "stopping…"
+      : "stop unconfirmed"
+    : session && status === "Reconnecting"
       ? slowReconnect
         ? "still reconnecting…"
         : "reconnecting…"
@@ -1130,27 +1173,89 @@ export default function Home() {
               : "working"
             : "ready";
   function stopTurn() {
+    const id = sessionRef.current?._id;
+    if (!id || openingSession.current) return;
+    const attempt = turnStop.current.begin();
+    if (attempt === null) return;
+    const token = generation.current;
+    setStopStatus("pending");
+    setError("");
+    setCommandOpen(false);
     void (async () => {
-      const id = session!._id;
+      const current = () =>
+        token === generation.current &&
+        sessionRef.current?._id === id &&
+        turnStop.current.current(attempt);
       try {
-        // An active goal restarts on its own once the thread is
-        // idle, so pause it before stopping the turn.
-        if (goal?.status === "active") {
-          const data = await api(`/api/sessions/${id}/capabilities`, {
-            method: "thread/goal/set",
-            params: { status: "paused" },
-          });
-          setGoal(data.goal);
-          syncSessionGoal(id, data.goal);
-        }
-        await transport.interrupt(id).catch((e) => {
-          // The turn already ended, so there is nothing to stop.
-          if (!(e instanceof ApiRequestError && e.status === 409)) throw e;
-        });
+        const result = await transport.interrupt(id);
+        if (!current()) return;
+        if (result?.ok !== true || result.state?.kind !== "idle")
+          throw new ApiRequestError(
+            "Stop is unconfirmed. Retry stop before sending another message.",
+            503,
+            "STOP_UNCONFIRMED",
+          );
+        if (!observeTurnState(result.state, result.turnId))
+          throw new ApiRequestError(
+            "Stop could not confirm the current turn. Retry stop before sending another message.",
+            503,
+            "STOP_UNCONFIRMED",
+          );
       } catch (e) {
+        if (!current() || !turnStop.current.fail(attempt)) return;
+        setStopStatus("unconfirmed");
         reportError(e);
       }
     })();
+  }
+  async function stopHelper(threadId: string) {
+    const id = sessionRef.current?._id;
+    const helper = subAgentsRef.current.agents.find(
+      (a) => a.threadId === threadId,
+    );
+    if (
+      !id ||
+      openingSession.current ||
+      turnStop.current.status === "pending" ||
+      !helper ||
+      !isRunning(helper) ||
+      helper.stopStatus === "pending"
+    )
+      return;
+    const token = generation.current;
+    const attempt = Symbol(threadId);
+    helperStopAttempts.current.set(threadId, attempt);
+    updateSubAgents((old) => markHelperStop(old, threadId, "pending"));
+    const current = () =>
+      token === generation.current &&
+      sessionRef.current?._id === id &&
+      helperStopAttempts.current.get(threadId) === attempt &&
+      subAgentsRef.current.agents.some(
+        (a) => a.threadId === threadId && isRunning(a),
+      );
+    try {
+      const result = await interruptAgent(id, threadId);
+      if (!current()) return;
+      const confirmed = confirmHelperStop(
+        subAgentsRef.current,
+        threadId,
+        result,
+      );
+      if (!confirmed)
+        throw new ApiRequestError(
+          "This helper's stop is unconfirmed. Retry stop to check it again.",
+          503,
+          "STOP_UNCONFIRMED",
+        );
+      updateSubAgents(confirmed);
+    } catch (e) {
+      if (!current()) return;
+      updateSubAgents((old) => markHelperStop(old, threadId, "unconfirmed"));
+      warnFailure("helper stop", e);
+    } finally {
+      if (helperStopAttempts.current.get(threadId) === attempt)
+        helperStopAttempts.current.delete(threadId);
+    }
   }
   const composerForm = (
     <form
@@ -1166,9 +1271,11 @@ export default function Home() {
         onGoalToggle={() => (goalMode ? setGoalMode(false) : startGoal(text))}
         onGoalCancel={() => setGoalMode(false)}
         busy={running}
+        stopStatus={stopStatus}
         canSend={
           !!text.trim() &&
           !busy &&
+          !stopStatus &&
           !preparationFailed &&
           (!!session || !!agentId)
         }
@@ -1181,6 +1288,13 @@ export default function Home() {
         onFocusChange={setComposerFocused}
         above={
           <>
+            {stopStatus && (
+              <div className="composer-notice" role="status">
+                {stopStatus === "pending"
+                  ? "Stopping the current response…"
+                  : "Stop is unconfirmed. Retry stop before sending another message."}
+              </div>
+            )}
             {pendingProject && (
               <div className="composer-project" role="status">
                 <Icon name="folder" size={13} />
@@ -1260,7 +1374,7 @@ export default function Home() {
             {picker && (
               <ApprovalModePicker
                 picker={picker}
-                disabled={busy}
+                disabled={busy || !!stopStatus}
                 errorId={modeError ? "approval-mode-error" : undefined}
                 onChange={(mode) => void changeApprovalMode(mode)}
               />
@@ -1294,7 +1408,7 @@ export default function Home() {
                   : PLACEHOLDERS[0]
           }
           value={text}
-          disabled={busy || (!session && !agentId)}
+          disabled={busy || !!stopStatus || (!session && !agentId)}
           onChange={(e) => {
             setText(e.target.value);
             setCommandOpen(
@@ -1443,6 +1557,8 @@ export default function Home() {
                 goal={goal}
                 goalReview={goalReview}
                 subAgents={subAgents}
+                onStopAgent={(id) => void stopHelper(id)}
+                helperStopDisabled={stopStatus === "pending"}
                 onOpenAgent={openAgents}
                 onSuggest={askSuggestion}
                 suggestionsEnabled={
@@ -1464,7 +1580,14 @@ export default function Home() {
                     key={p.requestId}
                     request={p}
                     plan={plan}
+                    disabled={!!stopStatus}
                     onAnswer={async (result) => {
+                      if (turnStop.current.status !== null)
+                        throw new ApiRequestError(
+                          "Stop is unconfirmed. Retry stop before answering this request.",
+                          409,
+                          "STOP_UNCONFIRMED",
+                        );
                       await transport.answer(session._id, p.requestId, result);
                     }}
                   />
@@ -1661,6 +1784,8 @@ export default function Home() {
           follow={follow.enabled}
           onFollow={follow.setEnabled}
           subAgents={subAgents}
+          onStopAgent={(id) => void stopHelper(id)}
+          helperStopDisabled={stopStatus === "pending"}
           delegation={delegation}
           onDelegation={changeDelegation}
           agentName={agent?.name}

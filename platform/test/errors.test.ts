@@ -5,6 +5,43 @@ import { httpError, runtimeError } from "../../shared/errors";
 import { publicEvent } from "../src/public";
 import { PlatformService } from "../src/service";
 
+test("Stop failures use fixed actionable messages across HTTP and live updates", () => {
+  for (const code of ["STOP_UNCONFIRMED", "STOP_STORAGE_INVALID"]) {
+    const detail =
+      "/private/runtime/stop-intents password=secret helper-thread-id";
+    const runtime = runtimeError({
+      code,
+      error: { message: detail },
+      targets: ["helper-thread-id"],
+    });
+    assert.equal(runtime.code, code);
+    assert.match(runtime.message, /Retry Stop/);
+    assert.match(
+      runtime.message,
+      /connector request already sent may still finish/,
+    );
+    for (const layer of ["platform", "agent-core"] as const) {
+      const response = httpError(new ApiError(503, detail, code), layer);
+      assert.equal(response.code, code);
+      assert.equal(response.error, runtime.message);
+      assert.doesNotMatch(
+        JSON.stringify(response),
+        /private|secret|helper-thread-id/,
+      );
+    }
+    const event = publicEvent({
+      type: "error",
+      data: { error: { code, message: detail }, targets: ["helper-thread-id"] },
+    });
+    assert.equal(event.data.code, code);
+    assert.equal(event.data.message, runtime.message);
+    assert.doesNotMatch(
+      JSON.stringify(event),
+      /private|secret|helper-thread-id/,
+    );
+  }
+});
+
 test("expected errors preserve actionable detail at both HTTP boundaries", () => {
   for (const layer of ["platform", "agent-core"] as const) {
     assert.deepEqual(

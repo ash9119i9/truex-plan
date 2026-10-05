@@ -4,14 +4,14 @@ import { Icon } from "./v2/icon";
 import Markdown from "react-markdown";
 import { stripSuggestions } from "@/lib/suggestions";
 import remarkGfm from "remark-gfm";
-import { interruptAgent } from "@/lib/api";
 import {
   elapsedMs,
   groupElapsedMs,
   helperName,
+  helperStatusLabel,
   isRunning,
+  isTerminal,
   previewTail,
-  statusLabels,
   taskTitle,
   type SubAgentState,
 } from "@/lib/subagents";
@@ -26,12 +26,16 @@ export function HelperGroup({
   state,
   sessionId,
   onOpenAgent,
+  onStopAgent,
+  stopDisabled = false,
 }: {
   id: string;
   threadIds: string[];
   state: SubAgentState;
   sessionId?: string;
   onOpenAgent?: (threadId: string) => void;
+  onStopAgent?: (threadId: string) => void;
+  stopDisabled?: boolean;
 }) {
   const agents = useMemo(
     () =>
@@ -80,6 +84,8 @@ export function HelperGroup({
             elapsed={elapsedMs(a, now, state.skewMs)}
             sessionId={sessionId}
             onOpenAgent={onOpenAgent}
+            onStopAgent={onStopAgent}
+            stopDisabled={stopDisabled}
           />
         ))}
       </ul>
@@ -103,6 +109,8 @@ function HelperRow({
   elapsed,
   sessionId,
   onOpenAgent,
+  onStopAgent,
+  stopDisabled,
 }: {
   agent: SubAgent;
   tone: number;
@@ -111,29 +119,18 @@ function HelperRow({
   elapsed: number;
   sessionId?: string;
   onOpenAgent?: (threadId: string) => void;
+  onStopAgent?: (threadId: string) => void;
+  stopDisabled: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [stopping, setStopping] = useState(false);
-  const [error, setError] = useState("");
   const running = isRunning(agent);
   const title = taskTitle(agent.task);
   const detailId = `helper-detail-${agent.threadId}`;
-  const output = previewTail(running ? preview : agent.lastMessage || preview);
+  const output = previewTail(
+    isTerminal(agent.status) ? agent.lastMessage || preview : preview,
+  );
 
-  async function stop() {
-    if (!sessionId) return;
-    setStopping(true);
-    setError("");
-    try {
-      await interruptAgent(sessionId, agent.threadId);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setStopping(false);
-    }
-  }
-
-  const label = statusLabels[agent.status] || agent.status;
+  const label = helperStatusLabel(agent);
   return (
     <li className={`hcard-item ${agent.status}`}>
       <button
@@ -151,8 +148,8 @@ function HelperRow({
           <span className="muted"> · {title}</span>
         </span>
         {running ? (
-          <span className="ag-chip is-running">
-            <span className="spinner" aria-label="running" />
+          <span className="ag-chip is-running" role="status">
+            <span className="spinner" aria-hidden="true" />
             {label}
           </span>
         ) : (
@@ -178,9 +175,9 @@ function HelperRow({
             </p>
           )}
           {agent.task && <p className="hcard-task">{agent.task}</p>}
-          {error && (
-            <p role="alert" className="hcard-error">
-              {error}
+          {agent.stopStatus === "unconfirmed" && (
+            <p role="status" className="hcard-error">
+              Stop is unconfirmed. Retry stop to check this helper again.
             </p>
           )}
           <div className="hcard-actions">
@@ -197,11 +194,20 @@ function HelperRow({
               <button
                 type="button"
                 className="btn-ghost danger"
-                onClick={stop}
-                disabled={stopping || !sessionId}
-                aria-label={`Stop ${name}`}
+                onClick={() => onStopAgent?.(agent.threadId)}
+                disabled={
+                  stopDisabled ||
+                  agent.stopStatus === "pending" ||
+                  !sessionId ||
+                  !onStopAgent
+                }
+                aria-label={`${agent.stopStatus === "unconfirmed" ? "Retry stop for" : "Stop"} ${name}`}
               >
-                {stopping ? "Stopping…" : "Stop"}
+                {agent.stopStatus === "pending"
+                  ? "Stopping…"
+                  : agent.stopStatus === "unconfirmed"
+                    ? "Retry stop"
+                    : "Stop"}
               </button>
             )}
           </div>

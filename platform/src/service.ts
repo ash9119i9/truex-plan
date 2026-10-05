@@ -1342,13 +1342,26 @@ export class PlatformService {
     return transcript;
   }
   async interruptAgent(id: string, agentId: string) {
-    await this.owned(
+    const result = await this.owned(
       await this.sessionFor(id, "write"),
       "/agents/" + encodeURIComponent(validAgentId(agentId)) + "/interrupt",
       "POST",
       {},
     );
-    return { ok: true };
+    const agent = publicSubAgent(result?.agent);
+    if (
+      result?.ok !== true ||
+      !agent ||
+      agent.threadId !== agentId ||
+      ["pendingInit", "running"].includes(agent.status) ||
+      result.agent.stopStatus !== undefined
+    )
+      throw new ApiError(
+        503,
+        "Helper Stop has not been confirmed. Retry Stop. A connector request already sent may still finish.",
+        "STOP_UNCONFIRMED",
+      );
+    return { ok: true, agent };
   }
   // Thread fields for agent-core; none at all while the feature is off.
   private modeOptions(mode?: unknown) {

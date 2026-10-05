@@ -29,6 +29,12 @@ export function safeErrorMessage(message: string): string {
 
 const transientStorage =
   /^Mongo(Network|NetworkTimeout|ServerSelection|NotConnected|TopologyClosed|PoolClosed|WaitQueueTimeout)Error$/;
+const stopMessages: Record<string, string> = {
+  STOP_UNCONFIRMED:
+    "Stop has not been confirmed. Retry Stop. A connector request already sent may still finish.",
+  STOP_STORAGE_INVALID:
+    "Stop recovery could not be saved or read. Retry Stop; if this continues, ask your administrator to check assistant storage. A connector request already sent may still finish.",
+};
 
 export function httpError(error: unknown, layer: "platform" | "agent-core") {
   const e = error as { name?: string; type?: string; status?: number } | null;
@@ -48,7 +54,9 @@ export function httpError(error: unknown, layer: "platform" | "agent-core") {
   if (error instanceof ApplicationError)
     return {
       status: error.status,
-      error: safeErrorMessage(error.message),
+      error: Object.hasOwn(stopMessages, error.code)
+        ? stopMessages[error.code]
+        : safeErrorMessage(error.message),
       code: error.code,
     };
   if (e?.name?.startsWith("Mongo") && (e as { code?: number }).code === 11000)
@@ -190,6 +198,8 @@ export function runtimeError(data: any): {
   // agent-core's own codes: `code` on error events, `code`/`error.code` on
   // failed turns.
   const own = data?.code ?? data?.error?.code;
+  if (typeof own === "string" && Object.hasOwn(stopMessages, own))
+    return result(own, stopMessages[own]);
   if (own === "RUNTIME_UNAVAILABLE")
     return result(
       "RUNTIME_UNAVAILABLE",

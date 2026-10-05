@@ -31,10 +31,12 @@ export function RequestCard({
   request,
   onAnswer,
   plan = [],
+  disabled = false,
 }: {
   request: PendingRequest;
   onAnswer: (value: unknown) => Promise<void>;
   plan?: PlanStep[];
+  disabled?: boolean;
 }) {
   const questions = (request.detail?.questions || []) as InputQuestion[];
   if (
@@ -48,9 +50,12 @@ export function RequestCard({
         question={questions[0]}
         plan={plan}
         onAnswer={onAnswer}
+        disabled={disabled}
       />
     );
-  return <QuestionCard request={request} onAnswer={onAnswer} />;
+  return (
+    <QuestionCard request={request} onAnswer={onAnswer} disabled={disabled} />
+  );
 }
 
 // Ticks on the shared one-second clock until the request expires.
@@ -77,11 +82,13 @@ function PlanApprovalCard({
   question,
   plan,
   onAnswer,
+  disabled,
 }: {
   request: PendingRequest;
   question: InputQuestion;
   plan: PlanStep[];
   onAnswer: (value: unknown) => Promise<void>;
+  disabled: boolean;
 }) {
   const { expired, remaining } = useExpiry(request.expiresAt);
   const [revising, setRevising] = useState(false);
@@ -89,7 +96,7 @@ function PlanApprovalCard({
   const [sending, setSending] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [ref, setRef] = useState<Ref | null>(null);
-  const locked = sending !== null || expired;
+  const locked = disabled || sending !== null || expired;
   const feedbackId = `${request.requestId}-feedback`;
 
   async function send(choice: typeof APPROVE | typeof REVISE) {
@@ -212,9 +219,11 @@ function PlanApprovalCard({
 function QuestionCard({
   request,
   onAnswer,
+  disabled,
 }: {
   request: PendingRequest;
   onAnswer: (value: unknown) => Promise<void>;
+  disabled: boolean;
 }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   // Questions where the user chose to write their own answer.
@@ -238,7 +247,7 @@ function QuestionCard({
   if (request.method !== "item/tool/requestUserInput") return null;
   const questions = (request.detail.questions || []) as InputQuestion[];
   const busy = sending !== null;
-  const locked = busy || expired;
+  const locked = disabled || busy || expired;
   const approval = questions.some((q) => q.kind === "toolApproval");
   const oneClick = answersOnClick(questions);
   const last = questions.length - 1;

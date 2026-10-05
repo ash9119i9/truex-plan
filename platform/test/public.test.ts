@@ -4,11 +4,145 @@ import {
   publicEvent,
   publicGoal,
   publicSession,
+  publicSnapshot,
+  publicSubAgent,
+  publicSubAgentTranscript,
+  POLICY_VERSION,
   PublicEventStream,
   toolAction,
   publicApproval,
 } from "../src/public";
-import { subAgentOptions } from "../src/service";
+import { PlatformService, subAgentOptions } from "../src/service";
+import { userContext } from "../src/user";
+import { tenantContext } from "../src/tenant";
+
+test("Stop snapshots preserve pending and unconfirmed states without recovery metadata", () => {
+  for (const stopStatus of ["pending", "unconfirmed"]) {
+    const state = publicSnapshot({
+      state: {
+        kind: "interrupting",
+        turnId: "turn-1",
+        stopStatus,
+        helperIds: ["private-helper"],
+        metadata: { secret: "private-credential" },
+      },
+    }).state;
+    assert.deepEqual(state, {
+      kind: "interrupting",
+      turnId: "turn-1",
+      stopStatus,
+    });
+    assert.doesNotMatch(JSON.stringify(state), /private|helper|metadata/);
+  }
+  assert.deepEqual(
+    publicSnapshot({
+      state: {
+        kind: "interrupting",
+        turnId: "turn-1",
+        stopStatus: "private-status",
+      },
+    }).state,
+    { kind: "interrupting", turnId: "turn-1" },
+  );
+  assert.deepEqual(
+    publicSnapshot({
+      state: { kind: "idle", stopStatus: "unconfirmed", turnId: "old" },
+    }).state,
+    { kind: "idle" },
+  );
+});
+
+test("Stop events allow only settled or interrupting state and safe recovery fields", () => {
+  for (const state of [
+    { kind: "interrupting", turnId: "turn-1", stopStatus: "pending" },
+    { kind: "interrupting", turnId: "turn-1", stopStatus: "unconfirmed" },
+    { kind: "idle" },
+  ]) {
+    const event = publicEvent({
+      type: "turn.stop.updated",
+      data: {
+        state: {
+          ...state,
+          helpers: ["private-helper"],
+          error: "private-runtime-error",
+        },
+        turnId: "turn-1",
+        targets: ["private-helper"],
+        metadata: "private-secret",
+      },
+    });
+    assert.deepEqual(event.data, { state, turnId: "turn-1" });
+    assert.doesNotMatch(
+      JSON.stringify(event),
+      /private|targets|helpers|metadata/,
+    );
+  }
+  for (const data of [
+    {},
+    { state: null },
+    { state: { kind: "running", turnId: "turn-1" } },
+    { state: { kind: "starting" } },
+    { state: { kind: "secret-state" } },
+    {
+      state: {
+        kind: "interrupting",
+        turnId: "turn-1",
+        stopStatus: "secret-status",
+      },
+    },
+    { state: { kind: "interrupting", turnId: { secret: "private" } } },
+    { state: { kind: "idle", stopStatus: "unconfirmed" } },
+    { state: { kind: "idle" }, turnId: { secret: "private" } },
+    {
+      state: { kind: "interrupting", turnId: "turn-1" },
+      turnId: "different-turn",
+    },
+  ])
+    assert.equal(publicEvent({ type: "turn.stop.updated", data }), null);
+});
+
+test("Stop updates survive split SSE replay and snapshots without leaking helper recovery state", () => {
+  const states = [
+    { kind: "interrupting", turnId: "turn-1", stopStatus: "pending" },
+    { kind: "interrupting", turnId: "turn-1", stopStatus: "unconfirmed" },
+    { kind: "idle" },
+  ];
+  const source = states
+    .map(
+      (state, i) =>
+        `id: generation:${i + 1}\ndata: ${JSON.stringify({
+          type: i === 0 ? "snapshot" : "turn.stop.updated",
+          cursor: `generation:${i + 1}`,
+          data: { state, turnId: "turn-1", helperIds: ["private-helper"] },
+        })}\n\n`,
+    )
+    .join("");
+  const stream = new PublicEventStream();
+  const bytes = new TextEncoder().encode(source);
+  let output = "";
+  for (let i = 0; i < bytes.length; i += 7)
+    output += stream.push(bytes.slice(i, i + 7));
+  const events = output
+    .split("\n\n")
+    .filter(Boolean)
+    .map((frame) =>
+      JSON.parse(
+        frame
+          .split("\n")
+          .find((line) => line.startsWith("data: "))!
+          .slice(6),
+      ),
+    );
+  assert.deepEqual(
+    events.map((event) => event.data.state),
+    states,
+  );
+  assert.deepEqual(
+    events.map((event) => event.cursor),
+    ["generation:1", "generation:2", "generation:3"],
+  );
+  assert.doesNotMatch(output, /private-helper|helperIds/);
+});
 
 test("web, documents and collaboration emit public activity without raw arguments", () => {
   for (const type of [
@@ -450,6 +584,163 @@ test("audit records mark timeouts and never repeat secret answers", () => {
   assert.equal(
     publicApproval({ method: "item/commandExecution/requestApproval" }),
     null,
+  );
+});
+
+test("helper Stop status is allowlisted across snapshots, events and transcripts", () => {
+  for (const stopStatus of ["pending", "unconfirmed"]) {
+    const agent = {
+      threadId: "child-1",
+      status: "running",
+      stopStatus,
+      targets: ["private-helper"],
+      stop: { turnId: "private-turn", reason: "private-reason" },
+      metadata: { credential: "private-secret" },
+    };
+    const snapshot = publicSnapshot({
+      state: { kind: "running", turnId: "parent-turn" },
+      subAgents: [agent],
+    });
+    assert.deepEqual(snapshot.state, {
+      kind: "running",
+      turnId: "parent-turn",
+    });
+    const views = [
+      publicSubAgent(agent),
+      snapshot.subAgents[0],
+      publicSubAgentTranscript({ agent, messages: [] })!.agent,
+      ...["subagent.spawned", "subagent.status", "subagent.completed"].map(
+        (type) => publicEvent({ type, data: { agent } }).data.agent,
+      ),
+    ];
+    for (const view of views) {
+      assert.equal(view!.stopStatus, stopStatus);
+      assert.doesNotMatch(JSON.stringify(view), /private|targets|metadata/);
+    }
+  }
+  for (const stopStatus of [
+    undefined,
+    null,
+    "confirmed",
+    { secret: "private" },
+  ])
+    assert.equal(
+      publicSubAgent({ threadId: "child-1", stopStatus })!.stopStatus,
+      undefined,
+    );
+});
+
+test("only the session owner can Stop a helper, before any runtime call", async (t) => {
+  const session = {
+    _id: "session-1",
+    userId: "owner",
+    threadId: "parent-thread",
+    runtimePolicyVersion: POLICY_VERSION,
+  };
+  const service = new PlatformService({
+    sessions: { findOne: async () => session },
+  } as any);
+  const call = t.mock.method(service, "owned", async () => ({
+    ok: true,
+    agent: { threadId: "child-1", status: "interrupted" },
+  }));
+  for (const visibility of ["own", "all"] as const) {
+    for (const role of ["user", "admin"] as const) {
+      await tenantContext.run(
+        { id: "tenant-1", dbName: "test", chatVisibility: visibility },
+        () =>
+          userContext.run(
+            { id: "other", email: "other@test", role },
+            async () => {
+              await assert.rejects(
+                service.interruptAgent("session-1", "child-1"),
+                {
+                  code:
+                    role === "user" && visibility === "own"
+                      ? "SESSION_NOT_FOUND"
+                      : "NOT_SESSION_OWNER",
+                },
+              );
+            },
+          ),
+      );
+    }
+  }
+  assert.equal(call.mock.callCount(), 0);
+  await userContext.run(
+    { id: "owner", email: "owner@test", role: "user" },
+    () => service.interruptAgent("session-1", "child-1"),
+  );
+  assert.equal(call.mock.callCount(), 1);
+  assert.deepEqual(call.mock.calls[0].arguments, [
+    session,
+    "/agents/child-1/interrupt",
+    "POST",
+    {},
+  ]);
+});
+
+test("helper Stop returns only a confirmed terminal public helper", async (t) => {
+  const service = new PlatformService({
+    sessions: {
+      findOne: async () => ({
+        userId: "owner",
+        runtimePolicyVersion: POLICY_VERSION,
+      }),
+    },
+  } as any);
+  const owned = t.mock.method(service, "owned");
+  await userContext.run(
+    { id: "owner", email: "owner@test", role: "user" },
+    async () => {
+      for (const status of [
+        "interrupted",
+        "completed",
+        "errored",
+        "shutdown",
+        "notFound",
+      ]) {
+        const rawAgent = {
+          threadId: "child-1",
+          status,
+          stop: { targets: ["private-helper"] },
+          metadata: { credential: "private-secret" },
+        };
+        owned.mock.mockImplementation(async () => ({
+          ok: true,
+          agent: rawAgent,
+          private: "private-detail",
+        }));
+        const result = await service.interruptAgent("session-1", "child-1");
+        assert.deepEqual(result, { ok: true, agent: publicSubAgent(rawAgent) });
+        assert.doesNotMatch(JSON.stringify(result), /private|targets|metadata/);
+      }
+      for (const response of [
+        undefined,
+        null,
+        { ok: true },
+        { ok: true, agent: {} },
+        { ok: false, agent: { threadId: "child-1", status: "interrupted" } },
+        {
+          ok: true,
+          agent: { threadId: "other-helper", status: "interrupted" },
+        },
+        ...["running", "pendingInit", "unknown"].map((status) => ({
+          ok: true,
+          agent: { threadId: "child-1", status },
+        })),
+        ...["pending", "unconfirmed", "unknown", null].map((stopStatus) => ({
+          ok: true,
+          agent: { threadId: "child-1", status: "interrupted", stopStatus },
+        })),
+      ]) {
+        owned.mock.mockImplementation(async () => response);
+        await assert.rejects(service.interruptAgent("session-1", "child-1"), {
+          status: 503,
+          code: "STOP_UNCONFIRMED",
+        });
+      }
+    },
   );
 });
 

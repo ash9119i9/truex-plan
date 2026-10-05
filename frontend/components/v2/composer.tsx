@@ -2,6 +2,7 @@
 import { useEffect, useState, type FocusEvent, type ReactNode } from "react";
 import { Icon } from "./icon";
 import { SLASH_COMMANDS_ENABLED } from "@/lib/slash-commands";
+import type { StopStatus } from "@/lib/turn-stop";
 
 // Composer frame from docs/truex-design-spec.html (Core components §2).
 // Presentational only: the page owns the <form>, the textarea (children) and
@@ -9,7 +10,9 @@ import { SLASH_COMMANDS_ENABLED } from "@/lib/slash-commands";
 
 // Spec copy (Core §2, Placeholder rotation).
 export const PLACEHOLDERS = [
-  SLASH_COMMANDS_ENABLED ? "Ask anything, or type / for commands" : "Ask anything",
+  SLASH_COMMANDS_ENABLED
+    ? "Ask anything, or type / for commands"
+    : "Ask anything",
   "Summarize last week's pipeline changes",
   "Compare Q2 vs Q3 revenue by region",
   "Draft a reply to the customer escalation",
@@ -46,6 +49,7 @@ export function Composer({
   above,
   below,
   stopTitle,
+  stopStatus = null,
   onFocusChange,
 }: {
   /** The textarea (e.g. the page's SmoothTextarea). */
@@ -69,6 +73,7 @@ export function Composer({
   /** Content between textarea and bar (slash menu, notices). */
   below?: ReactNode;
   stopTitle?: string;
+  stopStatus?: StopStatus;
   /** Textarea focus, e.g. to pause useRotatingPlaceholder. */
   onFocusChange?: (focused: boolean) => void;
 }) {
@@ -131,12 +136,14 @@ export function Composer({
         {busy && (
           <button
             type="button"
-            className="send is-stop"
+            className={`send is-stop${stopStatus === "unconfirmed" ? " is-retry" : ""}`}
             onClick={onStop}
-            aria-label="Stop"
+            aria-label={stopStatus === "unconfirmed" ? "Retry stop" : "Stop"}
+            disabled={stopStatus === "pending"}
             title={stopTitle}
           >
             <Icon name="stop" size={12} stroke={3} />
+            {stopStatus === "unconfirmed" && <span>Retry stop</span>}
           </button>
         )}
         {(!busy || canSend) && (

@@ -12,6 +12,9 @@ class Fake extends EventEmitter {
   async request(method: string, params: any) {
     this.calls.push({ method, params });
     if (method === "thread/start") return { thread: { id: "thread_1" } };
+    if (method === "thread/goal/get") return { goal: null };
+    if (method === "thread/read")
+      return { thread: { id: params.threadId, status: { type: "idle" } } };
     if (method === "turn/start") {
       await new Promise((r) => setTimeout(r, 10));
       this.emit("notification", {
@@ -61,7 +64,7 @@ test("overlapping POSTs start once and steer the same turn; stale completion can
     turnId: "turn_1",
   });
   await manager.interrupt("thread_1");
-  await assert.rejects(manager.message("thread_1", "late"), /interrupting/);
+  assert.deepEqual(manager.snapshot("thread_1").state, { kind: "idle" });
   runtime.emit("notification", {
     method: "turn/completed",
     params: {
@@ -376,7 +379,13 @@ test("a large MCP tool result streams live without disconnecting the subscriber"
   const reading = read(undefined, (events) =>
     events.some((e) => e.type === "message.delta"),
   );
-  await new Promise((r) => setTimeout(r, 100));
+  // Wait for the subscription handshake; native-runtime tests may load the
+  // machine enough that a fixed delay publishes before the client connects.
+  const deadline = Date.now() + 5000;
+  while (!manager.threads.get("thread_1")?.subscribers.size) {
+    assert.ok(Date.now() < deadline, "Subscriber handshake timed out");
+    await new Promise((r) => setTimeout(r, 10));
+  }
   runtime.emit("notification", bigToolResult("mcp_1"));
   runtime.emit("notification", {
     method: "item/agentMessage/delta",
@@ -694,15 +703,18 @@ test("interrupting the root interrupts running helpers; helper routes check owne
     },
   );
   // The helper is then shut down so the main agent's wait ends.
-  assert.deepEqual(runtime.calls.at(-1), {
-    method: "thread/archive",
-    params: { threadId: "child_1" },
-  });
+  assert.deepEqual(
+    runtime.calls.filter((c) => c.method === "thread/archive").at(-1),
+    {
+      method: "thread/archive",
+      params: { threadId: "child_1" },
+    },
+  );
   await manager.interrupt("thread_1");
   const interrupts = runtime.calls
     .filter((c) => c.method === "turn/interrupt")
     .map((c) => c.params.threadId);
-  assert.deepEqual(interrupts, ["child_1", "thread_1", "child_1"]);
+  assert.deepEqual(interrupts, ["child_1", "thread_1"]);
   assert.throws(() => manager.agent("thread_1", "nope"), /not found/);
   assert.throws(() => manager.agent("other", "child_1"), /not found/);
   await assert.rejects(
@@ -717,10 +729,7 @@ test("interrupting the root interrupts running helpers; helper routes check owne
     },
   });
   assert.equal(manager.agents("thread_1")[0].status, "interrupted");
-  await assert.rejects(
-    manager.interruptAgent("thread_1", "child_1"),
-    (e: any) => e.status === 409,
-  );
+  assert.equal((await manager.interruptAgent("thread_1", "child_1")).ok, true);
 });
 test("thread/started with a spawn source registers nested helpers under the root", async (t) => {
   const { runtime, manager } = fixture(t);
