@@ -321,7 +321,10 @@ test(
     assert.equal(identity.tenant.id, "default");
     const agents = await fetch(`${base}/api/agents`);
     assert.equal(agents.status, 200);
-    assert.equal(((await agents.json()) as any[]).length, 2);
+    const choices = (await agents.json()) as any[];
+    assert.equal(choices.length, 3);
+    assert.equal(choices.filter((agent) => agent.isDefault).length, 1);
+    assert.equal(choices.find((agent) => agent.isDefault).name, "Truex");
 
     for (const [method, path] of [
       ["GET", "/auth/me"],

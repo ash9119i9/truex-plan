@@ -22,6 +22,9 @@ test(
     const plain: any = await service.configuration("assistant");
     assert.equal(plain.persona, undefined);
     assert.equal(plain.scope, undefined);
+    assert.equal(plain.publicModelProvider, "fixture");
+    assert.equal(plain.model, "gpt-5");
+    assert.notEqual(plain.publicModelProvider, plain.modelProvider);
 
     await store.agents.updateOne(
       { _id: "assistant" as any },

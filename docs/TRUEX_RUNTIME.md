@@ -1,8 +1,9 @@
 # Truex runtime boundary
 
 Truex uses the pinned codex-rs engine while preserving its useful conversation
-features. The policy restricts host access and internal implementation disclosure;
-it is not a reduced chat-only runtime.
+features. The shared assistant is general-purpose. Agent instructions define
+specialist roles and topic boundaries; legacy scope hints do not restrict normal
+chat. The policy restricts host access and private implementation disclosure.
 
 ## Available features
 
@@ -41,15 +42,32 @@ it is not a reduced chat-only runtime.
   configuration, raw turn items and unknown runtime events are not forwarded to
   the browser. Thinking, plans and timing fields have explicit public projections;
   this is not a blanket suppression of runtime activity.
-- The product identifies itself as Truex. Runtime identity, diagnostic payloads,
-  raw schema browsing and general configuration RPCs remain internal. Assistant
-  instructions prohibit volunteering implementation details; authorized business
-  data is sourced from connectors, not by searching the application repository.
+- The product identifies itself as Truex. The active model name and public
+  provider may be disclosed in replies, using `get_model_info`. This read-only
+  tool returns only those two fields, with unknown values represented as null.
+  Identity follows successful model updates, resume and fork. Private runtime
+  routes, diagnostic payloads, raw schema browsing and general configuration RPCs
+  remain internal. Assistant instructions prohibit disclosing private
+  implementation details; authorized business data comes from connectors.
+- Known configured credentials are redacted before answer and thinking deltas
+  enter snapshots, replay or helper transcripts. Stream redaction holds only
+  potential credential prefixes; item completion flushes ordinary text, while
+  interruption/failure masks unfinished prefixes. Stream state is bounded and
+  cleared on runtime shutdown. This does not ban users from discussing their own
+  repositories, paths or code.
 - Business clarification questions remain available. Host permission approvals
   and unsupported runtime approval/elicitation requests are denied; this version
   does not implement a separate approval workflow for every connector action.
 
 ## Existing conversations and deployment
+
+Custom agents can be edited from the Agents board. `GET /api/agents/:id` returns
+editable configuration; `POST /api/agents/:id` saves name, purpose, instructions,
+look, tint and model profile together with the loaded `version`. Edits keep the
+mention handle and runtime policy unchanged. A stale version returns 409; reopen
+the editor before retrying. Built-in agents are read-only. Editing uses the same
+tenant-wide alpha permissions as creation. Start a new conversation to use updated
+instructions and model; saving configuration does not change a running turn.
 
 Sessions carry `runtimePolicyVersion: 1`. Older pre-policy sessions remain stored,
 are excluded from chat listings, and cannot be opened, resumed or streamed through
@@ -60,6 +78,15 @@ usable with the restored presentation and conversation features.
 Refresh the browser after upgrading. Development watchers reload source; production
 processes need to be restarted after building. Preserve the entire runtime-home
 volume, including `business-v1`, for restart recovery.
+
+Start a new conversation to enable `get_model_info`. The pinned engine persists
+dynamic tool registrations when a thread is created and does not replace them on
+resume, so older conversations may report model identity as unavailable. Existing
+history remains usable; do not rewrite it or mark pre-policy sessions as current.
+If a running turn is discovered during cold resume, its identity also stays
+unavailable until completion: the resume response describes future thread
+settings, not the model producing that response. Storage failures invalidate
+identity rather than exposing stale model information.
 
 ## Verification and limits
 
@@ -74,3 +101,10 @@ The tool policy is not an OS/container filesystem sandbox for a compromised runt
 process. HTTP connector services must enforce their own access scope. Keep
 agent-core private. Authentication and tenant authorization remain separate
 requirements before public or multi-tenant deployment.
+
+Prompt instructions are a behavioral protection, not a guarantee against every
+prompt-extraction attack. Credential redaction protects known configured values;
+it cannot reliably recognize every unknown or transformed secret. Keep credentials
+out of model-visible prompts and connector results. Model identity integration
+tests use the pinned runtime with simulated model endpoints, not live-provider
+behavior evaluations.

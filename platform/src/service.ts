@@ -17,7 +17,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
-import { newAgent } from "./agents";
+import {
+  defaultChatRouteUsable,
+  ensureDefaultChatAgent,
+  isDefaultChatAgent,
+  newAgent,
+  editableAgentFields,
+} from "./agents";
 import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
 import { isDeepStrictEqual } from "node:util";
@@ -31,6 +37,7 @@ import type {
   Session,
   SessionGoal,
   AgentSummary,
+  AgentConfiguration,
   ModelOption,
 } from "../../shared/contracts";
 import {
@@ -95,7 +102,12 @@ import {
   type McpDocument,
   type ModelDocument,
 } from "./documents";
-import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
+import {
+  gatewayAddressIssue,
+  gatewaySettings,
+  resolveRoute,
+  signGatewayToken,
+} from "./model-route";
 import { currentTenant, currentTenantId } from "./tenant";
 import { currentUser, userId } from "./user";
 import {
@@ -436,7 +448,10 @@ export class PlatformService {
     const reserved = userMcps.length ? await this.tenantNames() : new Set();
     const names = new Set<string>();
     for (const mcp of [...tenantMcps, ...userMcps]) {
-      if (names.has(mcp.name) || (mcp.scope === "user" && reserved.has(mcp.name))) {
+      if (
+        names.has(mcp.name) ||
+        (mcp.scope === "user" && reserved.has(mcp.name))
+      ) {
         if (mcp.scope === "user") {
           log("warn", "user MCP skipped: a tenant MCP uses its name", {
             op: "configuration",
@@ -473,6 +488,8 @@ export class PlatformService {
       tenantId: currentTenantId(),
       model: profile.modelName,
       modelProvider: provider,
+      // Public model identity is separate from the private runtime route id.
+      publicModelProvider: profile.provider,
       config,
       baseInstructions:
         (agent.systemPrompt || "You are a helpful assistant.") +
@@ -521,34 +538,26 @@ export class PlatformService {
     if (!gateway)
       throw new ApiError(
         422,
-        `Model profile ${String(profile._id)} needs the model gateway, which is not configured. Ask your administrator to set MODEL_GATEWAY_URL and MODEL_GATEWAY_SECRET.`,
+        "The selected model needs a model gateway, which is not configured. Ask your administrator to configure the model connection.",
         "GATEWAY_NOT_CONFIGURED",
       );
     const id = String(profile._id);
-    if (this.hosts.some(isAgentCoreRuntime)) {
-      let hostname: string;
-      try {
-        hostname = new URL(gateway.url).hostname.toLowerCase();
-      } catch {
-        throw new ApiError(
-          422,
-          "The model gateway address is invalid. Ask your administrator to configure it.",
-          "GATEWAY_NOT_CONFIGURED",
-        );
-      }
-      if (
-        hostname === "localhost" ||
-        hostname === "localhost." ||
-        hostname === "[::1]" ||
-        hostname === "0.0.0.0" ||
-        /^127\./.test(hostname)
-      )
-        throw new ApiError(
-          422,
-          "The model gateway address cannot be reached from the deployed assistant. Ask your administrator to configure a reachable gateway.",
-          "GATEWAY_UNREACHABLE",
-        );
-    }
+    const issue = gatewayAddressIssue(
+      gateway.url,
+      this.hosts.some(isAgentCoreRuntime),
+    );
+    if (issue === "invalid")
+      throw new ApiError(
+        422,
+        "The model gateway address is invalid. Ask your administrator to configure it.",
+        "GATEWAY_NOT_CONFIGURED",
+      );
+    if (issue === "unreachable")
+      throw new ApiError(
+        422,
+        "The model gateway address cannot be reached from the deployed assistant. Ask your administrator to configure a reachable gateway.",
+        "GATEWAY_UNREACHABLE",
+      );
     return {
       // Codex's built-in web search runs only on OpenAI's Responses backend.
       web_search:
@@ -577,8 +586,8 @@ export class PlatformService {
     };
   }
   async agents(): Promise<AgentSummary[]> {
-    const [agents, profiles] = await Promise.all([
-      this.store.agents.find({ enabled: { $ne: false } }).toArray(),
+    const [models, profiles] = await Promise.all([
+      this.models(),
       this.store.profiles
         .find(
           { enabled: { $ne: false } },
@@ -586,26 +595,47 @@ export class PlatformService {
         )
         .toArray(),
     ]);
-    return agents.map((a) => {
-      const p = profiles.find(
-        (p) => String(p._id) === String(a.modelProfileId),
+    const defaultModels = models.filter((model) => {
+      const profile = profiles.find((p) => String(p._id) === model.id);
+      return (
+        !!profile &&
+        defaultChatRouteUsable(profile, this.hosts.some(isAgentCoreRuntime))
       );
-      return {
-        id: String(a._id),
-        name: a.name,
-        description: a.description || "",
-        provider: p?.provider || "unknown",
-        model: p?.modelName || "unknown",
-        sandbox: a.sandbox || "read-only",
-        ...(a.handle ? { handle: a.handle } : {}),
-        look:
-          Number.isInteger(a.look) && a.look! >= 0 && a.look! < AGENT_LOOK_COUNT
-            ? a.look!
-            : DEFAULT_AGENT_LOOK,
-        tint: AGENT_TINTS.includes(a.tint!) ? a.tint! : DEFAULT_AGENT_TINT,
-        builtin: a.builtin === true,
-      };
     });
+    await ensureDefaultChatAgent(this.store, defaultModels);
+    const agents = await this.store.agents
+      .find({ enabled: { $ne: false } })
+      .toArray();
+    // An unavailable default must not become a different model or specialist.
+    return agents
+      .filter(
+        (a) =>
+          !isDefaultChatAgent(a) ||
+          defaultModels.some((model) => model.id === String(a.modelProfileId)),
+      )
+      .map((a) => {
+        const p = profiles.find(
+          (p) => String(p._id) === String(a.modelProfileId),
+        );
+        return {
+          id: String(a._id),
+          name: a.name,
+          description: a.description || "",
+          provider: p?.provider || "unknown",
+          model: p?.modelName || "unknown",
+          sandbox: a.sandbox || "read-only",
+          ...(a.handle ? { handle: a.handle } : {}),
+          look:
+            Number.isInteger(a.look) &&
+            a.look! >= 0 &&
+            a.look! < AGENT_LOOK_COUNT
+              ? a.look!
+              : DEFAULT_AGENT_LOOK,
+          tint: AGENT_TINTS.includes(a.tint!) ? a.tint! : DEFAULT_AGENT_TINT,
+          builtin: a.builtin === true,
+          isDefault: isDefaultChatAgent(a),
+        };
+      });
   }
   /** Models the agent dialog may offer: enabled, allowed, and usable. */
   async models(): Promise<ModelOption[]> {
@@ -648,7 +678,12 @@ export class PlatformService {
         `@${agent.handle} is taken. Choose a different name.`,
         "AGENT_HANDLE_TAKEN",
       );
-    if (await this.store.agents.findOne({ handle: agent.handle }, { projection: { _id: 1 } }))
+    if (
+      await this.store.agents.findOne(
+        { handle: agent.handle },
+        { projection: { _id: 1 } },
+      )
+    )
       throw taken();
     try {
       await this.store.agents.insertOne(agent);
@@ -670,13 +705,110 @@ export class PlatformService {
       builtin: false,
     };
   }
+  async agentConfiguration(id: string): Promise<AgentConfiguration> {
+    const agent = await this.store.findAgent(id);
+    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+    if (agent.builtin)
+      throw new ApiError(
+        403,
+        "Built-in agents are read-only",
+        "AGENT_READ_ONLY",
+      );
+    const profile = await this.store.findModel(agent.modelProfileId);
+    // Only user-authored instructions and editable fields cross this boundary.
+    return {
+      id: String(agent._id),
+      name: agent.name,
+      description: agent.description || "",
+      systemPrompt: agent.systemPrompt || "",
+      modelProfileId: String(agent.modelProfileId),
+      version: agent.configVersion ?? 0,
+      provider: profile?.provider || "unknown",
+      model: profile?.modelName || "unknown",
+      sandbox: agent.sandbox || "read-only",
+      ...(agent.handle ? { handle: agent.handle } : {}),
+      look:
+        Number.isInteger(agent.look) &&
+        agent.look! >= 0 &&
+        agent.look! < AGENT_LOOK_COUNT
+          ? agent.look!
+          : DEFAULT_AGENT_LOOK,
+      tint: AGENT_TINTS.includes(agent.tint!)
+        ? agent.tint!
+        : DEFAULT_AGENT_TINT,
+      builtin: false,
+      isDefault: isDefaultChatAgent(agent),
+    };
+  }
+  async updateAgent(id: string, body: unknown): Promise<AgentConfiguration> {
+    const agent = await this.store.findAgent(id);
+    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+    if (agent.builtin)
+      throw new ApiError(
+        403,
+        "Built-in agents are read-only",
+        "AGENT_READ_ONLY",
+      );
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw new ApiError(400, "Agent details are required", "INVALID_INPUT");
+    const { version, ...input } = body as Record<string, unknown>;
+    if (!Number.isSafeInteger(version) || (version as number) < 0)
+      throw new ApiError(
+        400,
+        "A valid configuration version is required",
+        "INVALID_INPUT",
+      );
+    const fields = editableAgentFields(input);
+    const profile = await this.store.findModel(fields.modelProfileId);
+    if (
+      !profile ||
+      !(profile.apiKey || profile.apikey) ||
+      !profile.baseUrl ||
+      !profile.modelName
+    )
+      throw new ApiError(
+        422,
+        "That model is not available. Pick another model.",
+        "MODEL_UNAVAILABLE",
+      );
+    const saved = await this.store.agents.updateOne(
+      {
+        _id: agent._id,
+        enabled: { $ne: false },
+        builtin: { $ne: true },
+        ...(version === 0
+          ? {
+              $or: [
+                { configVersion: 0 },
+                { configVersion: { $exists: false } },
+              ],
+            }
+          : { configVersion: version as number }),
+      },
+      {
+        $set: { ...fields, modelProfileId: profile._id },
+        $inc: { configVersion: 1 },
+      },
+    );
+    if (!saved.matchedCount)
+      throw new ApiError(
+        409,
+        "This agent changed while you were editing. Close and reopen it to load the latest configuration.",
+        "AGENT_CONFIG_CONFLICT",
+      );
+    return this.agentConfiguration(id);
+  }
   // --- MCP profiles: tenant scope (admins) and user scope (the owner). ---
   // Only apiKeyEnc is stored; responses carry hasKey, never a key. Someone
   // else's user MCP answers 404, like an unknown id.
   private mcpCaller() {
     const user = currentUser();
     if (!user)
-      throw new ApiError(401, "Sign in to manage MCP servers", "UNAUTHENTICATED");
+      throw new ApiError(
+        401,
+        "Sign in to manage MCP servers",
+        "UNAUTHENTICATED",
+      );
     return user;
   }
   private tenantAdmin() {
@@ -1998,12 +2130,7 @@ export class PlatformService {
     if (feedback.length > 4000)
       throw new ApiError(400, "Feedback is too long", "INVALID_REVIEW");
     const session = await this.sessionFor(id, "write");
-    const { goal } = await this.capability(
-      id,
-      "thread/goal/get",
-      {},
-      session,
-    );
+    const { goal } = await this.capability(id, "thread/goal/get", {}, session);
     if (!goal || goal.status !== "complete")
       throw new ApiError(
         409,

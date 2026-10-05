@@ -13,6 +13,12 @@ managed in the Connected tools panel; local stdio launch remains disabled.
 Pre-policy conversations are retained but cannot be reopened or resumed.
 See [runtime policy, migration and verification](docs/TRUEX_RUNTIME.md).
 
+New chats select the general Truex assistant. Specialist behavior comes from an
+agent's instructions, persona, skills and connected tools. The assistant may
+disclose its active model and public provider when asked; private runtime routes,
+credentials, repository details and platform instructions remain protected.
+See [default assistant configuration](docs/mongodb.md#default-general-assistant).
+
 ## Local Codex pin
 
 `codex.lock.json` pins OpenAI Codex revision `4a942885c8b4745757a9f86ad2075e16c42483c5`.

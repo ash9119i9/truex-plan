@@ -707,6 +707,13 @@ export function publicEvent(e: any): any | null {
         };
         if (
           d.item.type === "dynamicToolCall" &&
+          d.item.tool === "get_model_info"
+        )
+          labels.dynamicToolCall = complete
+            ? "Model information checked"
+            : "Checking model information";
+        if (
+          d.item.type === "dynamicToolCall" &&
           d.item.tool === "create_visualization"
         )
           labels.dynamicToolCall = complete

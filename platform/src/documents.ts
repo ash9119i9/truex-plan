@@ -15,6 +15,8 @@ export interface AgentDocument extends Omit<
   /** Catalog skills (truex_skills) given to the agent's threads. */
   skillIds?: DatabaseId[];
   enabled?: boolean;
+  /** Optimistic revision for user-editable configuration; legacy records start at 0. */
+  configVersion?: number;
 }
 export interface ModelDocument {
   _id: DatabaseId;

@@ -243,6 +243,19 @@ async function main() {
     "/api/models",
     route(async (_req, res) => res.json(await service.models())),
   );
+  // Same tenant-wide alpha permissions as creation; built-ins are read-only.
+  http.get(
+    "/api/agents/:id",
+    route(async (req, res) =>
+      res.json(await service.agentConfiguration(String(req.params.id))),
+    ),
+  );
+  http.post(
+    "/api/agents/:id",
+    route(async (req, res) =>
+      res.json(await service.updateAgent(String(req.params.id), req.body)),
+    ),
+  );
   http.get(
     "/api/features",
     route((_req, res) => res.json({ approvalModes: service.approvalModes })),

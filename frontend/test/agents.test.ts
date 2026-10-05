@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createAgentBody, handleTaken, modelShort } from "../lib/agents.ts";
+import {
+  createAgentBody,
+  defaultChatAgentId,
+  handleTaken,
+  initialChatAgentId,
+  modelShort,
+} from "../lib/agents.ts";
 import { agentHandle, type AgentSummary } from "../../shared/contracts.ts";
 
 test("modelShort drops the Claude prefix and lowercases", () => {
@@ -53,18 +59,19 @@ test("createAgentBody keeps an empty purpose empty", () => {
   assert.equal(body.description, "");
 });
 
-const agent = (id: string, handle?: string): AgentSummary => ({
-  id,
-  name: id,
-  description: "",
-  provider: "anthropic",
-  model: "opus",
-  sandbox: "workspace-write",
-  handle,
-  look: 2,
-  tint: "ice",
-  builtin: false,
-} as AgentSummary);
+const agent = (id: string, handle?: string): AgentSummary =>
+  ({
+    id,
+    name: id,
+    description: "",
+    provider: "anthropic",
+    model: "opus",
+    sandbox: "workspace-write",
+    handle,
+    look: 2,
+    tint: "ice",
+    builtin: false,
+  }) as AgentSummary;
 
 test("handleTaken matches existing handles only", () => {
   const agents = [agent("a1", "researchscout"), agent("a2")];
@@ -78,4 +85,69 @@ test("handles follow the shared agentHandle rule", () => {
   assert.equal(agentHandle("Research Scout"), "researchscout");
   assert.equal(agentHandle("🙂"), "");
   assert.equal(handleTaken(agentHandle("🙂"), [agent("a1", "")]), false);
+});
+
+test("new chats use the explicit default, never the first specialist or builtin", () => {
+  const specialist = { ...agent("specialist"), builtin: true };
+  const general = { ...agent("general"), isDefault: true };
+  const list = [specialist, general];
+  assert.equal(defaultChatAgentId(list), "general");
+  assert.equal(initialChatAgentId(list, "", false), "general");
+  assert.equal(defaultChatAgentId([specialist]), "");
+  assert.equal(defaultChatAgentId([]), "");
+});
+
+test("agent loading preserves restored sessions and explicit specialist choices", () => {
+  const list = [{ ...agent("general"), isDefault: true }, agent("specialist")];
+  assert.equal(initialChatAgentId(list, "specialist", false), "specialist");
+  assert.equal(initialChatAgentId(list, "saved-agent", true), "saved-agent");
+  assert.equal(initialChatAgentId(list, "", true), "");
+});
+
+test("editing loads private user configuration and sends only editable fields plus its version", async (t) => {
+  const { fetchAgentConfiguration, updateAgent } =
+    await import("../lib/agents.ts");
+  const calls: { url: string; options?: RequestInit }[] = [];
+  const config = {
+    ...agent("id/with space", "scout"),
+    systemPrompt: "Saved instructions",
+    modelProfileId: "chosen-model",
+    version: 3,
+  };
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async (url: string | URL | Request, options?: RequestInit) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify(config), {
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  );
+  assert.deepEqual(await fetchAgentConfiguration(config.id), config);
+  assert.ok(calls[0].url.endsWith("/api/agents/id%2Fwith%20space"));
+  assert.equal(calls[0].options?.method, "GET");
+  await updateAgent(
+    config.id,
+    {
+      name: " Renamed ",
+      description: " Purpose ",
+      systemPrompt: " Instructions ",
+      look: 3,
+      tint: "ice",
+      modelProfileId: "chosen-model",
+      ...({ builtin: true, handle: "changed" } as object),
+    },
+    config.version,
+  );
+  assert.equal(calls[1].options?.method, "POST");
+  assert.deepEqual(JSON.parse(String(calls[1].options?.body)), {
+    name: "Renamed",
+    description: "Purpose",
+    systemPrompt: "Instructions",
+    look: 3,
+    tint: "ice",
+    modelProfileId: "chosen-model",
+    version: 3,
+  });
 });

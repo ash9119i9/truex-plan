@@ -16,6 +16,7 @@ import { AgentMenu } from "@/components/v2/agent-menu";
 import { AgentDialog } from "@/components/v2/agent-dialog";
 import { AgentsView } from "@/components/v2/agents-view";
 import { tintOf } from "@/lib/agent-look";
+import { defaultChatAgentId, initialChatAgentId } from "@/lib/agents";
 import { UserMenu } from "@/components/v2/user-menu";
 import { fitPanel, PANEL_W, CHAT_MIN, type PanelSize } from "@/lib/fit-panel";
 import { useFollowActivity } from "@/lib/use-follow-activity";
@@ -172,6 +173,7 @@ export default function Home() {
     [paletteOpen, setPaletteOpen] = useState(false),
     [pop, setPop] = useState<null | "agent" | "user">(null),
     [agentDialogOpen, setAgentDialogOpen] = useState(false),
+    [editingAgent, setEditingAgent] = useState<AgentSummary | null>(null),
     // The stage shows the conversation or the agents board.
     [view, setView] = useState<"chat" | "agents">("chat"),
     [composerFocused, setComposerFocused] = useState(false),
@@ -387,8 +389,13 @@ export default function Home() {
         setAgents(data);
         // Restoring a saved chat owns its selection, regardless of which GET
         // finishes first. Never select a default agent alongside that restore.
-        if (!openingSession.current && !sessionRef.current)
-          setAgentId((current) => current || data[0]?.id || "");
+        setAgentId((current) =>
+          initialChatAgentId(
+            data,
+            current,
+            openingSession.current || !!sessionRef.current,
+          ),
+        );
       })
       .catch(reportError)
       .finally(() => setLoading(false));
@@ -580,6 +587,7 @@ export default function Home() {
   }, [entries, pending]);
   // A plain new chat clears any project; a project's "+" passes its id.
   function startDraft(projectId: string | null = null) {
+    setAgentId(defaultChatAgentId(agents));
     generation.current++;
     preparation.current.reset();
     openingSession.current = false;
@@ -1412,12 +1420,19 @@ export default function Home() {
             <AgentsView
               agents={agents}
               currentId={session?.agentId || agentId}
-              // Waits on an agent edit endpoint; AgentDialog is create-only.
-              onEdit={(a: AgentSummary) =>
-                setNotice(`Editing ${a.name} isn’t available yet.`)
-              }
+              onEdit={(a: AgentSummary) => {
+                if (a.builtin) {
+                  setNotice("Built-in agents are read-only.");
+                  return;
+                }
+                setEditingAgent(a);
+                setAgentDialogOpen(true);
+              }}
               onChat={chatWith}
-              onNew={() => setAgentDialogOpen(true)}
+              onNew={() => {
+                setEditingAgent(null);
+                setAgentDialogOpen(true);
+              }}
             />
           ) : empty ? (
             <Hero>
@@ -1554,6 +1569,7 @@ export default function Home() {
                 }}
                 onNew={() => {
                   setPop(null);
+                  setEditingAgent(null);
                   setAgentDialogOpen(true);
                 }}
               />
@@ -1692,8 +1708,17 @@ export default function Home() {
       <AgentDialog
         open={agentDialogOpen}
         agents={agents}
+        editing={editingAgent}
         onClose={() => setAgentDialogOpen(false)}
         onCreated={(a) => setAgents((list) => [...list, a])}
+        onUpdated={(a) => {
+          setAgents((list) =>
+            list.map((item) => (item.id === a.id ? a : item)),
+          );
+          setNotice(
+            `${a.name} configuration saved. Start a new conversation to use the changes.`,
+          );
+        }}
         // Source: close, start a new chat with the agent, pre-fill "@handle hi, ".
         onSayHi={(a) => {
           if (busy || sending.current) return;

@@ -10,11 +10,11 @@ The application reads configuration and never inserts default agents, model prof
 
 Data is split between one shared **catalog** database and one database per **tenant**.
 
-| Database                         | Env var            | Collections                                                                       |
-| -------------------------------- | ------------------ | --------------------------------------------------------------------------------- |
-| Catalog (e.g. `truex_catalog`)   | `CATALOG_MONGO_DB` | `truex_models`, `truex_skills`, `tenants`                                         |
-| Default tenant (e.g. `truex`)    | `MONGO_DB`         | `truex_agents`, `truex_mcp`, `sessions`, `messages`, `projects`, `traces`         |
-| Any other tenant `<id>`          | generated          | the same collections as the default tenant                                        |
+| Database                       | Env var            | Collections                                                               |
+| ------------------------------ | ------------------ | ------------------------------------------------------------------------- |
+| Catalog (e.g. `truex_catalog`) | `CATALOG_MONGO_DB` | `truex_models`, `truex_skills`, `tenants`                                 |
+| Default tenant (e.g. `truex`)  | `MONGO_DB`         | `truex_agents`, `truex_mcp`, `sessions`, `messages`, `projects`, `traces` |
+| Any other tenant `<id>`        | generated          | the same collections as the default tenant                                |
 
 - Unset `CATALOG_MONGO_DB` means the catalog is `MONGO_DB`. That is the pre-tenancy layout (everything in one database), and it keeps working unchanged.
 - The default tenant (id `default`) always uses `MONGO_DB`, so existing agents, MCP profiles and conversations stay where they are.
@@ -27,7 +27,10 @@ Indexes are ensured on startup. Catalog: `tenants {dbName: 1}` (unique) and `tru
 
 ## Agent — `truex_agents` (tenant database)
 
-Agents created through the app are saved with `scope: "general"`. Existing records without a scope still use the runtime's `"business"` default; set their scope to `"general"` and start a new conversation to apply it.
+Agents created through the app are saved with `scope: "general"`. The shared
+runtime is general-purpose; an agent's instructions define its specialization
+and whether it answers unrelated questions. Legacy `scope` values remain
+accepted but no longer impose a business-only role.
 
 Example in mongosh notation; IDs below are illustrative, not existing records.
 
@@ -48,7 +51,37 @@ Example in mongosh notation; IDs below are illustrative, not existing records.
 }
 ```
 
-`modelProfileId`, MCP and skill references may be strings or ObjectIds. `modelProfileId` and `skillIds` point into the catalog database; `mcpProfileIds` point into the agent's own tenant database. `description`, `systemPrompt`, `sandbox`, `approvalPolicy`, `mcpProfileIds` and `skillIds` may be omitted. Defaults are an empty description, generic helpful-assistant instructions, read-only sandbox, never approvals, no MCP servers and no skills. `persona` replaces the default Truex identity line, and `scope: "general"` lifts the business-only framing so the agent helps with any request. Both are optional; omitted means the Truex identity and `scope: "business"`. Platform guardrails (connector policy, data handling, no host access) apply to every agent and are not configurable. `enabled: false` hides an agent. Unknown application-specific fields are preserved and ignored; for example, `browserUseCloud` does not itself configure a browser integration.
+`modelProfileId`, MCP and skill references may be strings or ObjectIds. `modelProfileId` and `skillIds` point into the catalog database; `mcpProfileIds` point into the agent's own tenant database. `description`, `systemPrompt`, `sandbox`, `approvalPolicy`, `mcpProfileIds` and `skillIds` may be omitted. Defaults are an empty description, generic helpful-assistant instructions, read-only sandbox, no MCP servers and no skills. The runtime enforces read-only host access and on-request approvals. `persona` replaces the default Truex identity line. Platform guardrails (connector policy, data handling, no host access) apply to every agent and are not configurable. `enabled: false` hides an agent. Unknown application-specific fields are preserved and ignored; for example, `browserUseCloud` does not itself configure a browser integration.
+
+### Default general assistant
+
+The first agent-list request provisions `truex-general` in the current tenant
+using an enabled, tenant-allowed usable model profile. Eligible profile ids are
+sorted lexicographically; the first is used only for initial provisioning. The
+record has `builtin: true`, `isDefault: true`, `scope: "general"`, no connectors
+or skills, and no mention handle that could conflict with existing agents.
+Concurrent requests create at most one record. Existing agents and any existing
+`truex-general` record are never overwritten.
+
+Administrators can set that record's `modelProfileId` to their preferred allowed
+catalog profile. Its selected profile does not change automatically when new
+models are added. If the default is disabled or its profile becomes unavailable
+or disallowed, it is not offered as the default and new chat does not silently
+select a specialist. Restore the default's configuration to enable general chat.
+The create-agent API cannot set `builtin` or `isDefault`.
+
+This is an additive change: no migration rewrites specialist prompts or existing
+conversations. New chats use Truex by default; choosing a specialist and reopening
+saved chats preserves that selection. Older conversation history may retain its
+previous business framing; start a new chat to get a fresh general context.
+
+Model/provider disclosure in replies uses the runtime's read-only
+`get_model_info` tool. The public provider comes from the model profile's
+`provider`, separately from the private runtime routing id. Model changes retain
+the current provider route; this operation does not switch provider profiles.
+Unknown identity is reported as unavailable rather than guessed.
+Older conversations keep their original dynamic tool registry; start a new chat
+to enable `get_model_info` after deploying this change.
 
 ## Model — `truex_models` (catalog database)
 

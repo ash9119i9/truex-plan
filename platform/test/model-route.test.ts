@@ -5,11 +5,34 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { Store } from "../src/store";
 import { PlatformService } from "../src/service";
 import {
+  gatewayAddressIssue,
   gatewaySettings,
   resolveRoute,
   signGatewayToken,
   verifyGatewayToken,
 } from "../src/model-route";
+
+test("gateway address validation permits local loopback, rejects remote loopback and unsupported protocols", () => {
+  for (const address of [
+    "invalid",
+    "file:///tmp/gateway",
+    "ftp://gateway.example",
+    "mailto:admin@example.com",
+  ])
+    for (const remote of [false, true])
+      assert.equal(gatewayAddressIssue(address, remote), "invalid");
+  for (const address of [
+    "http://localhost:4200",
+    "https://localhost./",
+    "http://127.0.0.1:4200",
+    "http://[::1]:4200",
+    "http://0.0.0.0:4200",
+  ]) {
+    assert.equal(gatewayAddressIssue(address, false), null);
+    assert.equal(gatewayAddressIssue(address, true), "unreachable");
+  }
+  assert.equal(gatewayAddressIssue("https://gateway.example/v1", true), null);
+});
 
 const base = {
   _id: "m",
@@ -134,10 +157,13 @@ test(
       (await service.configuration("a-direct")).config,
       expectedDirect,
     );
-    await assert.rejects(
-      service.configuration("a-gateway"),
-      (e: any) => e.code === "GATEWAY_NOT_CONFIGURED",
-    );
+    const directIdentity = await service.configuration("a-direct");
+    assert.equal(directIdentity.publicModelProvider, "OpenAI");
+    assert.equal(directIdentity.modelProvider, "profile_direct");
+    await assert.rejects(service.configuration("a-gateway"), (e: any) => {
+      assert.doesNotMatch(e.message, /MODEL_GATEWAY_|claude|gateway-secret/);
+      return e.code === "GATEWAY_NOT_CONFIGURED";
+    });
 
     process.env.MODEL_GATEWAY_URL = "http://gateway.internal:4200/";
     process.env.MODEL_GATEWAY_SECRET = "hmac-secret";
@@ -149,6 +175,7 @@ test(
     const gw = await service.configuration("a-gateway");
     assert.equal(gw.model, "claude-sonnet-5");
     assert.equal(gw.modelProvider, "profile_claude");
+    assert.equal(gw.publicModelProvider, "Anthropic");
     assert.doesNotMatch(JSON.stringify(gw), /gateway-secret/);
     const p = gw.config["model_providers.profile_claude"];
     assert.equal(p.base_url, "http://gateway.internal:4200/p/claude/v1");

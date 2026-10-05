@@ -47,6 +47,32 @@ export interface GatewaySettings {
   secret: string;
 }
 
+/** Validate connection shape without probing a network or exposing its address. */
+export function gatewayAddressIssue(
+  address: string,
+  remoteRuntime: boolean,
+): "invalid" | "unreachable" | null {
+  let url: URL;
+  try {
+    url = new URL(address);
+  } catch {
+    return "invalid";
+  }
+  if (!["http:", "https:"].includes(url.protocol) || !url.hostname)
+    return "invalid";
+  const hostname = url.hostname.toLowerCase();
+  if (
+    remoteRuntime &&
+    (hostname === "localhost" ||
+      hostname === "localhost." ||
+      hostname === "[::1]" ||
+      hostname === "0.0.0.0" ||
+      /^127\./.test(hostname))
+  )
+    return "unreachable";
+  return null;
+}
+
 export function gatewaySettings(
   env: NodeJS.ProcessEnv = process.env,
 ): GatewaySettings | null {

@@ -8,7 +8,7 @@ export interface Agent {
   systemPrompt: string;
   /** Replaces the default Truex identity line; platform guardrails still apply. */
   persona?: string;
-  /** "general" lifts the business-only framing. Defaults to "business". */
+  /** Legacy framing hint. Agent instructions define the role and topic scope. */
   scope?: "business" | "general";
   sandbox: SandboxMode;
   approvalPolicy: AskForApproval;
@@ -22,6 +22,8 @@ export interface Agent {
   tint?: AgentTint;
   /** Seeded by the Truex team; never set through the API. */
   builtin?: boolean;
+  /** Server-owned general assistant selected for new chats. */
+  isDefault?: boolean;
 }
 export const AGENT_TINTS = ["ice", "mint", "butter", "peach", "lilac"] as const;
 export type AgentTint = (typeof AGENT_TINTS)[number];
@@ -77,6 +79,14 @@ export interface AgentSummary {
   look: number;
   tint: AgentTint;
   builtin: boolean;
+  /** Explicit default selection; absent on older platform responses. */
+  isDefault?: boolean;
+}
+/** User-editable configuration; excludes runtime policy and credentials. */
+export interface AgentConfiguration extends AgentSummary {
+  systemPrompt: string;
+  modelProfileId: string;
+  version: number;
 }
 export interface Session {
   runtimePolicyVersion?: number;

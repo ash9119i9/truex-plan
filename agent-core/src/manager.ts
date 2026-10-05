@@ -1,6 +1,6 @@
 import { businessCapabilities } from "../../shared/business-capabilities";
 import { BusinessRuntime } from "./business-runtime";
-import { Redactor } from "./redact";
+import { Redactor, type RedactionStream } from "./redact";
 import { TraceBuilder, rateLimitView } from "./trace";
 import { randomUUID } from "node:crypto";
 import {
@@ -237,6 +237,11 @@ const mappings: Record<string, DomainType> = {
 export class ThreadManager {
   generation = randomUUID();
   readonly redactor = new Redactor();
+  // Hold only unfinished credential prefixes, never raw answer buffers.
+  private textStreams = new Map<
+    string,
+    { method: string; params: any; stream: RedactionStream }
+  >();
   readonly threads = new Map<string, Thread>();
   // Helper agent thread id -> its record under the root conversation.
   private children = new Map<string, Child>();
@@ -272,6 +277,7 @@ export class ThreadManager {
     runtime.on("serverRequest", (msg) => this.serverRequest(msg));
     runtime.on("adapterError", (e) => this.adapterError(e));
     runtime.on("exit", () => {
+      this.finishTextStreams(undefined, undefined, undefined, false);
       const now = performance.now();
       // Turns cut off by the exit are closed as failed so traces and timings end.
       const cut = new Map<Thread, { turnId?: string; done: TurnEnd }>();
@@ -321,6 +327,7 @@ export class ThreadManager {
     error: { message: string; code: string },
     done: TurnEnd = {},
   ) {
+    this.finishTextStreams(t.id, turnId, undefined, false);
     this.emit(
       t,
       "error",
@@ -346,6 +353,7 @@ export class ThreadManager {
     method?: string;
   }) {
     if (!e?.threadId) return;
+    this.finishTextStreams(e.threadId, e.turnId, undefined, false);
     const child = this.children.get(e.threadId);
     const t = this.threads.get(child ? child.rootId : e.threadId);
     if (!t) return;
@@ -467,6 +475,7 @@ export class ThreadManager {
       subAgents,
       persona,
       scope,
+      publicModelProvider,
       approvalMode,
       approvalNameHeuristic,
       tenantId,
@@ -488,6 +497,7 @@ export class ThreadManager {
         ...(subAgents === undefined ? {} : { subAgents }),
         ...(persona === undefined ? {} : { persona }),
         ...(scope === undefined ? {} : { scope }),
+        ...(publicModelProvider === undefined ? {} : { publicModelProvider }),
         ...(tenantId === undefined ? {} : { tenantId: tenant }),
         ...(skills === undefined ? {} : { skills }),
       });
@@ -505,12 +515,8 @@ export class ThreadManager {
   }
   async resume(id: string, input: any = {}) {
     // Approval mode fields are Truex settings, not runtime parameters.
-    const {
-      approvalMode,
-      approvalNameHeuristic,
-      mcpFingerprint,
-      ...params
-    } = input || {};
+    const { approvalMode, approvalNameHeuristic, mcpFingerprint, ...params } =
+      input || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
     parseFingerprint(mcpFingerprint);
     if (params.tenantId !== undefined) parseTenant(params.tenantId);
@@ -1106,6 +1112,7 @@ export class ThreadManager {
   }
   private dropAgents(rootId: string) {
     for (const c of this.agentsOf(rootId)) {
+      this.finishTextStreams(c.agent.threadId, undefined, undefined, false);
       this.children.delete(c.agent.threadId);
       this.dropped.add(c.agent.threadId);
       if (this.dropped.size > droppedLimit)
@@ -1363,8 +1370,86 @@ export class ThreadManager {
     }
     return event;
   }
-  private notification(method: string, p: any) {
+  private finishTextStreams(
+    threadId?: string,
+    turnId?: string,
+    itemId?: string,
+    completed = false,
+  ) {
+    for (const [key, entry] of this.textStreams) {
+      if (
+        (threadId !== undefined && entry.params.threadId !== threadId) ||
+        (turnId !== undefined && entry.params.turnId !== turnId) ||
+        (itemId !== undefined && entry.params.itemId !== itemId)
+      )
+        continue;
+      this.textStreams.delete(key);
+      const delta = completed ? entry.stream.finish() : entry.stream.abort();
+      if (delta)
+        this.notification(entry.method, { ...entry.params, delta }, true);
+    }
+  }
+  private notification(method: string, p: any, redactedStream = false) {
     const begin = performance.now();
+    if (!redactedStream) {
+      const threadId = p.threadId || p.thread?.id;
+      const turnId = p.turnId || p.turn?.id;
+      const itemId = p.itemId || p.item?.id;
+      if (typeof threadId === "string" && this.dropped.has(threadId)) return;
+      if (
+        method === "item/completed" &&
+        typeof threadId === "string" &&
+        typeof turnId === "string" &&
+        typeof itemId === "string"
+      )
+        this.finishTextStreams(threadId, turnId, itemId, true);
+      else if (
+        method === "turn/completed" ||
+        (method === "error" && p.willRetry !== true) ||
+        ["thread/deleted", "thread/archived", "thread/closed"].includes(method)
+      )
+        this.finishTextStreams(threadId, turnId, undefined, false);
+      if (
+        typeof threadId === "string" &&
+        typeof p.delta === "string" &&
+        [
+          "item/agentMessage/delta",
+          "item/reasoning/summaryTextDelta",
+          "item/reasoning/textDelta",
+        ].includes(method)
+      ) {
+        const key = JSON.stringify([threadId, turnId, itemId, method]);
+        let entry = this.textStreams.get(key);
+        if (!entry) {
+          // Bound simultaneous unfinished items even for malformed providers.
+          if (this.textStreams.size >= 4096) {
+            const [oldKey, oldest] = this.textStreams.entries().next().value!;
+            this.textStreams.delete(oldKey);
+            const delta = oldest.stream.abort();
+            if (delta)
+              this.notification(
+                oldest.method,
+                { ...oldest.params, delta },
+                true,
+              );
+          }
+          entry = {
+            method,
+            params: {
+              threadId,
+              turnId,
+              itemId,
+              ...(p.summaryIndex === undefined
+                ? {}
+                : { summaryIndex: p.summaryIndex }),
+            },
+            stream: this.redactor.createStream(),
+          };
+          this.textStreams.set(key, entry);
+        }
+        p = { ...p, delta: entry.stream.push(p.delta) };
+      }
+    }
     p = this.redactor.clean(p);
     if (!inventory.notifications.some((n) => n.method === method)) {
       this.unknownMethods++;
@@ -2036,6 +2121,7 @@ export class ThreadManager {
           method,
         )
       ) {
+        this.finishTextStreams(id, undefined, undefined, false);
         t.loaded = false;
         this.unwatch(t);
       }
@@ -2044,6 +2130,8 @@ export class ThreadManager {
   }
   close() {
     this.draining = true;
+    for (const entry of this.textStreams.values()) entry.stream.clear();
+    this.textStreams.clear();
     for (const t of this.threads.values()) {
       this.unwatch(t);
       for (const p of t.pending.values()) clearTimeout(p.timer);

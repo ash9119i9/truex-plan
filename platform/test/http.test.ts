@@ -213,6 +213,44 @@ test(
       mongo: true,
       agentCore: { ok: true },
     });
+    // Configuration reads and edits are real product routes, not MCP attachments.
+    const editable = await call("/api/agents", {
+      name: "Editable Scout",
+      description: "Initial purpose",
+      systemPrompt: "Original instructions",
+      modelProfileId: "default",
+    });
+    const configPath = `/api/agents/${editable.id}`;
+    const configuration = await call(configPath);
+    assert.equal(configuration.systemPrompt, "Original instructions");
+    const editBody = {
+      name: "Edited Scout",
+      description: "Updated purpose",
+      systemPrompt: "Updated instructions",
+      modelProfileId: configuration.modelProfileId,
+      look: 4,
+      tint: "mint",
+      version: configuration.version,
+    };
+    const edited = await call(configPath, editBody);
+    assert.equal(edited.systemPrompt, "Updated instructions");
+    assert.equal(edited.handle, "editablescout");
+    assert.equal((await call(configPath)).name, "Edited Scout");
+    const staleEdit = await fetch(
+      `http://127.0.0.1:${platformPort}${configPath}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(editBody),
+      },
+    );
+    assert.equal(staleEdit.status, 409);
+    assert.equal((await staleEdit.json()).code, "AGENT_CONFIG_CONFLICT");
+    assert.equal(
+      (await fetch(`http://127.0.0.1:${platformPort}/api/agents/missing`))
+        .status,
+      404,
+    );
     for (const path of [
       "/api/capabilities",
       "/api/schemas/ThreadStartParams",
