@@ -3,10 +3,12 @@ import { useState, type CSSProperties } from "react";
 import {
   cachedFraction,
   contextFraction,
+  formatCost,
   formatDuration,
   formatPercent,
   formatTokens,
   limitMeters,
+  sessionCostTotals,
   splitTokens,
   summarize,
   totalTokens,
@@ -76,6 +78,8 @@ export function InsightsPanel({
   const mainTokens = s.inputTokens + s.outputTokens;
   const helperTokens = s.helperTokens;
   const total = totalTokens(s);
+  const money = sessionCostTotals(traces);
+  const priced = money.requests - money.unpricedRequests;
   const helpers = spawnOrder(agents).map((a, i) => ({
     agent: a,
     name: helperName(a, agents),
@@ -143,6 +147,19 @@ export function InsightsPanel({
               : `${formatPercent(cached)} cached`}
           </span>
         </div>
+        {money.requests > 0 && (
+          <div className={`in-kpi${money.unpricedRequests ? " is-warn" : ""}`}>
+            <dt>Estimated cost</dt>
+            <dd>{priced > 0 ? `≈ ${formatCost(money.costMicros)}` : "—"}</dd>
+            <span className="in-sub">
+              {money.unpricedRequests
+                ? priced > 0
+                  ? `${money.unpricedRequests} request${money.unpricedRequests === 1 ? "" : "s"} unpriced`
+                  : "No price set for this model"
+                : `${money.requests} model request${money.requests === 1 ? "" : "s"}`}
+            </span>
+          </div>
+        )}
         {helpers.length > 0 && (
           <div className="in-kpi">
             <dt>Helpers</dt>
@@ -329,6 +346,37 @@ export function InsightsPanel({
               <span>Output</span>
             </li>
           </ul>
+        </section>
+      )}
+
+      {priced > 0 && (
+        <section className="in-card" aria-labelledby="in-cost-title">
+          <div className="in-card-head">
+            <h3 className="in-card-title" id="in-cost-title">
+              Estimated cost per response
+            </h3>
+            <span className="muted sm">≈ {formatCost(money.costMicros)} total</span>
+          </div>
+          <ColumnChart
+            title="Estimated cost per response"
+            summary={`Estimated ${formatCost(money.costMicros)} in total across ${traces.length} responses`}
+            format={formatCost}
+            columns={traces.map((t, i) => ({
+              id: t.turnId,
+              label: `Response ${i + 1}`,
+              segments: [
+                {
+                  value: t.cost?.costMicros ?? 0,
+                  tone: "seg-output",
+                  label: "Cost",
+                },
+              ],
+            }))}
+          />
+          <p className="in-note">
+            Estimated from token counts and list prices. The provider&apos;s
+            bill is the real figure.
+          </p>
         </section>
       )}
 

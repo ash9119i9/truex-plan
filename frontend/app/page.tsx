@@ -21,7 +21,7 @@ import { fitPanel, PANEL_W, CHAT_MIN, type PanelSize } from "@/lib/fit-panel";
 import { useFollowActivity } from "@/lib/use-follow-activity";
 import { useHotkeys } from "@/lib/use-hotkeys";
 import { useTheme } from "@/lib/use-theme";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChatMessages } from "@/components/chat-messages";
 import {
   applyChatEvent,
@@ -47,6 +47,7 @@ import {
   ApiRequestError,
   base,
   errorRef,
+  getSessionCost,
   getTraces,
   listAgents,
   userMessage,
@@ -98,7 +99,9 @@ import type {
   Goal,
   GoalReview,
   PendingRequest,
+  SessionCost,
   TraceSummary,
+  TurnCost,
   TurnTiming,
 } from "../../shared/contracts";
 import { agentHandle } from "../../shared/contracts";
@@ -123,7 +126,9 @@ export default function Home() {
   const [timings, setTimings] = useState<TurnTiming[]>([]);
   const [observability, setObservability] =
       useState<ObservabilityState>(emptyObservability),
-    [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
+    [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null),
+    // Estimated cost per turn, priced by the platform after the turn ends.
+    [costByTurn, setCostByTurn] = useState<Record<string, TurnCost>>({});
   const [text, setText] = useState(""),
     [error, setErrorText] = useState(""),
     // Code and request id of the error in the banner, when it has them.
@@ -565,6 +570,35 @@ export default function Home() {
       active = false;
     };
   }, [session?._id, reviewing]);
+  // Cost is priced by the platform, so it is fetched on load and again each
+  // time a turn finishes. A failure leaves the receipt without a cost.
+  const costKey = `${observability.traces.length}:${observability.traces.at(-1)?.turnId ?? ""}`;
+  useEffect(() => {
+    const id = session?._id;
+    if (!id) {
+      setCostByTurn({});
+      return;
+    }
+    let active = true;
+    getSessionCost(id)
+      .then((data: SessionCost) => {
+        if (active)
+          setCostByTurn(
+            Object.fromEntries((data?.turns ?? []).map((t) => [t.turnId, t])),
+          );
+      })
+      .catch((e) => warnFailure("cost", e));
+    return () => {
+      active = false;
+    };
+  }, [session?._id, costKey]);
+  const tracesWithCost = useMemo(
+    () =>
+      observability.traces.map((t) =>
+        costByTurn[t.turnId] ? { ...t, cost: costByTurn[t.turnId] } : t,
+      ),
+    [observability.traces, costByTurn],
+  );
   useEffect(() => {
     const el = composer.current;
     if (!el) return;
@@ -1438,7 +1472,7 @@ export default function Home() {
                   composer.current?.focus();
                 }}
                 entries={entries}
-                traces={observability.traces}
+                traces={tracesWithCost}
                 liveUsage={observability.liveUsage}
                 goal={goal}
                 goalReview={goalReview}
@@ -1642,7 +1676,7 @@ export default function Home() {
           plan={plan}
           awaitingApproval={awaitingApproval(pending)}
           timings={timings}
-          traces={observability.traces}
+          traces={tracesWithCost}
           traceSummary={traceSummary}
           rateLimits={observability.rateLimits}
           liveUsage={

@@ -8,6 +8,7 @@ import {
 import { MongoClient, Db } from "mongodb";
 import { publicPlan, type PlanStep } from "./public";
 import { ApiError } from "./errors";
+import type { PriceDocument, UsageRequestDocument } from "./costs";
 import { errorFields, log } from "../../shared/logging";
 import {
   currentTenant,
@@ -146,6 +147,9 @@ export class Store {
       this.catalog
         .collection("truex_skills")
         .createIndex({ name: 1 }, { unique: true }),
+      this.catalog
+        .collection("truex_model_pricing")
+        .createIndex({ modelName: 1, effectiveFrom: -1 }),
       ...this.authIndexes(),
     ]);
     return this;
@@ -177,6 +181,9 @@ export class Store {
         db.collection("messages").createIndex({ sessionId: 1, at: 1 }),
         db.collection("sessions").createIndex({ status: 1 }),
         db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
+        db.collection("usage_requests").createIndex({ sessionId: 1, at: 1 }),
+        db.collection("usage_requests").createIndex({ userId: 1, at: 1 }),
+        db.collection("usage_requests").createIndex({ at: 1 }),
         db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
         db.collection("sessions").createIndex({ userId: 1, createdAt: -1 }),
         // Sparse: agents seeded before handles existed have none.
@@ -315,6 +322,10 @@ export class Store {
   get skills() {
     return this.catalog.collection<SkillDocument>("truex_skills");
   }
+  // USD price per model per period; shared by every tenant.
+  get pricing() {
+    return this.catalog.collection<PriceDocument>("truex_model_pricing");
+  }
   findAgent(id: DatabaseId) {
     return this.agents.findOne({
       _id: { $in: idCandidates(id) },
@@ -355,6 +366,10 @@ export class Store {
   }
   get traces() {
     return this.db.collection<TraceDocument>("traces");
+  }
+  // One document per model request, priced when it was recorded.
+  get usageRequests() {
+    return this.db.collection<UsageRequestDocument>("usage_requests");
   }
   // Last `limit` traces of a session, oldest first.
   async sessionTraces(sessionId: string, limit = 200): Promise<TurnTrace[]> {

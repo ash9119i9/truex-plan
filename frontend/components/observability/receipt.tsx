@@ -31,7 +31,9 @@ export function TurnReceipt({
         aria-label={`${r.label}. ${open ? "Hide" : "Show"} details`}
         onClick={() => setOpen((v) => !v)}
       >
-        <span>{[r.duration, r.tokens].filter(Boolean).join(" · ")}</span>
+        <span>
+          {[r.duration, r.tokens, r.cost].filter(Boolean).join(" · ")}
+        </span>
         <span className="msg-foot-privacy">
           <Shield size={12} aria-hidden="true" />
           {r.privacy.text}

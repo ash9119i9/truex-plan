@@ -3,8 +3,12 @@ import { useState } from "react";
 import { Code2 } from "lucide-react";
 import { Icon } from "../v2/icon";
 import { getTurnContext, ApiRequestError } from "@/lib/api";
-import { formatDuration } from "@/lib/observability";
-import type { TurnContext, TurnTrace } from "../../../shared/contracts";
+import { costText, formatDuration } from "@/lib/observability";
+import type {
+  TurnContext,
+  TurnCost,
+  TurnTrace,
+} from "../../../shared/contracts";
 import { StepTimeline } from "./step-timeline";
 import { TokenBar } from "./token-bar";
 import { PrivacyCard } from "./privacy-card";
@@ -37,6 +41,7 @@ export function TraceCard({
           {trace.model && <span>{trace.model}</span>}
         </h4>
         <TokenBar usage={trace.usage} helperUsage={trace.helperUsage} />
+        <CostLine cost={trace.cost} />
       </div>
       <div className="tc-section">
         <h4>Your data</h4>
@@ -52,6 +57,23 @@ export function TraceCard({
       </label>
       {developer && <DeveloperDetails trace={trace} sessionId={sessionId} />}
     </section>
+  );
+}
+
+// Estimated cost of the turn, with a note when some requests had no price.
+function CostLine({ cost }: { cost?: TurnCost }) {
+  const text = costText(cost);
+  if (!cost || !text) return null;
+  const unpriced = cost.unpricedRequests;
+  return (
+    <p className="tc-note" title="Estimated from token counts and the model's list price. The provider's bill is the real figure.">
+      Estimated cost <strong>{text}</strong> across {cost.requests} model request
+      {cost.requests === 1 ? "" : "s"}
+      {unpriced > 0 && unpriced < cost.requests
+        ? `, ${unpriced} without a price`
+        : ""}
+      .
+    </p>
   );
 }
 

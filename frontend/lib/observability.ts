@@ -8,6 +8,7 @@ import type {
   StepSpan,
   TokenCounts,
   TraceSummary,
+  TurnCost,
   TurnTrace,
   TurnUsage,
 } from "../../shared/contracts";
@@ -133,11 +134,47 @@ export function draftNote(findings: PrivacyFinding[]) {
   return `This looks like ${list}. It will be sent to the model.`;
 }
 
+// --- Cost -----------------------------------------------------------------
+
+// Micro-USD for display. Small amounts keep four decimals so a cheap turn
+// does not read as free; zero is only ever shown for a priced turn.
+export function formatCost(micros: number) {
+  if (!Number.isFinite(micros) || micros < 0) return "—";
+  if (micros === 0) return "$0.00";
+  if (micros < 100) return "<$0.0001";
+  const usd = micros / 1e6;
+  return `$${usd < 1 ? usd.toFixed(4) : usd.toFixed(2)}`;
+}
+
+// What to say about a turn's cost. Null when no cost was recorded for it.
+// Unpriced requests are unknown, never counted as free.
+export function costText(cost: TurnCost | null | undefined) {
+  if (!cost || !cost.requests) return null;
+  if (cost.unpricedRequests >= cost.requests) return "no price set";
+  const amount = `≈ ${formatCost(cost.costMicros)}`;
+  return cost.unpricedRequests ? `${amount} + unpriced` : amount;
+}
+
+// Cost of a whole session from its turns' costs.
+export function sessionCostTotals(traces: TurnTrace[]) {
+  let costMicros = 0,
+    requests = 0,
+    unpricedRequests = 0;
+  for (const t of traces) {
+    if (!t.cost) continue;
+    costMicros += t.cost.costMicros;
+    requests += t.cost.requests;
+    unpricedRequests += t.cost.unpricedRequests;
+  }
+  return { costMicros, requests, unpricedRequests };
+}
+
 // --- Receipt --------------------------------------------------------------
 
 export interface Receipt {
   duration: string | null;
   tokens: string | null;
+  cost: string | null;
   privacy: PrivacyLine;
   label: string;
 }
@@ -146,13 +183,15 @@ export function receipt(t: TurnTrace): Receipt {
   const duration = t.totalMs === null ? null : formatDuration(t.totalMs);
   const total = turnTokens(t);
   const tokens = total ? `${formatTokens(total)} tokens` : null;
+  const cost = costText(t.cost);
   const privacy = privacyLine(t.privacy?.findings || []);
   const parts = [
     duration && `Took ${duration}`,
     tokens && `used ${tokens}`,
+    cost && `estimated cost ${cost}`,
     privacy.text,
   ].filter(Boolean);
-  return { duration, tokens, privacy, label: parts.join(", ") };
+  return { duration, tokens, cost, privacy, label: parts.join(", ") };
 }
 
 // --- Timeline -------------------------------------------------------------

@@ -4,8 +4,10 @@ import {
   applyObservabilityEvent,
   cachedFraction,
   contextFraction,
+  costText,
   draftNote,
   emptyObservability,
+  formatCost,
   formatDuration,
   formatPercent,
   limitMeters,
@@ -13,6 +15,7 @@ import {
   privacyLine,
   receipt,
   resetsIn,
+  sessionCostTotals,
   splitTokens,
   summarize,
   timelineLayout,
@@ -330,4 +333,52 @@ test("traces merge by turn id and events update state", () => {
   const again = mergeTraces(s.traces, [trace({ turnId: "old", totalMs: 9 }), { bad: 1 }]);
   assert.equal(again.length, 2);
   assert.equal(again[0].totalMs, 9);
+});
+
+test("cost is formatted so a cheap turn never reads as free", () => {
+  assert.equal(formatCost(0), "$0.00");
+  assert.equal(formatCost(50), "<$0.0001");
+  assert.equal(formatCost(23_748), "$0.0237");
+  assert.equal(formatCost(1_500_000), "$1.50");
+  assert.equal(formatCost(-1), "—");
+  assert.equal(formatCost(NaN), "—");
+});
+
+test("a turn's cost text keeps unpriced requests unknown, not free", () => {
+  const cost = (costMicros: number, requests: number, unpricedRequests: number) => ({
+    turnId: "t",
+    costMicros,
+    requests,
+    unpricedRequests,
+  });
+  assert.equal(costText(undefined), null);
+  assert.equal(costText(cost(0, 0, 0)), null);
+  assert.equal(costText(cost(23_748, 3, 0)), "≈ $0.0237");
+  assert.equal(costText(cost(23_748, 3, 1)), "≈ $0.0237 + unpriced");
+  assert.equal(costText(cost(0, 3, 3)), "no price set");
+});
+
+test("the receipt shows the estimated cost, and is unchanged without one", () => {
+  const plain = receipt(trace());
+  assert.equal(plain.cost, null);
+  const priced = receipt(
+    trace({ cost: { turnId: "t1", costMicros: 23_748, requests: 3, unpricedRequests: 0 } }),
+  );
+  assert.equal(priced.cost, "≈ $0.0237");
+  assert.match(priced.label, /estimated cost ≈ \$0\.0237/);
+  assert.doesNotMatch(plain.label, /estimated cost/);
+});
+
+test("session cost sums the turns that have one", () => {
+  const withCost = (turnId: string, costMicros: number, unpricedRequests = 0) =>
+    trace({ turnId, cost: { turnId, costMicros, requests: 2, unpricedRequests } });
+  assert.deepEqual(
+    sessionCostTotals([withCost("a", 100), withCost("b", 250, 1), trace({ turnId: "c" })]),
+    { costMicros: 350, requests: 4, unpricedRequests: 1 },
+  );
+  assert.deepEqual(sessionCostTotals([]), {
+    costMicros: 0,
+    requests: 0,
+    unpricedRequests: 0,
+  });
 });

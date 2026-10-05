@@ -10,10 +10,13 @@ import type {
   TurnContext,
   TurnTrace,
   TurnUsage,
+  UsageCall,
 } from "../../shared/contracts";
 import { addToReport, emptyReport, maskText } from "../../shared/privacy";
 
 export const stepLimit = 300;
+// Per-request usage kept for cost; a longer tool loop is flagged, not stored.
+export const callLimit = 200;
 export const sectionLimit = 20_000;
 export const contextLimit = 200_000;
 
@@ -218,6 +221,8 @@ export class TraceBuilder {
   private sawUserMessage = false;
   private usage: TurnUsage | null = null;
   private helperUsage: TokenCounts | null = null;
+  private calls: UsageCall[] = [];
+  private callsTruncated = false;
   private rateLimits: RateLimitView | null;
   private privacy: PrivacyReport = emptyReport();
   private sections: Section[] = [];
@@ -273,6 +278,7 @@ export class TraceBuilder {
   // Context used is the latest call's input: the whole conversation it read.
   onUsage(tokenUsage: any) {
     const last = countsOf(tokenUsage?.last);
+    this.recordCall("main", tokenUsage?.last);
     const window = tokenUsage?.modelContextWindow;
     this.usage = {
       ...add(this.usage, last),
@@ -286,6 +292,22 @@ export class TraceBuilder {
   }
   onHelperUsage(last: any) {
     this.helperUsage = add(this.helperUsage, countsOf(last));
+    this.recordCall("helper", last);
+  }
+  // One entry per model request. A notification without usage adds nothing.
+  private recordCall(source: UsageCall["source"], last: any) {
+    if (!last || typeof last !== "object") return;
+    if (this.calls.length >= callLimit) {
+      this.callsTruncated = true;
+      return;
+    }
+    this.calls.push({
+      ...countsOf(last),
+      cacheWriteInputTokens: num(last.cacheWriteInputTokens),
+      seq: this.calls.length,
+      at: new Date().toISOString(),
+      source,
+    });
   }
   onRateLimits(view: RateLimitView) {
     this.rateLimits = view;
@@ -343,6 +365,10 @@ export class TraceBuilder {
       steps: steps.sort((a, b) => a.startMs - b.startMs),
       usage: this.usage,
       helperUsage: this.helperUsage,
+      ...(this.calls.length
+        ? { calls: this.calls.map((c) => ({ ...c })) }
+        : {}),
+      ...(this.callsTruncated ? { callsTruncated: true } : {}),
       rateLimits: this.rateLimits,
       privacy: {
         scannedChars: this.privacy.scannedChars,

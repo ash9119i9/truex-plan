@@ -421,6 +421,15 @@ export interface TurnUsage extends TokenCounts {
   // Input tokens of the latest model request: how full the context window is.
   contextUsedTokens: number | null;
 }
+// One model request's token counts, in the order Codex reported them.
+// `cacheWriteInputTokens` is a separate field here (not in TokenCounts) so
+// existing usage consumers are unchanged.
+export interface UsageCall extends TokenCounts {
+  seq: number;
+  at: string;
+  source: "main" | "helper";
+  cacheWriteInputTokens: number;
+}
 export interface RateLimitView {
   limitName: string | null;
   primaryUsedPercent: number | null;
@@ -468,8 +477,38 @@ export interface TurnTrace {
   usage: TurnUsage | null;
   // Summed usage of helper agents that ran during this turn.
   helperUsage: TokenCounts | null;
+  // Per model request usage (main and helper), bounded; the basis for cost.
+  calls?: UsageCall[];
+  callsTruncated?: boolean;
+  // Added by the client from GET /cost; never stored on the trace.
+  cost?: TurnCost;
   rateLimits: RateLimitView | null;
   privacy: PrivacyReport;
+}
+// Estimated cost, summed from recorded model requests (micro-USD).
+export interface UsageSummary {
+  costMicros: number;
+  costUsd: string;
+  requests: number;
+  // Requests with no usable price. Their cost is unknown, not zero.
+  unpricedRequests: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteInputTokens: number;
+  outputTokens: number;
+  reasoningOutputTokens: number;
+}
+export interface TurnCost {
+  turnId: string;
+  costMicros: number;
+  requests: number;
+  unpricedRequests: number;
+}
+// GET /api/sessions/:id/cost response.
+export interface SessionCost {
+  sessionId: string;
+  total: UsageSummary;
+  turns: TurnCost[];
 }
 // Live-only, never persisted: masked reconstruction of what the model was fed.
 export interface TurnContext {

@@ -98,6 +98,7 @@ import {
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
 import { currentTenant, currentTenantId } from "./tenant";
 import { currentUser, userId } from "./user";
+import { Costs } from "./costs";
 import {
   RuntimeTransport,
   isAgentCoreRuntime,
@@ -274,6 +275,7 @@ function projectName(name: unknown) {
 }
 export class PlatformService {
   readonly hosts: string[];
+  readonly costs: Costs;
   private polling = false;
   private timer?: NodeJS.Timeout;
   private nextHost = 0;
@@ -284,6 +286,7 @@ export class PlatformService {
     readonly transport = new RuntimeTransport(),
   ) {
     this.hosts = hosts.map((x) => x.trim().replace(/\/$/, ""));
+    this.costs = new Costs(store);
   }
   async call(
     host: string,
@@ -1638,6 +1641,7 @@ export class PlatformService {
           });
       }
       await this.store.persist(s._id, event);
+      await this.costs.record(s, event);
     }
     if (records.length)
       await this.owned(s, "/records/ack", "POST", {

@@ -16,6 +16,7 @@ import {
 } from "./public";
 import { Store } from "./store";
 import { sessionTraces } from "./traces";
+import { usageRange } from "./costs";
 import type { TurnTrace } from "../../shared/contracts";
 import { PlatformService, ApiError, upstreamError } from "./service";
 import { errorFields, log, REQUEST_ID_HEADER } from "../../shared/logging";
@@ -625,6 +626,39 @@ async function main() {
             .filter((t): t is TurnTrace => t !== null),
         ),
       );
+    }),
+  );
+  // Estimated cost of one conversation, summed from its recorded requests.
+  http.get(
+    "/api/sessions/:id/cost",
+    route(async (req, res) => {
+      const s = await service.sessionFor(String(req.params.id), "read");
+      await service.ingest(s).catch((error) =>
+        log("warn", "cost ingestion failed", {
+          sessionId: s._id,
+          op: "ingest",
+          ...errorFields(error),
+        }),
+      );
+      res.json(await service.costs.sessionCost(s._id));
+    }),
+  );
+  // The signed-in user's own usage; never another user's.
+  http.get(
+    "/api/me/usage",
+    route(async (req, res) =>
+      res.json(
+        await service.costs.userUsage(currentUser()!.id, usageRange(req.query)),
+      ),
+    ),
+  );
+  // Every user's usage in this tenant; admins only.
+  http.get(
+    "/api/usage/users",
+    route(async (req, res) => {
+      if (currentUser()?.role !== "admin")
+        throw new ApiError(403, "Admins only", "ADMIN_ONLY");
+      res.json(await service.costs.allUsersUsage(usageRange(req.query)));
     }),
   );
   // Live-only masked context; never persisted or logged here.

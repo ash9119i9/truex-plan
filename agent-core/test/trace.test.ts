@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   TraceBuilder,
+  callLimit,
   contextLimit,
   rateLimitView,
   sectionLimit,
@@ -136,6 +137,54 @@ test("main usage sums model calls and helper usage is kept apart", () => {
     trace.steps.map((s) => [s.id, s.agent, s.agentThreadId]),
     [["child_1:r", "Scout", "child_1"]],
   );
+});
+
+test("each model request is kept for cost, in order, main and helper", () => {
+  const b = new TraceBuilder("turn_1", "thread_1", 0);
+  const call = (input: number, output: number, write = 0) => ({
+    inputTokens: input,
+    cachedInputTokens: 0,
+    cacheWriteInputTokens: write,
+    outputTokens: output,
+    reasoningOutputTokens: 0,
+    totalTokens: input + output,
+  });
+  b.onUsage({ last: call(100, 0), modelContextWindow: 1000 });
+  b.onHelperUsage(call(50, 5));
+  b.onUsage({ last: call(300, 30, 40), modelContextWindow: 1000 });
+  b.onUsage({ modelContextWindow: 1000 }); // no per-call usage: not a call
+  const trace = b.finish("completed", 100);
+  assert.deepEqual(
+    trace.calls?.map((c) => [
+      c.seq,
+      c.source,
+      c.inputTokens,
+      c.outputTokens,
+      c.cacheWriteInputTokens,
+    ]),
+    [
+      [0, "main", 100, 0, 0],
+      [1, "helper", 50, 5, 0],
+      [2, "main", 300, 30, 40],
+    ],
+  );
+  assert.equal(trace.callsTruncated, undefined);
+  // The summed usage the UI already relies on is unchanged by recording calls.
+  assert.equal(trace.usage?.inputTokens, 400);
+  assert.equal(trace.helperUsage?.inputTokens, 50);
+});
+
+test("a turn without usage has no calls, and an endless loop is bounded", () => {
+  const none = new TraceBuilder("t", "thread_1", 0).finish("completed", 1);
+  assert.equal(none.calls, undefined);
+  const b = new TraceBuilder("t", "thread_1", 0);
+  for (let i = 0; i < callLimit + 25; i++)
+    b.onUsage({ last: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } });
+  const trace = b.finish("failed", 1);
+  assert.equal(trace.calls?.length, callLimit);
+  assert.equal(trace.callsTruncated, true);
+  // Summed usage still counts every request even when per-call detail stops.
+  assert.equal(trace.usage?.inputTokens, callLimit + 25);
 });
 
 test("privacy findings and the trace never hold raw values", () => {
