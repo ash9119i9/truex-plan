@@ -1,0 +1,774 @@
+Pinned baseline d6e3f45a45e6948873b8a64d0a9453fb2c2f4307; expected failing regressions
+✖ source window selects complete recent turn groups before encoding, default remains full (180.740167ms)
+✔ source window retains active, pending and unfinished old groups with full authoritative operational state (17.217958ms)
+✖ source window retains unknown unfinished identities and bounds finalized legacy records (20.893708ms)
+✖ create acknowledges only validated applied selected approval mode (1.341125ms)
+✖ loaded resume acknowledges an explicitly applied approval mode, omitted mode keeps response compatible (0.872917ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 1
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 617.204792
+
+✖ failing tests:
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:2:2392
+✖ source window selects complete recent turn groups before encoding, default remains full (180.740167ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      {
+        final: true,
+  +     id: 'item-0',
+  +     messageIndex: 0,
+  +     text: 'answer-0',
+  +     turnId: 'turn-0'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-1',
+  +     messageIndex: 0,
+  +     text: 'answer-1',
+  +     turnId: 'turn-1'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-2',
+  +     messageIndex: 0,
+  +     text: 'answer-2',
+  +     turnId: 'turn-2'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-3',
+  +     messageIndex: 0,
+  +     text: 'answer-3',
+  +     turnId: 'turn-3'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-4',
+  +     messageIndex: 0,
+  +     text: 'answer-4',
+  +     turnId: 'turn-4'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-5',
+  +     messageIndex: 0,
+  +     text: 'answer-5',
+  +     turnId: 'turn-5'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-6',
+  +     messageIndex: 0,
+  +     text: 'answer-6',
+  +     turnId: 'turn-6'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-7',
+  +     messageIndex: 0,
+  +     text: 'answer-7',
+  +     turnId: 'turn-7'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-8',
+  +     messageIndex: 0,
+  +     text: 'answer-8',
+  +     turnId: 'turn-8'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-9',
+  +     messageIndex: 0,
+  +     text: 'answer-9',
+  +     turnId: 'turn-9'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-10',
+  +     messageIndex: 0,
+  +     text: 'answer-10',
+  +     turnId: 'turn-10'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-11',
+  +     messageIndex: 0,
+  +     text: 'answer-11',
+  +     turnId: 'turn-11'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-12',
+  +     messageIndex: 0,
+  +     text: 'answer-12',
+  +     turnId: 'turn-12'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-13',
+  +     messageIndex: 0,
+  +     text: 'answer-13',
+  +     turnId: 'turn-13'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-14',
+  +     messageIndex: 0,
+  +     text: 'answer-14',
+  +     turnId: 'turn-14'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-15',
+  +     messageIndex: 0,
+  +     text: 'answer-15',
+  +     turnId: 'turn-15'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-16',
+  +     messageIndex: 0,
+  +     text: 'answer-16',
+  +     turnId: 'turn-16'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-17',
+  +     messageIndex: 0,
+  +     text: 'answer-17',
+  +     turnId: 'turn-17'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-18',
+  +     messageIndex: 0,
+  +     text: 'answer-18',
+  +     turnId: 'turn-18'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-19',
+  +     messageIndex: 0,
+  +     text: 'answer-19',
+  +     turnId: 'turn-19'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-20',
+  +     messageIndex: 0,
+  +     text: 'answer-20',
+  +     turnId: 'turn-20'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-21',
+  +     messageIndex: 0,
+  +     text: 'answer-21',
+  +     turnId: 'turn-21'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-22',
+  +     messageIndex: 0,
+  +     text: 'answer-22',
+  +     turnId: 'turn-22'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-23',
+  +     messageIndex: 0,
+  +     text: 'answer-23',
+  +     turnId: 'turn-23'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-24',
+  +     messageIndex: 0,
+  +     text: 'answer-24',
+  +     turnId: 'turn-24'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-25',
+  +     messageIndex: 0,
+  +     text: 'answer-25',
+  +     turnId: 'turn-25'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-26',
+  +     messageIndex: 0,
+  +     text: 'answer-26',
+  +     turnId: 'turn-26'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-27',
+  +     messageIndex: 0,
+  +     text: 'answer-27',
+  +     turnId: 'turn-27'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-28',
+  +     messageIndex: 0,
+  +     text: 'answer-28',
+  +     turnId: 'turn-28'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-29',
+  +     messageIndex: 0,
+  +     text: 'answer-29',
+  +     turnId: 'turn-29'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-30',
+  +     messageIndex: 0,
+  +     text: 'answer-30',
+  +     turnId: 'turn-30'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-31',
+  +     messageIndex: 0,
+  +     text: 'answer-31',
+  +     turnId: 'turn-31'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-32',
+  +     messageIndex: 0,
+  +     text: 'answer-32',
+  +     turnId: 'turn-32'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-33',
+  +     messageIndex: 0,
+  +     text: 'answer-33',
+  +     turnId: 'turn-33'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-34',
+  +     messageIndex: 0,
+  +     text: 'answer-34',
+  +     turnId: 'turn-34'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-35',
+  +     messageIndex: 0,
+  +     text: 'answer-35',
+  +     turnId: 'turn-35'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-36',
+  +     messageIndex: 0,
+  +     text: 'answer-36',
+  +     turnId: 'turn-36'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-37',
+  +     messageIndex: 0,
+  +     text: 'answer-37',
+  +     turnId: 'turn-37'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-38',
+  +     messageIndex: 0,
+  +     text: 'answer-38',
+  +     turnId: 'turn-38'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-39',
+  +     messageIndex: 0,
+  +     text: 'answer-39',
+  +     turnId: 'turn-39'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-40',
+  +     messageIndex: 0,
+  +     text: 'answer-40',
+  +     turnId: 'turn-40'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-41',
+  +     messageIndex: 0,
+  +     text: 'answer-41',
+  +     turnId: 'turn-41'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-42',
+  +     messageIndex: 0,
+  +     text: 'answer-42',
+  +     turnId: 'turn-42'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-43',
+  +     messageIndex: 0,
+  +     text: 'answer-43',
+  +     turnId: 'turn-43'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-44',
+  +     messageIndex: 0,
+  +     text: 'answer-44',
+  +     turnId: 'turn-44'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-45',
+  +     messageIndex: 0,
+  +     text: 'answer-45',
+  +     turnId: 'turn-45'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-46',
+  +     messageIndex: 0,
+  +     text: 'answer-46',
+  +     turnId: 'turn-46'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-47',
+  +     messageIndex: 0,
+  +     text: 'answer-47',
+  +     turnId: 'turn-47'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-48',
+  +     messageIndex: 0,
+  +     text: 'answer-48',
+  +     turnId: 'turn-48'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-49',
+  +     messageIndex: 0,
+  +     text: 'answer-49',
+  +     turnId: 'turn-49'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-50',
+  +     messageIndex: 0,
+  +     text: 'answer-50',
+  +     turnId: 'turn-50'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-51',
+  +     messageIndex: 0,
+  +     text: 'answer-51',
+  +     turnId: 'turn-51'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-52',
+  +     messageIndex: 0,
+  +     text: 'answer-52',
+  +     turnId: 'turn-52'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-53',
+  +     messageIndex: 0,
+  +     text: 'answer-53',
+  +     turnId: 'turn-53'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-54',
+  +     messageIndex: 0,
+  +     text: 'answer-54',
+  +     turnId: 'turn-54'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-55',
+  +     messageIndex: 0,
+  +     text: 'answer-55',
+  +     turnId: 'turn-55'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-56',
+  +     messageIndex: 0,
+  +     text: 'answer-56',
+  +     turnId: 'turn-56'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-57',
+  +     messageIndex: 0,
+  +     text: 'answer-57',
+  +     turnId: 'turn-57'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-58',
+  +     messageIndex: 0,
+  +     text: 'answer-58',
+  +     turnId: 'turn-58'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-59',
+  +     messageIndex: 0,
+  +     text: 'answer-59',
+  +     turnId: 'turn-59'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-60',
+  +     messageIndex: 0,
+  +     text: 'answer-60',
+  +     turnId: 'turn-60'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-61',
+  +     messageIndex: 0,
+  +     text: 'answer-61',
+  +     turnId: 'turn-61'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-62',
+  +     messageIndex: 0,
+  +     text: 'answer-62',
+  +     turnId: 'turn-62'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-63',
+  +     messageIndex: 0,
+  +     text: 'answer-63',
+  +     turnId: 'turn-63'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-64',
+  +     messageIndex: 0,
+  +     text: 'answer-64',
+  +     turnId: 'turn-64'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-65',
+  +     messageIndex: 0,
+  +     text: 'answer-65',
+  +     turnId: 'turn-65'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-66',
+  +     messageIndex: 0,
+  +     text: 'answer-66',
+  +     turnId: 'turn-66'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-67',
+  +     messageIndex: 0,
+  +     text: 'answer-67',
+  +     turnId: 'turn-67'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-68',
+  +     messageIndex: 0,
+  +     text: 'answer-68',
+  +     turnId: 'turn-68'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-69',
+  +     messageIndex: 0,
+  +     text: 'answer-69',
+  +     turnId: 'turn-69'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-70',
+  +     messageIndex: 0,
+  +     text: 'answer-70',
+  +     turnId: 'turn-70'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-71',
+  +     messageIndex: 0,
+  +     text: 'answer-71',
+  +     turnId: 'turn-71'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-72',
+  +     messageIndex: 0,
+  +     text: 'answer-72',
+  +     turnId: 'turn-72'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-73',
+  +     messageIndex: 0,
+  +     text: 'answer-73',
+  +     turnId: 'turn-73'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-74',
+  +     messageIndex: 0,
+  +     text: 'answer-74',
+  +     turnId: 'turn-74'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-75',
+  +     messageIndex: 0,
+  +     text: 'answer-75',
+  +     turnId: 'turn-75'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-76',
+  +     messageIndex: 0,
+  +     text: 'answer-76',
+  +     turnId: 'turn-76'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-77',
+  +     messageIndex: 0,
+  +     text: 'answer-77',
+  +     turnId: 'turn-77'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-78',
+  +     messageIndex: 0,
+  +     text: 'answer-78',
+  +     turnId: 'turn-78'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-79',
+  +     messageIndex: 0,
+  +     text: 'answer-79',
+  +     turnId: 'turn-79'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-80',
+  +     messageIndex: 0,
+  +     text: 'answer-80',
+  +     turnId: 'turn-80'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-81',
+  +     messageIndex: 0,
+  +     text: 'answer-81',
+  +     turnId: 'turn-81'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-82',
+  +     messageIndex: 0,
+  +     text: 'answer-82',
+  +     turnId: 'turn-82'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-83',
+  +     messageIndex: 0,
+  +     text: 'answer-83',
+  +     turnId: 'turn-83'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-84',
+  +     messageIndex: 0,
+  +     text: 'answer-84',
+  +     turnId: 'turn-84'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-85',
+  +     messageIndex: 0,
+  +     text: 'answer-85',
+  +     turnId: 'turn-85'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-86',
+  +     messageIndex: 0,
+  +     text: 'answer-86',
+  +     turnId: 'turn-86'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-87',
+  +     messageIndex: 0,
+  +     text: 'answer-87',
+  +     turnId: 'turn-87'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-88',
+  +     messageIndex: 0,
+  +     text: 'answer-88',
+  +     turnId: 'turn-88'
+  +   },
+  +   {
+  +     final: true,
+  +     id: 'item-89',
+  +     messageIndex: 0,
+  +     text: 'answer-89',
+  +     turnId: 'turn-89'
+  +   },
+  +   {
+  +     final: true,
+        id: 'item-90',
+        messageIndex: 0,
+        text: 'answer-90',
+        turnId: 'turn-90'
+      },
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:70:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [
+      { id: 'item-0', turnId: 'turn-0', text: 'answer-0', final: true, messageIndex: 0 },    { id: 'item-1', turnId: 'turn-1', text: 'answer-1', final: true, messageIndex: 0 },
+      { id: 'item-2', turnId: 'turn-2', text: 'answer-2', final: true, messageIndex: 0 },    { id: 'item-3', turnId: 'turn-3', text: 'answer-3', final: true, messageIndex: 0 },
+      { id: 'item-4', turnId: 'turn-4', text: 'answer-4', final: true, messageIndex: 0 },    { id: 'item-5', turnId: 'turn-5', text: 'answer-5', final: true, messageIndex: 0 },
+      { id: 'item-6', turnId: 'turn-6', text: 'answer-6', final: true, messageIndex: 0 },    { id: 'item-7', turnId: 'turn-7', text: 'answer-7', final: true, messageIndex: 0 },
+      { id: 'item-8', turnId: 'turn-8', text: 'answer-8', final: true, messageIndex: 0 },    { id: 'item-9', turnId: 'turn-9', text: 'answer-9', final: true, messageIndex: 0 },
+      { id: 'item-10', turnId: 'turn-10', text: 'answer-10', final: true, messageIndex: 0 }, { id: 'item-11', turnId: 'turn-11', text: 'answer-11', final: true, messageIndex: 0 },
+      { id: 'item-12', turnId: 'turn-12', text: 'answer-12', final: true, messageIndex: 0 }, { id: 'item-13', turnId: 'turn-13', text: 'answer-13', final: true, messageIndex: 0 },
+      { id: 'item-14', turnId: 'turn-14', text: 'answer-14', final: true, messageIndex: 0 }, { id: 'item-15', turnId: 'turn-15', text: 'answer-15', final: true, messageIndex: 0 },
+      { id: 'item-16', turnId: 'turn-16', text: 'answer-16', final: true, messageIndex: 0 }, { id: 'item-17', turnId: 'turn-17', text: 'answer-17', final: true, messageIndex: 0 },
+      { id: 'item-18', turnId: 'turn-18', text: 'answer-18', final: true, messageIndex: 0 }, { id: 'item-19', turnId: 'turn-19', text: 'answer-19', final: true, messageIndex: 0 },
+      { id: 'item-20', turnId: 'turn-20', text: 'answer-20', final: true, messageIndex: 0 }, { id: 'item-21', turnId: 'turn-21', text: 'answer-21', final: true, messageIndex: 0 },
+      { id: 'item-22', turnId: 'turn-22', text: 'answer-22', final: true, messageIndex: 0 }, { id: 'item-23', turnId: 'turn-23', text: 'answer-23', final: true, messageIndex: 0 },
+      { id: 'item-24', turnId: 'turn-24', text: 'answer-24', final: true, messageIndex: 0 }, { id: 'item-25', turnId: 'turn-25', text: 'answer-25', final: true, messageIndex: 0 },
+      { id: 'item-26', turnId: 'turn-26', text: 'answer-26', final: true, messageIndex: 0 }, { id: 'item-27', turnId: 'turn-27', text: 'answer-27', final: true, messageIndex: 0 },
+      { id: 'item-28', turnId: 'turn-28', text: 'answer-28', final: true, messageIndex: 0 }, { id: 'item-29', turnId: 'turn-29', text: 'answer-29', final: true, messageIndex: 0 },
+      { id: 'item-30', turnId: 'turn-30', text: 'answer-30', final: true, messageIndex: 0 }, { id: 'item-31', turnId: 'turn-31', text: 'answer-31', final: true, messageIndex: 0 },
+      { id: 'item-32', turnId: 'turn-32', text: 'answer-32', final: true, messageIndex: 0 }, { id: 'item-33', turnId: 'turn-33', text: 'answer-33', final: true, messageIndex: 0 },
+      { id: 'item-34', turnId: 'turn-34', text: 'answer-34', final: true, messageIndex: 0 }, { id: 'item-35', turnId: 'turn-35', text: 'answer-35', final: true, messageIndex: 0 },
+      { id: 'item-36', turnId: 'turn-36', text: 'answer-36', final: true, messageIndex: 0 }, { id: 'item-37', turnId: 'turn-37', text: 'answer-37', final: true, messageIndex: 0 },
+      { id: 'item-38', turnId: 'turn-38', text: 'answer-38', final: true, messageIndex: 0 }, { id: 'item-39', turnId: 'turn-39', text: 'answer-39', final: true, messageIndex: 0 },
+      { id: 'item-40', turnId: 'turn-40', text: 'answer-40', final: true, messageIndex: 0 }, { id: 'item-41', turnId: 'turn-41', text: 'answer-41', final: true, messageIndex: 0 },
+      { id: 'item-42', turnId: 'turn-42', text: 'answer-42', final: true, messageIndex: 0 }, { id: 'item-43', turnId: 'turn-43', text: 'answer-43', final: true, messageIndex: 0 },
+      { id: 'item-44', turnId: 'turn-44', text: 'answer-44', final: true, messageIndex: 0 }, { id: 'item-45', turnId: 'turn-45', text: 'answer-45', final: true, messageIndex: 0 },
+      { id: 'item-46', turnId: 'turn-46', text: 'answer-46', final: true, messageIndex: 0 }, { id: 'item-47', turnId: 'turn-47', text: 'answer-47', final: true, messageIndex: 0 },
+      { id: 'item-48', turnId: 'turn-48', text: 'answer-48', final: true, messageIndex: 0 }, { id: 'item-49', turnId: 'turn-49', text: 'answer-49', final: true, messageIndex: 0 },
+      { id: 'item-50', turnId: 'turn-50', text: 'answer-50', final: true, messageIndex: 0 }, { id: 'item-51', turnId: 'turn-51', text: 'answer-51', final: true, messageIndex: 0 },
+      { id: 'item-52', turnId: 'turn-52', text: 'answer-52', final: true, messageIndex: 0 }, { id: 'item-53', turnId: 'turn-53', text: 'answer-53', final: true, messageIndex: 0 },
+      { id: 'item-54', turnId: 'turn-54', text: 'answer-54', final: true, messageIndex: 0 }, { id: 'item-55', turnId: 'turn-55', text: 'answer-55', final: true, messageIndex: 0 },
+      { id: 'item-56', turnId: 'turn-56', text: 'answer-56', final: true, messageIndex: 0 }, { id: 'item-57', turnId: 'turn-57', text: 'answer-57', final: true, messageIndex: 0 },
+      { id: 'item-58', turnId: 'turn-58', text: 'answer-58', final: true, messageIndex: 0 }, { id: 'item-59', turnId: 'turn-59', text: 'answer-59', final: true, messageIndex: 0 },
+      { id: 'item-60', turnId: 'turn-60', text: 'answer-60', final: true, messageIndex: 0 }, { id: 'item-61', turnId: 'turn-61', text: 'answer-61', final: true, messageIndex: 0 },
+      { id: 'item-62', turnId: 'turn-62', text: 'answer-62', final: true, messageIndex: 0 }, { id: 'item-63', turnId: 'turn-63', text: 'answer-63', final: true, messageIndex: 0 },
+      { id: 'item-64', turnId: 'turn-64', text: 'answer-64', final: true, messageIndex: 0 }, { id: 'item-65', turnId: 'turn-65', text: 'answer-65', final: true, messageIndex: 0 },
+      { id: 'item-66', turnId: 'turn-66', text: 'answer-66', final: true, messageIndex: 0 }, { id: 'item-67', turnId: 'turn-67', text: 'answer-67', final: true, messageIndex: 0 },
+      { id: 'item-68', turnId: 'turn-68', text: 'answer-68', final: true, messageIndex: 0 }, { id: 'item-69', turnId: 'turn-69', text: 'answer-69', final: true, messageIndex: 0 },
+      { id: 'item-70', turnId: 'turn-70', text: 'answer-70', final: true, messageIndex: 0 }, { id: 'item-71', turnId: 'turn-71', text: 'answer-71', final: true, messageIndex: 0 },
+      { id: 'item-72', turnId: 'turn-72', text: 'answer-72', final: true, messageIndex: 0 }, { id: 'item-73', turnId: 'turn-73', text: 'answer-73', final: true, messageIndex: 0 },
+      { id: 'item-74', turnId: 'turn-74', text: 'answer-74', final: true, messageIndex: 0 }, { id: 'item-75', turnId: 'turn-75', text: 'answer-75', final: true, messageIndex: 0 },
+      { id: 'item-76', turnId: 'turn-76', text: 'answer-76', final: true, messageIndex: 0 }, { id: 'item-77', turnId: 'turn-77', text: 'answer-77', final: true, messageIndex: 0 },
+      { id: 'item-78', turnId: 'turn-78', text: 'answer-78', final: true, messageIndex: 0 }, { id: 'item-79', turnId: 'turn-79', text: 'answer-79', final: true, messageIndex: 0 },
+      { id: 'item-80', turnId: 'turn-80', text: 'answer-80', final: true, messageIndex: 0 }, { id: 'item-81', turnId: 'turn-81', text: 'answer-81', final: true, messageIndex: 0 },
+      { id: 'item-82', turnId: 'turn-82', text: 'answer-82', final: true, messageIndex: 0 }, { id: 'item-83', turnId: 'turn-83', text: 'answer-83', final: true, messageIndex: 0 },
+      { id: 'item-84', turnId: 'turn-84', text: 'answer-84', final: true, messageIndex: 0 }, { id: 'item-85', turnId: 'turn-85', text: 'answer-85', final: true, messageIndex: 0 },
+      { id: 'item-86', turnId: 'turn-86', text: 'answer-86', final: true, messageIndex: 0 }, { id: 'item-87', turnId: 'turn-87', text: 'answer-87', final: true, messageIndex: 0 },
+      { id: 'item-88', turnId: 'turn-88', text: 'answer-88', final: true, messageIndex: 0 }, { id: 'item-89', turnId: 'turn-89', text: 'answer-89', final: true, messageIndex: 0 },
+      { id: 'item-90', turnId: 'turn-90', text: 'answer-90', final: true, messageIndex: 0 }, { id: 'second-answer', turnId: 'turn-90', text: 'second', final: true },
+      { id: 'item-91', turnId: 'turn-91', text: 'answer-91', final: true, messageIndex: 0 }, { id: 'item-92', turnId: 'turn-92', text: 'answer-92', final: true, messageIndex: 0 },
+      { id: 'item-93', turnId: 'turn-93', text: 'answer-93', final: true, messageIndex: 0 }, { id: 'item-94', turnId: 'turn-94', text: 'answer-94', final: true, messageIndex: 0 },
+      { id: 'item-95', turnId: 'turn-95', text: 'answer-95', final: true, messageIndex: 0 }, { id: 'item-96', turnId: 'turn-96', text: 'answer-96', final: true, messageIndex: 0 },
+      { id: 'item-97', turnId: 'turn-97', text: 'answer-97', final: true, messageIndex: 0 }, { id: 'item-98', turnId: 'turn-98', text: 'answer-98', final: true, messageIndex: 0 },
+      ... 1 more item
+    ],
+    expected: [ { id: 'item-90', turnId: 'turn-90', text: 'answer-90', final: true, messageIndex: 0 }, { id: 'second-answer', turnId: 'turn-90', text: 'second', final: true }, { id: 'item-91', turnId: 'turn-91', text: 'answer-91', final: true, messageIndex: 0 }, { id: 'item-92', turnId: 'turn-92', text: 'answer-92', final: true, messageIndex: 0 }, { id: 'item-93', turnId: 'turn-93', text: 'answer-93', final: true, messageIndex: 0 }, { id: 'item-94', turnId: 'turn-94', text: 'answer-94', final: true, messageIndex: 0 }, { id: 'item-95', turnId: 'turn-95', text: 'answer-95', final: true, messageIndex: 0 }, { id: 'item-96', turnId: 'turn-96', text: 'answer-96', final: true, messageIndex: 0 }, { id: 'item-97', turnId: 'turn-97', text: 'answer-97', final: true, messageIndex: 0 }, { id: 'item-98', turnId: 'turn-98', text: 'answer-98', final: true, messageIndex: 0 }, { id: 'item-99', turnId: 'turn-99', text: 'answer-99', final: true, messageIndex: 0 } ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:2:4600
+✖ source window retains unknown unfinished identities and bounds finalized legacy records (20.893708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  50 !== 20
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:138:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 50,
+    expected: 20,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:2:5409
+✖ create acknowledges only validated applied selected approval mode (1.341125ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  undefined !== 'ask'
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:150:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'ask',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:2:5987
+✖ loaded resume acknowledges an explicitly applied approval mode, omitted mode keeps response compatible (0.872917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  undefined !== 'ask'
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-UA2HcL/snapshot-window-before.test.ts:170:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'ask',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

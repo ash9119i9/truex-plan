@@ -157,6 +157,99 @@ test("HTTP transport keeps direct calls and Last-Event-ID behavior", async (t) =
   assert.equal(requests[1].cursor, "g:1");
 });
 
+test("source snapshot window is identical for HTTP and AgentCore and rejects invalid options", async (t) => {
+  const received: string[] = [];
+  const server = createServer((req, res) => {
+    received.push(req.url!);
+    res.end("{}");
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(
+    () =>
+      new Promise<void>((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
+  );
+  const local = `http://127.0.0.1:${(server.address() as any).port}`;
+  const envelopes: any[] = [];
+  const sessionId = randomUUID();
+  const transport = new RuntimeTransport(async (_region, command) => {
+    envelopes.push(
+      JSON.parse(Buffer.from(command.input.payload as Uint8Array).toString()),
+    );
+    return output({ status: 200, body: {} }, "application/json", sessionId);
+  });
+  for (const runtimeOwner of [local, owner]) {
+    await transport.request({
+      owner: runtimeOwner,
+      sessionId,
+      path: "/threads/t/snapshot",
+      window: true,
+    });
+    await transport.request({
+      owner: runtimeOwner,
+      sessionId,
+      path: "/threads/t/events?cursor=g%3A1&window=1",
+    });
+    await transport.request({
+      owner: runtimeOwner,
+      sessionId,
+      path: "/threads/t/events",
+      window: true,
+      sync: "v1",
+      cursor: "g:1",
+    });
+    await transport.request({
+      owner: runtimeOwner,
+      sessionId,
+      path: "/threads/t/events?sync=v1&window=1&cursor=g%3A1",
+    });
+    for (const input of [
+      { path: "/threads/t/items", window: true },
+      { path: "/threads/t/snapshot?window=1&window=1" },
+      { path: "/threads/t/snapshot?window=0" },
+      { path: "/threads/t/snapshot?window=1", window: false },
+      { path: "/threads/t/snapshot", window: "1" },
+      { path: "/threads/t/snapshot", window: null },
+      { method: "POST", path: "/threads/t/resume", window: true },
+      { path: "/threads/t/snapshot", sync: "v1" },
+      { path: "/threads/t/events", sync: "v2" },
+      { path: "/threads/t/events", sync: null },
+      { path: "/threads/t/events?sync=v1&sync=v1" },
+      { path: "/threads/t/events?sync=v2", sync: "v1" },
+    ])
+      await assert.rejects(
+        transport.request({ owner: runtimeOwner, sessionId, ...input } as any),
+        { code: "INVALID_INPUT" },
+      );
+  }
+  assert.deepEqual(received, [
+    "/threads/t/snapshot?window=1",
+    "/threads/t/events?cursor=g%3A1&window=1",
+    "/threads/t/events?window=1&sync=v1",
+    "/threads/t/events?sync=v1&window=1&cursor=g%3A1",
+  ]);
+  assert.deepEqual(envelopes, [
+    { method: "GET", path: "/threads/t/snapshot", window: true },
+    { method: "GET", path: "/threads/t/events", cursor: "g:1", window: true },
+    {
+      method: "GET",
+      path: "/threads/t/events",
+      cursor: "g:1",
+      window: true,
+      sync: "v1",
+    },
+    {
+      method: "GET",
+      path: "/threads/t/events",
+      cursor: "g:1",
+      window: true,
+      sync: "v1",
+    },
+  ]);
+});
+
 test(
   "conversation creation, restart, streaming and ingestion reuse the stored AgentCore session",
   { timeout: 120_000 },

@@ -1,0 +1,2190 @@
+{
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "scope": "Actual service/configuration/isolated Mongo. Fake DNS and runtime, no client network/provider/paint. Injected delays characterize serial gates, not production latency.",
+  "reports": [
+    {
+      "scenario": {
+        "name": "warm-existing-zero-injected-delay",
+        "runtimeDelayMs": 0,
+        "dnsDelayMs": 0,
+        "connectors": 0
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "totalMs": 1.258874999999989,
+        "configurationMs": 0.7184999999999491,
+        "resumeTotalMs": 0.7257499999998345,
+        "platformRoundTripMs": 0.1642500000000382
+      },
+      "p95TotalMs": 2.83849999999984,
+      "samples": [
+        {
+          "totalMs": 2.83849999999984,
+          "configurationMs": 1.6972909999999501,
+          "resumeTotalMs": 1.7232910000000174,
+          "platformRoundTripMs": 0.35541600000010476,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 2.9664580000001024,
+          "configurationMs": 2.073082999999997,
+          "resumeTotalMs": 2.0919580000002043,
+          "platformRoundTripMs": 0.30670899999995527,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.736750000000029,
+          "configurationMs": 1.0131670000000668,
+          "resumeTotalMs": 1.0297499999999218,
+          "platformRoundTripMs": 0.22525000000018736,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.8064160000001266,
+          "configurationMs": 1.0587090000001353,
+          "resumeTotalMs": 1.0715420000001359,
+          "platformRoundTripMs": 0.22954100000015387,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.5991249999999582,
+          "configurationMs": 0.9198750000000473,
+          "resumeTotalMs": 0.9297500000000127,
+          "platformRoundTripMs": 0.21550000000002,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.5165839999999662,
+          "configurationMs": 0.8439159999998083,
+          "resumeTotalMs": 0.8541250000000673,
+          "platformRoundTripMs": 0.19979200000011588,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.3472920000001523,
+          "configurationMs": 0.7619999999999436,
+          "resumeTotalMs": 0.7830830000000333,
+          "platformRoundTripMs": 0.20020900000008623,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.539166000000023,
+          "configurationMs": 0.8909169999999449,
+          "resumeTotalMs": 0.9094589999999698,
+          "platformRoundTripMs": 0.18458400000008623,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.258874999999989,
+          "configurationMs": 0.7184999999999491,
+          "resumeTotalMs": 0.7257499999998345,
+          "platformRoundTripMs": 0.18966599999998834,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.1632500000000618,
+          "configurationMs": 0.6823750000000928,
+          "resumeTotalMs": 0.6902090000000953,
+          "platformRoundTripMs": 0.1555829999999787,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.2882919999999558,
+          "configurationMs": 0.7604999999998654,
+          "resumeTotalMs": 0.7664999999999509,
+          "platformRoundTripMs": 0.1642500000000382,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.1272910000000138,
+          "configurationMs": 0.6655419999999594,
+          "resumeTotalMs": 0.6707910000000084,
+          "platformRoundTripMs": 0.1491249999999127,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.0737500000000182,
+          "configurationMs": 0.6210000000000946,
+          "resumeTotalMs": 0.6260830000001079,
+          "platformRoundTripMs": 0.15291700000011588,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.4863749999999527,
+          "configurationMs": 1.0493329999999332,
+          "resumeTotalMs": 1.0545419999998558,
+          "platformRoundTripMs": 0.1433750000001055,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1.1013749999999618,
+          "configurationMs": 0.6545419999999922,
+          "resumeTotalMs": 0.6590419999999995,
+          "platformRoundTripMs": 0.14404100000001563,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 0.967040999999881,
+          "configurationMs": 0.5405840000000808,
+          "resumeTotalMs": 0.54424999999992,
+          "platformRoundTripMs": 0.16695800000002237,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 0.9808330000000751,
+          "configurationMs": 0.5677079999998114,
+          "resumeTotalMs": 0.5719579999999951,
+          "platformRoundTripMs": 0.13091599999984282,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 0.8820000000000618,
+          "configurationMs": 0.509958000000097,
+          "resumeTotalMs": 0.5136660000000575,
+          "platformRoundTripMs": 0.11950000000001637,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 0.9556669999999485,
+          "configurationMs": 0.5314160000000356,
+          "resumeTotalMs": 0.5360840000000735,
+          "platformRoundTripMs": 0.12858399999981884,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 0.9215840000001663,
+          "configurationMs": 0.5231669999998303,
+          "resumeTotalMs": 0.5277920000000904,
+          "platformRoundTripMs": 0.11666600000012295,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "warm-existing-20ms-runtime-hop",
+        "runtimeDelayMs": 20,
+        "dnsDelayMs": 0,
+        "connectors": 0
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "totalMs": 45.78800000000001,
+        "configurationMs": 1.4409999999998035,
+        "resumeTotalMs": 22.62262499999997,
+        "platformRoundTripMs": 21.842750000000024
+      },
+      "p95TotalMs": 47.14675000000034,
+      "samples": [
+        {
+          "totalMs": 43.73883300000011,
+          "configurationMs": 0.8112080000000788,
+          "resumeTotalMs": 21.886207999999897,
+          "platformRoundTripMs": 21.394000000000005,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 43.93654199999992,
+          "configurationMs": 0.9528330000000551,
+          "resumeTotalMs": 22.0017499999999,
+          "platformRoundTripMs": 21.45074999999997,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 44.77291700000001,
+          "configurationMs": 1.227041999999983,
+          "resumeTotalMs": 22.59204100000011,
+          "platformRoundTripMs": 21.46833300000003,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 44.52037499999983,
+          "configurationMs": 1.2312090000000353,
+          "resumeTotalMs": 21.84179199999994,
+          "platformRoundTripMs": 21.550458000000162,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.967375000000175,
+          "configurationMs": 1.4947910000000775,
+          "resumeTotalMs": 23.02387500000009,
+          "platformRoundTripMs": 21.748708999999963,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 46.23870800000009,
+          "configurationMs": 1.5760000000000218,
+          "resumeTotalMs": 22.726708000000144,
+          "platformRoundTripMs": 21.683709000000135,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 46.379416999999876,
+          "configurationMs": 1.848459000000048,
+          "resumeTotalMs": 23.12129099999993,
+          "platformRoundTripMs": 21.842750000000024,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 46.32799999999975,
+          "configurationMs": 1.400707999999895,
+          "resumeTotalMs": 22.380666999999903,
+          "platformRoundTripMs": 22.543125000000146,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 47.37883300000021,
+          "configurationMs": 2.0195420000000013,
+          "resumeTotalMs": 23.391041999999743,
+          "platformRoundTripMs": 22.546291999999994,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 46.391541999999845,
+          "configurationMs": 1.4409999999998035,
+          "resumeTotalMs": 22.557124999999814,
+          "platformRoundTripMs": 22.512166999999863,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.78800000000001,
+          "configurationMs": 1.5214590000000499,
+          "resumeTotalMs": 22.739000000000033,
+          "platformRoundTripMs": 22.08966700000019,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 46.722999999999956,
+          "configurationMs": 1.524333000000297,
+          "resumeTotalMs": 22.662124999999833,
+          "platformRoundTripMs": 22.02074999999968,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.718417000000045,
+          "configurationMs": 1.696957999999995,
+          "resumeTotalMs": 22.929417000000285,
+          "platformRoundTripMs": 21.90104199999996,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 47.14675000000034,
+          "configurationMs": 2.079208000000108,
+          "resumeTotalMs": 23.181375000000116,
+          "platformRoundTripMs": 22.478500000000167,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.54704199999969,
+          "configurationMs": 1.6214580000000751,
+          "resumeTotalMs": 22.835959000000003,
+          "platformRoundTripMs": 21.41775000000007,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.920958000000155,
+          "configurationMs": 1.4657079999997222,
+          "resumeTotalMs": 22.64587500000016,
+          "platformRoundTripMs": 21.82866699999977,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.37570900000037,
+          "configurationMs": 1.4314580000000205,
+          "resumeTotalMs": 22.26516700000002,
+          "platformRoundTripMs": 21.9990829999997,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 47.06616699999995,
+          "configurationMs": 1.424333000000388,
+          "resumeTotalMs": 22.62262499999997,
+          "platformRoundTripMs": 22.41645900000003,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.399875000000065,
+          "configurationMs": 1.2676249999999527,
+          "resumeTotalMs": 21.945584000000053,
+          "platformRoundTripMs": 22.10262499999999,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 45.01408300000003,
+          "configurationMs": 1.35674999999992,
+          "resumeTotalMs": 22.47958299999982,
+          "platformRoundTripMs": 21.386209000000235,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "warm-existing-settings-20ms-runtime-hop",
+        "runtimeDelayMs": 20,
+        "dnsDelayMs": 0,
+        "connectors": 0,
+        "settings": {
+          "model": "fixture-model",
+          "effort": "medium"
+        }
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "totalMs": 66.73604100000011,
+        "configurationMs": 1.3296669999999722,
+        "resumeTotalMs": 43.0634170000003,
+        "platformRoundTripMs": 22.137917000000016
+      },
+      "p95TotalMs": 68.25562499999978,
+      "samples": [
+        {
+          "totalMs": 65.88754199999994,
+          "configurationMs": 1.1847499999998945,
+          "resumeTotalMs": 42.15366700000004,
+          "platformRoundTripMs": 22.213166,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.07466700000032,
+          "configurationMs": 1.2568330000003698,
+          "resumeTotalMs": 42.021999999999935,
+          "platformRoundTripMs": 22.109249999999975,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 67.45879100000002,
+          "configurationMs": 1.1887499999998,
+          "resumeTotalMs": 43.61270800000011,
+          "platformRoundTripMs": 21.871166999999787,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 67.44650000000001,
+          "configurationMs": 1.5191250000002583,
+          "resumeTotalMs": 43.96529200000032,
+          "platformRoundTripMs": 21.55187500000011,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 67.99591700000019,
+          "configurationMs": 1.1257080000000315,
+          "resumeTotalMs": 44.40824999999995,
+          "platformRoundTripMs": 21.633957999999893,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 67.19987499999979,
+          "configurationMs": 1.541541000000052,
+          "resumeTotalMs": 42.99091599999974,
+          "platformRoundTripMs": 22.236791999999696,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.56670799999984,
+          "configurationMs": 1.188542000000325,
+          "resumeTotalMs": 42.30416699999978,
+          "platformRoundTripMs": 22.363124999999854,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 68.25562499999978,
+          "configurationMs": 1.3296669999999722,
+          "resumeTotalMs": 43.5928329999997,
+          "platformRoundTripMs": 22.749333000000206,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 68.27437499999996,
+          "configurationMs": 1.6229590000002645,
+          "resumeTotalMs": 43.958624999999756,
+          "platformRoundTripMs": 22.346542000000227,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 67.6244999999999,
+          "configurationMs": 1.3809160000000702,
+          "resumeTotalMs": 43.656124999999975,
+          "platformRoundTripMs": 22.60216700000001,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.38108300000022,
+          "configurationMs": 1.6676660000002812,
+          "resumeTotalMs": 43.03470799999968,
+          "platformRoundTripMs": 21.51566700000012,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.48683299999993,
+          "configurationMs": 1.4079999999999018,
+          "resumeTotalMs": 43.11999999999989,
+          "platformRoundTripMs": 22.137917000000016,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 65.42420800000036,
+          "configurationMs": 1.2298329999998714,
+          "resumeTotalMs": 42.70433400000002,
+          "platformRoundTripMs": 21.600625000000036,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 65.71341699999994,
+          "configurationMs": 0.964708999999857,
+          "resumeTotalMs": 43.0634170000003,
+          "platformRoundTripMs": 21.965625000000273,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 67.42820799999981,
+          "configurationMs": 1.160207999999784,
+          "resumeTotalMs": 43.617041999999856,
+          "platformRoundTripMs": 22.570374999999785,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 67.24066700000003,
+          "configurationMs": 1.4994999999998981,
+          "resumeTotalMs": 42.74399999999969,
+          "platformRoundTripMs": 22.85129199999983,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.41516600000023,
+          "configurationMs": 1.339792000000216,
+          "resumeTotalMs": 43.61270799999966,
+          "platformRoundTripMs": 21.22012500000028,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.43483400000014,
+          "configurationMs": 1.3382919999999103,
+          "resumeTotalMs": 42.757290999999896,
+          "platformRoundTripMs": 22.169416000000183,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.9608330000001,
+          "configurationMs": 1.4209580000001552,
+          "resumeTotalMs": 43.29437499999949,
+          "platformRoundTripMs": 22.007666999999856,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 66.73604100000011,
+          "configurationMs": 1.3000410000004194,
+          "resumeTotalMs": 42.773041999999805,
+          "platformRoundTripMs": 22.160750000000007,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/capabilities",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "warm-existing-3-connectors-25ms-DNS",
+        "runtimeDelayMs": 20,
+        "dnsDelayMs": 25,
+        "connectors": 3
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "totalMs": 124.83316699999978,
+        "configurationMs": 80.01491600000008,
+        "resumeTotalMs": 100.9441250000009,
+        "platformRoundTripMs": 21.962040999999772
+      },
+      "p95TotalMs": 126.97762500000044,
+      "samples": [
+        {
+          "totalMs": 124.980458,
+          "configurationMs": 79.73866699999962,
+          "resumeTotalMs": 100.90704099999948,
+          "platformRoundTripMs": 22.525040999999874,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 125.49633300000005,
+          "configurationMs": 80.1801660000001,
+          "resumeTotalMs": 101.38233300000047,
+          "platformRoundTripMs": 22.35412499999984,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 127.50612499999988,
+          "configurationMs": 81.08720800000083,
+          "resumeTotalMs": 102.25570900000002,
+          "platformRoundTripMs": 22.74554100000023,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 126.46295799999916,
+          "configurationMs": 80.5102910000005,
+          "resumeTotalMs": 101.6455419999993,
+          "platformRoundTripMs": 22.91833399999996,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 125.31416699999954,
+          "configurationMs": 80.57150000000001,
+          "resumeTotalMs": 101.71687500000007,
+          "platformRoundTripMs": 21.632958000000144,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 125.73154200000045,
+          "configurationMs": 80.01491600000008,
+          "resumeTotalMs": 101.1747089999999,
+          "platformRoundTripMs": 22.418041999999332,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 126.97762500000044,
+          "configurationMs": 81.15520899999956,
+          "resumeTotalMs": 101.67849999999999,
+          "platformRoundTripMs": 22.714582999999948,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 124.58508399999937,
+          "configurationMs": 79.25458400000025,
+          "resumeTotalMs": 100.49779200000012,
+          "platformRoundTripMs": 22.022500000000036,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 123.88545800000065,
+          "configurationMs": 79.79141699999946,
+          "resumeTotalMs": 100.9596249999995,
+          "platformRoundTripMs": 21.68620800000008,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 122.70554100000027,
+          "configurationMs": 79.6376250000003,
+          "resumeTotalMs": 100.11091699999997,
+          "platformRoundTripMs": 21.563124999999673,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 124.4066670000002,
+          "configurationMs": 80.45520900000065,
+          "resumeTotalMs": 100.9441250000009,
+          "platformRoundTripMs": 21.61320799999976,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 124.16133300000001,
+          "configurationMs": 80.69162499999948,
+          "resumeTotalMs": 100.12087500000052,
+          "platformRoundTripMs": 21.962040999999772,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 125.83837499999936,
+          "configurationMs": 80.39274999999998,
+          "resumeTotalMs": 101.55187500000011,
+          "platformRoundTripMs": 21.668958000000202,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 124.19695800000045,
+          "configurationMs": 79.70179199999984,
+          "resumeTotalMs": 100.34650000000056,
+          "platformRoundTripMs": 21.972917000000052,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 123.39224999999988,
+          "configurationMs": 79.74562499999956,
+          "resumeTotalMs": 100.65608399999928,
+          "platformRoundTripMs": 21.527500000000146,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 124.83316699999978,
+          "configurationMs": 79.21754200000032,
+          "resumeTotalMs": 100.54970799999955,
+          "platformRoundTripMs": 22.993249999999534,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 125.00737499999923,
+          "configurationMs": 80.98191700000007,
+          "resumeTotalMs": 101.87129100000038,
+          "platformRoundTripMs": 21.086333000000195,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 123.8150829999995,
+          "configurationMs": 78.7723330000008,
+          "resumeTotalMs": 99.93158399999993,
+          "platformRoundTripMs": 21.78099999999904,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 126.46129099999962,
+          "configurationMs": 80.74675000000025,
+          "resumeTotalMs": 101.9163750000007,
+          "platformRoundTripMs": 22.384083999999348,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 123.14995799999997,
+          "configurationMs": 79.58349999999882,
+          "resumeTotalMs": 100.65883300000132,
+          "platformRoundTripMs": 21.47020799999882,
+          "dnsCalls": 3,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "duplicate-accepted-20ms-runtime-hop",
+        "runtimeDelayMs": 20,
+        "dnsDelayMs": 0,
+        "connectors": 0,
+        "duplicate": true
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "totalMs": 22.26599999999962,
+        "configurationMs": 0.7132500000006985,
+        "resumeTotalMs": 21.588541999999507,
+        "platformRoundTripMs": null
+      },
+      "p95TotalMs": 22.680249999999432,
+      "samples": [
+        {
+          "totalMs": 22.380832999999257,
+          "configurationMs": 0.6311249999998836,
+          "resumeTotalMs": 21.74395900000127,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 21.764499999999316,
+          "configurationMs": 0.6532919999990554,
+          "resumeTotalMs": 21.01024999999936,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.26599999999962,
+          "configurationMs": 0.620375000000422,
+          "resumeTotalMs": 21.667042000000947,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.270291999999245,
+          "configurationMs": 0.7132500000006985,
+          "resumeTotalMs": 21.697707999999693,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.37262499999997,
+          "configurationMs": 0.6713749999998981,
+          "resumeTotalMs": 21.715166999998473,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.65900000000147,
+          "configurationMs": 0.715541999999914,
+          "resumeTotalMs": 21.923375000000306,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.29466599999978,
+          "configurationMs": 0.6654579999994894,
+          "resumeTotalMs": 21.703542000001107,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.08745899999849,
+          "configurationMs": 0.7133749999993597,
+          "resumeTotalMs": 21.451750000000175,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 21.800375000000713,
+          "configurationMs": 0.6707499999993161,
+          "resumeTotalMs": 21.130959000000075,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 21.833957999999257,
+          "configurationMs": 0.7233330000017304,
+          "resumeTotalMs": 21.14337499999965,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.680249999999432,
+          "configurationMs": 0.8147500000013679,
+          "resumeTotalMs": 21.88091700000041,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.152749999999287,
+          "configurationMs": 0.912625000000844,
+          "resumeTotalMs": 21.40058399999907,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.637917000000016,
+          "configurationMs": 0.8428749999984575,
+          "resumeTotalMs": 21.895167000000583,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.79704099999981,
+          "configurationMs": 0.8352090000007593,
+          "resumeTotalMs": 21.896167000000787,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 21.8364160000001,
+          "configurationMs": 0.8962910000009288,
+          "resumeTotalMs": 20.962374999999156,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.418832999999722,
+          "configurationMs": 0.8586670000004233,
+          "resumeTotalMs": 21.48962500000016,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.551124999999956,
+          "configurationMs": 0.8188329999993584,
+          "resumeTotalMs": 21.871665999999095,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.1875,
+          "configurationMs": 0.5434169999989535,
+          "resumeTotalMs": 21.588541999999507,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 22.007667000001675,
+          "configurationMs": 0.6077500000010332,
+          "resumeTotalMs": 21.366667000000234,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        },
+        {
+          "totalMs": 21.710708000000523,
+          "configurationMs": 0.4974160000001575,
+          "resumeTotalMs": 20.868999999998778,
+          "platformRoundTripMs": null,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "find:messages"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "warm-existing-225ms-per-Mongo-await",
+        "runtimeDelayMs": 20,
+        "dnsDelayMs": 0,
+        "connectors": 0,
+        "dbDelayMs": 225,
+        "repeats": 3,
+        "warmups": 1
+      },
+      "repeats": 3,
+      "warmups": 1,
+      "p50": {
+        "totalMs": 1633.0120410000018,
+        "configurationMs": 908.5045420000006,
+        "resumeTotalMs": 929.7304590000003,
+        "platformRoundTripMs": 249.00924999999916
+      },
+      "p95TotalMs": 1637.3347919999997,
+      "samples": [
+        {
+          "totalMs": 1633.0120410000018,
+          "configurationMs": 907.7598330000001,
+          "resumeTotalMs": 929.0004169999993,
+          "platformRoundTripMs": 249.00924999999916,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1637.3347919999997,
+          "configurationMs": 912.460665999999,
+          "resumeTotalMs": 932.6307500000003,
+          "platformRoundTripMs": 248.36941699999988,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        },
+        {
+          "totalMs": 1631.7077090000002,
+          "configurationMs": 908.5045420000006,
+          "resumeTotalMs": 929.7304590000003,
+          "platformRoundTripMs": 249.16554199999882,
+          "dnsCalls": 0,
+          "runtimePaths": [
+            "/threads/fixture-thread/resume",
+            "/threads/fixture-thread/turns"
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ]
+        }
+      ]
+    }
+  ]
+}

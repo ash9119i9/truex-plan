@@ -1,0 +1,44 @@
+{
+  "frontend": {
+    "counts": {
+      "tests": 343,
+      "pass": 343,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "log": "docs/performance/t3-chat/send-fix-after-frontend-tests.txt"
+  },
+  "platform": {
+    "counts": {
+      "tests": 211,
+      "pass": 211,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "log": "docs/performance/t3-chat/send-fix-after-platform-tests.txt"
+  },
+  "agent-core": {
+    "counts": {
+      "tests": 199,
+      "pass": 199,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "log": "docs/performance/t3-chat/send-fix-after-agent-core-tests.txt"
+  },
+  "model-gateway": {
+    "counts": {
+      "tests": 58,
+      "pass": 58,
+      "fail": 0,
+      "cancelled": 0,
+      "skipped": 0
+    },
+    "log": "docs/performance/t3-chat/send-fix-after-model-gateway-tests.txt"
+  },
+  "totalTests": 811,
+  "totalPassed": 811
+}

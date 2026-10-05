@@ -1,0 +1,588 @@
+
+> frontend@0.1.0 test
+> node --experimental-strip-types --test test/*.test.ts
+
+(node:87670) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/agent-board.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ TILTS and BOARD_KINDS match the spec (2.514833ms)
+✔ inkOn picks white only on the ice frame (1.117917ms)
+✔ pad2 pads to two digits (0.05125ms)
+✔ filterAgents by kind (0.078625ms)
+✔ filterAgents matches name, handle, id fallback and description (0.056417ms)
+✔ filterAgents trims, ignores case and combines with kind (0.04375ms)
+✔ showNewCard hides on Built-in or an active search (0.036334ms)
+✔ boardMeta shortens the model and lowercases reasoning (0.081875ms)
+(node:87671) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/agents.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87671) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/shared/contracts.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/package.json.
+✔ modelShort drops the Claude prefix and lowercases (0.690375ms)
+✔ createAgentBody trims text and sends only the contract keys (0.607833ms)
+✔ createAgentBody keeps an empty purpose empty (0.078833ms)
+✔ handleTaken matches existing handles only (1.641916ms)
+✔ handles follow the shared agentHandle rule (0.219458ms)
+(node:87672) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/api.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[truex] api request failed {
+  method: 'POST',
+  path: '/api/sessions',
+  status: 422,
+  code: 'MODEL_CONFIGURATION',
+  requestId: undefined
+}
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/agents',
+  status: 503,
+  code: 'HTTP_503',
+  requestId: undefined
+}
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/agents',
+  status: 503,
+  code: 'HTTP_503',
+  requestId: undefined
+}
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/agents',
+  status: 503,
+  code: 'HTTP_503',
+  requestId: undefined
+}
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/agents',
+  status: 503,
+  code: 'HTTP_503',
+  requestId: undefined
+}
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/agents',
+  status: 200,
+  code: 'INVALID_RESPONSE',
+  requestId: undefined
+}
+[truex] api request failed {
+  method: 'POST',
+  path: '/api/sessions',
+  status: 0,
+  code: 'NETWORK_ERROR',
+  requestId: undefined
+}
+[truex] api request failed {
+  method: 'POST',
+  path: '/api/sessions',
+  status: 0,
+  code: 'REQUEST_TIMEOUT',
+  requestId: undefined
+}
+✔ cold runtime requests can finish after 45 seconds without resubmitting (26.237083ms)
+✔ runtime timeouts retain the server reference without retrying the mutation (0.8455ms)
+✔ API errors retain server detail and metadata (0.582834ms)
+✔ HTML, empty, and malformed error bodies produce status-specific messages (1.509917ms)
+✔ connection and timeout errors explain uncertain delivery; success is unchanged (0.514333ms)
+✔ API errors carry the request id from the body, else the header (1.109042ms)
+✔ network failures keep the original error as the cause and are logged (0.338042ms)
+✔ userMessage shows API messages and hides unexpected errors (0.419791ms)
+(node:87673) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/approval-mode.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/features',
+  status: 500,
+  code: 'HTTP_500',
+  requestId: undefined
+}
+[truex] feature flags failed { code: 'HTTP_500', status: 500, requestId: undefined }
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/features',
+  status: 0,
+  code: 'NETWORK_ERROR',
+  requestId: undefined
+}
+[truex] feature flags failed { code: 'NETWORK_ERROR', status: 0, requestId: undefined }
+[truex] api request failed {
+  method: 'POST',
+  path: '/api/sessions/s1/approval-mode',
+  status: 422,
+  code: 'HTTP_422',
+  requestId: undefined
+}
+✔ the picker is hidden when approval modes are off (0.796167ms)
+✔ autopilot is offered only when it is switched on (1.206375ms)
+✔ the selected mode is the session's, then the draft, then the default (0.120666ms)
+✔ an unavailable autopilot selection falls back to an offered mode (0.093042ms)
+✔ features load from platform and failures mean off (23.747667ms)
+✔ changing the mode posts it to the session (0.759334ms)
+✔ records answered by a mode say which mode (0.312458ms)
+✔ tool decisions use the mode label when a mode allowed them (0.336209ms)
+✔ missing or mismatched effective approval mode is not confirmation (2.462042ms)
+✔ a different effective approval mode is rejected (1.391084ms)
+(node:87674) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/auto-tab.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a new active goal opens the Goal tab (0.39425ms)
+✔ goal progress, pauses and completion do not switch (0.056792ms)
+✔ a new or revised plan opens the Plan tab, progress does not (0.065667ms)
+✔ a plan during an active goal keeps the Goal tab (0.04275ms)
+✔ a new helper opens the Agents tab once (0.047875ms)
+✔ replayed history does not switch (0.042416ms)
+✔ the most specific tab wins a batch (0.037709ms)
+✔ opens a closed panel, switches an open one (0.057167ms)
+✔ holds off for the user (0.055584ms)
+✔ never opens a drawer or pushes the sidebar out (0.071875ms)
+✔ seen state follows the stream (0.381791ms)
+(node:87675) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1000 compatible answer deltas use one projection application with exact state (29.20975ms)
+✔ thread, turn, item and ordinal differences split adjacent runs (0.438792ms)
+✔ every non-answer frame is an ordering barrier, including both reasoning channels (1.192042ms)
+✔ missing identities and invalid ordinals stay uncoalesced without changing legacy behavior (1.350625ms)
+✔ malformed payloads preserve the reducer's original result or failure (0.852375ms)
+✔ aliases, completed replay, conflicting ordinals and Unicode retain exact reducer state (0.218209ms)
+✔ seeded randomized batches equal the unoptimized reducer at every publication boundary (142.223292ms)
+✔ coalesced projection preserves raw events and terminal cursor during paint publication (3.125916ms)
+✔ coalesced projection preserves raw events and terminal cursor during timer publication (2.157375ms)
+✔ coalesced projection preserves raw events and terminal cursor during navigation publication (4.367958ms)
+✔ rejected navigation ownership publishes and acknowledges no coalesced state (0.233792ms)
+✔ malformed transport frame flushes coalesced accepted text without acknowledging the rejected cursor (0.342792ms)
+(node:87676) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat-groups.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a streaming update keeps historical group references and updates its own group (0.599875ms)
+✔ grouping preserves commands, helper blocks, resolved approvals, and turn boundaries (0.803792ms)
+✔ provider replay shadows stay hidden and become visible only when they diverge (0.157125ms)
+✔ reset releases previous groups and matching IDs cannot resurrect another chat's content (0.106125ms)
+(node:87677) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ history, replay, and a snapshot render one authoritative reply (1.34225ms)
+✔ a final adopts its stream even when runtime changes the ID (0.255792ms)
+✔ different messages and turns are not collapsed by identical text (0.288583ms)
+✔ late reasoning is placed before the saved answer and updated in place (0.684292ms)
+✔ raw reasoning and summary streams never concatenate duplicate content (0.135042ms)
+✔ runtime agentMessage items cannot create a second answer row (0.171708ms)
+✔ completing a turn closes only its own partial content (0.07225ms)
+✔ provider replay on a second unfinished item stays hidden, including after completion (0.249625ms)
+✔ a partial replay that diverges becomes a separate visible message (0.178042ms)
+✔ reconnect restores thinking before its answer without duplicating either (0.297042ms)
+✔ command submissions and structured results survive history plus replayed goal answers (0.150709ms)
+✔ reconnect preserves completed command results and keeps thinking before the answer (0.243417ms)
+✔ resolved approvals stay in the chat after their turn, once (0.259625ms)
+✔ indexed history preserves alias precedence and removes superseded ordinal/text indexes (0.413166ms)
+✔ indexed history matches the live merger across deterministic mixed identity collisions (40.883375ms)
+✔ history hydration does not mutate saved messages or collapse distinct same-text items in a large turn (5.450375ms)
+✔ recent history windows update their rows without moving the loaded older prefix or active tail (0.414667ms)
+✔ older pages prepend once and preserve existing anchor, reasoning, helper, and approval objects (0.161375ms)
+✔ a persisted final adopts stream aliases and keeps its stable row ID (0.105916ms)
+✔ history accepts a pending user without downgrading a terminal command result (0.053959ms)
+✔ a delta received during an older fetch remains live after the page is prepended (0.065709ms)
+✔ new recent rows fit before a pending active tail even when their window has no shared row (0.0495ms)
+✔ a newly persisted answer stays after reasoning/helpers and before a trailing resolved approval (0.147833ms)
+✔ empty or repeated windows leave the transcript reference unchanged (0.143208ms)
+✔ a stale history response cannot replace newer SSE text or finalize its live stream (0.282542ms)
+✔ history can finalize a cached partial when no new live event arrived during its request (0.098667ms)
+✔ legacy unfinished reasoning before a saved final does not move new recent rows ahead of old history (0.1145ms)
+✔ older rows with a reused turn ID prepend without adopting an unrelated active item (0.086833ms)
+(node:87678) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ first message and retry cannot run after approval confirmation fails (28.255292ms)
+✔ oversized normal message stays editable and creates no session or row (7.875833ms)
+✔ editor stays usable during catalog loading and local dispatch, while Send is gated (32.911917ms)
+✔ successful goal command cannot clear B typed while A awaits creation (5.406292ms)
+✔ delayed suggestion never replaces B typed before it starts sending (7.06ms)
+✔ double submit creates and dispatches once; B survives slow creation and acceptance (4.9645ms)
+✔ definite creation failure restores only the unchanged submitted draft (20.104708ms)
+✔ uncertain send preserves B and its unknown row without automatic resend (43.602917ms)
+✔ retry confirms the requested approval mode on the same session before dispatch (7.76925ms)
+✔ goal creation and existing command retries require confirmed approval mode (5.867084ms)
+✔ a pending approval update gates sends and overlapping mode changes (6.839083ms)
+✔ a mismatched approval confirmation blocks first send (9.395417ms)
+✔ disabled approval modes make no configuration request; steering is explicit (10.227583ms)
+✔ navigation invalidates late creation without sending, attaching or replacing B (12.520208ms)
+✔ normal input boundaries reject whitespace/non-string and preserve UTF-16 length (96.577042ms)
+✔ suggestion restores previous draft only when no later edit owns the composer (69.90225ms)
+✔ a newer same-value draft keeps ownership after a goal completes (14.123417ms)
+✔ existing capability command sends frozen A and preserves B on failure (8.218792ms)
+✔ configured creation sends the frozen selected mode and skips a redundant update (7.890208ms)
+✔ older platform response still confirms the selected mode before sending (9.99925ms)
+(node:87679) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/document-kind.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ classifies SAP code, text and office files for icons and labels (0.659125ms)
+(node:87680) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/fit-panel.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ min size: sidebar and docked panel from 1148px (0.821083ms)
+✔ min size: sidebar yields between 901 and 1147px, panel never floats (0.068083ms)
+✔ max size: both from 1508px (0.051042ms)
+✔ max size: sidebar hidden between 1230 and 1507px (0.060875ms)
+✔ max size: panel floats between 901 and 1229px (0.049291ms)
+✔ ≤900px: sidebar allowed, panel is a CSS drawer (no overlay flag) (0.054875ms)
+✔ ≤720px: one drawer at a time, width clamps to vw − 20 (0.045167ms)
+✔ panel closed: sidebar always allowed (0.637792ms)
+✔ sidebar not requested: panel docks unless chat is too narrow (0.082958ms)
+(node:87681) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/goal-completion.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ closing summary is the last final assistant reply (0.61675ms)
+✔ closing summary ignores replies from before the goal was set (0.075833ms)
+✔ closing summary skips empty replies and handles no entries (0.040833ms)
+✔ long summaries are cut at a word with a flag (0.123459ms)
+✔ goal documents fall between creation and completion (1.325667ms)
+✔ goal documents need creation times (0.074041ms)
+✔ a goal still running has no end yet (0.05275ms)
+✔ millisecond goal times are accepted (0.047375ms)
+(node:87688) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/goal-errors.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ every reason has a label and a resume, compact or no action (0.664417ms)
+✔ provider tips follow the model profile's provider, with a fallback (0.211958ms)
+✔ turn failures keep only the public fields and default to other (0.309291ms)
+✔ a failure explains the goal only while Codex has it stopped (0.052042ms)
+(node:87689) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/goal-history.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ token change is Codex's count since the previous change of the same goal (0.883333ms)
+✔ token change does not reach across goals or report a drop (0.166333ms)
+(node:87690) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/goal.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a completed goal awaits review until the user accepts that same goal (0.705667ms)
+✔ durations and token counts read naturally (0.094583ms)
+✔ a goal-first submission sets the goal with an optional budget (0.965208ms)
+✔ goal state label follows the review (0.149084ms)
+✔ same goal matches on creation time, so an edited objective is the same goal (0.102459ms)
+✔ goal tokens show the larger of Codex's count and Truex's count (0.607541ms)
+✔ token budgets accept plain, grouped and k amounts within limits (0.235375ms)
+✔ extending a budget leaves room above Codex's own count (0.05425ms)
+✔ goal history entries read as plain sentences (0.081292ms)
+✔ auraFor is deterministic and returns property names (0.529083ms)
+✔ auraFor fixes the signed-shift bug for hashes at or above 2^31 (0.063125ms)
+✔ auraFor keeps b in range and different from a, with a3 the soft of a1 (1.06ms)
+(node:87691) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/invite-aura.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87692) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/invite-form.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ clean trims and collapses whitespace (0.967625ms)
+✔ isValid follows the spec rule plus the 60-character cap (0.290583ms)
+✔ initials takes the first character of the first two words (0.070875ms)
+✔ firstName, roleLabel, logoInitial (0.051334ms)
+✔ expiryLabel at its boundaries (12.851583ms)
+✔ ttlCopy and startUrl (0.064208ms)
+✔ parseLookup rejects bodies that aren't the contract's shape (0.076791ms)
+✔ parseLookup keeps known fields and drops bad ones (0.093417ms)
+✔ inviteKind for every status and param combination (0.123ms)
+✔ errorNotice gives a banner only for codes without their own state (0.084917ms)
+✔ checkup: valid, typing and submitting (0.1105ms)
+✔ checkup: joined and member are all done (0.047459ms)
+✔ checkup: bad states mark step 1 and keep a third of the bar (0.059ms)
+(node:87693) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/legend-list-patch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ react.js: exact source patch is idempotent and rejects unknown modifications (13.839625ms)
+✔ react.mjs: exact source patch is idempotent and rejects unknown modifications (4.467625ms)
+✔ patched DOM reordering uses native moveBefore and supports both fallbacks (3.913083ms)
+✔ temporary padding records browser normalization for baseline restoration (9.835417ms)
+✔ check never writes; mismatches are rejected before either bundle is written; apply is idempotent (187.809458ms)
+Archived pre-patch webpack cache: /var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-legend-webpack-cache-EKZHQ2
+✔ apply archives stale webpack cache once; check and idempotent apply preserve new cache (485.935958ms)
+(node:87694) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/markdown-incremental.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ incremental matches full HTML and positions at every streamed prefix: prose (107.997917ms)
+✔ incremental matches full HTML and positions at every streamed prefix: gfm (74.5235ms)
+✔ incremental matches full HTML and positions at every streamed prefix: references (62.946667ms)
+✔ incremental matches full HTML and positions at every streamed prefix: footnotes (169.675792ms)
+✔ incremental matches full HTML and positions at every streamed prefix: nested (110.579333ms)
+✔ incremental matches full HTML and positions at every streamed prefix: unclosed (44.493583ms)
+✔ incremental matches full HTML and positions at every streamed prefix: html (43.096416ms)
+✔ only the suffix is parsed after a completed top-level fence (0.5165ms)
+✔ prefix replacements, CRLF, BOM, and repeated transforms remain equivalent (3.897375ms)
+✔ document definitions cannot freeze earlier reference resolution (1.852083ms)
+✔ caches remain private to each renderer (0.9005ms)
+✔ secondary transform parses use the original parser without altering the document cache (0.527208ms)
+(node:87695) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ closed reasoning excludes the full body and never joins or counts it (4.161625ms)
+✔ empty reasoning disappears; streaming empty trace remains a disclosure (0.507125ms)
+✔ failed, interrupted and unknown terminal outcomes never guess 100 percent (4.536208ms)
+✔ terminal percentage uses authoritative plan progress including partial plans (2.170916ms)
+✔ closed activity never enumerates event bodies (0.293667ms)
+✔ Markdown controls leave code bytes and safe Markdown handling intact (4.77075ms)
+✔ long prompts expose an accessible disclosure and preserve stable turn anchors and full text (2.547709ms)
+(node:87696) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/observability.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87696) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/shared/privacy.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/package.json.
+✔ durations read as plain numbers (0.372917ms)
+✔ token split separates cached input and reasoning (0.324708ms)
+✔ receipt says detected, never clean (0.213833ms)
+✔ helper usage is added to the receipt total (0.045333ms)
+✔ timeline puts helpers in their own lane and marks the slowest step (0.275917ms)
+✔ running steps extend to now and tiny steps stay visible (0.060875ms)
+✔ overlapping steps in one lane go to separate rows (0.090375ms)
+✔ summary derives averages, p95, cache share and findings (0.100459ms)
+✔ rate limit meters show window names and reset times (0.107458ms)
+✔ draft notes name what was found without blocking (0.974958ms)
+✔ traces merge by turn id and events update state (0.1825ms)
+(node:87697) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/ordered-batch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1000 delta frames publish once in original order and preserve all text (1.267042ms)
+✔ timer fallback publishes when animation frames do not run (0.333666ms)
+✔ flush and discard cancel stale scheduled callbacks (0.06875ms)
+✔ queue count is bounded and reentrant publication retains new frames (1.529917ms)
+(node:87698) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/plan.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the plan survives turn boundaries (0.698791ms)
+✔ plan updates and snapshots replace the plan (0.500958ms)
+✔ step statuses accept both Codex and snake_case spellings (0.088292ms)
+✔ progress counts completed steps and finds the current one (0.803708ms)
+✔ a pending plan_approval request means the plan awaits approval (0.096084ms)
+✔ approve answers with the option label in the shared answer shape (0.090083ms)
+✔ revise sends the label first and feedback as a trimmed user note (0.060458ms)
+(node:87699) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/projects.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[truex] api request failed {
+  method: 'POST',
+  path: '/api/projects',
+  status: 400,
+  code: 'INVALID_PROJECT',
+  requestId: undefined
+}
+✔ project names are trimmed and limited to 80 characters (1.259834ms)
+✔ projects sort by most recent update, then name (6.6075ms)
+✔ menu offers add for loose conversations and move/remove otherwise (0.827875ms)
+✔ draft project resolves only while the project exists (0.18375ms)
+✔ session body includes projectId only when set (0.0965ms)
+✔ API helpers call the project endpoints (27.099792ms)
+✔ invalid names are rejected before any request (0.496667ms)
+✔ server validation errors surface with their code (0.740792ms)
+✔ creation includes an explicit approval mode while preserving old body defaults (0.077375ms)
+(node:87700) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/request-input.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a single multiple-choice question is answered by one click (0.630166ms)
+✔ tool approvals show friendly labels but keep the Codex value (0.449875ms)
+✔ free text appears only without options or when Other is chosen (0.109083ms)
+✔ answers must be non-blank and are trimmed (0.422083ms)
+✔ expiry counts down in milliseconds and stops at zero (0.1605ms)
+✔ multi-question requests step forward and send after the last answer (0.118625ms)
+✔ the allow-for-this-chat option shows as given and keeps its label (0.109083ms)
+✔ missing answers are listed by question id, in order (0.083291ms)
+✔ answer errors explain conflicts and withdrawn requests (0.421541ms)
+(node:87722) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/session-cache.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ warm reads return the same display reference and touch LRU recency (2.069542ms)
+✔ the byte budget evicts the least recently used value (0.192208ms)
+✔ replacement subtracts old bytes and makes the new value recent (0.244333ms)
+✔ oversized replacement drops stale data without evicting other chats (0.768583ms)
+✔ TTL measures idle time and expires at the exact boundary (0.135083ms)
+✔ writes prune expired values before budget eviction (0.091833ms)
+✔ delete and clear release accounting and permit fresh values (0.103292ms)
+✔ unserializable values and invalid estimates do not disrupt display (0.207417ms)
+✔ the default estimate counts serialized Unicode strings conservatively (0.131334ms)
+✔ zero limits disable caching and invalid limits are rejected (0.397833ms)
+(node:87723) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/session-history.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ opening and resync share recovery, while persisted reads remain independent (0.63675ms)
+✔ failed and synchronously throwing reads are retryable without orphan rejections (0.203333ms)
+✔ opening starts saved and recovery reads together and retains fast completed recovery (0.116166ms)
+✔ early recovery failure remains observable after slow saved history (3.887667ms)
+✔ failed saved reads leave recovery rejection handled and a new opening retryable (1.481208ms)
+(node:87744) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/session-preparation.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ concurrent submissions share one pending conversation creation (1.106791ms)
+✔ a later submission reuses the created conversation (0.073333ms)
+✔ switching drafts ignores an old startup even if it finishes last (0.100542ms)
+✔ opening history invalidates a pending draft without cancelling its POST (0.048583ms)
+✔ an explicit new chat with the same agent starts a fresh conversation (0.061792ms)
+✔ a changed draft configuration never reuses the previous conversation (0.061542ms)
+✔ a timed-out creation is not retried by another submission (0.254792ms)
+✔ synchronous startup errors use the same failure path (0.496708ms)
+(node:87745) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/sidebar-lifecycle.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ unchanged memoized sidebar moves Today to Earlier at local midnight (143.961708ms)
+✔ collapsed shelf preference survives an actual sidebar remount (80.813083ms)
+✔ hidden sidebar clock wakes only on visibility/focus and cleans up (33.405916ms)
+✔ midnight scheduling follows 23 and 25 hour local DST days (50.278458ms)
+✔ invalid stored preference keeps the default; remount stores only a boolean (26.697542ms)
+✔ denied preference storage leaves the mounted shelf usable (9.206292ms)
+✔ focus resynchronizes local calendar grouping after a time-zone change (12.0775ms)
+(node:87794) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/sidebar.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the Earlier shelf starts at ten rows and expands by twenty-five (0.719458ms)
+✔ a deep selected conversation stays reachable without expanding intervening rows (0.092625ms)
+✔ a collapsed shelf retains only the selected row and restores its limit on expansion (0.321166ms)
+✔ windowing does not mutate or remove Search and project menu data (0.054084ms)
+✔ empty lists, a short tail and refreshed missing selections stay valid (0.076125ms)
+✔ local date groups preserve source ordering and object references (0.098625ms)
+(node:87800) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/slash-commands.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ questions containing slashes and paths remain messages (0.705083ms)
+✔ picker only captures command names, never goal text or multiline editing (0.326959ms)
+✔ goal commands preserve the objective's formatting and distinguish read and clear (1.774333ms)
+✔ invalid arguments cannot silently execute conversation actions (0.114875ms)
+✔ valid actions map to the existing capability APIs (0.122375ms)
+✔ panel commands open workspace panels and take no arguments (0.764875ms)
+✔ goal subcommands pause, resume and budget without becoming objectives (25.554708ms)
+(node:87801) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/source-resume-page.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ failed full recovery never qualifies a pair or bypasses the next full read (25.071208ms)
+✔ successful cold recovery needs a fresh handoff; warm reopen still reads authorized durable history (13.17375ms)
+✔ authorization revocation clears source and displayed owners before another remember call (24.834875ms)
+✔ revoked cached and cold opens cannot commit a pending persisted read (12.720959ms)
+✔ an independent source pair does not paint orphan AI rows before durable history (11.830375ms)
+(node:87802) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/source-sync.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ canonical safe cursors reject zero padding, unsafe integers and malformed generations (1.320625ms)
+✔ a marker during HTTP recovery never makes a mixed durable display eligible (0.961083ms)
+✔ zero-gap warm replay restores running/pending authority without another transcript snapshot (0.151708ms)
+✔ missing deltas apply once before same-cursor marker; public filtered sequence gaps are allowed (0.482833ms)
+✔ wrong marker envelope, thread, generation, mode and coverage fail closed with no partial pair (0.76375ms)
+✔ oversized source projection is disqualified rather than silently truncated (0.254167ms)
+✔ display overlays retain durable commands/users while the source pair stays isolated (0.32525ms)
+✔ operational marker state requires coherent source cursor and valid running state (0.107958ms)
+✔ readiness deadlines, navigation cancellation and stale markers are deterministic (0.388875ms)
+✔ overlay preserves reasoning fallback identity and accepts its next itemless delta (0.201542ms)
+✔ implicit EventSource reconnect marker cannot silently reuse the original replay boundary (0.098541ms)
+✔ long-history cold hydration and repeated warm overlays preserve every request/answer order and identity (7.072334ms)
+(node:87803) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/subagents.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ spawn and status events upsert one helper by thread ID (1.6335ms)
+✔ completion sets endedAt and a late running update cannot revive it (0.197375ms)
+✔ a terminal helper seen first still gets an end time (2.226916ms)
+✔ snapshot rebuilds membership and tolerates servers without subAgents (0.873333ms)
+✔ live preview is bounded and replaced by the final message (0.245083ms)
+✔ names fall back from nickname to role, path and a generic label (0.112292ms)
+✔ delegation prefs are clamped to the supported range (0.301667ms)
+✔ helpers group into one chat block per turn, idempotently (0.299833ms)
+✔ snapshots show helpers the chat has not placed yet (0.090708ms)
+✔ helper names use the nickname, a real role, then spawn order (0.157584ms)
+✔ task titles come from the first sentence, cut at a word (0.176541ms)
+✔ elapsed time uses server time, never goes negative, and survives reload (0.123666ms)
+✔ clock skew is learned from event times and kept through snapshots (0.062667ms)
+✔ closing a finished helper keeps its outcome (0.045084ms)
+✔ previews end at a word boundary and keep the last lines (0.239667ms)
+✔ durations read as m:ss or h:mm:ss (0.062875ms)
+✔ previews keep whole lines and never leave an unpaired marker (0.07025ms)
+✔ duration parts split whole hours, minutes and seconds (0.048834ms)
+(node:87826) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/suggestions.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ a trailing block becomes follow-up questions and leaves the answer (1.545917ms)
+✔ answers without a block are unchanged (0.12725ms)
+✔ blocks inside code fences are content, not suggestions (0.087084ms)
+✔ suggestions are capped, deduplicated and cleaned (0.133667ms)
+✔ streaming hides a partial block and offers nothing yet (0.154083ms)
+✔ an unterminated block is hidden and never clickable (0.6575ms)
+✔ text after the block is kept (0.139ms)
+(node:87851) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/timeline-anchor.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ virtual navigation resolves user, first turn and helper anchors across steering (2.23375ms)
+✔ missing and unloaded turns remain explicit; prepends move the same anchor (1.789292ms)
+(node:87853) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/transport.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the session id is encoded in the stream URL (0.585917ms)
+✔ source synchronization sends only explicitly paired cursors (0.125416ms)
+✔ actual public frames omit threadId; trusted URL scope enables1000-to1 projection coalescing (1.916042ms)
+✔ same-cursor synchronization marker flushes queued text before authority and checkpoint (0.623875ms)
+✔ invalid marker and mismatched SSE cursor cannot advance a paired stream (0.243833ms)
+✔ an unreadable frame resyncs without advancing the cursor (0.130875ms)
+✔ errors report Reconnecting while retrying and Disconnected once closed (0.080166ms)
+✔ stream.error passes the platform's reason on and closes the stream (0.190625ms)
+✔ 1000 ordered deltas publish once per frame and checkpoint after publication (2.359458ms)
+✔ the same 1000 delta fixture keeps legacy immediate delivery compatible (3.791625ms)
+✔ snapshots, finals, approvals and completion flush prior text in order (0.979625ms)
+✔ navigation flush and unsubscribe preserve queued deltas exactly once (0.295833ms)
+✔ delivery failure leaves cursor behind and prevents later checkpoint leap (1.13875ms)
+✔ stale ownership rejects a batch without cursor advance or later delivery (0.826875ms)
+✔ malformed frame flushes accepted text then closes without checkpoint leap (0.28875ms)
+✔ fatal connection error flushes accepted text before reporting failure (0.179375ms)
+✔ ordinary consumer failure does not acknowledge its frame (0.216ms)
+✔ JSON scalars, arrays and invalid envelopes request recovery without checkpoint (0.376667ms)
+✔ invalid text delta and snapshot protocol shapes recover instead of entering reducers (0.589708ms)
+✔ unknown future event types keep envelope compatibility (0.043166ms)
+(node:87854) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/visualization.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ visual references render inline while prose and code remain intact (1.601083ms)
+✔ saved widget state is bounded and rejects invalid envelopes (0.349833ms)
+✔ visual wrapper confines scripts and prevents title and saved-state injection (0.298167ms)
+✔ download preserves sandboxing instead of exporting an unrestricted document (1.621916ms)
+ℹ tests 331
+ℹ suites 0
+ℹ pass 331
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2371.447667

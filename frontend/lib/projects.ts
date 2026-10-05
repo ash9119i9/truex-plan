@@ -1,6 +1,10 @@
 // Projects group conversations in the sidebar. Pure helpers plus thin API
 // wrappers so the sidebar component stays declarative and testable.
-import type { Project, PublicSession } from "../../shared/contracts";
+import type {
+  ApprovalMode,
+  Project,
+  PublicSession,
+} from "../../shared/contracts";
 import { api } from "./api.ts";
 
 export const PROJECT_NAME_MAX = 80;
@@ -67,8 +71,19 @@ export function createSessionBody<T>(
   agentId: string,
   subAgents: T,
   projectId?: string | null,
-): { agentId: string; subAgents: T; projectId?: string } {
-  return projectId ? { agentId, subAgents, projectId } : { agentId, subAgents };
+  approvalMode?: ApprovalMode,
+): {
+  agentId: string;
+  subAgents: T;
+  projectId?: string;
+  approvalMode?: ApprovalMode;
+} {
+  return {
+    agentId,
+    subAgents,
+    ...(projectId ? { projectId } : {}),
+    ...(approvalMode ? { approvalMode } : {}),
+  };
 }
 
 const projectPath = (id: string) => `/api/projects/${encodeURIComponent(id)}`;

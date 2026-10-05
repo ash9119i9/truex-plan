@@ -1,0 +1,107 @@
+(node:18064) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✖ 1000 compatible answer deltas use one projection application with exact state (4.358042ms)
+✖ thread, turn, item and ordinal differences split adjacent runs (0.190208ms)
+✖ every non-answer frame is an ordering barrier, including both reasoning channels (0.154ms)
+✖ missing identities and invalid ordinals stay uncoalesced without changing legacy behavior (0.292709ms)
+✔ malformed payloads preserve the reducer's original result or failure (0.372458ms)
+✔ aliases, completed replay, conflicting ordinals and Unicode retain exact reducer state (0.111833ms)
+✔ seeded randomized batches equal the unoptimized reducer at every publication boundary (79.740667ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 3
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 143.641125
+
+✖ failing tests:
+
+test at frontend/test/chat-batch.test.ts:36:1
+✖ 1000 compatible answer deltas use one projection application with exact state (4.358042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1000 !== 1
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:39:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1000,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-batch.test.ts:46:1
+✖ thread, turn, item and ordinal differences split adjacent runs (0.190208ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  9 !== 7
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:57:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 9,
+    expected: 7,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-batch.test.ts:61:1
+✖ every non-answer frame is an ordering barrier, including both reasoning channels (0.154ms)
+  AssertionError [ERR_ASSERTION]: reasoning.delta
+  
+  5 !== 3
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:78:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: 5,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-batch.test.ts:83:1
+✖ missing identities and invalid ordinals stay uncoalesced without changing legacy behavior (0.292709ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  2 !== 1
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:95:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 2,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

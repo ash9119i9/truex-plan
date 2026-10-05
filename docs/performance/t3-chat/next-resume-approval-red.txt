@@ -1,0 +1,112 @@
+▶ a persisted desired mode must be confirmed after reload before accepting a message
+  ✖ unconfirmed resume 0 is rejected before every durable/turn side effect (8.324542ms)
+  ✖ unconfirmed resume 1 is rejected before every durable/turn side effect (4.966917ms)
+  ✖ unconfirmed resume 2 is rejected before every durable/turn side effect (3.352667ms)
+  ✖ unconfirmed resume 3 is rejected before every durable/turn side effect (10.005875ms)
+  ✔ confirmed current resume accepts exactly one turn (4.988125ms)
+  ✖ confirmed legacy resume accepts exactly one turn (2.478792ms)
+  ✔ feature-off resume retains its old wire contract (2.141083ms)
+✖ a persisted desired mode must be confirmed after reload before accepting a message (1522.6165ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 2
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1768.177833
+
+✖ failing tests:
+
+test at test/resume-approval.test.ts:45:13
+✖ unconfirmed resume 0 is rejected before every durable/turn side effect (8.324542ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:62:7)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:45:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { status: 502, code: 'APPROVAL_MODE_UNCONFIRMED' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/resume-approval.test.ts:45:13
+✖ unconfirmed resume 1 is rejected before every durable/turn side effect (4.966917ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:62:7)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:45:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { status: 502, code: 'APPROVAL_MODE_UNCONFIRMED' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/resume-approval.test.ts:45:13
+✖ unconfirmed resume 2 is rejected before every durable/turn side effect (3.352667ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:62:7)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:45:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { status: 502, code: 'APPROVAL_MODE_UNCONFIRMED' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/resume-approval.test.ts:45:13
+✖ unconfirmed resume 3 is rejected before every durable/turn side effect (10.005875ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:62:7)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:45:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { status: 502, code: 'APPROVAL_MODE_UNCONFIRMED' },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/resume-approval.test.ts:75:13
+✖ confirmed legacy resume accepts exactly one turn (2.478792ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      '/threads/thread/resume',
+  -   '/threads/thread/approval-mode',
+      '/threads/thread/turns'
+    ]
+  
+      at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:86:14)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/resume-approval.test.ts:75:5)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ '/threads/thread/resume', '/threads/thread/turns' ],
+    expected: [ '/threads/thread/resume', '/threads/thread/approval-mode', '/threads/thread/turns' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

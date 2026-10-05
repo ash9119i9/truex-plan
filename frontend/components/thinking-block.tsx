@@ -8,14 +8,27 @@ export function ThinkingBlock({
   text,
   streaming,
 }: {
-  text: string;
+  text: string | readonly { text: string }[];
   streaming?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const contentId = useId();
-  const value = text.trim();
-  if (!value && !streaming) return null;
-  const words = value.split(/\s+/).length;
+  const hasText =
+    typeof text === "string"
+      ? /\S/.test(text)
+      : text.some((part) => /\S/.test(part.text));
+  if (!hasText && !streaming) return null;
+  // Joining and counting a long streamed trace belongs to the open disclosure.
+  const value = open
+    ? (typeof text === "string"
+        ? text
+        : text
+            .map((part) => part.text)
+            .filter(Boolean)
+            .join("\n\n")
+      ).trim()
+    : "";
+  const words = open && value ? value.split(/\s+/).length : 0;
   return (
     <ul className="steps thinking" data-open={open}>
       <li className={streaming ? undefined : "is-done"}>
@@ -33,17 +46,17 @@ export function ThinkingBlock({
               <Icon name="check" size={11} stroke={2.5} />
             </span>
           )}
-          <span className="grow">Thinking</span>
+          <span className="grow">{streaming ? "Thinking…" : "Reasoning"}</span>
           {!streaming && (
             <span className="mono sm muted">
-              {words} word{words === 1 ? "" : "s"}
+              {open ? `${words} word${words === 1 ? "" : "s"}` : "Complete"}
             </span>
           )}
           <Icon name="chevronR" size={13} className="step-caret" />
         </button>
       </li>
       <li id={contentId} className="thinking-body" hidden={!open}>
-        {value || "Thinking…"}
+        {open && (value || "Thinking…")}
       </li>
     </ul>
   );

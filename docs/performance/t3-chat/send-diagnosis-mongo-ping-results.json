@@ -1,0 +1,13 @@
+{
+  "measuredAt": "2026-10-05T18:58:40.307Z",
+  "scope": "Existing configured catalog Mongo: warmed connection, one warmup, five read-only pings; no provider or user-data reads/writes",
+  "node": "v26.7.0",
+  "samplesMs": [
+    224.26658300000008,
+    225.4141669999999,
+    229.04929200000015,
+    223.76208300000008,
+    224.9812079999997
+  ],
+  "medianMs": 224.9812079999997
+}

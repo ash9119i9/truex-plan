@@ -1,0 +1,112 @@
+(node:28554) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✖ first message and retry cannot run after approval confirmation fails (28.103875ms)
+✖ oversized normal message stays editable and creates no session or row (6.696958ms)
+✖ editor stays usable during catalog loading and local dispatch, while Send is gated (14.261792ms)
+✖ successful goal command cannot clear B typed while A awaits creation (8.536667ms)
+✖ delayed suggestion never replaces B typed before it starts sending (6.598583ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 0
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 268.009
+
+✖ failing tests:
+
+test at frontend/test/composer-dispatch.test.ts:205:1
+✖ first message and retry cannot run after approval confirmation fails (28.103875ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts:213:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/composer-dispatch.test.ts:220:1
+✖ oversized normal message stays editable and creates no session or row (6.696958ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  0 !== 100001
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts:223:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 100001,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/composer-dispatch.test.ts:228:1
+✖ editor stays usable during catalog loading and local dispatch, while Send is gated (14.261792ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(!frame.props.children.props.disabled)
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts:285:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at frontend/test/composer-dispatch.test.ts:311:1
+✖ successful goal command cannot clear B typed while A awaits creation (8.536667ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  '' !== 'B'
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts:336:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '',
+    expected: 'B',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/composer-dispatch.test.ts:339:1
+✖ delayed suggestion never replaces B typed before it starts sending (6.598583ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  'old draft' !== 'B'
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts:348:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'old draft',
+    expected: 'B',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

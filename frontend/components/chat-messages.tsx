@@ -1,7 +1,7 @@
 "use client";
 import type { Entry } from "@/lib/chat";
 import { createChatGroupSelector, type ChatGroup } from "@/lib/chat-groups";
-import { StreamingMarkdown } from "./streaming-markdown";
+import { CopyTextButton, StreamingMarkdown } from "./streaming-markdown";
 import {
   Fragment,
   memo,
@@ -9,6 +9,8 @@ import {
   createContext,
   useContext,
   useCallback,
+  useId,
+  useState,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -410,7 +412,7 @@ const UserMessageRow = memo(function UserMessageRow({
               {commandLabel(user.command.method)}
             </span>
           )}
-          <div className="bubble">{user.text}</div>
+          <UserPrompt text={user.text} />
           {!!notes.length && (
             <span className="msg-note muted sm">{notes.join(" · ")}</span>
           )}
@@ -429,6 +431,35 @@ const UserMessageRow = memo(function UserMessageRow({
     </Fragment>
   );
 });
+
+// Keep the complete selectable prompt; the disclosure changes visible height.
+function UserPrompt({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const contentId = useId();
+  const collapsible = text.length > 600 || text.split("\n").length > 8;
+  return (
+    <>
+      <div
+        id={contentId}
+        className="bubble"
+        data-collapsed={collapsible && !expanded}
+      >
+        {text}
+      </div>
+      {collapsible && (
+        <button
+          type="button"
+          className="text-btn"
+          aria-expanded={expanded}
+          aria-controls={contentId}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Show less" : "Show full message"}
+        </button>
+      )}
+    </>
+  );
+}
 
 const AssistantMessageRow = memo(function AssistantMessageRow({
   group,
@@ -484,10 +515,7 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
         </div>
         {!!thinking.length && (
           <ThinkingBlock
-            text={thinking
-              .map((e) => e.text)
-              .filter(Boolean)
-              .join("\n\n")}
+            text={thinking}
             streaming={active && !answering && thinking.some((e) => !e.done)}
           />
         )}
@@ -538,12 +566,10 @@ const AnswerBody = memo(function AnswerBody({
   active: boolean;
 } & Pick<ChatMessagesProps, "sessionId" | "onPrompt">) {
   const streaming = !entry.final && !entry.done;
+  const body = splitSuggestions(entry.text, streaming).body;
   return (
     <div className="answer markdown">
-      {splitVisualizations(
-        splitSuggestions(entry.text, streaming).body,
-        streaming,
-      ).map((part, i) =>
+      {splitVisualizations(body, streaming).map((part, i) =>
         part.type === "visualization" ? (
           sessionId ? (
             <Visualization
@@ -560,6 +586,7 @@ const AnswerBody = memo(function AnswerBody({
         ),
       )}
       {active && streaming && <span className="caret" aria-hidden="true" />}
+      {!streaming && <CopyTextButton text={body} label="Copy answer" />}
     </div>
   );
 });

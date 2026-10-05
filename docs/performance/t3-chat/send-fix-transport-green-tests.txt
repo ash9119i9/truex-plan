@@ -1,0 +1,15 @@
+✔ both runtime transports reject invalid operational preferences before dispatch (5.66275ms)
+✔ operational preference stays in the AgentCore body and default resume is untouched (12.234667ms)
+✔ AgentCore envelopes preserve errors and pagination; event streams retain cursor and abort signal (7.95025ms)
+✔ health and schemas share a stable runtime session; thread calls require the persisted session (0.852334ms)
+✔ HTTP transport keeps direct calls and Last-Event-ID behavior (16.103583ms)
+✔ source snapshot window is identical for HTTP and AgentCore and rejects invalid options (7.105208ms)
+✔ conversation creation, restart, streaming and ingestion reuse the stored AgentCore session (1166.435792ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1450.4155

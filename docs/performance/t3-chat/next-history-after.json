@@ -1,0 +1,498 @@
+{
+  "root": "/Users/ashok/truex-plan",
+  "node": "v24.21.0",
+  "bodyBytes": 1024,
+  "warmups": 1,
+  "measuredRuns": 7,
+  "scope": "isolated Mongo/service CPU; no browser/network/provider latency; metadata remains O(total history), giant groups stay complete",
+  "results": [
+    {
+      "turns": 10,
+      "medianMs": 0.7292500000000928,
+      "medianCpuMs": 1.06,
+      "payloadDocuments": 20,
+      "dbJsonBytes": 23061,
+      "metadataDocsExamined": 20,
+      "samples": [
+        {
+          "elapsedMs": 0.9262499999999818,
+          "cpuMs": 1.04,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.7292500000000928,
+          "cpuMs": 1.133,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.7388750000000073,
+          "cpuMs": 1.06,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.038541000000123,
+          "cpuMs": 4.398,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.6408340000000408,
+          "cpuMs": 1.85,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.5624169999998685,
+          "cpuMs": 0.514,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.6392499999999472,
+          "cpuMs": 0.619,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "turns": 100,
+      "medianMs": 1.5203330000001642,
+      "medianCpuMs": 1.73,
+      "payloadDocuments": 200,
+      "dbJsonBytes": 231751,
+      "metadataDocsExamined": 200,
+      "samples": [
+        {
+          "elapsedMs": 1.7922499999999673,
+          "cpuMs": 4.297,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.5203330000001642,
+          "cpuMs": 1.73,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.5278749999999945,
+          "cpuMs": 1.791,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.3591670000000704,
+          "cpuMs": 1.41,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.3383750000000418,
+          "cpuMs": 1.245,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.2431249999999636,
+          "cpuMs": 1.035,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.5673329999999623,
+          "cpuMs": 2.332,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "turns": 1000,
+      "medianMs": 5.505749999999807,
+      "medianCpuMs": 7.749,
+      "payloadDocuments": 271,
+      "dbJsonBytes": 471599,
+      "metadataDocsExamined": 2000,
+      "samples": [
+        {
+          "elapsedMs": 8.232166000000007,
+          "cpuMs": 14.276,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291487
+            },
+            {
+              "kind": "metadata",
+              "documents": 2000,
+              "jsonBytes": 156781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23331
+            }
+          ]
+        },
+        {
+          "elapsedMs": 7.245167000000038,
+          "cpuMs": 20.924,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291487
+            },
+            {
+              "kind": "metadata",
+              "documents": 2000,
+              "jsonBytes": 156781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23331
+            }
+          ]
+        },
+        {
+          "elapsedMs": 6.251333999999815,
+          "cpuMs": 9.57,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291487
+            },
+            {
+              "kind": "metadata",
+              "documents": 2000,
+              "jsonBytes": 156781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23331
+            }
+          ]
+        },
+        {
+          "elapsedMs": 5.3227499999998145,
+          "cpuMs": 6.992,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291487
+            },
+            {
+              "kind": "metadata",
+              "documents": 2000,
+              "jsonBytes": 156781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23331
+            }
+          ]
+        },
+        {
+          "elapsedMs": 5.22583399999985,
+          "cpuMs": 7.197,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291487
+            },
+            {
+              "kind": "metadata",
+              "documents": 2000,
+              "jsonBytes": 156781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23331
+            }
+          ]
+        },
+        {
+          "elapsedMs": 4.560083000000077,
+          "cpuMs": 3.201,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291487
+            },
+            {
+              "kind": "metadata",
+              "documents": 2000,
+              "jsonBytes": 156781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23331
+            }
+          ]
+        },
+        {
+          "elapsedMs": 5.505749999999807,
+          "cpuMs": 7.749,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291487
+            },
+            {
+              "kind": "metadata",
+              "documents": 2000,
+              "jsonBytes": 156781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23331
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "turns": 10000,
+      "medianMs": 27.847958999999946,
+      "medianCpuMs": 21.624,
+      "payloadDocuments": 271,
+      "dbJsonBytes": 1943221,
+      "metadataDocsExamined": 20000,
+      "samples": [
+        {
+          "elapsedMs": 29.862499999999955,
+          "cpuMs": 21.66,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291989
+            },
+            {
+              "kind": "metadata",
+              "documents": 20000,
+              "jsonBytes": 1627781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 29.607083999999986,
+          "cpuMs": 23.465,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291989
+            },
+            {
+              "kind": "metadata",
+              "documents": 20000,
+              "jsonBytes": 1627781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 27.847958999999946,
+          "cpuMs": 22.237,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291989
+            },
+            {
+              "kind": "metadata",
+              "documents": 20000,
+              "jsonBytes": 1627781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 27.6909169999999,
+          "cpuMs": 21.059,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291989
+            },
+            {
+              "kind": "metadata",
+              "documents": 20000,
+              "jsonBytes": 1627781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 28.049582999999984,
+          "cpuMs": 19.598,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291989
+            },
+            {
+              "kind": "metadata",
+              "documents": 20000,
+              "jsonBytes": 1627781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 26.872916999999916,
+          "cpuMs": 21.624,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291989
+            },
+            {
+              "kind": "metadata",
+              "documents": 20000,
+              "jsonBytes": 1627781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 27.520582999999988,
+          "cpuMs": 20.832,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 251,
+              "jsonBytes": 291989
+            },
+            {
+              "kind": "metadata",
+              "documents": 20000,
+              "jsonBytes": 1627781
+            },
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23451
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

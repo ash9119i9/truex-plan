@@ -1,5 +1,11 @@
 "use client";
-import { useState, type KeyboardEvent } from "react";
+import {
+  Activity,
+  memo,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { GoalTimeline } from "./goal-timeline";
 import { AgentsPanel } from "./agents-panel";
 import { InsightsPanel } from "./observability/insights-panel";
@@ -229,64 +235,86 @@ export function SessionActivity({
         role="tabpanel"
         aria-labelledby={`session-tab-${panel}`}
       >
-        {/* Non-activity tabs remount on switch (spec). */}
-        {panel === "activity" && (
-          <ActivityTab
-            events={events}
-            plan={plan}
-            timings={timings}
-            goalRunning={goalRunning}
-            awaitingApproval={awaitingApproval}
-            agentName={agentName}
-          />
-        )}
-        {panel === "agents" && (
-          <div key="agents" className="ag-tab">
-            <AgentsPanel
-              sessionId={sessionId}
-              agents={agents}
-              previews={subAgents?.previews || {}}
-              skewMs={subAgents?.skewMs}
-              onDetailChange={reportDetail}
-            />
-            {!detail && delegation && onDelegation && (
-              <DelegationSettings value={delegation} onChange={onDelegation} />
+        <Activity mode={open ? "visible" : "hidden"}>
+          <VisibleDetails open={open}>
+            {/* Non-activity tabs remount on switch (spec). */}
+            {panel === "activity" && (
+              <ActivityTab
+                events={events}
+                plan={plan}
+                timings={timings}
+                goalRunning={goalRunning}
+                awaitingApproval={awaitingApproval}
+                agentName={agentName}
+              />
             )}
-          </div>
-        )}
-        {panel === "goal" && (
-          <GoalTimeline
-            key="goal"
-            sessionId={sessionId}
-            goal={goal}
-            review={goalReview}
-            plan={plan}
-            onViewTurn={onViewTurn}
-          />
-        )}
-        {panel === "plan" && (
-          <PlanPanel
-            key="plan"
-            plan={plan}
-            awaitingApproval={awaitingApproval}
-          />
-        )}
-        {panel === "insights" && (
-          <InsightsPanel
-            key="insights"
-            traces={traces}
-            summary={traceSummary}
-            rateLimits={rateLimits}
-            liveUsage={liveUsage}
-            timings={timings}
-            agents={agents}
-            skewMs={subAgents?.skewMs}
-          />
-        )}
+            {panel === "agents" && (
+              <div key="agents" className="ag-tab">
+                <AgentsPanel
+                  sessionId={sessionId}
+                  agents={agents}
+                  previews={subAgents?.previews || {}}
+                  skewMs={subAgents?.skewMs}
+                  onDetailChange={reportDetail}
+                />
+                {!detail && delegation && onDelegation && (
+                  <DelegationSettings
+                    value={delegation}
+                    onChange={onDelegation}
+                  />
+                )}
+              </div>
+            )}
+            {panel === "goal" && (
+              <GoalTimeline
+                key="goal"
+                sessionId={sessionId}
+                goal={goal}
+                review={goalReview}
+                plan={plan}
+                onViewTurn={onViewTurn}
+              />
+            )}
+            {panel === "plan" && (
+              <PlanPanel
+                key="plan"
+                plan={plan}
+                awaitingApproval={awaitingApproval}
+              />
+            )}
+            {panel === "insights" && (
+              <InsightsPanel
+                key="insights"
+                traces={traces}
+                summary={traceSummary}
+                rateLimits={rateLimits}
+                liveUsage={liveUsage}
+                timings={timings}
+                agents={agents}
+                skewMs={subAgents?.skewMs}
+              />
+            )}
+          </VisibleDetails>
+        </Activity>
       </div>
     </div>
   );
 }
+
+// The authoritative props remain live in SessionActivity. Hidden panes keep
+// their local disclosure state and pause effects, but do not project new bodies.
+// Reopening renders the latest props, rather than a stale display snapshot.
+const VisibleDetails = memo(
+  function VisibleDetails({
+    children,
+  }: {
+    open: boolean;
+    children: ReactNode;
+  }) {
+    return children;
+  },
+  (_previous, next) => !next.open,
+);
 
 // ---- Activity tab ----------------------------------------------------------
 
@@ -395,18 +423,27 @@ function ActivityTab({
                 </span>
                 <span className="muted sm">
                   {lastMs !== null
-                    ? `Completed in ${formatDuration(lastMs)}`
+                    ? `${last.data.turn?.status === "completed" ? "Completed" : "Ended"} in ${formatDuration(lastMs)}`
                     : `Finished ${timeLabel(last.at)}`}
                   {progress.total
                     ? ` · ${progress.done} of ${progress.total} steps`
                     : ""}
                 </span>
               </div>
-              <span className="live-pct">100%</span>
+              {pct !== null && <span className="live-pct">{pct}%</span>}
             </div>
-            <div className="bar" aria-hidden="true">
-              <span style={{ width: "100%" }} />
-            </div>
+            {pct !== null && (
+              <div
+                className="bar"
+                role="progressbar"
+                aria-label="Plan progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={pct}
+              >
+                <span style={{ width: `${pct}%` }} />
+              </div>
+            )}
           </div>
         )
       )}
@@ -481,7 +518,9 @@ function eventLabel(e: DomainEvent): string {
       ? failedLabel(e.data.turn?.error)
       : e.data.turn?.status === "interrupted"
         ? "Request stopped"
-        : "Request finished";
+        : e.data.turn?.status === "completed"
+          ? "Request finished"
+          : "Request ended";
   if (e.type === "error")
     return e.data?.willRetry === true ? "Retrying…" : failedLabel(e.data);
   if (e.type === "subagent.spawned") return "Started a helper";
@@ -496,7 +535,9 @@ function completedIcon(e: DomainEvent): IconName {
     ? "x"
     : status === "interrupted"
       ? "stop"
-      : "check";
+      : status === "completed"
+        ? "check"
+        : "pulse";
 }
 
 // Spec timeline icons, matched to the platform's plain-words labels.

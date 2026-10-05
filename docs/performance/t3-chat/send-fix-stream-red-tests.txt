@@ -1,0 +1,164 @@
+(node:33496) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1000 compatible answer deltas use one projection application with exact state (4.307584ms)
+✖ 1000 adjacent reasoning fragments coalesce per exact raw or summary channel (3.124834ms)
+✖ reasoning identities, channels, indexed parts and ordinals are ordering boundaries (0.16275ms)
+✔ reasoning malformed identities, channels, signals and payloads remain passthrough (0.611125ms)
+✖ reasoning final, tool, snapshot, turn, answer and approval frames remain barriers (0.135625ms)
+✖ late, completed, Unicode and interleaved reasoning preserve the full reducer oracle (0.133875ms)
+✔ thread, turn, item and ordinal differences split adjacent runs (0.095917ms)
+✔ every non-answer frame is an ordering barrier, including both reasoning channels (0.376667ms)
+✔ missing identities and invalid ordinals stay uncoalesced without changing legacy behavior (0.331084ms)
+✔ malformed payloads preserve the reducer's original result or failure (0.326125ms)
+✔ aliases, completed replay, conflicting ordinals and Unicode retain exact reducer state (0.108416ms)
+✔ seeded randomized batches equal the unoptimized reducer at every publication boundary (85.035709ms)
+✔ coalesced projection preserves raw events and terminal cursor during paint publication (2.722792ms)
+✔ coalesced projection preserves raw events and terminal cursor during timer publication (1.898541ms)
+✔ coalesced projection preserves raw events and terminal cursor during navigation publication (1.709ms)
+✔ rejected navigation ownership publishes and acknowledges no coalesced state (0.182834ms)
+✔ malformed transport frame flushes coalesced accepted text without acknowledging the rejected cursor (0.315625ms)
+(node:33497) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat-visibility.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ visibility retains exact prefix, turn, completion, Unicode and reference semantics (24.690625ms)
+✖ interrupted histories do not rescan the full transcript for every answer (9.346041ms)
+✖ many finalized answers in one turn do not cause repeated linear prefix searches (289.537542ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 14
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 399.728459
+
+✖ failing tests:
+
+test at frontend/test/chat-batch.test.ts:61:1
+✖ 1000 adjacent reasoning fragments coalesce per exact raw or summary channel (3.124834ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1000 !== 1
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:70:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1000,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-batch.test.ts:78:1
+✖ reasoning identities, channels, indexed parts and ordinals are ordering boundaries (0.16275ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  5 !== 3
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:98:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 5,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-batch.test.ts:146:1
+✖ reasoning final, tool, snapshot, turn, answer and approval frames remain barriers (0.135625ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  5 !== 3
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:176:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 5,
+    expected: 3,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-batch.test.ts:181:1
+✖ late, completed, Unicode and interleaved reasoning preserve the full reducer oracle (0.133875ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  7 !== 4
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts:202:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 7,
+    expected: 4,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-visibility.test.ts:71:1
+✖ interrupted histories do not rescan the full transcript for every answer (9.346041ms)
+  AssertionError [ERR_ASSERTION]: Expected linear entry visits, saw 160400
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-visibility.test.ts:91:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at frontend/test/chat-visibility.test.ts:97:1
+✖ many finalized answers in one turn do not cause repeated linear prefix searches (289.537542ms)
+  AssertionError [ERR_ASSERTION]: Expected bounded prefix checks, saw 160000
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/chat-visibility.test.ts:117:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

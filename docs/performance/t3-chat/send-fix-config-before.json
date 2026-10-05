@@ -1,0 +1,98 @@
+{
+  "configurationSha256": "f8939d4c9d03beccb9a75f03c7b91944b53a1bf808c1dc06eccb8f0f26e24910",
+  "measuredBoundary": "configuration only; actual isolated Mongo and production service with imposed delay; no live send/provider/paint claim",
+  "warmups": 1,
+  "repeats": 3,
+  "results": [
+    {
+      "scenario": {
+        "name": "owner-no-connectors-225ms-db",
+        "db": 225,
+        "dns": 0,
+        "skills": false,
+        "ownerConnector": false,
+        "tenantConnectors": 0
+      },
+      "p50Ms": 909.9257500000003,
+      "samples": [
+        {
+          "elapsedMs": 909.893709,
+          "reads": 4,
+          "dnsCalls": 0
+        },
+        {
+          "elapsedMs": 914.1166250000001,
+          "reads": 4,
+          "dnsCalls": 0
+        },
+        {
+          "elapsedMs": 909.9257500000003,
+          "reads": 4,
+          "dnsCalls": 0
+        }
+      ],
+      "outputEquivalent": true,
+      "outputSha256": "b8c35ec49a231a127a2f8bf88eb554783ba713693acb0dfc28588007decddc2d"
+    },
+    {
+      "scenario": {
+        "name": "owner-skills-reservation-225ms-db",
+        "db": 225,
+        "dns": 0,
+        "skills": true,
+        "ownerConnector": true,
+        "tenantConnectors": 1
+      },
+      "p50Ms": 1370.312,
+      "samples": [
+        {
+          "elapsedMs": 1370.312,
+          "reads": 6,
+          "dnsCalls": 2
+        },
+        {
+          "elapsedMs": 1370.4931670000005,
+          "reads": 6,
+          "dnsCalls": 2
+        },
+        {
+          "elapsedMs": 1368.125417000001,
+          "reads": 6,
+          "dnsCalls": 2
+        }
+      ],
+      "outputEquivalent": true,
+      "outputSha256": "ebbd61a6268f54b71d7ae30f662970eacaefaef56a13643072ba58c26146383c"
+    },
+    {
+      "scenario": {
+        "name": "three-connectors-25ms-dns",
+        "db": 0,
+        "dns": 25,
+        "skills": false,
+        "ownerConnector": false,
+        "tenantConnectors": 3
+      },
+      "p50Ms": 81.9971659999992,
+      "samples": [
+        {
+          "elapsedMs": 81.9790410000005,
+          "reads": 4,
+          "dnsCalls": 3
+        },
+        {
+          "elapsedMs": 82.60649999999987,
+          "reads": 4,
+          "dnsCalls": 3
+        },
+        {
+          "elapsedMs": 81.9971659999992,
+          "reads": 4,
+          "dnsCalls": 3
+        }
+      ],
+      "outputEquivalent": true,
+      "outputSha256": "9f14cc9159bffba170a341de1fb9337be2a1f47ad81f9ce4d23bbffd0c20f89e"
+    }
+  ]
+}

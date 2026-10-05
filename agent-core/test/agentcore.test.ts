@@ -24,7 +24,9 @@ test("AgentCore invocations preserve local operations and event streams", async 
   }> = [];
   const core = createServer(async (req, res) => {
     if (req.url === "/healthz") {
-      res.writeHead(coreReady ? 200 : 503, { "content-type": "application/json" });
+      res.writeHead(coreReady ? 200 : 503, {
+        "content-type": "application/json",
+      });
       res.end(JSON.stringify({ ok: true, activeThreads }));
       return;
     }
@@ -181,4 +183,116 @@ test("cold runtime stays healthy without touching storage; invalid invocations d
   });
   state = "stopping";
   assert.equal((await fetch(`${url}/ping`)).status, 503);
+});
+
+test("bounded snapshot capability crosses AgentCore GET envelopes and rejects invalid scope before startup", async (t) => {
+  const urls: string[] = [];
+  let starts = 0;
+  const app = createAgentCoreApp({
+    ensureServices: async () => {
+      starts++;
+    },
+    fetch: (async (url: URL | string) => {
+      urls.push(String(url));
+      return new Response(
+        JSON.stringify({ messages: [], pending: [], state: { kind: "idle" } }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch,
+  });
+  const runtime = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => runtime.once("listening", resolve));
+  const base = `http://127.0.0.1:${(runtime.address() as { port: number }).port}`;
+  t.after(() => close(runtime));
+  const invoke = (body: unknown) =>
+    fetch(`${base}/invocations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  for (const path of ["/threads/t/snapshot", "/threads/t/events"])
+    assert.equal(
+      (await invoke({ method: "GET", path, window: true })).status,
+      200,
+    );
+  assert.deepEqual(urls, [
+    "http://127.0.0.1:4100/threads/t/snapshot?window=1",
+    "http://127.0.0.1:4100/threads/t/events?window=1",
+  ]);
+  assert.equal(
+    (
+      await invoke({
+        method: "GET",
+        path: "/threads/t/events",
+        window: true,
+        sync: "v1",
+        cursor: "generation:0",
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    urls.at(-1),
+    "http://127.0.0.1:4100/threads/t/events?cursor=generation%3A0&window=1&sync=v1",
+  );
+  for (const body of [
+    { method: "GET", path: "/threads/t/snapshot", window: "1" },
+    { method: "GET", path: "/threads/t/snapshot", window: null },
+    { method: "GET", path: "/threads/t/items", window: true },
+    { method: "POST", path: "/threads/t/resume", window: true },
+    { method: "GET", path: "/threads/t/snapshot?window=1" },
+    { method: "GET", path: "/threads/t/snapshot", sync: "v1" },
+    { method: "GET", path: "/threads/t/events", sync: "v2" },
+    { method: "GET", path: "/threads/t/events", sync: true },
+    { method: "POST", path: "/threads/t/resume", sync: "v1" },
+  ])
+    assert.equal((await invoke(body)).status, 400);
+  assert.equal(starts, 3);
+  assert.equal(urls.length, 3);
+});
+
+test("operational resume response is forwarded in the body and invalid modes reject before service startup", async (t) => {
+  let starts = 0;
+  const bodies: unknown[] = [];
+  const app = createAgentCoreApp({
+    ensureServices: async () => {
+      starts++;
+    },
+    fetch: (async (_url: URL | string, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(
+        JSON.stringify({
+          messages: [],
+          state: { kind: "idle" },
+          approvalMode: "ask",
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch,
+  });
+  const runtime = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => runtime.once("listening", resolve));
+  const url = `http://127.0.0.1:${(runtime.address() as { port: number }).port}`;
+  t.after(() => close(runtime));
+  const invoke = (body: unknown) =>
+    fetch(`${url}/invocations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        method: "POST",
+        path: "/threads/thread/resume",
+        body,
+      }),
+    });
+  const valid = {
+    response: "operational",
+    approvalMode: "ask",
+    mcpFingerprint: "fixture",
+  };
+  assert.equal((await invoke(valid)).status, 200);
+  assert.deepEqual(bodies, [valid]);
+  for (const response of [null, false, true, "full", "v2", [], {}])
+    assert.equal((await invoke({ response })).status, 400);
+  assert.equal(starts, 1);
+  assert.equal(bodies.length, 1);
 });

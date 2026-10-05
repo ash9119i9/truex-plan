@@ -1,0 +1,242 @@
+
+> agent-core@0.1.0 test
+> tsx --test test/*.test.ts
+
+{"ts":"2026-10-05T19:12:28.687Z","level":"warn","msg":"AgentCore readiness failed","error":"Error: The local core is unavailable"}
+✔ AgentCore invocations preserve local operations and event streams (117.784458ms)
+✔ cold runtime stays healthy without touching storage; invalid invocations do not start services (20.589ms)
+✔ bounded snapshot capability crosses AgentCore GET envelopes and rejects invalid scope before startup (15.870375ms)
+✔ helpers parse questions, names, modes and annotations (9.283083ms)
+✔ no mode keeps today's behaviour: everything waits, no lookup, no grant option (456.946875ms)
+✔ ask mode asks for every row of the table (15.867542ms)
+✔ readOnly mode allows annotated read-only tools and asks for the rest (14.628625ms)
+✔ auto mode allows tools and answers questions; plan and secret questions ask (14.871833ms)
+✔ a request is auto-handled only when every question is (28.3175ms)
+✔ switching mode answers requests that are already waiting (35.50625ms)
+✔ Allow for this chat sends Allow, is recorded, and allows the tool later in any mode (36.376583ms)
+✔ an unannotated or unknown tool asks; the heuristic only covers unannotated tools (27.238459ms)
+✔ a lookup failure asks and never allows (47.973083ms)
+✔ resume sets the mode without sending it to the runtime (13.794625ms)
+✔ helper threads keep today's answers in every mode (11.441417ms)
+{"ts":"2026-10-05T19:12:30.246Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime enables web and clarification, executes document tools and retains goal controls (1444.107625ms)
+{"ts":"2026-10-05T19:12:30.187Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":["\u001b[2m2026-10-05T19:12:29.833270Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_core::tools::router\u001b[0m\u001b[2m:\u001b[0m \u001b[3merror\u001b[0m\u001b[2m=\u001b[0munsupported call: shell_command","\u001b[2m2026-10-05T19:12:29.852511Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_core::tools::router\u001b[0m\u001b[2m:\u001b[0m \u001b[3merror\u001b[0m\u001b[2m=\u001b[0munsupported call: exec_command","\u001b[2m2026-10-05T19:12:29.877825Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_core::tools::router\u001b[0m\u001b[2m:\u001b[0m \u001b[3merror\u001b[0m\u001b[2m=\u001b[0munsupported call: shell","\u001b[2m2026-10-05T19:12:29.900680Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_core::tools::router\u001b[0m\u001b[2m:\u001b[0m \u001b[3merror\u001b[0m\u001b[2m=\u001b[0munsupported call: view_image","\u001b[2m2026-10-05T19:12:29.919962Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_core::tools::router\u001b[0m\u001b[2m:\u001b[0m \u001b[3merror\u001b[0m\u001b[2m=\u001b[0munsupported call: apply_patch"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ business runtime rejects forced local tools, override attempts and legacy resume (1483.844917ms)
+{"ts":"2026-10-05T19:12:29.033Z","level":"error","msg":"codex runtime unavailable","event":"error","errno":-2,"code":"ENOENT","wasReady":false,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:120:9)\n    at ChildProcess.emit (node:events:526:24)\n    at ChildProcess._handle.onexit (node:internal/child_process:293:12)\n    at onErrorNT (node:internal/child_process:525:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)","cause":{"error":"spawn /var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/fake-codex-rc007y/missing-codex ENOENT","errorName":"Error","errorCode":"ENOENT","errno":-2,"stack":"Error: spawn /var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/fake-codex-rc007y/missing-codex ENOENT\n    at ChildProcess._handle.onexit (node:internal/child_process:287:19)\n    at onErrorNT (node:internal/child_process:525:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)"}}
+✔ spawn failure is RUNTIME_UNAVAILABLE and keeps the spawn error as cause (7.923834ms)
+{"ts":"2026-10-05T19:12:29.684Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":3,"signal":null,"wasReady":true,"pending":2,"stderrTail":["booting with Bearer [REDACTED]"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code 3, signal null)","errorName":"Error","stack":"Error: Codex runtime exited (code 3, signal null)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ child exit rejects pending requests and logs exit code with a redacted stderr tail (705.711625ms)
+{"ts":"2026-10-05T19:12:29.748Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":["booting with Bearer [REDACTED]"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+{"ts":"2026-10-05T19:12:29.997Z","level":"warn","msg":"runtime request timed out","method":"test/hang","timeoutMs":150}
+✔ runtime requests time out with RPC_TIMEOUT (257.504ms)
+{"ts":"2026-10-05T19:12:30.000Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":["booting with Bearer [REDACTED]"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+{"ts":"2026-10-05T19:12:30.082Z","level":"warn","msg":"invalid runtime JSON frame","excerpt":"not json{","length":9,"error":"Unexpected token 'o', \"not json{\" is not valid JSON","errorName":"SyntaxError","stack":"SyntaxError: Unexpected token 'o', \"not json{\" is not valid JSON\n    at JSON.parse (<anonymous>)\n    at Interface.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:154:20)\n    at Interface.emit (node:events:514:28)\n    at [_onLine] [as _onLine] (node:internal/readline/interface:474:12)\n    at [_normalWrite] [as _normalWrite] (node:internal/readline/interface:669:18)\n    at Socket.ondata (node:internal/readline/interface:268:23)\n    at Socket.emit (node:events:514:28)\n    at addChunk (node:internal/streams/readable:568:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)\n    at Readable.push (node:internal/streams/readable:399:5)\n    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)"}
+✔ a malformed frame is a protocol error and the stream keeps working (84.787166ms)
+{"ts":"2026-10-05T19:12:30.085Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":["booting with Bearer [REDACTED]"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+{"ts":"2026-10-05T19:12:30.176Z","level":"error","msg":"runtime message handler failed","method":"turn/started","threadId":"thread_x","error":"handler bug","errorName":"Error","stack":"Error: handler bug\n    at CodexClient.<anonymous> (/Users/ashok/truex-plan/agent-core/test/error-handling.test.ts:105:11)\n    at CodexClient.emit (node:events:514:28)\n    at CodexClient.dispatch (/Users/ashok/truex-plan/agent-core/src/client.ts:197:34)\n    at Interface.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:164:12)\n    at Interface.emit (node:events:514:28)\n    at [_onLine] [as _onLine] (node:internal/readline/interface:474:12)\n    at [_normalWrite] [as _normalWrite] (node:internal/readline/interface:669:18)\n    at Socket.ondata (node:internal/readline/interface:268:23)\n    at Socket.emit (node:events:514:28)\n    at addChunk (node:internal/streams/readable:568:12)\n    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)\n    at Readable.push (node:internal/streams/readable:399:5)\n    at Pipe.onStreamRead (node:internal/stream_base_commons:189:23)"}
+✔ a throwing notification handler is ADAPTER_INTERNAL, not a JSON frame error (94.054709ms)
+{"ts":"2026-10-05T19:12:30.180Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":["booting with Bearer [REDACTED]"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ JSON-RPC errors map to named codes with safe messages; raw text stays internal (82.392459ms)
+✔ history falls back to thread/read when items/list is not found (0.252875ms)
+✔ runtime exit fails the running turn with its turnId and leaves idle threads alone (297.067875ms)
+{"ts":"2026-10-05T19:12:30.572Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":["booting with Bearer [REDACTED]"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+{"ts":"2026-10-05T19:12:30.604Z","level":"warn","msg":"turn stalled; interrupting","threadId":"thread_1","turnId":"turn_thread_1","stallMs":40}
+✔ watchdog fails a silent turn with TURN_STALLED and interrupts it (106.354375ms)
+{"ts":"2026-10-05T19:12:30.982Z","level":"warn","msg":"turn stalled; interrupting","threadId":"thread_1","turnId":"turn_thread_1","stallMs":60}
+✔ watchdog is reset by activity and paused while an approval waits (379.399417ms)
+✔ Codex error notifications pass willRetry and turnId through (1.565042ms)
+✔ adapter errors reach the thread as ADAPTER_INTERNAL (0.966ms)
+✔ a missing thread on resume is THREAD_LOST from the structured runtime error (0.648417ms)
+✔ resume tolerates a runtime response without a thread (0.418584ms)
+✔ visualizations retain source, revisions and fork history without crossing conversation boundaries (46.8675ms)
+✔ uploads are isolated, persistent, validated, and readable in chunks (28.127167ms)
+✔ generates valid PDF, Word, Excel and PowerPoint binaries with editable source and immutable revisions (1393.073459ms)
+✔ tool validation rejects unknown operations, cross-conversation revisions and excessive content (46.35875ms)
+✔ published and uploaded code files keep text media types and read as UTF-8 (157.068833ms)
+{"ts":"2026-10-05T19:12:30.083Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime through the model gateway: Anthropic Messages thinking, tool use and follow-ups (1315.887459ms)
+{"ts":"2026-10-05T19:12:30.139Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime through the model gateway: Gemini thoughts, signed tool calls and follow-ups (1344.585167ms)
+{"ts":"2026-10-05T19:12:30.088Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime through the model gateway: Chat Completions text, tool calls and follow-ups (1298.335125ms)
+✔ overlapping POSTs start once and steer the same turn; stale completion cannot clear it (728.522041ms)
+✔ final messages persist with no subscribers and survive manager recreation (20.077042ms)
+✔ approval answer validation, single resolution, expiry and snapshot survive replay eviction (67.99775ms)
+✔ all automatic denial payloads satisfy generated response schemas (11.735833ms)
+✔ full subscriber buffers disconnect without blocking other threads (14.254625ms)
+✔ goal notifications keep the snapshot goal current and reach subscribers (1.76225ms)
+✔ goal token tally counts usage reported after the goal completes and resets for a new goal (3.798625ms)
+✔ a large MCP tool result streams live without disconnecting the subscriber (162.944375ms)
+✔ reconnecting behind a large backlog replays it instead of closing (5.952541ms)
+✔ goal changes are durable records with their turn; token-only updates are not (3.334958ms)
+✔ helper agents link to the root conversation and publish lifecycle events (11.758792ms)
+✔ helper events stream on the root with no raw tool data (1.298334ms)
+✔ helper server requests are declined and never reach the root queue (0.738375ms)
+✔ interrupting the root interrupts running helpers; helper routes check ownership (12.050083ms)
+✔ thread/started with a spawn source registers nested helpers under the root (1.107167ms)
+✔ helper transcripts are bounded (2.817625ms)
+✔ thread create accepts helper settings without sending them as protocol params (0.60675ms)
+✔ helper output that arrives before its spawn call is replayed on the root (12.750667ms)
+✔ a helper runs through spawn, wait and close on the root stream (12.412875ms)
+✔ helpers take the nickname Codex gave their thread (12.23275ms)
+✔ a stopped helper stays stopped after it is shut down (16.565625ms)
+✔ token usage is published as turn usage and turn.completed carries a trace (15.092959ms)
+✔ helper items and usage join the parent turn's trace (13.611792ms)
+✔ the plan survives new turns and ignores stale updates from older turns (16.556625ms)
+✔ an unanswered question proceeds with its recommended option; tool approvals still decline (82.556542ms)
+✔ a new MCP fingerprint reloads a loaded idle thread with the new config (2.954875ms)
+✔ an MCP change during a running turn applies before the next turn (37.428625ms)
+✔ the same MCP fingerprint keeps the loaded thread (1.568208ms)
+✔ a resume without an MCP fingerprint behaves as before (0.719958ms)
+{"ts":"2026-10-05T19:12:31.060Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime MCP discovery and execution: read-only (1050.671917ms)
+{"ts":"2026-10-05T19:12:31.689Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime MCP discovery and execution: approve (616.248875ms)
+{"ts":"2026-10-05T19:12:32.332Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime MCP discovery and execution: deny (655.845916ms)
+✔ persona options default to the Truex business assistant (0.568083ms)
+✔ agents without persona settings keep the business framing (2.98975ms)
+✔ general agents replace the identity but keep the guardrails (1.197459ms)
+✔ flags under sensitive-looking keys survive; values that can hold secrets do not (1.473792ms)
+✔ MCP credentials: apiKeyEnc and decrypted http_headers values never reach traces or logs (0.19ms)
+{"ts":"2026-10-05T19:12:32.008Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+{"ts":"2026-10-05T19:12:32.774Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime: isolated provider keys, streaming, final persistence and same-home resume (2032.212666ms)
+{"ts":"2026-10-05T19:12:33.677Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":["\u001b[2m2026-10-05T19:12:33.613731Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_core::tools::router\u001b[0m\u001b[2m:\u001b[0m \u001b[3merror\u001b[0m\u001b[2m=\u001b[0mexec command rejected by user"],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ pinned runtime: a real command approval can be denied without hanging (868.283542ms)
+kill latency node: 10 ms after a 500 ms timeout
+kill latency python: 2 ms after a 500 ms timeout
+✔ real infinite loops are killed close to the timeout (1029.496583ms)
+200 MB piped (100 MB each stream) in 102 ms: rss 59.0 MB, heap -1.2 MB delta
+✔ 100 MB of output is capped at 64 KB without growing memory (110.282333ms)
+✔ an escaped grandchild holding the pipes open does not hang the runner (714.577166ms)
+✔ exit codes, stderr, argv and non-UTF-8 bytes come through (155.344834ms)
+✔ truncation at the byte cap can split a multibyte character (92.070125ms)
+20 parallel runs: 146 ms
+✔ 20 real runs in parallel all complete (152.072ms)
+✔ hostile args stay literal after the image; no docker flag injection (0.352458ms)
+✔ tool-level validation rejects bad timeouts, NUL and oversize input (4.593167ms)
+✔ unsafe workRoot values reject before anything is spawned (0.36725ms)
+✔ spawn failures become 503s (0.345125ms)
+✔ a throwing or failing kill spawn is contained (50.484167ms)
+✔ a child that ignores every kill is abandoned after killGraceMs (244.561709ms)
+✔ the default grace period is 5 s per stage (2.154916ms)
+✔ container names are unique per run (10.381541ms)
+✔ TOCTOU: a symlink swapped in after validation is not re-checked (28.8765ms)
+✔ exposes a single run_script tool (0.5565ms)
+✔ validates arguments and applies timeout defaults (17.81725ms)
+✔ rejects path escapes, links and non-files (6.673583ms)
+✔ disabled runner and env selection (0.510375ms)
+✔ docker runner spawns the sandboxed container with exact arguments (0.915208ms)
+✔ docker runner rejects unsafe mount paths (0.194334ms)
+✔ docker runner kills the container on timeout (63.52525ms)
+✔ docker runner caps output and reports truncation (0.400459ms)
+✔ docker runner reports a missing docker binary (0.202041ms)
+✔ source window selects complete recent turn groups before encoding, default remains full (848.561458ms)
+✔ source window retains active, pending and unfinished old groups with full authoritative operational state (82.615042ms)
+✔ source window retains unknown unfinished identities and bounds finalized legacy records (48.949208ms)
+✔ create acknowledges only validated applied selected approval mode (2.1145ms)
+✔ loaded resume acknowledges an explicitly applied approval mode, omitted mode keeps response compatible (0.994333ms)
+✔ helper options are clamped and default to proactive with three helpers (1.056375ms)
+✔ threads pin the V1 helper backend and helpers inherit the restricted profile (4.899417ms)
+✔ helper threads may be interrupted but reach no other operation (0.548458ms)
+✔ zero-gap replay returns authoritative running/pending operational state with no transcript snapshot call (664.062542ms)
+✔ replay reaches one captured high-water before marker and later live delivery (1.339ms)
+✔ cold sync has one bounded source snapshot and matching marker; default remains full snapshot (2.235084ms)
+✔ cold-resumed source without a restored prefix cannot authorize a pair, while legacy output stays compatible (25.644ms)
+✔ invalid, expired, changed-generation and future cursors fall back before any replay (4.583125ms)
+✔ replay count overflow falls back as a whole, with no partial text frames (21.235542ms)
+✔ multibyte and escaped raw/SSE replay byte overflow falls back before publishing partial frames (48.102042ms)
+✔ oversized retained event evicts the queue and old cursor cannot replay past it (59.445417ms)
+✔ SSE framing overhead can exceed the replay cap even when raw JSON alone fits (27.561959ms)
+✔ restart invalidates old generation and zero-gap operational state does not revive a turn (2.933375ms)
+✔ slow consumer failure emits no synchronization marker and attaches no live subscriber (0.852291ms)
+✔ tenant ids follow the platform pattern; absent means default (0.558458ms)
+✔ skill sets are validated, capped and sorted (1.419833ms)
+✔ skill text cannot break out of its delimited section (0.220292ms)
+✔ new workspaces live under their tenant; threads record the tenant (4.233416ms)
+✔ pre-tenancy threads keep their flat workspace on resume (2.523166ms)
+✔ a thread sees only its agent's skills, in its base instructions (6.547167ms)
+✔ the manager validates tenant and skills and hides other tenants' threads (607.503292ms)
+✔ the sweeper ages out workspaces in tenant folders but keeps the folders (58.232333ms)
+✔ steps are labelled in plain words without arguments (0.819834ms)
+✔ steps time relative to the turn and finish running ones (1.824958ms)
+✔ steps are capped per turn (0.519875ms)
+✔ main usage sums model calls and helper usage is kept apart (0.390459ms)
+✔ privacy findings and the trace never hold raw values (2.391ms)
+✔ the turn's userMessage item wins over the sent input (0.156584ms)
+✔ context sections are masked and truncated (5.343666ms)
+✔ rate limit updates merge sparse values (0.236458ms)
+{"ts":"2026-10-05T19:12:33.687Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ workspace tools build, read, search, edit, export and confine a large ABAP report across turns (2170.41ms)
+ℹ write_file namespace: (plain function)
+ℹ turn1 321ms (5 requests), turn2 658ms (14 requests), report 149455 bytes
+{"ts":"2026-10-05T19:12:34.307Z","level":"error","msg":"codex runtime unavailable","event":"exit","exitCode":null,"signal":"SIGTERM","wasReady":true,"pending":0,"stderrTail":[],"error":"The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.","errorName":"ApplicationError","errorCode":"RUNTIME_UNAVAILABLE","status":503,"stack":"ApplicationError: The assistant runtime is unavailable. Try again shortly; if this continues, ask your administrator to check the runtime installation.\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:127:9)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)","cause":{"error":"Codex runtime exited (code null, signal SIGTERM)","errorName":"Error","stack":"Error: Codex runtime exited (code null, signal SIGTERM)\n    at ChildProcess.<anonymous> (/Users/ashok/truex-plan/agent-core/src/client.ts:128:18)\n    at ChildProcess.emit (node:events:514:28)\n    at ChildProcess._handle.onexit (node:internal/child_process:295:12)"}}
+✔ run_script is offered with an injected runner and its result reaches the model (614.354458ms)
+✔ hard links to outside files are never read, edited, exported or copied (29.578959ms)
+✔ a folder locked by a script does not break the rest of the workspace (76.046ms)
+regex (a|a)*b: rejected after 2003 ms
+regex (a|aa)+$: rejected after 2003 ms
+regex (a*)*b: rejected after 0 ms
+regex (x+x+)+y: rejected after 0 ms
+✔ catastrophic regexes time out without blocking the process (4018.25775ms)
+✔ a leading BOM survives read, append and edit (6.295375ms)
+✔ FIFOs are refused without hanging and delete removes them (7.652667ms)
+built 23 chunks (1.98 MB) in 61 ms
+✔ files grow in chunks to just under 2 MB and stop cleanly at the limit (67.134958ms)
+✔ a 12,000-line file reads back page by page with every line exactly once (22.449709ms)
+✔ line endings, empty files and huge lines are handled (9.863792ms)
+2000 files in 26775 ms; write time at 500/1000/1500/2000 files: 6.7/14.4/22.3/23.6 ms
+list_files at 2000 files: 38 ms
+search_files at 2000 files: 47 ms
+✔ the workspace stops cleanly at the file count limit (26965.4195ms)
+✔ 200 mixed operations at once leave a consistent state (51.662667ms)
+✔ 50 threads in parallel stay isolated (24.707875ms)
+✔ clearTemp and copy racing writes never crash or copy partial files (34.977875ms)
+✔ multibyte text split across appends stays byte exact (66.833792ms)
+✔ about 1,000 hostile paths never escape the workspace (377.871333ms)
+✔ malformed arguments are rejected (3.911791ms)
+20,800 entries / 200 workspaces: inspect-only 947 ms, sweep removing 100 741 ms
+✔ sweeps ~20,000 files across 200 workspaces (4587.683833ms)
+✔ an unreadable subdirectory keeps the workspace but tmp is still cleared (9.563167ms)
+✔ a workspace deleted mid-sweep is skipped silently (26.04775ms)
+✔ future mtimes cannot pin a workspace forever (4.197042ms)
+✔ symlinks inside the tree are never followed or deleted through (147.848ms)
+✔ a workspace or tmp that is itself a symlink is ignored (4.544958ms)
+✔ startWorkspaceSweeper skips a run while the previous one is going (122.100583ms)
+✔ invalid env values fall back to safe defaults (156.871083ms)
+✔ a missing or unreadable root does not crash the sweeper (11.147042ms)
+✔ clears stale temp directories and keeps conversation files unless a workspace TTL is set (28.562416ms)
+✔ never follows symlinks out of the workspace root (14.2825ms)
+✔ a missing root is a no-op and the sweeper stops cleanly (18.210042ms)
+✔ exports tool specs for every workspace tool (1.223791ms)
+✔ write, read, overwrite and nested folders with private permissions (24.710292ms)
+✔ append_file builds a large file in chunks and read_file paginates it (13.862167ms)
+✔ read_file truncates very long lines (4.3705ms)
+✔ edit_file replaces unique strings and reports ambiguity (7.981375ms)
+✔ list_files reports recursive entries, sizes, usage and truncation (9.785ms)
+✔ list_files caps entries (372.941667ms)
+✔ search_files supports regex, literal, case, path and glob filters (57.773542ms)
+✔ search_files caps matches and truncates long lines (14.6005ms)
+✔ delete_file removes files and folders but never the root (120.362041ms)
+✔ export_workspace_file publishes the file contents (9.193333ms)
+✔ clearTemp removes only tmp (24.506208ms)
+✔ copy duplicates a workspace into another thread; threads stay isolated (36.587333ms)
+✔ rejects path escapes and malformed paths (5.219375ms)
+✔ refuses symbolic links anywhere in the path (17.666542ms)
+✔ clearTemp and copy do not follow symlinks (10.667166ms)
+✔ rejects a workspace root that is a symlink (5.888292ms)
+✔ enforces content, file, workspace and file-count limits (708.361334ms)
+✔ serializes concurrent appends per thread (79.049875ms)
+✔ threads get workspace tools and no script tool when scripts are disabled (6.4ms)
+✔ workspace tools route to the thread workspace and export to Documents (89.81375ms)
+✔ run_script is offered and routed only when a runner is configured (8.644667ms)
+✔ tmp/ is cleared when a turn completes (64.10925ms)
+ℹ tests 189
+ℹ suites 0
+ℹ pass 189
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34580.388917

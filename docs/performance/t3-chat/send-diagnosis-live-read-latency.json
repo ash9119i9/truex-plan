@@ -1,0 +1,73 @@
+{
+  "scope": "Read-only localhost API; response contents discarded; no sends/providers",
+  "samples": [
+    {
+      "path": "/healthz",
+      "samples": [
+        {
+          "ms": 244.32,
+          "status": 200
+        },
+        {
+          "ms": 233.71,
+          "status": 200
+        },
+        {
+          "ms": 234.47,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "path": "/api/features",
+      "samples": [
+        {
+          "ms": 1.0,
+          "status": 200
+        },
+        {
+          "ms": 0.64,
+          "status": 200
+        },
+        {
+          "ms": 0.63,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "path": "/api/sessions",
+      "samples": [
+        {
+          "ms": 240.53,
+          "status": 200
+        },
+        {
+          "ms": 471.97,
+          "status": 200
+        },
+        {
+          "ms": 236.46,
+          "status": 200
+        }
+      ]
+    },
+    {
+      "path": "/api/agents",
+      "samples": [
+        {
+          "ms": 235.89,
+          "status": 200
+        },
+        {
+          "ms": 242.53,
+          "status": 200
+        },
+        {
+          "ms": 241.05,
+          "status": 200
+        }
+      ]
+    }
+  ]
+}

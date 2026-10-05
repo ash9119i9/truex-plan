@@ -21,7 +21,14 @@ import { Store } from "./store";
 import { newAgent } from "./agents";
 import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
-import { historyAnchor, historyWindow } from "./history-window";
+import { historyAnchor } from "./history-window";
+import { readHistoryWindow } from "./history-read";
+import { messageTextError } from "../../shared/message-input";
+import type { RuntimeResumeOptions } from "../../shared/runtime-resume-options";
+import {
+  creationApprovalOptions,
+  confirmRuntimeApproval,
+} from "./session-creation";
 import { isDeepStrictEqual } from "node:util";
 import type { AnyBulkWriteOperation } from "mongodb";
 import type {
@@ -30,6 +37,7 @@ import type {
   GoalHistoryEntry,
   GoalReview,
   Message,
+  MessageAcceptanceTiming,
   Project,
   Session,
   SessionGoal,
@@ -403,7 +411,35 @@ export class PlatformService {
   ) {
     const agent = await this.store.findAgent(agentId);
     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
-    const profile = await this.store.findModel(agent.modelProfileId);
+    // Observe failures immediately, then consume results in the existing
+    // validation order. A missing model still fails without waiting for MCPs
+    // or skills, and those outstanding reads cannot reject unhandled.
+    const settled = <T>(read: Promise<T>) =>
+      read.then(
+        (value) => ({ status: "fulfilled" as const, value }),
+        (reason: unknown) => ({ status: "rejected" as const, reason }),
+      );
+    const agentKey = String(agent._id);
+    const enabled = { agentIds: agentKey, enabled: { $ne: false } };
+    const modelRead = settled(this.store.findModel(agent.modelProfileId));
+    const tenantMcpRead = settled(
+      this.store.mcp
+        .find({ scope: "tenant", ...enabled })
+        .sort({ name: 1 })
+        .toArray(),
+    );
+    const ownerMcpRead = settled(
+      ownerId
+        ? this.store.mcp
+            .find({ scope: "user", ownerId, ...enabled })
+            .sort({ name: 1 })
+            .toArray()
+        : Promise.resolve([]),
+    );
+    const skillsRead = settled(this.skills(agent.skillIds || []));
+    const modelResult = await modelRead;
+    if (modelResult.status === "rejected") throw modelResult.reason;
+    const profile = modelResult.value;
     const apiKey = profile?.apiKey || profile?.apikey;
     if (!profile || !apiKey)
       throw new ApiError(
@@ -437,18 +473,12 @@ export class PlatformService {
         : this.gatewayConfig(profile, provider);
     // Attachments live on the profiles (agentIds); agent.mcpProfileIds is
     // legacy and no longer read.
-    const agentKey = String(agent._id);
-    const enabled = { agentIds: agentKey, enabled: { $ne: false } };
-    const tenantMcps = await this.store.mcp
-      .find({ scope: "tenant", ...enabled })
-      .sort({ name: 1 })
-      .toArray();
-    const userMcps = ownerId
-      ? await this.store.mcp
-          .find({ scope: "user", ownerId, ...enabled })
-          .sort({ name: 1 })
-          .toArray()
-      : [];
+    const tenantMcpResult = await tenantMcpRead;
+    if (tenantMcpResult.status === "rejected") throw tenantMcpResult.reason;
+    const tenantMcps = tenantMcpResult.value;
+    const ownerMcpResult = await ownerMcpRead;
+    if (ownerMcpResult.status === "rejected") throw ownerMcpResult.reason;
+    const userMcps = ownerMcpResult.value;
     // Tenant names are reserved tenant-wide (attached here or not), so a user
     // copy made before the tenant one existed is skipped, and the chat still
     // starts. The owner sees the same warning in MCP settings.
@@ -487,7 +517,9 @@ export class PlatformService {
         server.default_tools_approval_mode = "prompt";
       config[`mcp_servers.${mcp.name}`] = server;
     }
-    const skills = await this.skills(agent.skillIds || []);
+    const skillsResult = await skillsRead;
+    if (skillsResult.status === "rejected") throw skillsResult.reason;
+    const skills = skillsResult.value;
     return {
       tenantId: currentTenantId(),
       model: profile.modelName,
@@ -1114,7 +1146,16 @@ export class PlatformService {
     });
     return { deleted: deletedCount };
   }
-  async create(agentId: string, subAgents?: unknown, projectId?: unknown) {
+  async create(
+    agentId: string,
+    subAgents?: unknown,
+    projectId?: unknown,
+    requestedApprovalMode?: unknown,
+  ) {
+    const creationOptions = creationApprovalOptions(
+      requestedApprovalMode,
+      this.approvalModes,
+    );
     if (typeof agentId !== "string")
       throw new ApiError(400, "agentId is required", "INVALID_INPUT");
     const delegation = subAgentOptions(subAgents);
@@ -1125,7 +1166,7 @@ export class PlatformService {
     // A new chat belongs to its creator, so their user MCPs load.
     const config: any = await this.configuration(agentId, { ownerId: owner });
     if (delegation) config.subAgents = delegation;
-    Object.assign(config, this.modeOptions());
+    Object.assign(config, creationOptions);
     let host = "",
       thread: any;
     const runtimeSessionId = randomUUID();
@@ -1167,9 +1208,21 @@ export class PlatformService {
       threadStartMs: thread.threadStartMs,
       runtimeStartup: thread.runtimeStartup,
       mcpFingerprint: config.mcpFingerprint,
+      ...(creationOptions.approvalMode
+        ? { approvalMode: creationOptions.approvalMode }
+        : {}),
       ...(typeof projectId === "string" ? { projectId } : {}),
     };
     try {
+      await confirmRuntimeApproval(thread, creationOptions, (mode) =>
+        this.call(
+          host,
+          `/threads/${thread.threadId}/approval-mode`,
+          "POST",
+          { mode },
+          runtimeSessionId,
+        ),
+      );
       await this.store.sessions.insertOne(session);
     } catch (e) {
       await this.call(
@@ -1178,7 +1231,13 @@ export class PlatformService {
         "DELETE",
         undefined,
         runtimeSessionId,
-      ).catch(() => {});
+      ).catch((cleanupError) =>
+        log("warn", "New conversation runtime cleanup failed", {
+          op: "create.cleanup",
+          threadId: thread.threadId,
+          ...errorFields(cleanupError),
+        }),
+      );
       throw e;
     }
     if (session.projectId) await this.touchProject(session.projectId);
@@ -1334,6 +1393,7 @@ export class PlatformService {
     cursor: string,
     signal: AbortSignal,
     requestId?: string,
+    options: { window?: boolean; sync?: "v1" } = {},
   ) {
     if (!this.hosts.includes(session.agentCoreHost))
       throw new ApiError(
@@ -1348,6 +1408,7 @@ export class PlatformService {
       cursor,
       requestId,
       signal,
+      ...options,
     });
   }
   async subAgent(id: string, agentId: string) {
@@ -1391,10 +1452,18 @@ export class PlatformService {
       { _id: id },
       { $set: { approvalMode: next } },
     );
-    await this.owned(session, "/approval-mode", "POST", { mode: next });
+    const confirmation = await this.owned(session, "/approval-mode", "POST", {
+      mode: next,
+    });
+    if (confirmation?.mode !== next)
+      throw new ApiError(
+        502,
+        "The runtime did not confirm the requested approval mode. Retry before sending.",
+        "INVALID_UPSTREAM_RESPONSE",
+      );
     return { mode: next };
   }
-  async resume(session: Session) {
+  async resume(session: Session, options: RuntimeResumeOptions = {}) {
     // The stored owner, never the caller: resume also runs for admins reading
     // a chat, cold resume, and background work without a user.
     const config: any = await this.configuration(session.agentId, {
@@ -1405,7 +1474,11 @@ export class PlatformService {
     if (session.settings?.model) config.model = session.settings.model;
     if (session.settings?.effort)
       config.config.model_reasoning_effort = session.settings.effort;
+    if (options.response) config.response = options.response;
     const snapshot = await this.owned(session, "/resume", "POST", config);
+    await confirmRuntimeApproval(snapshot, config, (mode) =>
+      this.owned(session, "/approval-mode", "POST", { mode }),
+    );
     // A failed plan save must not block sending the message.
     await this.rememberSnapshotPlan(session._id, snapshot).catch((error) =>
       log("warn", "plan save failed", {
@@ -1435,12 +1508,9 @@ export class PlatformService {
     return snapshot;
   }
   async message(id: string, text: string, clientId: string) {
-    if (typeof text !== "string" || !text.trim() || text.length > 100000)
-      throw new ApiError(
-        400,
-        "Text must contain 1–100000 characters",
-        "INVALID_INPUT",
-      );
+    const started = performance.now();
+    const inputError = messageTextError(text);
+    if (inputError) throw new ApiError(400, inputError, "INVALID_INPUT");
     if (typeof clientId !== "string" || !/^[-\w]{1,100}$/.test(clientId))
       throw new ApiError(
         400,
@@ -1448,7 +1518,11 @@ export class PlatformService {
         "INVALID_INPUT",
       );
     const s = await this.sessionFor(id, "write");
-    await this.resume(s);
+    const authorized = performance.now();
+    // Sending needs the current runtime configuration and approval acknowledgment,
+    // not another copy of the transcript. Older runtimes may still return it.
+    await this.resume(s, { response: "operational" });
+    const prepared = performance.now();
     const key = `${id}:user:${clientId}`;
     try {
       await this.store.messages.insertOne({
@@ -1479,6 +1553,7 @@ export class PlatformService {
     const begin = performance.now();
     try {
       const result = await this.owned(s, "/turns", "POST", { text, clientId });
+      const dispatched = performance.now();
       await this.store.messages.updateOne(
         { _id: key },
         {
@@ -1489,7 +1564,19 @@ export class PlatformService {
           },
         },
       );
-      return { ...result, platformRoundTripMs: performance.now() - begin };
+      const accepted = performance.now();
+      const platformTiming: MessageAcceptanceTiming = {
+        authorizationMs: authorized - started,
+        preparationMs: prepared - authorized,
+        dispatchMs: dispatched - begin,
+        receiptMs: begin - prepared + accepted - dispatched,
+        totalMs: accepted - started,
+      };
+      return {
+        ...result,
+        platformRoundTripMs: accepted - begin,
+        platformTiming,
+      };
     } catch (e) {
       await this.store.messages.updateOne(
         { _id: key },
@@ -1642,13 +1729,16 @@ export class PlatformService {
       at: new Date().toISOString(),
     });
   }
-  private async recoverHistory(s: Session) {
+  private async recoverHistory(s: Session, window = false) {
     const id = s._id;
     let snapshot = null,
       recoveryError = null,
       recoveryErrorRef: { code: string; requestId?: string } | null = null;
     try {
-      snapshot = await this.owned(s, "/snapshot");
+      snapshot = await this.owned(
+        s,
+        window ? "/snapshot?window=1" : "/snapshot",
+      );
       if (snapshot && "goal" in snapshot)
         snapshot = {
           ...snapshot,
@@ -1709,11 +1799,12 @@ export class PlatformService {
         s.threadId,
         s.agentCoreHost,
         s.agentCoreSessionId ?? null,
+        options.window === true,
       ]);
       started = performance.now();
       let recovery = this.historyRecoveries.get(key);
       if (!recovery) {
-        recovery = this.recoverHistory(s).finally(() => {
+        recovery = this.recoverHistory(s, options.window).finally(() => {
           if (this.historyRecoveries.get(key) === recovery)
             this.historyRecoveries.delete(key);
         });
@@ -1726,11 +1817,14 @@ export class PlatformService {
     // A persisted-only read never starts or waits for runtime recovery.
     const fresh = options.persistedOnly ? s : await this.session(id);
     const saved = fresh.plan;
-    const ordered = orderConversation(
-      await this.store.messages.find({ sessionId: id }).toArray(),
-    );
-    const page = options.window ? historyWindow(ordered, id, anchor) : null;
-    const selected = page?.messages ?? ordered;
+    const page = options.window
+      ? await readHistoryWindow(this.store.messages, id, anchor)
+      : null;
+    const selected =
+      page?.messages ??
+      orderConversation(
+        await this.store.messages.find({ sessionId: id }).toArray(),
+      );
     const visibleTurns = new Set(
       selected
         .map((message) => message.turnId)

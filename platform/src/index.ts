@@ -419,6 +419,7 @@ async function main() {
             req.body.agentId,
             req.body.subAgents,
             req.body.projectId,
+            req.body.approvalMode,
           ),
         ),
     ),
@@ -484,17 +485,24 @@ async function main() {
   );
   http.post(
     "/api/sessions/:id/messages",
-    route(async (req, res) =>
-      res
-        .status(202)
-        .json(
-          await service.message(
-            String(req.params.id),
-            req.body.text,
-            req.body.clientId,
-          ),
-        ),
-    ),
+    route(async (req, res) => {
+      const result = await service.message(
+        String(req.params.id),
+        req.body.text,
+        req.body.clientId,
+      );
+      if (result.platformTiming)
+        res.set(
+          "Server-Timing",
+          Object.entries<number>(result.platformTiming)
+            .map(
+              ([phase, duration]) =>
+                `${phase.replace(/Ms$/, "")};dur=${duration.toFixed(2)}`,
+            )
+            .join(", "),
+        );
+      res.status(202).json(result);
+    }),
   );
   http.get(
     "/api/sessions/:id/agents",
@@ -660,6 +668,15 @@ async function main() {
   http.get(
     "/api/sessions/:id/events",
     route(async (req, res) => {
+      if (
+        (req.query.window !== undefined && req.query.window !== "1") ||
+        (req.query.sync !== undefined && req.query.sync !== "v1")
+      )
+        throw new ApiError(
+          400,
+          "Invalid conversation synchronization options",
+          "INVALID_INPUT",
+        );
       const s = await service.sessionFor(String(req.params.id), "read");
       if (!service.hosts.includes(s.agentCoreHost))
         throw new ApiError(
@@ -677,6 +694,10 @@ async function main() {
           req.get("Last-Event-ID") || String(req.query.cursor || ""),
           abort.signal,
           requestId,
+          {
+            window: req.query.window === "1" ? true : undefined,
+            sync: req.query.sync === "v1" ? "v1" : undefined,
+          },
         );
       } catch (error) {
         if (error instanceof ApiError) throw error;
@@ -764,6 +785,13 @@ async function main() {
                 }),
               );
           }
+          if (event.type === "sync.completed") {
+            const operational = withPlanFallback(event.data.snapshot, {
+              steps: planSteps,
+            });
+            if (operational.goal) remember(operational.goal, event);
+            return { ...event, data: { ...event.data, snapshot: operational } };
+          }
           if (event.type === "snapshot") {
             if (event.data.plan?.length) {
               planSteps = event.data.plan;
@@ -785,7 +813,7 @@ async function main() {
               ? { ...event, data: recentSnapshot(event.data) }
               : event;
           }
-        });
+        }, req.query.sync === "v1");
         await relay(upstream.body as any, res, stream);
         if (!res.destroyed) endedStream(res, { requestId, sessionId: s._id });
       } catch (error) {

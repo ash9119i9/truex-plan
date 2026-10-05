@@ -1,0 +1,33 @@
+Reviewed candidate with coverage guard removed; expected failing regressions
+✖ cold-resumed source without a restored prefix cannot authorize a pair, while legacy output stays compatible (3.620041ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 279.778166
+
+✖ failing tests:
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-58nmoN/snapshot-window-before.test.ts:2:6192
+✖ cold-resumed source without a restored prefix cannot authorize a pair, while legacy output stays compatible (3.620041ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'snapshot',
+  +   'sync.completed'
+    ]
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-58nmoN/snapshot-window-before.test.ts:205:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'snapshot', 'sync.completed' ],
+    expected: [ 'snapshot' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

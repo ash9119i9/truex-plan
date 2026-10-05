@@ -1,0 +1,45 @@
+✔ approval mode config is off by default and rejects unsafe defaults (0.593792ms)
+✔ approval modes: MCP prompt mode, thread options and the approval-mode endpoint (3702.738ms)
+✔ public sessions include approvalMode only when the feature is on (0.272541ms)
+✔ audit records show approvals settled by a mode and allow-for-chat (0.661083ms)
+✔ recent history bounds payload reads and preserves complete authoritative pages (3766.7475ms)
+▶ a persisted desired mode must be confirmed after reload before accepting a message
+  ✔ unconfirmed resume 0 is rejected before every durable/turn side effect (6.27275ms)
+  ✔ unconfirmed resume 1 is rejected before every durable/turn side effect (5.037125ms)
+  ✔ unconfirmed resume 2 is rejected before every durable/turn side effect (2.93675ms)
+  ✔ unconfirmed resume 3 is rejected before every durable/turn side effect (2.629166ms)
+  ✔ confirmed current resume accepts exactly one turn (2.864667ms)
+  ✔ confirmed legacy resume accepts exactly one turn (6.738458ms)
+  ✔ feature-off resume retains its old wire contract (2.761709ms)
+✔ a persisted desired mode must be confirmed after reload before accepting a message (3691.698167ms)
+(node:62075) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ HTTP and AgentCore synchronization deliver identical replay/operational envelopes and zero-gap authority (238.208459ms)
+✔ AgentCore envelopes preserve errors and pagination; event streams retain cursor and abort signal (12.345625ms)
+✔ health and schemas share a stable runtime session; thread calls require the persisted session (4.273292ms)
+✔ HTTP transport keeps direct calls and Last-Event-ID behavior (25.481083ms)
+✔ source snapshot window is identical for HTTP and AgentCore and rejects invalid options (8.63975ms)
+✔ conversation creation, restart, streaming and ingestion reuse the stored AgentCore session (3593.160584ms)
+✔ creation validates the existing approval-mode schema and keeps old defaults (0.820792ms)
+✔ creation confirmation uses exact ack or the supported older-runtime endpoint (0.229041ms)
+✔ configured creation applies and persists the selected mode without a follow-up update (3695.193791ms)
+✔ invalid creation mode rejects before configuration or runtime side effects (1142.078084ms)
+✔ older runtime mode confirmation and failed acknowledgment keep creation safe (1232.842792ms)
+✔ configured creation rejects forbidden projects before provisioning (1109.390875ms)
+✔ mismatched creation acknowledgment cleans up without storing or silently updating (1186.6285ms)
+{"ts":"2026-10-05T18:10:36.645Z","level":"warn","msg":"New conversation runtime cleanup failed","op":"create.cleanup","threadId":"created-thread","error":"cleanup unavailable","errorName":"Error","stack":"Error: cleanup unavailable\n    at PlatformService.service.call (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:331:38)\n    at PlatformService.create (/Users/ashok/truex-plan/platform/src/service.ts:1202:18)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async waitForActual (node:assert:615:5)\n    at async strict.rejects (node:assert:738:25)\n    at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:343:5)\n    at async Test.run (node:internal/test_runner/test:1404:7)\n    at async Test.processPendingSubtests (node:internal/test_runner/test:969:7)"}
+✔ database failure after configured runtime creation keeps its failure and attempts cleanup (1248.452041ms)
+✔ configured mode survives a new service instance and is reapplied before its first turn (1196.368125ms)
+{"ts":"2026-10-05T18:10:26.978Z","level":"warn","msg":"Rejected malformed synchronized update","op":"stream","bytes":7,"error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)","errorName":"SyntaxError","stack":"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\n    at JSON.parse (<anonymous>)\n    at PublicEventStream.push (/Users/ashok/truex-plan/platform/src/public.ts:858:26)\n    at <anonymous> (/Users/ashok/truex-plan/platform/test/sync-public.test.ts:47:30)\n    at getActual (node:assert:580:5)\n    at strict.throws (node:assert:728:24)\n    at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/sync-public.test.ts:47:10)\n    at Test.runInAsyncScope (node:async_hooks:226:14)\n    at Test.run (node:internal/test_runner/test:1397:25)\n    at Test.start (node:internal/test_runner/test:1257:17)\n    at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)"}
+{"ts":"2026-10-05T18:10:26.982Z","level":"warn","msg":"skipped malformed live update","op":"stream","bytes":7,"error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)","errorName":"SyntaxError","stack":"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\n    at JSON.parse (<anonymous>)\n    at PublicEventStream.push (/Users/ashok/truex-plan/platform/src/public.ts:858:26)\n    at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/sync-public.test.ts:50:29)\n    at Test.runInAsyncScope (node:async_hooks:226:14)\n    at Test.run (node:internal/test_runner/test:1397:25)\n    at Test.start (node:internal/test_runner/test:1257:17)\n    at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)"}
+✔ a malformed synchronized frame cannot be skipped before a valid high-water marker (6.752542ms)
+✔ synchronization marker exposes only authoritative operational projection (0.342375ms)
+✔ unsupported or incoherent markers never become public completion (0.099583ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11147.700666

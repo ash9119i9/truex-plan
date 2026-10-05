@@ -1,0 +1,19 @@
+✔ approval mode config is off by default and rejects unsafe defaults (0.498417ms)
+✔ approval modes: MCP prompt mode, thread options and the approval-mode endpoint (2132.453792ms)
+✔ public sessions include approvalMode only when the feature is on (0.168666ms)
+✔ audit records show approvals settled by a mode and allow-for-chat (0.534333ms)
+✔ recent history bounds payload reads and preserves complete authoritative pages (2108.913625ms)
+✔ recent ten requests and older twenty preserve same-time runtime order and command anchors without gaps (5.94875ms)
+✔ newest inserts do not shift an anchored older page (0.597375ms)
+✔ empty, short, command-only and leading assistant histories remain readable (0.171125ms)
+✔ malformed and cross-session cursors fail validation; a removed anchor produces actionable conflict (0.47975ms)
+✔ recent snapshots retain complete newest turns and active reasoning while preserving actions and state (0.300333ms)
+✔ stream projection bounds snapshot content without changing subsequent events or frame cursors (0.306875ms)
+ℹ tests 11
+ℹ suites 0
+ℹ pass 11
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 2388.061625

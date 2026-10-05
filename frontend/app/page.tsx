@@ -33,6 +33,13 @@ import { useAppliedState } from "@/lib/use-applied-state";
 import { SessionCache } from "@/lib/session-cache";
 import { SessionHistory } from "@/lib/session-history";
 import {
+  advanceSourceSync,
+  beginSourceSync,
+  overlaySourceEntries,
+  SynchronizationWaiter,
+  type SourcePair,
+} from "@/lib/source-sync";
+import {
   ChatMessages,
   type ChatTimelineProps,
 } from "@/components/chat-messages";
@@ -83,6 +90,13 @@ import { AgentsPanel } from "@/components/agents-panel";
 import { SessionMenu, useProjects } from "@/components/project-sidebar";
 import { createSessionBody, draftProject } from "@/lib/projects";
 import { SessionPreparation } from "@/lib/session-preparation";
+import { coalesceChatEvents } from "@/lib/chat-batch";
+import {
+  ComposerDraft,
+  ApprovalConfirmation,
+  type DispatchState,
+} from "@/lib/composer-submission";
+import { messageTextError } from "../../shared/message-input";
 import { HelperChip } from "@/components/helper-chip";
 import { transport } from "@/lib/transport";
 import { ApprovalModePicker } from "@/components/approval-mode-picker";
@@ -169,6 +183,8 @@ export default function Home() {
       useState<ApprovalModesConfig>(approvalModesOff),
     [draftMode, setDraftMode] = useState<ApprovalMode | null>(null),
     [modeError, setModeError] = useState(""),
+    [changingMode, setChangingMode] = useState(false),
+    modeChanging = useRef(false),
     draftModeRef = useRef<ApprovalMode | null>(null);
   const [entries, setEntries, entriesRef] = useAppliedState<Entry[]>([]);
   const [events, setEvents] = useState<DomainEvent[]>([]),
@@ -178,7 +194,10 @@ export default function Home() {
   const [observability, setObservability, observabilityRef] =
       useAppliedState<ObservabilityState>(emptyObservability),
     [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
-  const [text, setText] = useState(""),
+  const draft = useRef(new ComposerDraft());
+  const approvalConfirmation = useRef(new ApprovalConfirmation());
+  const [dispatchState, setDispatchState] = useState<DispatchState>(null);
+  const [text, setTextState] = useState(""),
     [error, setErrorText] = useState(""),
     // Code and request id of the error in the banner, when it has them.
     [errorDetail, setErrorDetail] = useState<ErrorRefValue | null>(null),
@@ -217,6 +236,10 @@ export default function Home() {
       key: string;
       state: "failed";
     } | null>(null);
+  function setText(value: string) {
+    draft.current.edit();
+    setTextState(value);
+  }
   // Both panels start collapsed; the user opens them from the header.
   const [panels, setPanels] = useState({ sidebar: false, activity: false }),
     [panelSizes, setPanelSizes] = useState<
@@ -288,6 +311,15 @@ export default function Home() {
     expandedHistory = useRef(false),
     olderFlight = useRef(false),
     conversationCache = useRef(new SessionCache<SavedConversation>()),
+    sourcePairs = useRef(new SessionCache<SourcePair>()),
+    sourceSync = useRef(beginSourceSync(null)),
+    sourceOwner = useRef<string | null>(null),
+    sourceWaiter = useRef(new SynchronizationWaiter()),
+    sourceConnection = useRef(0),
+    sourceRequestedCursor = useRef<string | null>(null),
+    sourceProtocol = useRef(true),
+    sourceCapability = useRef(false),
+    sourceRecovered = useRef(false),
     historyLoader = useRef(
       new SessionHistory<SessionHistoryPayload>((id, persisted) =>
         api(
@@ -415,6 +447,12 @@ export default function Home() {
     };
     heldTimeline.current = saved.entries.length ? saved : heldTimeline.current;
     conversationCache.current.set(current.session._id, saved);
+    if (
+      sourceOwner.current === current.session._id &&
+      sourceSync.current.phase === "ready" &&
+      sourceSync.current.pair
+    )
+      sourcePairs.current.set(current.session._id, sourceSync.current.pair);
     return saved;
   }, []);
   const invalidateConversation = useCallback((id: string, error: unknown) => {
@@ -424,12 +462,35 @@ export default function Home() {
         !(error.status === 409 && error.code === "LEGACY_SESSION"))
     )
       return;
+    const activeOwner =
+      sourceOwner.current === id ||
+      sessionRef.current?._id === id ||
+      error.status === 401;
     conversationCache.current.delete(id);
+    sourcePairs.current.delete(id);
     setPaintedConversation(null);
     heldTimeline.current = null;
-    if (error.status === 401) conversationCache.current.clear();
-    if (sessionRef.current?._id === id) {
+    if (error.status === 401) {
+      conversationCache.current.clear();
+      sourcePairs.current.clear();
+    }
+    if (sourceOwner.current === id || error.status === 401) {
+      sourceOwner.current = null;
+      sourceSync.current = beginSourceSync(null);
+      sourceRecovered.current = false;
+      sourceCapability.current = false;
+      sourceConnection.current++;
+      sourceWaiter.current.cancel();
+    }
+    if (displayed.current?.session._id === id || error.status === 401)
+      displayed.current = null;
+    if (activeOwner) {
+      generation.current++;
       sessionRef.current = null;
+      sourceWaiter.current.cancel();
+      openingSession.current = false;
+      setOpeningId(null);
+      setBusy(false);
       setSession(null);
       setEntries([]);
       setPending([]);
@@ -461,7 +522,7 @@ export default function Home() {
       }
       const data = await flight;
       if (token !== generation.current || sessionRef.current?._id !== id)
-        return;
+        return false;
       // A queued delta is already newer than the HTTP snapshot, even before paint.
       streamFlush.current?.();
       sessionRef.current = data.session;
@@ -501,6 +562,32 @@ export default function Home() {
       }
       if (data.recoveryError)
         setError(data.recoveryError, data.recoveryErrorRef);
+      return !data.recoveryError;
+    },
+    [],
+  );
+  const requestSourceHandoff = useCallback(
+    async (id: string, token: number) => {
+      if (token !== generation.current || sessionRef.current?._id !== id)
+        return false;
+      streamFlush.current?.();
+      sourceSync.current = beginSourceSync(null, true);
+      sourceRequestedCursor.current = null;
+      sourceProtocol.current = true;
+      sourceConnection.current++;
+      const ready = sourceWaiter.current.wait(id, token);
+      setStreamKey((key) => key + 1);
+      const complete = await ready;
+      if (token !== generation.current || sessionRef.current?._id !== id)
+        return false;
+      if (!complete) {
+        sourcePairs.current.delete(id);
+        sourceSync.current = { ...beginSourceSync(null), phase: "legacy" };
+        sourceProtocol.current = false;
+        sourceConnection.current++;
+        setStreamKey((key) => key + 1);
+      }
+      return complete;
     },
     [],
   );
@@ -511,6 +598,17 @@ export default function Home() {
       const cached = conversationCache.current.get(id);
       setPaintedConversation(cached ? null : heldTimeline.current);
       const token = ++generation.current;
+      sourceWaiter.current.cancel();
+      const paired = sourcePairs.current.get(id) ?? null;
+      sourceOwner.current = id;
+      sourceSync.current = beginSourceSync(paired);
+      sourceRequestedCursor.current = paired?.cursor ?? null;
+      sourceProtocol.current = true;
+      sourceCapability.current = false;
+      sourceRecovered.current = false;
+      sourceConnection.current++;
+      const warmReady = paired ? sourceWaiter.current.wait(id, token) : null;
+      setStreamKey((key) => key + 1);
       liveRevision.current = 0;
       preparation.current.reset();
       openingSession.current = true;
@@ -536,7 +634,11 @@ export default function Home() {
       sessionRef.current = cached?.session ?? null;
       setSession(cached?.session ?? null);
       if (cached) setAgentId(cached.session.agentId);
-      setEntries(cached?.entries ?? []);
+      setEntries(
+        paired && cached
+          ? overlaySourceEntries(cached.entries, paired.entries)
+          : (cached?.entries ?? []),
+      );
       setEvents(cached?.events ?? []);
       // Pending actions are live state, never restored from the display cache.
       setPending([]);
@@ -556,10 +658,15 @@ export default function Home() {
       history.replaceState(null, "", "?session=" + encodeURIComponent(id));
       try {
         const revision = liveRevision.current;
-        const { persisted, recovery } = historyLoader.current.loadForOpen(id);
+        const { persisted, recovery } = paired
+          ? {
+              persisted: historyLoader.current.load(id, true),
+              recovery: undefined,
+            }
+          : historyLoader.current.loadForOpen(id);
         // Record ownership at request start, before saved history or SSE can
         // arrive. A completed recovery must not be re-requested after paint.
-        if (!recoveryStarts.current.has(recovery))
+        if (recovery && !recoveryStarts.current.has(recovery))
           recoveryStarts.current.set(recovery, { token, revision });
         const data = await persisted;
         if (token !== generation.current) return;
@@ -568,22 +675,45 @@ export default function Home() {
         sessionRef.current = data.session;
         setSession(data.session);
         setAgentId(data.session.agentId);
-        setEntries((old) =>
-          addApprovals(
+        setEntries((old) => {
+          const merged = addApprovals(
             mergeHistoryWindow(data.messages, old, {
               preserveLive: liveRevision.current !== revision,
             }),
             data.approvals || [],
-          ),
-        );
+          );
+          return paired && sourceSync.current.pair
+            ? overlaySourceEntries(merged, sourceSync.current.pair.entries)
+            : merged;
+        });
         if (liveRevision.current === 0) setPlan(data.plan?.steps || []);
         if (liveRevision.current === revision)
           setGoalReview(data.goalReview || null);
         if (!expandedHistory.current)
           setHistoryWindow(data.historyWindow ?? null);
-        // Recovery is independent of first durable paint and shares resync requests.
-        await recover(id, token, recovery);
+        const warm = warmReady ? await warmReady : false;
         if (token !== generation.current) return;
+        if (!warm) {
+          sourcePairs.current.delete(id);
+          sourceSync.current = beginSourceSync(null);
+          if (paired) sourceConnection.current++;
+          const recovered = await recover(id, token, recovery);
+          if (token !== generation.current) return;
+          sourceRecovered.current = recovered;
+          if (recovered && sourceCapability.current)
+            await requestSourceHandoff(id, token);
+          else if (paired) {
+            // A rolled-back server may not publish markers. Restore its safe
+            // live stream without waiting another deadline after full recovery.
+            sourceSync.current = { ...beginSourceSync(null), phase: "legacy" };
+            sourceRequestedCursor.current = null;
+            sourceProtocol.current = false;
+            sourceConnection.current++;
+            setStreamKey((key) => key + 1);
+          }
+        }
+        if (token !== generation.current) return;
+        if (warm) return;
         void getTraces(id, true)
           .then((traceData) => {
             if (token !== generation.current) return;
@@ -621,7 +751,7 @@ export default function Home() {
         }
       }
     },
-    [rememberDisplayed, recover, invalidateConversation],
+    [rememberDisplayed, recover, invalidateConversation, requestSourceHandoff],
   );
   const restoreTimelineScroll = useCallback(async () => {
     const saved = restoreScroll.current;
@@ -751,6 +881,8 @@ export default function Home() {
     // A page-instance cache cannot survive an account navigation via bfcache.
     const clear = () => {
       conversationCache.current.clear();
+      sourcePairs.current.clear();
+      sourceWaiter.current.cancel();
       heldTimeline.current = null;
     };
     const revalidate = (event: PageTransitionEvent) => {
@@ -829,22 +961,88 @@ export default function Home() {
   useEffect(() => {
     if (!session) return;
     const id = session._id;
+    const token = generation.current;
+    if (sourceOwner.current !== id) {
+      sourceOwner.current = id;
+      sourceSync.current = beginSourceSync(null);
+      sourceRequestedCursor.current = null;
+      sourceProtocol.current = true;
+      sourceCapability.current = false;
+      sourceRecovered.current = false;
+    }
+    const connection = sourceConnection.current;
     follow.reset();
     let active = true;
     let firstSnapshot = true;
     const openingOwnsRecovery = openingSession.current;
     const reloadTranscript = () => {
-      const token = generation.current;
-      void recover(id, token).catch((e) => {
-        if (active && token === generation.current) {
-          invalidateConversation(id, e);
-          reportError(e);
-        }
-      });
+      void recover(id, token)
+        .then((recovered) => {
+          if (
+            !active ||
+            token !== generation.current ||
+            sessionRef.current?._id !== id
+          )
+            return;
+          sourceRecovered.current = recovered;
+          if (
+            recovered &&
+            sourceCapability.current &&
+            sourceSync.current.phase === "cold"
+          )
+            void requestSourceHandoff(id, token);
+        })
+        .catch((e) => {
+          if (active && token === generation.current) {
+            invalidateConversation(id, e);
+            reportError(e);
+          }
+        });
     };
     // Reload what the stream may have missed, as the platform asks on resync.
     const resync = () => {
-      reloadTranscript();
+      if (
+        !active ||
+        token !== generation.current ||
+        sessionRef.current?._id !== id
+      )
+        return;
+      sourcePairs.current.delete(id);
+      sourceSync.current = beginSourceSync(null);
+      sourceWaiter.current.cancel();
+      if (openingSession.current) return;
+      openingSession.current = true;
+      setOpeningId(id);
+      setBusy(true);
+      sourceConnection.current++;
+      void recover(id, token)
+        .then(async (recovered) => {
+          if (token !== generation.current || sessionRef.current?._id !== id)
+            return;
+          sourceRecovered.current = recovered;
+          if (recovered && sourceCapability.current)
+            await requestSourceHandoff(id, token);
+          else {
+            sourceSync.current = { ...beginSourceSync(null), phase: "legacy" };
+            sourceRequestedCursor.current = null;
+            sourceProtocol.current = false;
+            sourceConnection.current++;
+            setStreamKey((key) => key + 1);
+          }
+        })
+        .catch((e) => {
+          if (token === generation.current) {
+            invalidateConversation(id, e);
+            reportError(e);
+          }
+        })
+        .finally(() => {
+          if (token === generation.current) {
+            openingSession.current = false;
+            setOpeningId(null);
+            setBusy(false);
+          }
+        });
       void listAgents(id)
         .then((list) => {
           if (active && sessionRef.current?._id === id && Array.isArray(list))
@@ -854,10 +1052,20 @@ export default function Home() {
     };
     setRetrying(false);
     const applyBatch = (incoming: DomainEvent[]): boolean => {
-      if (!active || sessionRef.current?._id !== id) return false;
+      if (
+        !active ||
+        token !== generation.current ||
+        connection !== sourceConnection.current ||
+        sessionRef.current?._id !== id
+      )
+        return false;
       const newCursors = new Set<string>();
-      const batch = incoming.filter((event) => {
-        if (event.type !== "snapshot" && event.cursor) {
+      let batch = incoming.filter((event) => {
+        if (
+          event.type !== "snapshot" &&
+          event.type !== "sync.completed" &&
+          event.cursor
+        ) {
           if (seen.current.has(event.cursor) || newCursors.has(event.cursor))
             return false;
           newCursors.add(event.cursor);
@@ -865,18 +1073,36 @@ export default function Home() {
         return true;
       });
       if (!batch.length) return true;
+      if (batch.some((event) => event.type === "sync.completed"))
+        sourceCapability.current = true;
+      const ownedSnapshot = sourceSync.current.phase === "handoff";
+      const synchronized = advanceSourceSync(sourceSync.current, batch);
+      if (synchronized.failure) {
+        resync();
+        return false;
+      }
+      batch = synchronized.accepted;
+      if (!batch.length) return true;
+      const operationalBatch = batch.map((event) =>
+        event.type === "sync.completed"
+          ? { ...event, type: "snapshot" as const, data: event.data.snapshot }
+          : event,
+      );
       // Compute every projection before publishing or remembering a cursor.
       // A malformed frame cannot commit only part of the conversation state.
-      const nextEntries = batch.reduce(applyChatEvent, entriesRef.current);
-      const nextAgents = batch.reduce(
+      const nextEntries = coalesceChatEvents(batch).reduce(
+        applyChatEvent,
+        entriesRef.current,
+      );
+      const nextAgents = operationalBatch.reduce(
         (state, event) => applySubAgentEvent(state, event),
         subAgentsRef.current,
       );
-      const nextObservability = batch.reduce(
+      const nextObservability = operationalBatch.reduce(
         applyObservabilityEvent,
         observabilityRef.current,
       );
-      const nextPlan = batch.reduce(applyPlanEvent, planRef.current);
+      const nextPlan = operationalBatch.reduce(applyPlanEvent, planRef.current);
       for (const cursor of newCursors) {
         seen.current.add(cursor);
         if (seen.current.size > 2000)
@@ -887,6 +1113,7 @@ export default function Home() {
       setSubAgents(nextAgents);
       setObservability(nextObservability);
       setPlan(nextPlan);
+      sourceSync.current = synchronized.state;
       for (const event of batch) {
         follow.onEvent(event);
         if (
@@ -901,9 +1128,11 @@ export default function Home() {
           ].includes(event.type)
         )
           setEvents((old) => [...old.slice(-99), event]);
-        const d = event.data;
+        const d =
+          event.type === "sync.completed" ? event.data.snapshot : event.data;
         switch (event.type) {
           case "snapshot":
+          case "sync.completed":
             setPending(d.pending);
             setRunning(d.state.kind !== "idle");
             setGoal(d.goal || null);
@@ -919,8 +1148,11 @@ export default function Home() {
 
             // Opening already performs one complete catch-up. A reconnect must
             // catch up durable history again; the initial snapshot must not repeat it.
-            if (!firstSnapshot || !openingOwnsRecovery) reloadTranscript();
-            firstSnapshot = false;
+            if (event.type === "snapshot") {
+              if (!ownedSnapshot && (!firstSnapshot || !openingOwnsRecovery))
+                reloadTranscript();
+              firstSnapshot = false;
+            }
             break;
           case "resync.required":
             resync();
@@ -986,6 +1218,13 @@ export default function Home() {
             break;
         }
       }
+      if (synchronized.operational) sourceWaiter.current.complete(id, token);
+      else if (
+        batch.some((event) => event.type === "sync.completed") &&
+        sourceRecovered.current &&
+        sourceSync.current.phase === "cold"
+      )
+        void requestSourceHandoff(id, token);
       return true;
     };
     const unsubscribe = transport.subscribe(
@@ -993,11 +1232,37 @@ export default function Home() {
       (event) => applyBatch([event]),
       (next) => active && sessionRef.current?._id === id && setStatus(next),
       {
+        sync: sourceProtocol.current ? "v1" : undefined,
+        cursor: sourceRequestedCursor.current,
         onBatch: applyBatch,
         onResync: resync,
         onFailure: (f) => {
-          if (active && sessionRef.current?._id === id)
+          if (
+            active &&
+            token === generation.current &&
+            sessionRef.current?._id === id
+          ) {
+            sourceWaiter.current.cancel();
+            sourcePairs.current.delete(id);
             setError(f.message, { code: f.code, requestId: f.requestId });
+            if (
+              ["FORBIDDEN", "UNAUTHENTICATED", "NOT_FOUND"].includes(
+                f.code || "",
+              )
+            )
+              invalidateConversation(
+                id,
+                new ApiRequestError(
+                  f.message,
+                  f.code === "UNAUTHENTICATED"
+                    ? 401
+                    : f.code === "NOT_FOUND"
+                      ? 404
+                      : 403,
+                  f.code || "FORBIDDEN",
+                ),
+              );
+          }
         },
       },
     );
@@ -1008,7 +1273,13 @@ export default function Home() {
       if (streamFlush.current === unsubscribe.flush) streamFlush.current = null;
       unsubscribe();
     };
-  }, [session?._id, streamKey, recover, invalidateConversation]);
+  }, [
+    session?._id,
+    streamKey,
+    recover,
+    invalidateConversation,
+    requestSourceHandoff,
+  ]);
   // A stream stuck reconnecting for a while gets a hint in the header.
   useEffect(() => {
     setSlowReconnect(false);
@@ -1054,6 +1325,7 @@ export default function Home() {
     preparation.current.reset();
     openingSession.current = false;
     sending.current = false;
+    setDispatchState(null);
     setDraftActive(true);
     setDraftVersion(generation.current);
     setPreparationStatus(null);
@@ -1134,7 +1406,7 @@ export default function Home() {
     setDelegation(next);
     saveDelegation(next);
   }
-  // Optimistic: show the new mode at once and roll back if platform refuses.
+  // Show the requested mode; a failed update leaves its effective state unknown.
   async function changeApprovalMode(
     mode: ApprovalMode,
     target: Session | null = sessionRef.current,
@@ -1143,9 +1415,12 @@ export default function Home() {
     if (!target) {
       draftModeRef.current = mode;
       setDraftMode(mode);
-      return;
+      return true;
     }
-    const previous = target.approvalMode;
+    if (modeChanging.current) return false;
+    modeChanging.current = true;
+    setChangingMode(true);
+    approvalConfirmation.current.require(target._id, mode);
     const apply = (value: ApprovalMode | undefined) => {
       if (sessionRef.current?._id !== target._id) return;
       const next = { ...sessionRef.current, approvalMode: value };
@@ -1154,15 +1429,23 @@ export default function Home() {
     };
     apply(mode);
     try {
-      apply(await setApprovalMode(target._id, mode));
+      const confirmed = await setApprovalMode(target._id, mode);
+      if (confirmed !== mode)
+        throw new Error("The approval mode was not confirmed.");
+      approvalConfirmation.current.confirm(target._id, confirmed);
+      apply(confirmed);
+      return true;
     } catch (e) {
-      apply(previous);
       if (sessionRef.current?._id === target._id)
         setModeError(
           e instanceof ApiRequestError && e.status === 422
             ? "Autopilot is not available right now."
-            : `Could not change the approval mode. ${userMessage(e)}`,
+            : `Approval mode is unconfirmed. Retry the selection before sending. ${userMessage(e)}`,
         );
+      return false;
+    } finally {
+      modeChanging.current = false;
+      setChangingMode(false);
     }
   }
   function invalidatePreparation() {
@@ -1177,11 +1460,16 @@ export default function Home() {
     invalidatePreparation();
     setDraftProjectId(projectId);
   }
-  function prepareSession() {
+  function prepareSession(chosen: ApprovalMode | null) {
     return preparation.current.prepare(preparationKey, async () => {
       const created: Session = await api(
         "/api/sessions",
-        createSessionBody(agentId, delegation, draftProjectId),
+        createSessionBody(
+          agentId,
+          delegation,
+          draftProjectId,
+          chosen ?? undefined,
+        ),
       );
       // A submitted creation that finishes after navigation stays in Recents.
       // Only ensureSession attaches it to the active composer.
@@ -1190,10 +1478,19 @@ export default function Home() {
     });
   }
   async function ensureSession(): Promise<Session> {
-    if (sessionRef.current) return sessionRef.current;
+    if (sessionRef.current) {
+      const active = sessionRef.current;
+      const wanted = approvalConfirmation.current.wanted(active._id);
+      if (wanted && !(await changeApprovalMode(wanted, active)))
+        throw new Error(
+          "Confirm the approval mode before sending. Your draft is saved.",
+        );
+      return active;
+    }
+    const chosen = draftModeRef.current;
     const token = generation.current;
     const projectId = draftProjectId;
-    const attempt = prepareSession();
+    const attempt = prepareSession(chosen);
     let created: Session;
     try {
       created = await attempt.promise;
@@ -1217,42 +1514,56 @@ export default function Home() {
     setSession(created);
     setSelectedId(created._id);
     history.replaceState(null, "", "?session=" + created._id);
-    const chosen = draftModeRef.current;
     draftModeRef.current = null;
     setDraftMode(null);
-    // Settle the chosen mode before the first message so its turn uses it.
+    // Configured creation returns the server-confirmed mode. Older platforms
+    // ignore the additive choice, so confirm through their existing endpoint.
     if (chosen && chosen !== created.approvalMode)
-      await changeApprovalMode(chosen, created);
+      if (!(await changeApprovalMode(chosen, created)))
+        throw new Error(
+          "Confirm the approval mode before sending. Your draft is saved.",
+        );
     if (projectId) {
       projects.expand(projectId);
       projects.refreshAll();
     } else void refreshSessions();
     return created;
   }
-  async function send(value = text) {
+  async function send(value = text, restoreDraft?: string) {
     if (
       sending.current ||
+      modeChanging.current ||
       preparationFailed ||
-      !value.trim() ||
       busy ||
       (!sessionRef.current && !agentId)
     )
       return;
+    const invalid = messageTextError(value);
+    if (invalid) {
+      setNotice(invalid);
+      return;
+    }
     sending.current = true;
+    setBusy(true);
+    const nextDispatch = running ? "steering" : "sending";
+    setDispatchState(sessionRef.current ? nextDispatch : "creating");
     const token = generation.current;
     const clientId = crypto.randomUUID(),
       id = clientId;
     following.current = true;
     setText("");
+    const clearedDraft = draft.current.capture();
+    let dispatched = false;
     setError("");
     setEntries((old) => [
       ...old,
       { kind: "message", id, role: "user", text: value, delivery: "pending" },
     ]);
     try {
-      if (!sessionRef.current) setBusy(true);
       const active = await ensureSession();
       if (token !== generation.current) return;
+      setDispatchState(nextDispatch);
+      dispatched = true;
       const result = await transport.send(active._id, value, clientId);
       if (token !== generation.current) return;
       void refreshSessions();
@@ -1271,17 +1582,25 @@ export default function Home() {
     } catch (e) {
       if (token !== generation.current) return;
       reportError(e);
-      setEntries((old) =>
-        old.map((e) =>
-          e.kind === "message" && e.id === id
-            ? { ...e, delivery: "unknown" }
-            : e,
-        ),
-      );
+      if (!dispatched) {
+        setEntries((old) => old.filter((entry) => entry.id !== id));
+        if (draft.current.isCurrent(clearedDraft))
+          setText(restoreDraft ?? value);
+      } else
+        setEntries((old) =>
+          old.map((e) =>
+            e.kind === "message" && e.id === id
+              ? { ...e, delivery: "unknown" }
+              : e,
+          ),
+        );
     } finally {
       if (token === generation.current) {
         sending.current = false;
+        setDispatchState(null);
         setBusy(false);
+        if (restoreDraft !== undefined && draft.current.isCurrent(clearedDraft))
+          setText(restoreDraft);
       }
     }
   }
@@ -1290,20 +1609,31 @@ export default function Home() {
   // message. Any unsent draft comes back afterwards.
   const suggesting = useRef(false);
   function askSuggestion(question: string) {
-    if (suggesting.current || sending.current || busy || running) return;
+    if (
+      suggesting.current ||
+      sending.current ||
+      modeChanging.current ||
+      busy ||
+      running
+    )
+      return;
     suggesting.current = true;
     const token = generation.current,
-      draft = text;
+      previousDraft = text;
     setCommandOpen(false);
     setNotice("");
     setText(question);
+    const suggestionDraft = draft.current.capture();
     composer.current?.focus();
     setTimeout(() => {
       void (async () => {
         try {
-          if (token !== generation.current) return;
-          await send(question);
-          if (draft.trim() && token === generation.current) setText(draft);
+          if (
+            token !== generation.current ||
+            !draft.current.isCurrent(suggestionDraft)
+          )
+            return;
+          await send(question, previousDraft);
         } finally {
           suggesting.current = false;
         }
@@ -1323,6 +1653,7 @@ export default function Home() {
     if (
       busy ||
       sending.current ||
+      modeChanging.current ||
       preparationFailed ||
       !text.trim() ||
       (!sessionRef.current && !agentId)
@@ -1389,6 +1720,8 @@ export default function Home() {
       return;
     }
     const token = generation.current;
+    const commandText = text;
+    const submittedDraft = draft.current.capture();
     let active = sessionRef.current;
     if (!active) {
       // A goal can open a conversation; other commands need an existing one.
@@ -1400,27 +1733,32 @@ export default function Home() {
         );
         return;
       }
-      try {
-        sending.current = true;
-        setBusy(true);
-        active = await ensureSession();
-        if (token !== generation.current) return;
-      } catch (e) {
-        if (token === generation.current) {
-          sending.current = false;
-          reportError(e);
-          setBusy(false);
-        }
-        return;
-      }
     }
-    const commandText = text;
+    sending.current = true;
+    setBusy(true);
+    setDispatchState(active ? "sending" : "creating");
+    try {
+      active = await ensureSession();
+      if (token !== generation.current) return;
+    } catch (e) {
+      if (token === generation.current) {
+        sending.current = false;
+        setBusy(false);
+        setDispatchState(null);
+        reportError(e);
+      }
+      return;
+    }
     const previous = commandAttempt.current;
     const clientId =
-      previous?.sessionId === active._id && previous.text === text
+      previous?.sessionId === active._id && previous.text === commandText
         ? previous.clientId
         : crypto.randomUUID();
-    commandAttempt.current = { sessionId: active._id, text, clientId };
+    commandAttempt.current = {
+      sessionId: active._id,
+      text: commandText,
+      clientId,
+    };
     following.current = true;
     setEntries((old) =>
       old.some((entry) => entry.id === clientId)
@@ -1441,8 +1779,7 @@ export default function Home() {
             },
           ],
     );
-    sending.current = true;
-    setBusy(true);
+    setDispatchState("sending");
     setNotice("");
     setError("");
     try {
@@ -1471,12 +1808,19 @@ export default function Home() {
         setGoal(record.result?.goal ?? null);
         syncSessionGoal(active._id, record.result?.goal ?? null);
         if (record.method !== "thread/goal/get") setGoalReview(null);
-        if (record.method === "thread/goal/set") {
+        if (
+          record.method === "thread/goal/set" &&
+          draft.current.isCurrent(submittedDraft)
+        ) {
           setGoalMode(false);
           setGoalBudget(null);
         }
       }
-      if (result.commandMessage.command.state === "succeeded") setText("");
+      if (
+        result.commandMessage.command.state === "succeeded" &&
+        draft.current.isCurrent(submittedDraft)
+      )
+        setText("");
       void refreshSessions();
     } catch (e) {
       if (token === generation.current) {
@@ -1501,6 +1845,7 @@ export default function Home() {
     } finally {
       if (token === generation.current) {
         sending.current = false;
+        setDispatchState(null);
         setBusy(false);
       }
     }
@@ -1594,23 +1939,29 @@ export default function Home() {
         : entries.length
           ? "New conversation"
           : "";
-  const stateText = openingId
-    ? entries.length
-      ? "syncing…"
-      : "loading…"
-    : session && status === "Reconnecting"
-      ? slowReconnect
-        ? "still reconnecting…"
-        : "reconnecting…"
-      : session && status === "Disconnected"
-        ? "disconnected"
-        : retrying
-          ? "retrying…"
-          : running
-            ? goal?.status === "active"
-              ? "working on goal"
-              : "working"
-            : "ready";
+  const stateText = dispatchState
+    ? dispatchState === "creating"
+      ? "Creating…"
+      : dispatchState === "steering"
+        ? "Steering…"
+        : "Sending…"
+    : openingId
+      ? entries.length
+        ? "syncing…"
+        : "loading…"
+      : session && status === "Reconnecting"
+        ? slowReconnect
+          ? "still reconnecting…"
+          : "reconnecting…"
+        : session && status === "Disconnected"
+          ? "disconnected"
+          : retrying
+            ? "retrying…"
+            : running
+              ? goal?.status === "active"
+                ? "working on goal"
+                : "working"
+              : "ready";
   function stopTurn() {
     if (openingSession.current || !sessionRef.current) return;
     const token = generation.current;
@@ -1800,9 +2151,12 @@ export default function Home() {
         onGoalToggle={() => (goalMode ? setGoalMode(false) : startGoal(text))}
         onGoalCancel={() => setGoalMode(false)}
         busy={running}
+        dispatchState={dispatchState}
         canSend={
           !!text.trim() &&
           !busy &&
+          !dispatchState &&
+          !changingMode &&
           !preparationFailed &&
           (!!session || !!agentId)
         }
@@ -1894,7 +2248,7 @@ export default function Home() {
             {picker && (
               <ApprovalModePicker
                 picker={picker}
-                disabled={busy}
+                disabled={busy || changingMode}
                 errorId={modeError ? "approval-mode-error" : undefined}
                 onChange={(mode) => void changeApprovalMode(mode)}
               />
@@ -1928,9 +2282,6 @@ export default function Home() {
                   : PLACEHOLDERS[0]
           }
           value={text}
-          disabled={
-            (busy && !openingId) || (!session && !agentId && !openingId)
-          }
           onChange={(e) => {
             setText(e.target.value);
             setCommandOpen(

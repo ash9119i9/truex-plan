@@ -1,0 +1,322 @@
+const rememberDisplayed = useCallback(() => {
+    streamFlush.current?.();
+    const current = displayed.current;
+    if (!current) return;
+    const container = scroll.current;
+    const top = container?.getBoundingClientRect().top ?? 0;
+    const bottom = container?.getBoundingClientRect().bottom ?? 0;
+    const row =
+      container &&
+      [...container.querySelectorAll<HTMLElement>(".msg[id]")]
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.bottom > top && rect.top < bottom;
+        })
+        .sort(
+          (a, b) =>
+            a.getBoundingClientRect().top - b.getBoundingClientRect().top,
+        )[0];
+    const saved = {
+      ...current,
+      entries: entriesRef.current,
+      plan: planRef.current,
+      subAgents: subAgentsRef.current,
+      observability: observabilityRef.current,
+      scrollTop: container?.scrollTop ?? 0,
+      following: following.current,
+      anchor: row
+        ? { id: row.id, offset: row.getBoundingClientRect().top - top }
+        : undefined,
+    };
+    heldTimeline.current = saved.entries.length ? saved : heldTimeline.current;
+    conversationCache.current.set(current.session._id, saved);
+    if (
+      sourceOwner.current === current.session._id &&
+      sourceSync.current.phase === "ready" &&
+      sourceSync.current.pair
+    )
+      sourcePairs.current.set(current.session._id, sourceSync.current.pair);
+    return saved;
+  }, []);
+
+const invalidateConversation = useCallback((id: string, error: unknown) => {
+    if (
+      !(error instanceof ApiRequestError) ||
+      (![401, 403, 404].includes(error.status) &&
+        !(error.status === 409 && error.code === "LEGACY_SESSION"))
+    )
+      return;
+    conversationCache.current.delete(id);
+    sourcePairs.current.delete(id);
+    setPaintedConversation(null);
+    heldTimeline.current = null;
+    if (error.status === 401) {
+      conversationCache.current.clear();
+      sourcePairs.current.clear();
+    }
+    if (sessionRef.current?._id === id) {
+      sessionRef.current = null;
+      sourceWaiter.current.cancel();
+      setSession(null);
+      setEntries([]);
+      setPending([]);
+      setGoal(null);
+      setGoalReview(null);
+      setRunning(false);
+      setText("");
+      setPlan([]);
+      setTimings([]);
+      setSubAgents(emptySubAgents);
+      setEvents([]);
+      setObservability(emptyObservability);
+      setTraceSummary(null);
+      setDocuments([]);
+      setHistoryWindow(null);
+      setFailure(null);
+    }
+  }, []);
+
+const recover = useCallback(
+    async (
+      id: string,
+      token: number,
+      flight = historyLoader.current.load(id),
+    ) => {
+      let start = recoveryStarts.current.get(flight);
+      if (!start) {
+        start = { token, revision: liveRevision.current };
+        recoveryStarts.current.set(flight, start);
+      }
+      const data = await flight;
+      if (token !== generation.current || sessionRef.current?._id !== id)
+        return;
+      // A queued delta is already newer than the HTTP snapshot, even before paint.
+      streamFlush.current?.();
+      sessionRef.current = data.session;
+      setSession(data.session);
+      setEntries((old) =>
+        addApprovals(
+          mergeHistoryWindow(data.messages, old, {
+            preserveLive:
+              start.token !== token || liveRevision.current !== start.revision,
+          }),
+          data.approvals || [],
+        ),
+      );
+      if (start.token === token && liveRevision.current === start.revision)
+        setGoalReview(data.goalReview || null);
+      if (!expandedHistory.current)
+        setHistoryWindow(data.historyWindow ?? null);
+      // Events received during recovery are newer than its snapshot. Preserve them.
+      if (
+        data.snapshot &&
+        start.token === token &&
+        liveRevision.current === start.revision
+      ) {
+        const currentSnapshot = data.snapshot;
+        const snapshot = {
+          type: "snapshot",
+          data: currentSnapshot,
+        } as DomainEvent;
+        setEntries((old) => applyChatEvent(old, snapshot));
+        setPending(data.snapshot.pending || []);
+        setSubAgents((old) => rehydrate(old, currentSnapshot.subAgents || []));
+        setPlan(data.snapshot.plan || data.plan?.steps || []);
+        setGoal(data.snapshot.goal || null);
+        setRunning(data.snapshot.state.kind !== "idle");
+        setTimings(data.snapshot.timings || []);
+        setObservability((old) => applyObservabilityEvent(old, snapshot));
+      }
+      if (data.recoveryError)
+        setError(data.recoveryError, data.recoveryErrorRef);
+    },
+    [],
+  );
+
+const requestSourceHandoff = useCallback(
+    async (id: string, token: number) => {
+      if (token !== generation.current || sessionRef.current?._id !== id)
+        return false;
+      streamFlush.current?.();
+      sourceSync.current = beginSourceSync(null, true);
+      sourceRequestedCursor.current = null;
+      sourceProtocol.current = true;
+      sourceConnection.current++;
+      const ready = sourceWaiter.current.wait(id, token);
+      setStreamKey((key) => key + 1);
+      const complete = await ready;
+      if (token !== generation.current || sessionRef.current?._id !== id)
+        return false;
+      if (!complete) {
+        sourcePairs.current.delete(id);
+        sourceSync.current = { ...beginSourceSync(null), phase: "legacy" };
+        sourceProtocol.current = false;
+        sourceConnection.current++;
+        setStreamKey((key) => key + 1);
+      }
+      return complete;
+    },
+    [],
+  );
+
+const open = useCallback(
+    async (id: string) => {
+      if (sending.current) return;
+      rememberDisplayed();
+      const cached = conversationCache.current.get(id);
+      setPaintedConversation(cached ? null : heldTimeline.current);
+      const token = ++generation.current;
+      sourceWaiter.current.cancel();
+      const paired = sourcePairs.current.get(id) ?? null;
+      sourceOwner.current = id;
+      sourceSync.current = beginSourceSync(paired);
+      sourceRequestedCursor.current = paired?.cursor ?? null;
+      sourceProtocol.current = true;
+      sourceCapability.current = false;
+      sourceRecovered.current = false;
+      sourceConnection.current++;
+      const warmReady = paired ? sourceWaiter.current.wait(id, token) : null;
+      setStreamKey((key) => key + 1);
+      liveRevision.current = 0;
+      preparation.current.reset();
+      openingSession.current = true;
+      timelineSettling.current = true;
+      setOpeningId(id);
+      setSelectedId(id);
+      expandedHistory.current = cached?.expanded ?? false;
+      olderFlight.current = false;
+      setOlderLoading(false);
+      setHistoryWindow(cached?.historyWindow ?? null);
+      setDraftActive(false);
+      setPreparationStatus(null);
+      setView("chat");
+      setBusy(true);
+      setError("");
+      setNotice("");
+      setCommandOpen(false);
+      setDraftProjectId(null);
+      setModeError("");
+      setGoalMode(false);
+      setStatus("Not connected");
+      seen.current.clear();
+      sessionRef.current = cached?.session ?? null;
+      setSession(cached?.session ?? null);
+      if (cached) setAgentId(cached.session.agentId);
+      setEntries(
+        paired
+          ? overlaySourceEntries(cached?.entries ?? [], paired.entries)
+          : (cached?.entries ?? []),
+      );
+      setEvents(cached?.events ?? []);
+      // Pending actions are live state, never restored from the display cache.
+      setPending([]);
+      setSubAgents(cached?.subAgents ?? emptySubAgents);
+      setPlan(cached?.plan ?? []);
+      setGoal(cached?.goal ?? null);
+      setGoalReview(cached?.goalReview ?? null);
+      setTimings(cached?.timings ?? []);
+      setObservability(cached?.observability ?? emptyObservability);
+      setTraceSummary(cached?.traceSummary ?? null);
+      setFailure(null);
+      setRunning(false);
+      setText(cached?.text ?? "");
+      following.current = cached?.following ?? true;
+      setLiveFollowEnabled(following.current);
+      restoreScroll.current = cached ?? null;
+      history.replaceState(null, "", "?session=" + encodeURIComponent(id));
+      try {
+        const revision = liveRevision.current;
+        const { persisted, recovery } = paired
+          ? {
+              persisted: historyLoader.current.load(id, true),
+              recovery: undefined,
+            }
+          : historyLoader.current.loadForOpen(id);
+        // Record ownership at request start, before saved history or SSE can
+        // arrive. A completed recovery must not be re-requested after paint.
+        if (recovery && !recoveryStarts.current.has(recovery))
+          recoveryStarts.current.set(recovery, { token, revision });
+        const data = await persisted;
+        if (token !== generation.current) return;
+        streamFlush.current?.();
+        setPaintedConversation(null);
+        sessionRef.current = data.session;
+        setSession(data.session);
+        setAgentId(data.session.agentId);
+        setEntries((old) => {
+          const merged = addApprovals(
+            mergeHistoryWindow(data.messages, old, {
+              preserveLive: liveRevision.current !== revision,
+            }),
+            data.approvals || [],
+          );
+          return paired && sourceSync.current.pair
+            ? overlaySourceEntries(merged, sourceSync.current.pair.entries)
+            : merged;
+        });
+        if (liveRevision.current === 0) setPlan(data.plan?.steps || []);
+        if (liveRevision.current === revision)
+          setGoalReview(data.goalReview || null);
+        if (!expandedHistory.current)
+          setHistoryWindow(data.historyWindow ?? null);
+        const warm = warmReady ? await warmReady : false;
+        if (token !== generation.current) return;
+        if (!warm) {
+          sourcePairs.current.delete(id);
+          sourceSync.current = beginSourceSync(null);
+          if (paired) sourceConnection.current++;
+          await recover(id, token, recovery);
+          if (token !== generation.current) return;
+          sourceRecovered.current = true;
+          if (sourceCapability.current) await requestSourceHandoff(id, token);
+          else if (paired) {
+            // A rolled-back server may not publish markers. Restore its safe
+            // live stream without waiting another deadline after full recovery.
+            sourceSync.current = { ...beginSourceSync(null), phase: "legacy" };
+            sourceRequestedCursor.current = null;
+            sourceProtocol.current = false;
+            sourceConnection.current++;
+            setStreamKey((key) => key + 1);
+          }
+        }
+        if (token !== generation.current) return;
+        if (warm) return;
+        void getTraces(id, true)
+          .then((traceData) => {
+            if (token !== generation.current) return;
+            setObservability((old) => ({
+              ...old,
+              traces: mergeTraces(old.traces, traceData?.traces),
+            }));
+            setTraceSummary(traceData?.summary || null);
+          })
+          .catch((e) => warnFailure("traces", e));
+        void api(`/api/sessions/${encodeURIComponent(id)}/timings?persisted=1`)
+          .then((timingData) => {
+            if (token === generation.current)
+              setTimings((old) => [
+                ...new Map(
+                  [...timingData.turns, ...old].map((t: TurnTiming) => [
+                    t.turnId,
+                    t,
+                  ]),
+                ).values(),
+              ]);
+          })
+          .catch((e) => warnFailure("timings", e));
+      } catch (e) {
+        if (token === generation.current) {
+          setPaintedConversation(null);
+          invalidateConversation(id, e);
+          reportError(e);
+        }
+      } finally {
+        if (token === generation.current) {
+          openingSession.current = false;
+          setOpeningId(null);
+          setBusy(false);
+        }
+      }
+    },
+    [rememberDisplayed, recover, invalidateConversation, requestSourceHandoff],
+  );

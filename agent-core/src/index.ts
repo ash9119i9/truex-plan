@@ -21,6 +21,21 @@ import { ThreadManager } from "./manager";
 import { readItems } from "./history";
 import { HttpError } from "./errors";
 import { inventory, schema, validateRequest } from "./schema";
+import {
+  runtimeWindowQuery,
+  runtimeSyncOption,
+} from "../../shared/runtime-read-options";
+
+function snapshotOptions(path: string, window: unknown, sync: unknown) {
+  try {
+    return {
+      window: runtimeWindowQuery(window),
+      sync: runtimeSyncOption("GET", path, sync),
+    };
+  } catch {
+    throw new HttpError(400, "Invalid runtime read options");
+  }
+}
 const root = resolve(process.env.PROJECT_ROOT || "..");
 const pin = JSON.parse(readFileSync(join(root, "codex.lock.json"), "utf8"));
 const binary = resolve(root, pin.binary);
@@ -162,10 +177,16 @@ app.get("/threads/:id/events", (req, res) =>
     req.params.id,
     res,
     req.get("Last-Event-ID") || String(req.query.cursor || "") || undefined,
+    snapshotOptions(req.path, req.query.window, req.query.sync),
   ),
 );
 app.get("/threads/:id/snapshot", (req, res) =>
-  res.json(manager.snapshot(req.params.id)),
+  res.json(
+    manager.snapshot(
+      req.params.id,
+      snapshotOptions(req.path, req.query.window, req.query.sync),
+    ),
+  ),
 );
 app.get("/threads/:id/records", (req, res) =>
   res.json(manager.records(req.params.id)),

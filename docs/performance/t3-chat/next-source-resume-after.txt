@@ -1,0 +1,57 @@
+(node:84142) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/source-resume-page.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ failed full recovery never qualifies a pair or bypasses the next full read (23.71525ms)
+✔ successful cold recovery needs a fresh handoff; warm reopen still reads authorized durable history (12.498416ms)
+✔ authorization revocation clears source and displayed owners before another remember call (23.506375ms)
+✔ revoked cached and cold opens cannot commit a pending persisted read (12.3625ms)
+✔ an independent source pair does not paint orphan AI rows before durable history (11.810375ms)
+(node:84143) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/source-sync.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ canonical safe cursors reject zero padding, unsafe integers and malformed generations (0.614625ms)
+✔ a marker during HTTP recovery never makes a mixed durable display eligible (0.458208ms)
+✔ zero-gap warm replay restores running/pending authority without another transcript snapshot (0.097875ms)
+✔ missing deltas apply once before same-cursor marker; public filtered sequence gaps are allowed (0.136958ms)
+✔ wrong marker envelope, thread, generation, mode and coverage fail closed with no partial pair (0.286958ms)
+✔ oversized source projection is disqualified rather than silently truncated (0.065792ms)
+✔ display overlays retain durable commands/users while the source pair stays isolated (0.113916ms)
+✔ operational marker state requires coherent source cursor and valid running state (0.047959ms)
+✔ readiness deadlines, navigation cancellation and stale markers are deterministic (0.117ms)
+✔ overlay preserves reasoning fallback identity and accepts its next itemless delta (0.149917ms)
+✔ implicit EventSource reconnect marker cannot silently reuse the original replay boundary (0.064167ms)
+✔ long-history cold hydration and repeated warm overlays preserve every request/answer order and identity (5.158334ms)
+(node:84144) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/transport.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the session id is encoded in the stream URL (0.533958ms)
+✔ source synchronization sends only explicitly paired cursors (0.110125ms)
+✔ actual public frames omit threadId; trusted URL scope enables1000-to1 projection coalescing (1.492834ms)
+✔ same-cursor synchronization marker flushes queued text before authority and checkpoint (0.528334ms)
+✔ invalid marker and mismatched SSE cursor cannot advance a paired stream (0.21775ms)
+✔ an unreadable frame resyncs without advancing the cursor (0.120916ms)
+✔ errors report Reconnecting while retrying and Disconnected once closed (0.0735ms)
+✔ stream.error passes the platform's reason on and closes the stream (0.1415ms)
+✔ 1000 ordered deltas publish once per frame and checkpoint after publication (1.555333ms)
+✔ the same 1000 delta fixture keeps legacy immediate delivery compatible (1.325833ms)
+✔ snapshots, finals, approvals and completion flush prior text in order (0.255666ms)
+✔ navigation flush and unsubscribe preserve queued deltas exactly once (0.151167ms)
+✔ delivery failure leaves cursor behind and prevents later checkpoint leap (0.113167ms)
+✔ stale ownership rejects a batch without cursor advance or later delivery (0.073708ms)
+✔ malformed frame flushes accepted text then closes without checkpoint leap (0.076792ms)
+✔ fatal connection error flushes accepted text before reporting failure (0.058209ms)
+✔ ordinary consumer failure does not acknowledge its frame (0.050209ms)
+✔ JSON scalars, arrays and invalid envelopes request recovery without checkpoint (0.108084ms)
+✔ invalid text delta and snapshot protocol shapes recover instead of entering reducers (0.171542ms)
+✔ unknown future event types keep envelope compatibility (0.023834ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 276.30075

@@ -1,0 +1,375 @@
+{
+  "measuredAt": "2026-10-05T19:16:07.500Z",
+  "node": "v24.21.0",
+  "hashes": {
+    "chat.ts": "f80213912b89ba565e5ddcf12360cc09e8b7e376036847c5d775d5a93573a2d0",
+    "chat-batch.ts": "e337bf3c7fae761ef9c7982be50986b957c8c6d0a8948d689419b2179ff63a6c",
+    "chat-groups.ts": "42c309ad940cfc2f8d1c12a6c3cb2147da1f735192c417739eec8721fed229eb",
+    "source-sync.ts": "17d999d96005c57434539922b002c1048a0fb5bd16a0db334e67bbbb2bd5d33b"
+  },
+  "scope": "Current source stages, synthetic CPU only. No React commits, markdown, DOM geometry, paint, scheduling, network, provider, or production p95. Stage timing overhead and assertions are included; five measured runs after one warmup. Visibility callbacks are deterministic counts; instrumented elapsed is not comparable with uninstrumented timing.",
+  "measurements": [
+    {
+      "mode": "display-reducer-only",
+      "displayEntries": 20,
+      "sourceEntries": 10,
+      "batches": 20,
+      "fragmentsPerBatch": 50,
+      "samples": [
+        {
+          "elapsedMs": 0.15604100000000187,
+          "sourceMs": 0.001663999999991006,
+          "displayMs": 0.1468349999999745,
+          "groupsAndPresentationMs": 0.0017100000000027649
+        },
+        {
+          "elapsedMs": 0.11758300000000332,
+          "sourceMs": 0.0017479999999920892,
+          "displayMs": 0.09908500000002363,
+          "groupsAndPresentationMs": 0.0016269999999920515
+        },
+        {
+          "elapsedMs": 0.0768330000000006,
+          "sourceMs": 0.01033199999998402,
+          "displayMs": 0.05829400000000362,
+          "groupsAndPresentationMs": 0.001208999999981586
+        },
+        {
+          "elapsedMs": 0.058707999999995764,
+          "sourceMs": 0.00074700000000405,
+          "displayMs": 0.05362400000000633,
+          "groupsAndPresentationMs": 0.0008340000000117698
+        },
+        {
+          "elapsedMs": 0.05662499999999682,
+          "sourceMs": 0.0007469999999898391,
+          "displayMs": 0.05200000000000671,
+          "groupsAndPresentationMs": 0.0007530000000102177
+        }
+      ],
+      "medianMs": 0.0768330000000006,
+      "medianStages": {
+        "sourceMs": 0.001663999999991006,
+        "displayMs": 0.05829400000000362,
+        "groupsAndPresentationMs": 0.001208999999981586
+      }
+    },
+    {
+      "mode": "source-display-and-groups",
+      "displayEntries": 20,
+      "sourceEntries": 10,
+      "batches": 20,
+      "fragmentsPerBatch": 50,
+      "samples": [
+        {
+          "elapsedMs": 0.7006250000000023,
+          "sourceMs": 0.28924999999999557,
+          "displayMs": 0.05312700000001769,
+          "groupsAndPresentationMs": 0.3544990000000112
+        },
+        {
+          "elapsedMs": 0.5411670000000015,
+          "sourceMs": 0.218876999999992,
+          "displayMs": 0.11441999999998842,
+          "groupsAndPresentationMs": 0.20433300000001253
+        },
+        {
+          "elapsedMs": 0.4297499999999985,
+          "sourceMs": 0.21225199999999944,
+          "displayMs": 0.04662300000001096,
+          "groupsAndPresentationMs": 0.1677519999999859
+        },
+        {
+          "elapsedMs": 0.40212499999999807,
+          "sourceMs": 0.24100100000000424,
+          "displayMs": 0.04429100000000119,
+          "groupsAndPresentationMs": 0.11379099999998488
+        },
+        {
+          "elapsedMs": 0.4279590000000013,
+          "sourceMs": 0.20279299999999267,
+          "displayMs": 0.05020800000001202,
+          "groupsAndPresentationMs": 0.1717519999999908
+        }
+      ],
+      "medianMs": 0.4297499999999985,
+      "medianStages": {
+        "sourceMs": 0.218876999999992,
+        "displayMs": 0.05020800000001202,
+        "groupsAndPresentationMs": 0.1717519999999908
+      }
+    },
+    {
+      "mode": "display-reducer-only",
+      "displayEntries": 2000,
+      "sourceEntries": 1000,
+      "batches": 20,
+      "fragmentsPerBatch": 50,
+      "samples": [
+        {
+          "elapsedMs": 0.5767920000000046,
+          "sourceMs": 0.0007909999999995421,
+          "displayMs": 0.5720429999999865,
+          "groupsAndPresentationMs": 0.000998000000002719
+        },
+        {
+          "elapsedMs": 0.42312500000000597,
+          "sourceMs": 0.0007110000000025707,
+          "displayMs": 0.4190810000000056,
+          "groupsAndPresentationMs": 0.0007910000000066475
+        },
+        {
+          "elapsedMs": 0.4309999999999974,
+          "sourceMs": 0.000750999999993951,
+          "displayMs": 0.4267110000000116,
+          "groupsAndPresentationMs": 0.0006229999999902702
+        },
+        {
+          "elapsedMs": 0.4089999999999989,
+          "sourceMs": 0.0008759999999909951,
+          "displayMs": 0.40499900000000366,
+          "groupsAndPresentationMs": 0.0006669999999999732
+        },
+        {
+          "elapsedMs": 0.44549999999999557,
+          "sourceMs": 0.0007510000000081618,
+          "displayMs": 0.44050300000000675,
+          "groupsAndPresentationMs": 0.0008309999999980278
+        }
+      ],
+      "medianMs": 0.4309999999999974,
+      "medianStages": {
+        "sourceMs": 0.0007510000000081618,
+        "displayMs": 0.4267110000000116,
+        "groupsAndPresentationMs": 0.0007910000000066475
+      }
+    },
+    {
+      "mode": "source-display-and-groups",
+      "displayEntries": 2000,
+      "sourceEntries": 1000,
+      "batches": 20,
+      "fragmentsPerBatch": 50,
+      "samples": [
+        {
+          "elapsedMs": 11.042417,
+          "sourceMs": 0.8449990000000085,
+          "displayMs": 0.4717509999999976,
+          "groupsAndPresentationMs": 9.720167000000039
+        },
+        {
+          "elapsedMs": 10.111666,
+          "sourceMs": 0.6265829999999681,
+          "displayMs": 0.4023740000000089,
+          "groupsAndPresentationMs": 9.077624999999983
+        },
+        {
+          "elapsedMs": 11.166040999999993,
+          "sourceMs": 0.7257080000000258,
+          "displayMs": 0.46945800000001725,
+          "groupsAndPresentationMs": 9.965666999999968
+        },
+        {
+          "elapsedMs": 10.465583999999993,
+          "sourceMs": 0.6512910000000289,
+          "displayMs": 0.4219589999999869,
+          "groupsAndPresentationMs": 9.387626999999995
+        },
+        {
+          "elapsedMs": 10.525999999999996,
+          "sourceMs": 0.678125000000037,
+          "displayMs": 0.4212909999999681,
+          "groupsAndPresentationMs": 9.42166599999996
+        }
+      ],
+      "medianMs": 10.525999999999996,
+      "medianStages": {
+        "sourceMs": 0.678125000000037,
+        "displayMs": 0.4219589999999869,
+        "groupsAndPresentationMs": 9.42166599999996
+      }
+    },
+    {
+      "mode": "display-reducer-only",
+      "displayEntries": 10000,
+      "sourceEntries": 1000,
+      "batches": 20,
+      "fragmentsPerBatch": 50,
+      "samples": [
+        {
+          "elapsedMs": 1.985833999999997,
+          "sourceMs": 0.0009529999999529082,
+          "displayMs": 1.9803769999999616,
+          "groupsAndPresentationMs": 0.0010850000000033333
+        },
+        {
+          "elapsedMs": 4.271417,
+          "sourceMs": 0.001085000000031755,
+          "displayMs": 4.2648300000000035,
+          "groupsAndPresentationMs": 0.001247999999975491
+        },
+        {
+          "elapsedMs": 1.9854170000000124,
+          "sourceMs": 0.0006239999999877455,
+          "displayMs": 1.9809580000000437,
+          "groupsAndPresentationMs": 0.0007519999999630045
+        },
+        {
+          "elapsedMs": 2.032375000000002,
+          "sourceMs": 0.000703000000044085,
+          "displayMs": 2.027958999999953,
+          "groupsAndPresentationMs": 0.0007960000000082346
+        },
+        {
+          "elapsedMs": 2.089833000000027,
+          "sourceMs": 0.0007049999999537704,
+          "displayMs": 2.0852899999999295,
+          "groupsAndPresentationMs": 0.0007109999999954653
+        }
+      ],
+      "medianMs": 2.032375000000002,
+      "medianStages": {
+        "sourceMs": 0.0007049999999537704,
+        "displayMs": 2.027958999999953,
+        "groupsAndPresentationMs": 0.0007960000000082346
+      }
+    },
+    {
+      "mode": "source-display-and-groups",
+      "displayEntries": 10000,
+      "sourceEntries": 1000,
+      "batches": 20,
+      "fragmentsPerBatch": 50,
+      "samples": [
+        {
+          "elapsedMs": 60.917415999999974,
+          "sourceMs": 0.748540999999932,
+          "displayMs": 2.2841649999999447,
+          "groupsAndPresentationMs": 57.87550199999998
+        },
+        {
+          "elapsedMs": 57.24187499999999,
+          "sourceMs": 0.7003739999999539,
+          "displayMs": 2.1264579999999,
+          "groupsAndPresentationMs": 54.40682999999984
+        },
+        {
+          "elapsedMs": 61.027083000000005,
+          "sourceMs": 0.7416690000000585,
+          "displayMs": 2.341748999999936,
+          "groupsAndPresentationMs": 57.93349600000005
+        },
+        {
+          "elapsedMs": 61.53295799999995,
+          "sourceMs": 0.7554170000000227,
+          "displayMs": 2.2949180000001093,
+          "groupsAndPresentationMs": 58.4721209999999
+        },
+        {
+          "elapsedMs": 59.761416999999994,
+          "sourceMs": 0.7316669999999021,
+          "displayMs": 2.209501000000216,
+          "groupsAndPresentationMs": 56.80841600000019
+        }
+      ],
+      "medianMs": 60.917415999999974,
+      "medianStages": {
+        "sourceMs": 0.7416690000000585,
+        "displayMs": 2.2841649999999447,
+        "groupsAndPresentationMs": 57.87550199999998
+      }
+    }
+  ],
+  "visibilityCases": [
+    {
+      "size": 20,
+      "final": true,
+      "doneForNonFinal": false,
+      "someCallbacks": 0,
+      "instrumentedElapsedMs": 0.025999999999953616,
+      "uninstrumentedSamplesMs": [
+        0.0006670000000212895,
+        0.0005840000000034706,
+        0.0005409999999983484,
+        0.0004999999999881766,
+        0.0004999999999881766
+      ],
+      "uninstrumentedMedianMs": 0.0005409999999983484
+    },
+    {
+      "size": 20,
+      "final": false,
+      "doneForNonFinal": true,
+      "someCallbacks": 0,
+      "instrumentedElapsedMs": 0.009666999999978998,
+      "uninstrumentedSamplesMs": [
+        0.002082999999970525,
+        0.0019580000000019027,
+        0.0019169999999917309,
+        0.0019169999999917309,
+        0.0019159999999942556
+      ],
+      "uninstrumentedMedianMs": 0.0019169999999917309
+    },
+    {
+      "size": 2000,
+      "final": true,
+      "doneForNonFinal": false,
+      "someCallbacks": 0,
+      "instrumentedElapsedMs": 0.039833999999984826,
+      "uninstrumentedSamplesMs": [
+        0.04058300000002646,
+        0.036708000000032825,
+        0.0362920000000031,
+        0.03637500000002092,
+        0.03654199999999719
+      ],
+      "uninstrumentedMedianMs": 0.03654199999999719
+    },
+    {
+      "size": 2000,
+      "final": false,
+      "doneForNonFinal": true,
+      "someCallbacks": 0,
+      "instrumentedElapsedMs": 0.21595800000000054,
+      "uninstrumentedSamplesMs": [
+        0.07587499999999636,
+        0.07687500000002956,
+        0.0762089999999489,
+        0.07645800000000236,
+        0.07675000000000409
+      ],
+      "uninstrumentedMedianMs": 0.07645800000000236
+    },
+    {
+      "size": 10000,
+      "final": true,
+      "doneForNonFinal": false,
+      "someCallbacks": 0,
+      "instrumentedElapsedMs": 0.05987499999997681,
+      "uninstrumentedSamplesMs": [
+        0.05987500000003365,
+        0.05770799999999099,
+        0.05841600000002245,
+        0.061666999999999916,
+        0.05712499999998499
+      ],
+      "uninstrumentedMedianMs": 0.05841600000002245
+    },
+    {
+      "size": 10000,
+      "final": false,
+      "doneForNonFinal": true,
+      "someCallbacks": 0,
+      "instrumentedElapsedMs": 0.5879170000000045,
+      "uninstrumentedSamplesMs": [
+        0.42633299999999963,
+        0.42770799999999554,
+        0.42737499999998363,
+        0.4226669999999899,
+        0.40045800000001464
+      ],
+      "uninstrumentedMedianMs": 0.42633299999999963
+    }
+  ]
+}

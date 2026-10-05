@@ -1,0 +1,1006 @@
+{
+  "baseline": "d6e3f45a45e6948873b8a64d0a9453fb2c2f4307",
+  "fixture": {
+    "persistedMs": 15,
+    "recoveryMs": 600,
+    "sseBootstrapMs": 30
+  },
+  "focus": false,
+  "node": "24.21.0",
+  "requests": [
+    {
+      "at": 1791223236806,
+      "finishedAt": 1791223236824,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223236807,
+      "finishedAt": 1791223237409,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223236807,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223237411,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223237411,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223237427,
+      "finishedAt": 1791223237444,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223237427,
+      "finishedAt": 1791223238027,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223237427,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223238031,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223238032,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223238054,
+      "finishedAt": 1791223238072,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223238055,
+      "finishedAt": 1791223238657,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223238056,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223238661,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223238661,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223238685,
+      "finishedAt": 1791223238701,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223238685,
+      "finishedAt": 1791223239287,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223238685,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223239291,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223239292,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223239315,
+      "finishedAt": 1791223239332,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223239315,
+      "finishedAt": 1791223239917,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223239315,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223239921,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223239922,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223239944,
+      "finishedAt": 1791223239960,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223239944,
+      "finishedAt": 1791223240545,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223239944,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223240549,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223240550,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223240580,
+      "finishedAt": 1791223240597,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223240580,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223240580,
+      "finishedAt": 1791223241182,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223241187,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223241187,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223241213,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223241213,
+      "finishedAt": 1791223241231,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223241214,
+      "finishedAt": 1791223241816,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223241823,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223241823,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223241847,
+      "finishedAt": 1791223241865,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223241848,
+      "finishedAt": 1791223242450,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223241848,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223242452,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223242452,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223242463,
+      "finishedAt": 1791223242478,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223242464,
+      "finishedAt": 1791223243066,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223242465,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223243071,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223243071,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223252943,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223252944,
+      "finishedAt": 1791223252960,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223252944,
+      "finishedAt": 1791223253545,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223253550,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223253550,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223253573,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223253573,
+      "finishedAt": 1791223253589,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223253573,
+      "finishedAt": 1791223254176,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223254180,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223254180,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223254205,
+      "finishedAt": 1791223254223,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223254206,
+      "finishedAt": 1791223254808,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223254207,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223254814,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223254814,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223254845,
+      "finishedAt": 1791223254862,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223254845,
+      "finishedAt": 1791223255446,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223254846,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223255452,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223255453,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223255477,
+      "finishedAt": 1791223255493,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223255477,
+      "finishedAt": 1791223256080,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223255478,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223256084,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223256084,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223256110,
+      "finishedAt": 1791223256128,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223256111,
+      "finishedAt": 1791223256713,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223256111,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223256718,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223256719,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223256742,
+      "finishedAt": 1791223256759,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223256742,
+      "finishedAt": 1791223257344,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223256743,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223257347,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223257347,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223257373,
+      "finishedAt": 1791223257390,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223257373,
+      "finishedAt": 1791223257975,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223257373,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223257978,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223257979,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223258004,
+      "finishedAt": 1791223258021,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223258004,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223258004,
+      "finishedAt": 1791223258606,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223258609,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223258610,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223258632,
+      "finishedAt": 1791223258649,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223258632,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223258632,
+      "finishedAt": 1791223259234,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223259239,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223259239,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223365944,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223365944,
+      "finishedAt": 1791223365961,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223365944,
+      "finishedAt": 1791223366546,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223366551,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223366551,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223366579,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223366580,
+      "finishedAt": 1791223366597,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223366580,
+      "finishedAt": 1791223367181,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223367183,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223367183,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223367197,
+      "finishedAt": 1791223367214,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223367197,
+      "finishedAt": 1791223367798,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223367197,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223367803,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223367804,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223367833,
+      "finishedAt": 1791223367851,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223367833,
+      "finishedAt": 1791223368435,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223367834,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223368440,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223368441,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223368466,
+      "finishedAt": 1791223368483,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223368466,
+      "finishedAt": 1791223369067,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223368467,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223369072,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223369072,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223369101,
+      "finishedAt": 1791223369118,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223369101,
+      "finishedAt": 1791223369704,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223369101,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223369705,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223369706,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223369715,
+      "finishedAt": 1791223369731,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223369715,
+      "finishedAt": 1791223370317,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223369715,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223370321,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223370321,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223370343,
+      "finishedAt": 1791223370361,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223370343,
+      "finishedAt": 1791223370946,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223370344,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223370950,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    },
+    {
+      "at": 1791223370951,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223370984,
+      "finishedAt": 1791223371000,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791223370984,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223370984,
+      "finishedAt": 1791223371586,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1"
+    },
+    {
+      "at": 1791223371591,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/traces?persisted=1"
+    },
+    {
+      "at": 1791223371592,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/timings?persisted=1"
+    },
+    {
+      "at": 1791223371616,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791223371616,
+      "finishedAt": 1791223372216,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1"
+    },
+    {
+      "at": 1791223371616,
+      "finishedAt": 1791223371633,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791223372218,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/timings?persisted=1"
+    },
+    {
+      "at": 1791223372218,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/traces?persisted=1"
+    }
+  ],
+  "samples": [
+    {
+      "domMs": 19.699999999254942,
+      "mounted": 9,
+      "readyMs": 626.5,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 14.099999997764826,
+      "mounted": 9,
+      "readyMs": 622.0999999977648,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 19.399999998509884,
+      "mounted": 9,
+      "readyMs": 630.6000000014901,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 19.100000001490116,
+      "mounted": 9,
+      "readyMs": 628.8000000007451,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 19.800000000745058,
+      "mounted": 9,
+      "readyMs": 629.6999999992549,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 19.300000000745058,
+      "mounted": 9,
+      "readyMs": 628.8999999985099,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 25,
+      "mounted": 9,
+      "readyMs": 636,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 22.600000001490116,
+      "mounted": 9,
+      "readyMs": 635.6000000014901,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 22.099999997764826,
+      "mounted": 9,
+      "readyMs": 628.3000000007451,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 10.5,
+      "mounted": 9,
+      "readyMs": 620.5999999977648,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 11.600000001490116,
+      "mounted": 9,
+      "readyMs": 620.8000000007451,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 20.299999997019768,
+      "mounted": 9,
+      "readyMs": 630.1999999992549,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 23,
+      "mounted": 9,
+      "readyMs": 635.2000000029802,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 27.5,
+      "mounted": 9,
+      "readyMs": 638.6000000014901,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 20.699999999254942,
+      "mounted": 9,
+      "readyMs": 631.1999999992549,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 22.599999997764826,
+      "mounted": 9,
+      "readyMs": 634.2999999970198,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 19.600000001490116,
+      "mounted": 9,
+      "readyMs": 628.1000000014901,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 22.199999999254942,
+      "mounted": 9,
+      "readyMs": 630.8000000007451,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 21.5,
+      "mounted": 9,
+      "readyMs": 630.8000000007451,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 19.300000000745058,
+      "mounted": 9,
+      "readyMs": 629.9000000022352,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 12.900000002235174,
+      "mounted": 9,
+      "readyMs": 623.4000000022352,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 25.600000001490116,
+      "mounted": 9,
+      "readyMs": 631,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 12.599999997764826,
+      "mounted": 9,
+      "readyMs": 622.0999999977648,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 26.5,
+      "mounted": 9,
+      "readyMs": 636.9000000022352,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 22,
+      "mounted": 9,
+      "readyMs": 632.8000000007451,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 24.199999999254942,
+      "mounted": 9,
+      "readyMs": 630.3999999985099,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 8,
+      "mounted": 9,
+      "readyMs": 616.8999999985099,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 18.5,
+      "mounted": 9,
+      "readyMs": 629.8999999985099,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 28.800000000745058,
+      "mounted": 9,
+      "readyMs": 640.0999999977648,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 20.299999997019768,
+      "mounted": 9,
+      "readyMs": 625.3999999985099,
+      "title": "Fixture LONG conversation"
+    }
+  ],
+  "scope": "Production Next build; MutationObserver DOM and readiness; timer throttling/rAF suspension means no physical paint/frame claim",
+  "visibility": "visible"
+}

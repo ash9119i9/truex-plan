@@ -1,0 +1,283 @@
+{
+  "benchmark": "Truex chat projection CPU only, paired baseline/candidate",
+  "limitations": "Elapsed synchronous projection CPU proxy; process CPU includes Node/V8 work across threads. Candidate includes coalescing. No React, DOM, Markdown, network, provider, live browser frame gaps, long tasks, render latency, or production p95 measurement. Synthetic uninterrupted same-item batch represents maximum coalescing; real batches may contain fewer compatible adjacent frames. Terminal cursor here is original input accounting; transport cursor behavior has separate executable tests.",
+  "measuredAt": "2026-10-05T17:40:22.635Z",
+  "repo": "/Users/ashok/truex-plan",
+  "baselineRef": "d6e3f45a45e6948873b8a64d0a9453fb2c2f4307",
+  "baselineChatSha256": "ffea93e441bf0504fd5e566da981bce615cf138c45a02aa1b73981a22f6e6962",
+  "candidateChatSha256": "ffea93e441bf0504fd5e566da981bce615cf138c45a02aa1b73981a22f6e6962",
+  "candidateBatchSha256": "d572ae0dae2287b0a2ba1ed0d521db7109dcc68788b3b07378107fc390af2acb",
+  "nodeVersion": "v24.21.0",
+  "v8Version": "13.6.233.17-node.53",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "cpuModel": "Apple M5",
+  "warmupRunsPerFixtureAndMode": 1,
+  "measuredRunsPerFixtureAndMode": 5,
+  "measurements": [
+    {
+      "mode": "baseline",
+      "entries": 20,
+      "events": 1000,
+      "samples": [
+        {
+          "elapsedMs": 0.8170829999999967,
+          "userCpuMs": 1.349,
+          "systemCpuMs": 0.059,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 0.6465829999999997,
+          "userCpuMs": 1.842,
+          "systemCpuMs": 0.015,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 0.6326249999999973,
+          "userCpuMs": 0.674,
+          "systemCpuMs": 0.003,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 0.6202910000000017,
+          "userCpuMs": 0.622,
+          "systemCpuMs": 0,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 0.6508329999999987,
+          "userCpuMs": 0.655,
+          "systemCpuMs": 0.004,
+          "reducerApplications": 1000
+        }
+      ],
+      "medianMs": 0.6465829999999997,
+      "medianProcessCpuMs": 0.677,
+      "reducerApplications": 1000,
+      "finalTextLength": 1000,
+      "exactFinalState": true,
+      "exactFinalText": true,
+      "originalTerminalCursor": "g:1000"
+    },
+    {
+      "mode": "candidate",
+      "entries": 20,
+      "events": 1000,
+      "samples": [
+        {
+          "elapsedMs": 0.08437500000000142,
+          "userCpuMs": 0.147,
+          "systemCpuMs": 0.002,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.08474999999999966,
+          "userCpuMs": 0.09,
+          "systemCpuMs": 0.002,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.08395800000000264,
+          "userCpuMs": 0.383,
+          "systemCpuMs": 0.006,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.05154200000000486,
+          "userCpuMs": 0.12,
+          "systemCpuMs": 0.005,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.028082999999995195,
+          "userCpuMs": 0.028,
+          "systemCpuMs": 0.001,
+          "reducerApplications": 1
+        }
+      ],
+      "medianMs": 0.08395800000000264,
+      "medianProcessCpuMs": 0.125,
+      "reducerApplications": 1,
+      "finalTextLength": 1000,
+      "exactFinalState": true,
+      "exactFinalText": true,
+      "originalTerminalCursor": "g:1000"
+    },
+    {
+      "mode": "baseline",
+      "entries": 2000,
+      "events": 1000,
+      "samples": [
+        {
+          "elapsedMs": 19.695291999999995,
+          "userCpuMs": 20.272,
+          "systemCpuMs": 0.254,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 19.513999999999996,
+          "userCpuMs": 19.453,
+          "systemCpuMs": 0.033,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 19.650667,
+          "userCpuMs": 22.358,
+          "systemCpuMs": 0.073,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 23.884458000000024,
+          "userCpuMs": 28.361,
+          "systemCpuMs": 0.364,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 19.138125000000002,
+          "userCpuMs": 19.576,
+          "systemCpuMs": 0.126,
+          "reducerApplications": 1000
+        }
+      ],
+      "medianMs": 19.650667,
+      "medianProcessCpuMs": 20.526,
+      "reducerApplications": 1000,
+      "finalTextLength": 1000,
+      "exactFinalState": true,
+      "exactFinalText": true,
+      "originalTerminalCursor": "g:1000"
+    },
+    {
+      "mode": "candidate",
+      "entries": 2000,
+      "events": 1000,
+      "samples": [
+        {
+          "elapsedMs": 0.024583000000006905,
+          "userCpuMs": 0.025,
+          "systemCpuMs": 0,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.02462499999998613,
+          "userCpuMs": 0.025,
+          "systemCpuMs": 0,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.02574999999998795,
+          "userCpuMs": 0.026,
+          "systemCpuMs": 0,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.02383299999999622,
+          "userCpuMs": 0.024,
+          "systemCpuMs": 0,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.023167000000000826,
+          "userCpuMs": 0.024,
+          "systemCpuMs": 0,
+          "reducerApplications": 1
+        }
+      ],
+      "medianMs": 0.024583000000006905,
+      "medianProcessCpuMs": 0.025,
+      "reducerApplications": 1,
+      "finalTextLength": 1000,
+      "exactFinalState": true,
+      "exactFinalText": true,
+      "originalTerminalCursor": "g:1000"
+    },
+    {
+      "mode": "baseline",
+      "entries": 10000,
+      "events": 1000,
+      "samples": [
+        {
+          "elapsedMs": 91.89516700000001,
+          "userCpuMs": 91.793,
+          "systemCpuMs": 0.075,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 93.394792,
+          "userCpuMs": 100.271,
+          "systemCpuMs": 0.678,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 92.31316700000002,
+          "userCpuMs": 92.231,
+          "systemCpuMs": 0.06,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 92.26808299999993,
+          "userCpuMs": 92.174,
+          "systemCpuMs": 0.051,
+          "reducerApplications": 1000
+        },
+        {
+          "elapsedMs": 92.54449999999997,
+          "userCpuMs": 92.474,
+          "systemCpuMs": 0.043,
+          "reducerApplications": 1000
+        }
+      ],
+      "medianMs": 92.31316700000002,
+      "medianProcessCpuMs": 92.291,
+      "reducerApplications": 1000,
+      "finalTextLength": 1000,
+      "exactFinalState": true,
+      "exactFinalText": true,
+      "originalTerminalCursor": "g:1000"
+    },
+    {
+      "mode": "candidate",
+      "entries": 10000,
+      "events": 1000,
+      "samples": [
+        {
+          "elapsedMs": 0.06737499999996999,
+          "userCpuMs": 0.068,
+          "systemCpuMs": 0,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.0677499999999327,
+          "userCpuMs": 0.068,
+          "systemCpuMs": 0.001,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.1124169999999367,
+          "userCpuMs": 0.114,
+          "systemCpuMs": 0.007,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.06691599999999198,
+          "userCpuMs": 0.067,
+          "systemCpuMs": 0.001,
+          "reducerApplications": 1
+        },
+        {
+          "elapsedMs": 0.06712499999991905,
+          "userCpuMs": 0.067,
+          "systemCpuMs": 0,
+          "reducerApplications": 1
+        }
+      ],
+      "medianMs": 0.06737499999996999,
+      "medianProcessCpuMs": 0.068,
+      "reducerApplications": 1,
+      "finalTextLength": 1000,
+      "exactFinalState": true,
+      "exactFinalText": true,
+      "originalTerminalCursor": "g:1000"
+    }
+  ]
+}

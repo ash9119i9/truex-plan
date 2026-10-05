@@ -207,6 +207,14 @@ export interface Message {
   messageIndex?: number;
   runtimeItemId?: string;
 }
+/** Numeric server phases from message authorization through accepted receipt. */
+export interface MessageAcceptanceTiming {
+  authorizationMs: number;
+  preparationMs: number;
+  dispatchMs: number;
+  receiptMs: number;
+  totalMs: number;
+}
 export interface TurnTiming {
   turnId: string;
   acceptMs: number | null;
@@ -265,6 +273,7 @@ export type TurnState =
   | { kind: "starting" }
   | { kind: "running" | "interrupting"; turnId: string };
 export type DomainType =
+  | "sync.completed"
   | "session.created"
   | "thread.started"
   | "turn.started"

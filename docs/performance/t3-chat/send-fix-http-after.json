@@ -1,0 +1,1313 @@
+{
+  "capturedAt": "2026-10-05T19:23:19.214Z",
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "root": "/Users/ashok/truex-plan",
+  "sources": {
+    "platform/src/service.ts": "3c59efb590737bd0fbf84982b4f3dcc1a0987724393bb6865bee51c3ac9644f2",
+    "platform/src/store.ts": "eb479e1477306fcdc5f09f65aeaa51bccf01ad6abe9e3a1152b8fa7a5efe32d0",
+    "platform/src/runtime-transport.ts": "6a970fc52850a0f7129f1b5188164948f91006f27462c343c3db010661625ee1",
+    "platform/src/http.ts": "24df8ad49f6a9c78f7ee71dae35bb9bdbd0160dd692031aecacd52232b8bef30",
+    "platform/src/index.ts": "aa149bb2615ac51d381b380baab93ed1592e052ca11b6381cac7a60be46c05d4",
+    "agent-core/src/manager.ts": "8a881bfc64d80fa19fae2c151b5a4e4cdcb5e3a5d6ffc8e918002b84e1744bcd",
+    "agent-core/src/index.ts": "7588bf087bb96af1f982a4fe1325c22b859f983c3c72d04a1cdc903ea51877d6",
+    "shared/runtime-read-options.ts": "45acbac74b54d45e49978c6549f96f085501c82bf8ce9db44348b1fb46f1b8cd"
+  },
+  "mountedRouteHashes": {
+    "app.post(\"/threads\",": "cfb2f0066ca39f99a1d5f5c3186b92849c47e8ba5755f11dd721e74482eda34b",
+    "app.post(\"/threads/:id/resume\",": "5f28068bca1a1d4d180d5534073aac7b46fae03585e2c82443044ef312448382",
+    "app.post(\"/threads/:id/turns\",": "c0b9257f3eb246acdb2ab4a4a9ee42ae718f9589845a58e2b9cdc9a32e6c6bf8",
+    "http.post(\n    \"/api/sessions\",": "fbebf3c47991183c090c4da6a2d1ce573011508480f799baedb8fce0403ef827",
+    "http.post(\n    \"/api/sessions/:id/messages\",": "d2feab9b71672751eafcd516716e696fa9a6fd182eda0f54f223a6a30ab91ca4"
+  },
+  "fixture": {
+    "database": "actual isolated MongoMemoryServer; driver commands counted; fixed await delay injected only during measurement",
+    "runtime": "actual ThreadManager and actual RuntimeTransport over localhost HTTP; fake runtime request; fixed20ms HTTP boundary",
+    "authentication": "actual dev tenant/user resolvers and middleware; fixed synthetic owner; actual service authorization; tenant cache explicitly refreshed outside measurement; no OIDC/cookie auth",
+    "routes": "exact create/message and create/resume/turns source statements extracted and mounted in Express; not production bootstrap",
+    "exclusions": [
+      "browser",
+      "frontend route proxy",
+      "SSE delivery",
+      "provider",
+      "real model latency",
+      "remote Mongo",
+      "production CPU contention"
+    ],
+    "history": "1000 synthetic completed messages, each 2048 characters; actual serialization through runtime resume HTTP response",
+    "latency": "acceptance only; first model response is not measured; 225ms fixed Mongo-await scenario characterizes serial gates, not production p50"
+  },
+  "reports": [
+    {
+      "scenario": {
+        "name": "new-create-plus-first-message",
+        "newSession": true,
+        "dbDelayMs": 0,
+        "history": 0
+      },
+      "repeats": 5,
+      "warmups": 1,
+      "medianTotalMs": 73.42912500000011,
+      "p95TotalMs": 83.90549999999985,
+      "medianMessageHttpMs": 48.27404200000001,
+      "samples": [
+        {
+          "totalMs": 70.69324999999981,
+          "createMs": 24.30833399999983,
+          "messageHttpMs": 46.371999999999844,
+          "responseBytes": 265,
+          "serverTiming": "authorization;dur=0.38, preparation;dur=22.03, dispatch;dur=22.22, receipt;dur=0.93, total;dur=45.56",
+          "platformTiming": {
+            "authorizationMs": 0.37504200000012133,
+            "preparationMs": 22.026749999999993,
+            "dispatchMs": 22.221541999999772,
+            "receiptMs": 0.9338740000002872,
+            "totalMs": 45.55720800000017
+          },
+          "platformRoundTripMs": 22.524582999999893,
+          "configurationMs": [
+            0.9990419999999176,
+            0.7966249999999491
+          ],
+          "resumeMs": [
+            22.024875000000065
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 137
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 41
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 71.19808299999977,
+          "createMs": 24.086083999999573,
+          "messageHttpMs": 47.09562499999993,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=0.33, preparation;dur=23.02, dispatch;dur=21.78, receipt;dur=1.36, total;dur=46.50",
+          "platformTiming": {
+            "authorizationMs": 0.3319579999997586,
+            "preparationMs": 23.021834000000126,
+            "dispatchMs": 21.777874999999767,
+            "receiptMs": 1.3637080000003152,
+            "totalMs": 46.49537499999997
+          },
+          "platformRoundTripMs": 22.211624999999913,
+          "configurationMs": [
+            0.9136670000002596,
+            1.0558750000000146
+          ],
+          "resumeMs": [
+            23.015458999999737
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 137
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 41
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 73.42912500000011,
+          "createMs": 25.129625000000033,
+          "messageHttpMs": 48.27404200000001,
+          "responseBytes": 265,
+          "serverTiming": "authorization;dur=0.39, preparation;dur=22.96, dispatch;dur=22.28, receipt;dur=1.78, total;dur=47.42",
+          "platformTiming": {
+            "authorizationMs": 0.39095799999995506,
+            "preparationMs": 22.959041999999954,
+            "dispatchMs": 22.284000000000106,
+            "receiptMs": 1.7823329999996531,
+            "totalMs": 47.41633299999967
+          },
+          "platformRoundTripMs": 23.216750000000047,
+          "configurationMs": [
+            1.3247499999997672,
+            1.1084999999998217
+          ],
+          "resumeMs": [
+            22.956249999999727
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 136
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 41
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 81.3637090000002,
+          "createMs": 27.721457999999984,
+          "messageHttpMs": 53.57641700000022,
+          "responseBytes": 263,
+          "serverTiming": "authorization;dur=0.86, preparation;dur=24.43, dispatch;dur=23.33, receipt;dur=3.63, total;dur=52.25",
+          "platformTiming": {
+            "authorizationMs": 0.8599169999997684,
+            "preparationMs": 24.42520800000011,
+            "dispatchMs": 23.33095800000001,
+            "receiptMs": 3.6325419999998303,
+            "totalMs": 52.24862499999972
+          },
+          "platformRoundTripMs": 24.766458000000057,
+          "configurationMs": [
+            1.4611659999995936,
+            1.5671250000000327
+          ],
+          "resumeMs": [
+            24.418166000000383
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 136
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 83.90549999999985,
+          "createMs": 28.927416999999878,
+          "messageHttpMs": 54.93620800000008,
+          "responseBytes": 263,
+          "serverTiming": "authorization;dur=0.81, preparation;dur=24.99, dispatch;dur=23.61, receipt;dur=3.99, total;dur=53.40",
+          "platformTiming": {
+            "authorizationMs": 0.8148329999999078,
+            "preparationMs": 24.990542000000005,
+            "dispatchMs": 23.60695799999985,
+            "receiptMs": 3.9872920000002523,
+            "totalMs": 53.399625000000015
+          },
+          "platformRoundTripMs": 24.9822079999999,
+          "configurationMs": [
+            1.8818750000000364,
+            1.685084000000188
+          ],
+          "resumeMs": [
+            24.982082999999875
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 137
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "existing-followup",
+        "newSession": false,
+        "dbDelayMs": 0,
+        "history": 0
+      },
+      "repeats": 5,
+      "warmups": 1,
+      "medianTotalMs": 52.74916600000006,
+      "p95TotalMs": 52.99779200000012,
+      "medianMessageHttpMs": 52.72262499999988,
+      "samples": [
+        {
+          "totalMs": 52.99779200000012,
+          "createMs": null,
+          "messageHttpMs": 52.97483299999976,
+          "responseBytes": 266,
+          "serverTiming": "authorization;dur=0.70, preparation;dur=24.85, dispatch;dur=23.11, receipt;dur=2.57, total;dur=51.24",
+          "platformTiming": {
+            "authorizationMs": 0.7021660000000338,
+            "preparationMs": 24.853791999999885,
+            "dispatchMs": 23.114000000000033,
+            "receiptMs": 2.5657499999997526,
+            "totalMs": 51.235707999999704
+          },
+          "platformRoundTripMs": 24.529583000000002,
+          "configurationMs": [
+            1.4474589999999807
+          ],
+          "resumeMs": [
+            24.84508300000016
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 478
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 52.62762500000008,
+          "createMs": null,
+          "messageHttpMs": 52.60787500000015,
+          "responseBytes": 266,
+          "serverTiming": "authorization;dur=0.86, preparation;dur=24.84, dispatch;dur=23.03, receipt;dur=2.18, total;dur=50.90",
+          "platformTiming": {
+            "authorizationMs": 0.8566670000000158,
+            "preparationMs": 24.838541000000077,
+            "dispatchMs": 23.027042000000165,
+            "receiptMs": 2.1797919999999067,
+            "totalMs": 50.902042000000165
+          },
+          "platformRoundTripMs": 24.194209000000228,
+          "configurationMs": [
+            1.8021670000002814
+          ],
+          "resumeMs": [
+            24.82062500000029
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 477
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 52.797209000000294,
+          "createMs": null,
+          "messageHttpMs": 52.77529199999981,
+          "responseBytes": 263,
+          "serverTiming": "authorization;dur=0.69, preparation;dur=24.85, dispatch;dur=23.19, receipt;dur=2.47, total;dur=51.20",
+          "platformTiming": {
+            "authorizationMs": 0.6903339999998934,
+            "preparationMs": 24.84683300000006,
+            "dispatchMs": 23.19220899999982,
+            "receiptMs": 2.4716239999997924,
+            "totalMs": 51.20099999999957
+          },
+          "platformRoundTripMs": 24.348374999999578,
+          "configurationMs": [
+            1.9818749999999454
+          ],
+          "resumeMs": [
+            24.84204200000022
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 479
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 51.83224999999993,
+          "createMs": null,
+          "messageHttpMs": 51.80812500000002,
+          "responseBytes": 263,
+          "serverTiming": "authorization;dur=0.58, preparation;dur=23.77, dispatch;dur=23.44, receipt;dur=2.50, total;dur=50.29",
+          "platformTiming": {
+            "authorizationMs": 0.5763329999999769,
+            "preparationMs": 23.77108300000009,
+            "dispatchMs": 23.442790999999943,
+            "receiptMs": 2.504167999999936,
+            "totalMs": 50.294374999999945
+          },
+          "platformRoundTripMs": 24.72787500000004,
+          "configurationMs": [
+            1.1991250000000946
+          ],
+          "resumeMs": [
+            23.766665999999987
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 479
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 52.74916600000006,
+          "createMs": null,
+          "messageHttpMs": 52.72262499999988,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=0.65, preparation;dur=24.48, dispatch;dur=23.46, receipt;dur=2.56, total;dur=51.16",
+          "platformTiming": {
+            "authorizationMs": 0.6527080000000751,
+            "preparationMs": 24.482124999999996,
+            "dispatchMs": 23.462375000000065,
+            "receiptMs": 2.562249999999949,
+            "totalMs": 51.159458000000086
+          },
+          "platformRoundTripMs": 24.95550000000003,
+          "configurationMs": [
+            1.4598329999998896
+          ],
+          "resumeMs": [
+            24.476916999999958
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 479
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "existing-followup-1000-messages",
+        "newSession": false,
+        "dbDelayMs": 0,
+        "history": 1000
+      },
+      "repeats": 5,
+      "warmups": 1,
+      "medianTotalMs": 44.71012500000052,
+      "p95TotalMs": 44.77574999999979,
+      "medianMessageHttpMs": 44.70224999999937,
+      "samples": [
+        {
+          "totalMs": 44.77574999999979,
+          "createMs": null,
+          "messageHttpMs": 44.76870800000006,
+          "responseBytes": 265,
+          "serverTiming": "authorization;dur=0.22, preparation;dur=22.14, dispatch;dur=21.48, receipt;dur=0.51, total;dur=44.34",
+          "platformTiming": {
+            "authorizationMs": 0.2157919999999649,
+            "preparationMs": 22.137416999999914,
+            "dispatchMs": 21.477457999999842,
+            "receiptMs": 0.5065830000003189,
+            "totalMs": 44.33725000000004
+          },
+          "platformRoundTripMs": 21.750958000000082,
+          "configurationMs": [
+            0.5132080000003043
+          ],
+          "resumeMs": [
+            22.135999999999967
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 483
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 1000
+        },
+        {
+          "totalMs": 44.743083999999726,
+          "createMs": null,
+          "messageHttpMs": 44.73516700000073,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=0.31, preparation;dur=22.01, dispatch;dur=21.45, receipt;dur=0.49, total;dur=44.26",
+          "platformTiming": {
+            "authorizationMs": 0.3072090000005119,
+            "preparationMs": 22.012957999999344,
+            "dispatchMs": 21.452792000000045,
+            "receiptMs": 0.4852080000000569,
+            "totalMs": 44.25816699999996
+          },
+          "platformRoundTripMs": 21.71691699999974,
+          "configurationMs": [
+            0.5263749999994616
+          ],
+          "resumeMs": [
+            22.01154200000019
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 482
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 1000
+        },
+        {
+          "totalMs": 44.21812499999942,
+          "createMs": null,
+          "messageHttpMs": 44.21150000000034,
+          "responseBytes": 265,
+          "serverTiming": "authorization;dur=0.24, preparation;dur=21.73, dispatch;dur=21.38, receipt;dur=0.47, total;dur=43.81",
+          "platformTiming": {
+            "authorizationMs": 0.2352919999993901,
+            "preparationMs": 21.72979100000066,
+            "dispatchMs": 21.377124999999978,
+            "receiptMs": 0.47170899999946414,
+            "totalMs": 43.81391699999949
+          },
+          "platformRoundTripMs": 21.627458999999362,
+          "configurationMs": [
+            0.4803750000000946
+          ],
+          "resumeMs": [
+            21.728541999999834
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 483
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 1000
+        },
+        {
+          "totalMs": 44.571500000000015,
+          "createMs": null,
+          "messageHttpMs": 44.563499999999294,
+          "responseBytes": 263,
+          "serverTiming": "authorization;dur=0.25, preparation;dur=21.98, dispatch;dur=21.43, receipt;dur=0.47, total;dur=44.13",
+          "platformTiming": {
+            "authorizationMs": 0.2479590000002645,
+            "preparationMs": 21.97649999999976,
+            "dispatchMs": 21.43291599999975,
+            "receiptMs": 0.4738340000003518,
+            "totalMs": 44.131209000000126
+          },
+          "platformRoundTripMs": 21.67199999999957,
+          "configurationMs": [
+            0.4675420000003214
+          ],
+          "resumeMs": [
+            21.9755839999998
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 483
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 1000
+        },
+        {
+          "totalMs": 44.71012500000052,
+          "createMs": null,
+          "messageHttpMs": 44.70224999999937,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=0.26, preparation;dur=22.09, dispatch;dur=21.43, receipt;dur=0.48, total;dur=44.26",
+          "platformTiming": {
+            "authorizationMs": 0.2611249999999927,
+            "preparationMs": 22.08691700000054,
+            "dispatchMs": 21.429833000000144,
+            "receiptMs": 0.4847089999993841,
+            "totalMs": 44.26258400000006
+          },
+          "platformRoundTripMs": 21.684250000000247,
+          "configurationMs": [
+            0.48295799999959854
+          ],
+          "resumeMs": [
+            22.085583000000042
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 483
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 1000
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "new-create-plus-first-message-225ms-Mongo-await",
+        "newSession": true,
+        "dbDelayMs": 225,
+        "history": 0
+      },
+      "repeats": 5,
+      "warmups": 1,
+      "medianTotalMs": 2125.1360829999994,
+      "p95TotalMs": 2137.918041,
+      "medianMessageHttpMs": 1417.3639590000002,
+      "samples": [
+        {
+          "totalMs": 2137.918041,
+          "createMs": 714.9797920000001,
+          "messageHttpMs": 1422.8602499999997,
+          "responseBytes": 263,
+          "serverTiming": "authorization;dur=227.91, preparation;dur=486.10, dispatch;dur=23.20, receipt;dur=683.03, total;dur=1420.24",
+          "platformTiming": {
+            "authorizationMs": 227.90683399999944,
+            "preparationMs": 486.0973330000006,
+            "dispatchMs": 23.200666999999157,
+            "receiptMs": 683.032666000001,
+            "totalMs": 1420.2375000000002
+          },
+          "platformRoundTripMs": 252.00575000000026,
+          "configurationMs": [
+            457.9348749999999,
+            463.54041700000016
+          ],
+          "resumeMs": [
+            486.0904159999991
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 137
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 2129.2170830000014,
+          "createMs": 710.7736669999995,
+          "messageHttpMs": 1418.3741249999985,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=227.03, preparation;dur=479.89, dispatch;dur=24.46, receipt;dur=684.77, total;dur=1416.16",
+          "platformTiming": {
+            "authorizationMs": 227.0314580000013,
+            "preparationMs": 479.88929199999984,
+            "dispatchMs": 24.464458000000377,
+            "receiptMs": 684.7704169999997,
+            "totalMs": 1416.1556250000012
+          },
+          "platformRoundTripMs": 251.97000000000116,
+          "configurationMs": [
+            455.2865409999995,
+            455.88708399999996
+          ],
+          "resumeMs": [
+            479.8826659999995
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 137
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 2125.1360829999994,
+          "createMs": 709.5454580000005,
+          "messageHttpMs": 1415.5285000000003,
+          "responseBytes": 257,
+          "serverTiming": "authorization;dur=227.48, preparation;dur=480.91, dispatch;dur=23.80, receipt;dur=681.74, total;dur=1413.93",
+          "platformTiming": {
+            "authorizationMs": 227.47862499999974,
+            "preparationMs": 480.91179199999897,
+            "dispatchMs": 23.799791999999798,
+            "receiptMs": 681.7445830000015,
+            "totalMs": 1413.934792
+          },
+          "platformRoundTripMs": 251.1774170000008,
+          "configurationMs": [
+            455.1160830000008,
+            456.6237920000003
+          ],
+          "resumeMs": [
+            480.9056249999994
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 137
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 2123.005833000001,
+          "createMs": 705.6082910000005,
+          "messageHttpMs": 1417.3639590000002,
+          "responseBytes": 262,
+          "serverTiming": "authorization;dur=227.82, preparation;dur=480.35, dispatch;dur=23.91, receipt;dur=683.26, total;dur=1415.34",
+          "platformTiming": {
+            "authorizationMs": 227.81866699999955,
+            "preparationMs": 480.3499159999992,
+            "dispatchMs": 23.90899999999965,
+            "receiptMs": 683.2597920000007,
+            "totalMs": 1415.3373749999992
+          },
+          "platformRoundTripMs": 251.0800419999996,
+          "configurationMs": [
+            454.3904999999995,
+            456.24162500000057
+          ],
+          "resumeMs": [
+            480.3349159999998
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 138
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 2125.0335830000004,
+          "createMs": 709.7989580000012,
+          "messageHttpMs": 1415.1914169999982,
+          "responseBytes": 254,
+          "serverTiming": "authorization;dur=229.00, preparation;dur=477.93, dispatch;dur=23.19, receipt;dur=683.01, total;dur=1413.13",
+          "platformTiming": {
+            "authorizationMs": 228.99825000000055,
+            "preparationMs": 477.9300829999993,
+            "dispatchMs": 23.19249999999738,
+            "receiptMs": 683.0126670000027,
+            "totalMs": 1413.1335
+          },
+          "platformRoundTripMs": 250.51016699999673,
+          "configurationMs": [
+            456.4567499999994,
+            455.8820000000014
+          ],
+          "resumeMs": [
+            477.9202919999989
+          ],
+          "mongoCommands": [
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:sessions",
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:sessions",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads",
+              "responseMode": "default-full",
+              "responseBytes": 137
+            },
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 211
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "existing-followup-225ms-Mongo-await",
+        "newSession": false,
+        "dbDelayMs": 225,
+        "history": 0
+      },
+      "repeats": 5,
+      "warmups": 1,
+      "medianTotalMs": 1186.496750000002,
+      "p95TotalMs": 1187.484292000001,
+      "medianMessageHttpMs": 1186.484375,
+      "samples": [
+        {
+          "totalMs": 1186.578583999999,
+          "createMs": null,
+          "messageHttpMs": 1186.558000000001,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=227.12, preparation;dur=479.88, dispatch;dur=23.34, receipt;dur=454.49, total;dur=1184.82",
+          "platformTiming": {
+            "authorizationMs": 227.12329200000022,
+            "preparationMs": 479.8774999999987,
+            "dispatchMs": 23.335332999999082,
+            "receiptMs": 454.4872090000026,
+            "totalMs": 1184.8233340000006
+          },
+          "platformRoundTripMs": 250.87650000000212,
+          "configurationMs": [
+            456.5296249999992
+          ],
+          "resumeMs": [
+            479.8694159999977
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 478
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 1185.9697090000009,
+          "createMs": null,
+          "messageHttpMs": 1185.9488330000022,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=227.62, preparation;dur=478.15, dispatch;dur=23.37, receipt;dur=455.11, total;dur=1184.25",
+          "platformTiming": {
+            "authorizationMs": 227.6178749999999,
+            "preparationMs": 478.1452500000014,
+            "dispatchMs": 23.373374999999214,
+            "receiptMs": 455.11054200000217,
+            "totalMs": 1184.2470420000027
+          },
+          "platformRoundTripMs": 250.67825000000084,
+          "configurationMs": [
+            456.260624999999
+          ],
+          "resumeMs": [
+            478.13824999999997
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 477
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 1187.484292000001,
+          "createMs": null,
+          "messageHttpMs": 1187.4708329999994,
+          "responseBytes": 262,
+          "serverTiming": "authorization;dur=227.86, preparation;dur=480.94, dispatch;dur=23.29, receipt;dur=453.56, total;dur=1185.64",
+          "platformTiming": {
+            "authorizationMs": 227.8592499999977,
+            "preparationMs": 480.9420420000024,
+            "dispatchMs": 23.285083999999188,
+            "receiptMs": 453.5557489999992,
+            "totalMs": 1185.6421249999985
+          },
+          "platformRoundTripMs": 249.5302499999998,
+          "configurationMs": [
+            456.28925000000163
+          ],
+          "resumeMs": [
+            480.934874999999
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 477
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 1186.496750000002,
+          "createMs": null,
+          "messageHttpMs": 1186.484375,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=227.76, preparation;dur=477.85, dispatch;dur=23.30, receipt;dur=455.78, total;dur=1184.69",
+          "platformTiming": {
+            "authorizationMs": 227.76229100000273,
+            "preparationMs": 477.8539169999967,
+            "dispatchMs": 23.295333000001847,
+            "receiptMs": 455.7754590000004,
+            "totalMs": 1184.6870000000017
+          },
+          "platformRoundTripMs": 251.17304200000217,
+          "configurationMs": [
+            454.88224999999875
+          ],
+          "resumeMs": [
+            477.84658299999865
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 480
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        },
+        {
+          "totalMs": 1184.9665000000023,
+          "createMs": null,
+          "messageHttpMs": 1184.9462920000005,
+          "responseBytes": 264,
+          "serverTiming": "authorization;dur=226.96, preparation;dur=478.27, dispatch;dur=23.17, receipt;dur=454.67, total;dur=1183.07",
+          "platformTiming": {
+            "authorizationMs": 226.95670899999823,
+            "preparationMs": 478.2677079999994,
+            "dispatchMs": 23.171375000001717,
+            "receiptMs": 454.67020799999955,
+            "totalMs": 1183.065999999999
+          },
+          "platformRoundTripMs": 251.01587500000096,
+          "configurationMs": [
+            454.93125000000146
+          ],
+          "resumeMs": [
+            478.26087499999994
+          ],
+          "mongoCommands": [
+            "find:sessions",
+            "find:truex_agents",
+            "find:truex_models",
+            "find:truex_mcp",
+            "find:truex_mcp",
+            "insert:messages",
+            "update:messages"
+          ],
+          "runtimeRequests": [
+            {
+              "path": "/threads/fixture-thread/resume",
+              "responseMode": "operational",
+              "responseBytes": 477
+            },
+            {
+              "path": "/threads/fixture-thread/turns",
+              "responseMode": "default-full",
+              "responseBytes": 42
+            }
+          ],
+          "retainedMessages": 0
+        }
+      ]
+    }
+  ]
+}

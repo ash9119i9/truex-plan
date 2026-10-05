@@ -1,9 +1,16 @@
-import type { Message } from "./contracts";
+export interface ConversationOrder {
+  _id: string;
+  at: string;
+  order?: number;
+  command?: { afterMessageId?: string };
+}
 
 // Runtime reconciliation assigns order only to runtime messages. Insert command
 // records after their saved predecessor, so reconciliation cannot move them below
 // the answers they triggered (runtime timestamps may be reconstructed).
-export function orderConversation(messages: Message[]): Message[] {
+export function orderConversation<T extends ConversationOrder>(
+  messages: T[],
+): T[] {
   const chronological = [...messages].sort(
     (a, b) => a.at.localeCompare(b.at) || a._id.localeCompare(b._id),
   );

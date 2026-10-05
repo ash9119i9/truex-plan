@@ -1,0 +1,27 @@
+✖ both runtime transports reject invalid operational preferences before dispatch (18.847625ms)
+✔ operational preference stays in the AgentCore body and default resume is untouched (1.88025ms)
+ℹ tests 2
+ℹ suites 0
+ℹ pass 1
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 146.861667
+
+✖ failing tests:
+
+test at platform/test/runtime-resume-transport.test.ts:2:1247
+✖ both runtime transports reject invalid operational preferences before dispatch (18.847625ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/runtime-resume-transport.test.ts:33:7)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { status: 400, code: 'INVALID_INPUT' },
+    operator: 'rejects',
+    diff: 'simple'
+  }

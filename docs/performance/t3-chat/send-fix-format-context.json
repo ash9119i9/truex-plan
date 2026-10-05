@@ -1,0 +1,20 @@
+{
+  "note": "Unchanged tracked scripts copied solely to complete frozen formatting gate context; no app baseline changes",
+  "sha256": {
+    "scripts/agentcore-smoke.mjs": "9ed8e6d1024f52a8c68facb5f44065685c8187854248adb6eef74c02c2280efd",
+    "scripts/tenant.mjs": "187e1413694d27258bcbefee06f0b40d6e6b02869767070800683b35c2d2d1c6",
+    "scripts/purge-chats.mjs": "bb7c693d089527f2b6a2ddf9dacdf209df6f87a70833f5a64a439465fa55b528",
+    "scripts/admin.mjs": "b47bf34ca13c0b177eabd80e6b3a8371be96c7e371d34439ff7208513922c7c1",
+    "scripts/codex.mjs": "ea27f7e5e36b370b8a3d8ab5b12fad9a1d1bcb93d0b4a8ce29b720565bf32604",
+    "scripts/benchmark-chat-history.mjs": "392444666e8d77407386b6e6953811fd0150040a2b1005c1aa3027c0b38bc01b",
+    "scripts/codex-artifact.mjs": "36c24ec6642cf7b1ddded362414d532ed1a41dd9a3c089c185572f96d543d89c",
+    "scripts/protocol.mjs": "1cc31c168121472a76564ca58f15dcd674a48ef5aa2d77a2858b9b222d0f663f",
+    "scripts/migrate-mcp-scopes.mjs": "6516e3587cbd521fddd88350b53ef8392e79cab3065aa55253ac023dd52e4edd",
+    "scripts/agentcore-smoke.test.mjs": "f4c407400c1f3174017db31cc59ad29c6bbd20c5f3d3e0a98e4504a2d4ec86ad",
+    "scripts/dev-readiness.mjs": "9fb4e1f4d528a95d53cf94a8330890645a657825d0bc0337cb447c316ac07834",
+    "scripts/codex-artifact.test.mjs": "774a84db33e7c2bc76829d2e1105b4d42cd5422163e80d7583fa33057f007708",
+    "scripts/migrate-tenancy.mjs": "2749d6e516bfc7a7a3cfeaa8158fbc9a29aa4dd36a73d801b3cceb1a19987e8b",
+    "scripts/demo.mjs": "5de59809434925c8f27e618527c2c2a57f9a4e1ab4dafb859c8ed597689dd426",
+    "scripts/dev.mjs": "c4ee1bbb2a1bcbec22f080cd218b4e3e867795007d3944178334fd45597aa223"
+  }
+}

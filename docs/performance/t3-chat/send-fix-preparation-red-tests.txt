@@ -1,0 +1,72 @@
+✖ send requests operational preparation while ordinary resume keeps its full contract (1504.880167ms)
+✖ acceptance timing includes preparation and receipt work, preserving the old timing field (1165.664125ms)
+✖ operational preparation does not bypass saved settings or legacy approval confirmation (1150.486292ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 0
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4024.75025
+
+✖ failing tests:
+
+test at platform/test/send-preparation.test.ts:2:1934
+✖ send requests operational preparation while ordinary resume keeps its full contract (1504.880167ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'operational'
+  
+      at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/send-preparation.test.ts:44:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'operational',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at platform/test/send-preparation.test.ts:2:2924
+✖ acceptance timing includes preparation and receipt work, preserving the old timing field (1165.664125ms)
+  AssertionError [ERR_ASSERTION]: send must expose all application acceptance phases
+      at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/send-preparation.test.ts:62:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at platform/test/send-preparation.test.ts:2:4443
+✖ operational preparation does not bypass saved settings or legacy approval confirmation (1150.486292ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'operational'
+  
+      at PlatformService.service.call (/Users/ashok/truex-plan/platform/test/send-preparation.test.ts:79:14)
+      at PlatformService.owned (/Users/ashok/truex-plan/platform/src/service.ts:1335:25)
+      at PlatformService.resume (/Users/ashok/truex-plan/platform/src/service.ts:1451:33)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async PlatformService.message (/Users/ashok/truex-plan/platform/src/service.ts:1493:5)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/send-preparation.test.ts:92:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'operational',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

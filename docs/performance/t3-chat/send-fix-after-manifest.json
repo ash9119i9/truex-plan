@@ -1,0 +1,86 @@
+{
+  "sourceRoot": "/Users/ashok/truex-plan",
+  "baselineRoot": "/tmp/truex-send-fix-before-20261006",
+  "changedSourceFiles": [
+    {
+      "file": "frontend/test/chat-visibility.test.ts",
+      "beforeSha256": null,
+      "afterSha256": "77082a4ee2bed6a89b93f4223ab226ad052e2d3884eed18e7708f6ef6529881f"
+    },
+    {
+      "file": "frontend/test/chat-batch.test.ts",
+      "beforeSha256": "32114918fca556cc44d2717bc73a736c18532cf51680e9d1d4ddc4cc1992eb2d",
+      "afterSha256": "f253cbb8f56ffb511fea464acf1c175be92ebc9cadba6276fce95487ab828de8"
+    },
+    {
+      "file": "frontend/lib/chat-batch.ts",
+      "beforeSha256": "d572ae0dae2287b0a2ba1ed0d521db7109dcc68788b3b07378107fc390af2acb",
+      "afterSha256": "e337bf3c7fae761ef9c7982be50986b957c8c6d0a8948d689419b2179ff63a6c"
+    },
+    {
+      "file": "frontend/lib/chat.ts",
+      "beforeSha256": "ffea93e441bf0504fd5e566da981bce615cf138c45a02aa1b73981a22f6e6962",
+      "afterSha256": "f80213912b89ba565e5ddcf12360cc09e8b7e376036847c5d775d5a93573a2d0"
+    },
+    {
+      "file": "platform/test/runtime-resume-transport.test.ts",
+      "beforeSha256": null,
+      "afterSha256": "94057718f6986104479a60163240c57b6f03f013d61d45768c952c89643d7577"
+    },
+    {
+      "file": "platform/test/send-preparation.test.ts",
+      "beforeSha256": null,
+      "afterSha256": "740b95d312b9a9befe8be4fd8d001883a082ffd4bfa19d8474261086db52726c"
+    },
+    {
+      "file": "platform/test/configuration-reads.test.ts",
+      "beforeSha256": null,
+      "afterSha256": "20ca6ab275d095d0d1f000a6077187c9b6b98657b063695666b1c2ebc79dbfa5"
+    },
+    {
+      "file": "platform/src/index.ts",
+      "beforeSha256": "8ebd730383f22348e33532561e2155cbc480707f1400aa685e9f62741ba9ef2b",
+      "afterSha256": "aa149bb2615ac51d381b380baab93ed1592e052ca11b6381cac7a60be46c05d4"
+    },
+    {
+      "file": "platform/src/service.ts",
+      "beforeSha256": "336d3821ddc0547143c7d79ce7b7734428c572095f726c67783fa3983e7baec3",
+      "afterSha256": "3c59efb590737bd0fbf84982b4f3dcc1a0987724393bb6865bee51c3ac9644f2"
+    },
+    {
+      "file": "platform/src/runtime-transport.ts",
+      "beforeSha256": "1c69b383a8acef6ea7519f0277361961cca98e134e5b9fb787a1ec2a60ecd17a",
+      "afterSha256": "6a970fc52850a0f7129f1b5188164948f91006f27462c343c3db010661625ee1"
+    },
+    {
+      "file": "agent-core/test/agentcore.test.ts",
+      "beforeSha256": "04a018275c9176274d6ea74544cc979de273469bc15d734401843c8bc57268ac",
+      "afterSha256": "e667a5ba227405db8052bad04491df40aa3f7b485537d219c938b57d0f797ef2"
+    },
+    {
+      "file": "agent-core/test/resume-response.test.ts",
+      "beforeSha256": null,
+      "afterSha256": "1488fda84e54be6b01762dfbcc9ee0d0683e50a890caff3f74f0755514a8e4e1"
+    },
+    {
+      "file": "agent-core/src/manager.ts",
+      "beforeSha256": "ead5e5cb4d5725c0c7d3ec71b02244b10db3b2e34b581dabc393870089f7464e",
+      "afterSha256": "8a881bfc64d80fa19fae2c151b5a4e4cdcb5e3a5d6ffc8e918002b84e1744bcd"
+    },
+    {
+      "file": "agent-core/src/agentcore.ts",
+      "beforeSha256": "2f41e36bc2bcb9956eb6efeac5e16205002afd01672f27c6fb96351aea5b23d7",
+      "afterSha256": "8b62a10c6d7e71163c0911b79e92c7b97b7a293e3d6f87b27005f8055cbc42dd"
+    },
+    {
+      "file": "shared/runtime-resume-options.ts",
+      "beforeSha256": null,
+      "afterSha256": "a3d81f818887cac0e60da31fc44b1698be6c38a92225751a58e2506eb774ac6b"
+    },
+    {
+      "file": "shared/contracts.ts",
+      "beforeSha256": "04bf47d38ee292bac66aaf09c22dd3f3fa329985ae7e6d66482b87f641e32ca5",
+      "afterSha256": "b0b57f0dfa385f5147d679c446ad902d1c0964a2b30bd24e03abbb0afe4d2976"
+    }
+  ]
+}

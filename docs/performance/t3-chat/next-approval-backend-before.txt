@@ -1,0 +1,29 @@
+✔ approval mode config is off by default and rejects unsafe defaults (0.485875ms)
+✖ approval modes: MCP prompt mode, thread options and the approval-mode endpoint (1325.092041ms)
+✔ public sessions include approvalMode only when the feature is on (0.351375ms)
+✔ audit records show approvals settled by a mode and allow-for-chat (0.432875ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 3
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1587.784542
+
+✖ failing tests:
+
+test at ../../../private/tmp/truex-chat-next-before/platform/test/approval-modes.test.ts:2:2371
+✖ approval modes: MCP prompt mode, thread options and the approval-mode endpoint (1325.092041ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/private/tmp/truex-chat-next-before/platform/test/approval-modes.test.ts:156:7)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: { status: 502, code: 'INVALID_UPSTREAM_RESPONSE' },
+    operator: 'rejects',
+    diff: 'simple'
+  }

@@ -1,0 +1,24 @@
+✔ access rules: owner, admin, other user, ownerless (0.315292ms)
+✔ route coverage: every /api/sessions/:id route goes through sessionFor (1.220542ms)
+✔ tenant CLI: chat-visibility, including the implicit default tenant (2900.652042ms)
+✔ HTTP: chat ownership and visibility across users and tenants (14303.83175ms)
+▶ a persisted desired mode must be confirmed after reload before accepting a message
+  ✔ unconfirmed resume 0 is rejected before every durable/turn side effect (3.35475ms)
+  ✔ unconfirmed resume 1 is rejected before every durable/turn side effect (1.863208ms)
+  ✔ unconfirmed resume 2 is rejected before every durable/turn side effect (1.874375ms)
+  ✔ unconfirmed resume 3 is rejected before every durable/turn side effect (1.804ms)
+  ✔ confirmed current resume accepts exactly one turn (3.710292ms)
+  ✔ confirmed legacy resume accepts exactly one turn (1.433834ms)
+  ✔ feature-off resume retains its old wire contract (1.555583ms)
+✔ a persisted desired mode must be confirmed after reload before accepting a message (2613.677041ms)
+✔ send requests operational preparation while ordinary resume keeps its full contract (2591.435125ms)
+✔ acceptance timing includes preparation and receipt work, preserving the old timing field (1905.036875ms)
+✔ operational preparation does not bypass saved settings or legacy approval confirmation (1514.9905ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 15
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 17357.837625

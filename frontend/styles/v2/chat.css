@@ -415,3 +415,14 @@
 .hero-composer .composer-form { max-width: none; }
 
 .conversation-loading { padding: 32px; color: var(--ink-2); }
+
+/* Message disclosures and Markdown controls. */
+.bubble[data-collapsed="true"] { max-height: 176px; overflow: hidden; }
+.bubble-wrap > .text-btn { flex: none; }
+.message-copy { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.answer > .message-copy { margin-top: 8px; }
+.copy-feedback:empty { display: none; }
+.code-block { min-width: 0; margin: 14px 0 18px; }
+.code-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.markdown .code-block pre { margin: 4px 0 0; }
+.markdown .code-block[data-wrapped="true"] pre { white-space: pre-wrap; overflow-wrap: anywhere; }

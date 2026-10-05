@@ -1,0 +1,81 @@
+✔ creation validates the existing approval-mode schema and keeps old defaults (0.646584ms)
+✔ creation confirmation uses exact ack or the supported older-runtime endpoint (0.183917ms)
+✖ configured creation applies and persists the selected mode without a follow-up update (1513.411333ms)
+✖ invalid creation mode rejects before configuration or runtime side effects (1171.828333ms)
+✖ older runtime mode confirmation and failed acknowledgment keep creation safe (1233.963417ms)
+✔ configured creation rejects forbidden projects before provisioning (1209.22225ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 3
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5379.754542
+
+✖ failing tests:
+
+test at platform/test/session-creation.test.ts:2:3644
+✖ configured creation applies and persists the selected mode without a follow-up update (1513.411333ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  'ask' !== 'readOnly'
+  
+      at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:52:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ask',
+    expected: 'readOnly',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at platform/test/session-creation.test.ts:2:4923
+✖ invalid creation mode rejects before configuration or runtime side effects (1171.828333ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+  + Comparison {}
+  - Comparison {
+  -   status: 422
+  - }
+  
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:70:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: Error: Configuration should not run
+        at PlatformService.<anonymous> (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:67:87)
+        at Object.apply (node:internal/test_runner/mock/mock:805:20)
+        at PlatformService.create (/Users/ashok/truex-plan/platform/src/service.ts:1140:36)
+        at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:70:26)
+        at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+        at async Test.run (node:internal/test_runner/test:1409:7)
+        at async Test.processPendingSubtests (node:internal/test_runner/test:974:7),
+    expected: { status: 422 },
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at platform/test/session-creation.test.ts:2:6076
+✖ older runtime mode confirmation and failed acknowledgment keep creation safe (1233.963417ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  'ask' !== 'readOnly'
+  
+      at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:94:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'ask',
+    expected: 'readOnly',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

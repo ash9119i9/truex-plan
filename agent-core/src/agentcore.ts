@@ -3,6 +3,11 @@ import express, { type Express } from "express";
 import { once } from "node:events";
 import { log } from "../../shared/logging";
 import { AgentCoreServices } from "./agentcore-services";
+import {
+  runtimeWindowOption,
+  runtimeSyncOption,
+} from "../../shared/runtime-read-options";
+import { runtimeResumeResponse } from "../../shared/runtime-resume-options";
 
 type Method = "GET" | "POST" | "DELETE";
 type Invocation = {
@@ -11,6 +16,8 @@ type Invocation = {
   body?: unknown;
   cursor?: string;
   requestId?: string;
+  window?: boolean;
+  sync?: "v1";
 };
 
 const segment = "[A-Za-z0-9_-]+";
@@ -77,6 +84,12 @@ function parseInvocation(value: unknown): Invocation {
     throw new Error("Invalid event cursor");
   if (input.body !== undefined && method !== "POST")
     throw new Error("Only POST invocations can have a body");
+  if (method === "POST" && /\/threads\/[A-Za-z0-9_-]+\/resume$/.test(path))
+    runtimeResumeResponse(
+      (input.body as Record<string, unknown> | null | undefined)?.response,
+    );
+  const window = runtimeWindowOption(method, path, input.window);
+  const sync = runtimeSyncOption(method, path, input.sync);
   if (
     requestId !== undefined &&
     (typeof requestId !== "string" || !/^[\w.-]{1,128}$/.test(requestId))
@@ -88,6 +101,8 @@ function parseInvocation(value: unknown): Invocation {
     body: input.body,
     cursor: cursor as string | undefined,
     requestId: requestId as string | undefined,
+    window,
+    sync,
   };
 }
 
@@ -145,6 +160,8 @@ export function createAgentCoreApp(options: AgentCoreOptions = {}): Express {
     const url = new URL(invocation.path, coreUrl);
     if (invocation.cursor !== undefined)
       url.searchParams.set("cursor", invocation.cursor);
+    if (invocation.window) url.searchParams.set("window", "1");
+    if (invocation.sync) url.searchParams.set("sync", invocation.sync);
     try {
       await options.ensureServices?.();
       if (res.destroyed) return;

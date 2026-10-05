@@ -1,0 +1,154 @@
+{
+  "capturedAt": "2026-10-05T19:30:33.212Z",
+  "checks": {
+    "baselineMatchesFrozenManifest": true,
+    "afterMatchesFinalWorkingSources": true,
+    "matchedNode": true,
+    "sequentialCapture": true,
+    "fiveMeasuredSamplesEach": true,
+    "matchedMongoCommandCounts": true,
+    "matchedRuntimePaths": true,
+    "operationalResumeOptIn": true,
+    "actualServerTimingMatchesJson": true,
+    "phasesSumToTotal": true
+  },
+  "scope": {
+    "database": "actual isolated MongoMemoryServer; driver commands counted; fixed await delay injected only during measurement",
+    "runtime": "actual ThreadManager and actual RuntimeTransport over localhost HTTP; fake runtime request; fixed20ms HTTP boundary",
+    "authentication": "actual dev tenant/user resolvers and middleware; fixed synthetic owner; actual service authorization; tenant cache explicitly refreshed outside measurement; no OIDC/cookie auth",
+    "routes": "exact create/message and create/resume/turns source statements extracted and mounted in Express; not production bootstrap",
+    "exclusions": [
+      "browser",
+      "frontend route proxy",
+      "SSE delivery",
+      "provider",
+      "real model latency",
+      "remote Mongo",
+      "production CPU contention"
+    ],
+    "history": "1000 synthetic completed messages, each 2048 characters; actual serialization through runtime resume HTTP response",
+    "latency": "acceptance only; first model response is not measured; 225ms fixed Mongo-await scenario characterizes serial gates, not production p50"
+  },
+  "rows": [
+    {
+      "scenario": "new-create-plus-first-message",
+      "beforeMedianMs": 72.94620899999995,
+      "afterMedianMs": 73.42912500000011,
+      "medianDifferenceMs": -0.48291600000015933,
+      "beforeP95Ms": 78.74995900000022,
+      "afterP95Ms": 83.90549999999985,
+      "beforeMessageMedianMs": 48.05604199999971,
+      "afterMessageMedianMs": 48.27404200000001,
+      "beforeResumeBytes": [
+        211,
+        211,
+        211,
+        211,
+        211
+      ],
+      "afterResumeBytes": [
+        211,
+        211,
+        211,
+        211,
+        211
+      ]
+    },
+    {
+      "scenario": "existing-followup",
+      "beforeMedianMs": 50.10579199999984,
+      "afterMedianMs": 52.74916600000006,
+      "medianDifferenceMs": -2.6433740000002217,
+      "beforeP95Ms": 50.71995900000002,
+      "afterP95Ms": 52.99779200000012,
+      "beforeMessageMedianMs": 50.08679200000006,
+      "afterMessageMedianMs": 52.72262499999988,
+      "beforeResumeBytes": [
+        478,
+        478,
+        479,
+        479,
+        477
+      ],
+      "afterResumeBytes": [
+        478,
+        477,
+        479,
+        479,
+        479
+      ]
+    },
+    {
+      "scenario": "existing-followup-1000-messages",
+      "beforeMedianMs": 50.67920800000002,
+      "afterMedianMs": 44.71012500000052,
+      "medianDifferenceMs": 5.9690829999995,
+      "beforeP95Ms": 52.01783399999931,
+      "afterP95Ms": 44.77574999999979,
+      "beforeMessageMedianMs": 50.67000000000007,
+      "afterMessageMedianMs": 44.70224999999937,
+      "beforeResumeBytes": [
+        2146149,
+        2146149,
+        2146152,
+        2146151,
+        2146152
+      ],
+      "afterResumeBytes": [
+        483,
+        482,
+        483,
+        483,
+        483
+      ]
+    },
+    {
+      "scenario": "new-create-plus-first-message-225ms-Mongo-await",
+      "beforeMedianMs": 3035.7742499999986,
+      "afterMedianMs": 2125.1360829999994,
+      "medianDifferenceMs": 910.6381669999992,
+      "beforeP95Ms": 3038.286542,
+      "afterP95Ms": 2137.918041,
+      "beforeMessageMedianMs": 1867.8750419999997,
+      "afterMessageMedianMs": 1417.3639590000002,
+      "beforeResumeBytes": [
+        211,
+        211,
+        211,
+        211,
+        211
+      ],
+      "afterResumeBytes": [
+        211,
+        211,
+        211,
+        211,
+        211
+      ]
+    },
+    {
+      "scenario": "existing-followup-225ms-Mongo-await",
+      "beforeMedianMs": 1644.3373749999992,
+      "afterMedianMs": 1186.496750000002,
+      "medianDifferenceMs": 457.8406249999971,
+      "beforeP95Ms": 1645.2618330000005,
+      "afterP95Ms": 1187.484292000001,
+      "beforeMessageMedianMs": 1644.3192920000001,
+      "afterMessageMedianMs": 1186.484375,
+      "beforeResumeBytes": [
+        479,
+        479,
+        480,
+        477,
+        477
+      ],
+      "afterResumeBytes": [
+        478,
+        477,
+        477,
+        480,
+        477
+      ]
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+✔ access rules: owner, admin, other user, ownerless (0.3315ms)
+✖ route coverage: every /api/sessions/:id route goes through sessionFor (0.153542ms)
+✖ tenant CLI: chat-visibility, including the implicit default tenant (2486.089792ms)
+{"ts":"2026-10-05T19:15:37.129Z","level":"warn","msg":"tenant index creation failed","op":"indexes","dbName":"truex_t_t2","error":"Operation interrupted because client was closed","errorName":"MongoClientClosedError","stack":"MongoClientClosedError: Operation interrupted because client was closed\n    at ConnectionPool.closeCheckedOutConnections (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/cmap/connection_pool.ts:495:20)\n    at Server.closeCheckedOutConnections (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/sdam/server.ts:251:22)\n    at Topology.closeCheckedOutConnections (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/sdam/topology.ts:496:21)\n    at MongoClient._close (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/mongo_client.ts:782:20)\n    at MongoClient.close (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/mongo_client.ts:764:29)\n    at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/ownership.test.ts:273:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async TestHook.run (node:internal/test_runner/test:1409:7)\n    at async Test.runHook (node:internal/test_runner/test:1289:9)\n    at async after (node:internal/test_runner/test:1342:9)"}
+{"ts":"2026-10-05T19:15:37.129Z","level":"warn","msg":"tenant index creation failed","op":"indexes","dbName":"truex_t_t2","error":"Operation interrupted because client was closed","errorName":"MongoClientClosedError","stack":"MongoClientClosedError: Operation interrupted because client was closed\n    at ConnectionPool.closeCheckedOutConnections (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/cmap/connection_pool.ts:495:20)\n    at Server.closeCheckedOutConnections (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/sdam/server.ts:251:22)\n    at Topology.closeCheckedOutConnections (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/sdam/topology.ts:496:21)\n    at MongoClient._close (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/mongo_client.ts:782:20)\n    at MongoClient.close (/Users/ashok/truex-plan/platform/node_modules/mongodb/src/mongo_client.ts:764:29)\n    at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/ownership.test.ts:273:26)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async TestHook.run (node:internal/test_runner/test:1409:7)\n    at async Test.runHook (node:internal/test_runner/test:1289:9)\n    at async after (node:internal/test_runner/test:1342:9)"}
+✖ HTTP: chat ownership and visibility across users and tenants (2913.048708ms)
+▶ a persisted desired mode must be confirmed after reload before accepting a message
+  ✔ unconfirmed resume 0 is rejected before every durable/turn side effect (3.01875ms)
+  ✔ unconfirmed resume 1 is rejected before every durable/turn side effect (2.649459ms)
+  ✔ unconfirmed resume 2 is rejected before every durable/turn side effect (1.639041ms)
+  ✔ unconfirmed resume 3 is rejected before every durable/turn side effect (1.702958ms)
+  ✔ confirmed current resume accepts exactly one turn (1.935125ms)
+  ✔ confirmed legacy resume accepts exactly one turn (1.89175ms)
+  ✔ feature-off resume retains its old wire contract (1.603917ms)
+✔ a persisted desired mode must be confirmed after reload before accepting a message (2549.955167ms)
+✔ send requests operational preparation while ordinary resume keeps its full contract (2568.169ms)
+✔ acceptance timing includes preparation and receipt work, preserving the old timing field (1955.458625ms)
+✔ operational preparation does not bypass saved settings or legacy approval confirmation (1441.529208ms)
+ℹ tests 15
+ℹ suites 0
+ℹ pass 12
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 25245.666334
+
+✖ failing tests:
+
+test at platform/test/ownership.test.ts:2:3905
+✖ route coverage: every /api/sessions/:id route goes through sessionFor (0.153542ms)
+  Error: ENOENT: no such file or directory, open '/Users/ashok/truex-plan/src/index.ts'
+      at readFileSync (node:fs:483:20)
+      at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/ownership.test.ts:82:17)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'open',
+    path: '/Users/ashok/truex-plan/src/index.ts'
+  }
+
+test at platform/test/ownership.test.ts:2:6727
+✖ tenant CLI: chat-visibility, including the implicit default tenant (2486.089792ms)
+  Error: Command failed: /Users/ashok/.nvm/versions/node/v24.21.0/bin/node /Users/ashok/scripts/tenant.mjs chat-visibility t1 own
+  node:internal/modules/cjs/loader:1568
+    throw err;
+    ^
+  
+  Error: Cannot find module '/Users/ashok/scripts/tenant.mjs'
+      at Module._resolveFilename (node:internal/modules/cjs/loader:1564:15)
+      at wrapResolveFilename (node:internal/modules/cjs/loader:1118:27)
+      at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1142:10)
+      at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1169:12)
+      at Module._load (node:internal/modules/cjs/loader:1341:5)
+      at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+      at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+      at node:internal/main/run_main_module:33:47 {
+    code: 'MODULE_NOT_FOUND',
+    requireStack: []
+  }
+  
+  Node.js v24.21.0
+  
+      at genericNodeError (node:internal/errors:986:15)
+      at wrappedFn (node:internal/errors:540:14)
+      at ChildProcess.exithandler (node:child_process:417:12)
+      at ChildProcess.emit (node:events:514:28)
+      at maybeClose (node:internal/child_process:1141:16)
+      at Socket.<anonymous> (node:internal/child_process:498:11)
+      at Socket.emit (node:events:514:28)
+      at Pipe.<anonymous> (node:net:362:12) {
+    code: 1,
+    killed: false,
+    signal: null,
+    cmd: '/Users/ashok/.nvm/versions/node/v24.21.0/bin/node /Users/ashok/scripts/tenant.mjs chat-visibility t1 own',
+    stdout: '',
+    stderr: "node:internal/modules/cjs/loader:1568\n  throw err;\n  ^\n\nError: Cannot find module '/Users/ashok/scripts/tenant.mjs'\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1564:15)\n    at wrapResolveFilename (node:internal/modules/cjs/loader:1118:27)\n    at defaultResolveImplForCJSLoading (node:internal/modules/cjs/loader:1142:10)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1169:12)\n    at Module._load (node:internal/modules/cjs/loader:1341:5)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)\n    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)\n    at node:internal/main/run_main_module:33:47 {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: []\n}\n\nNode.js v24.21.0\n"
+  }
+
+test at platform/test/ownership.test.ts:2:8692
+✖ HTTP: chat ownership and visibility across users and tenants (2913.048708ms)
+  Error: spawn /Users/ashok/.nvm/versions/node/v24.21.0/bin/node ENOENT
+      at ChildProcess._handle.onexit (node:internal/child_process:287:19)
+      at onErrorNT (node:internal/child_process:525:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+    errno: -2,
+    code: 'ENOENT',
+    syscall: 'spawn /Users/ashok/.nvm/versions/node/v24.21.0/bin/node',
+    path: '/Users/ashok/.nvm/versions/node/v24.21.0/bin/node',
+    spawnargs: [ '/Users/ashok/platform/node_modules/tsx/dist/cli.mjs', 'src/index.ts' ]
+  }

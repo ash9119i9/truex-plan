@@ -1,0 +1,89 @@
+(node:42398) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/approval-mode.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/features',
+  status: 500,
+  code: 'HTTP_500',
+  requestId: undefined
+}
+[truex] feature flags failed { code: 'HTTP_500', status: 500, requestId: undefined }
+[truex] api request failed {
+  method: 'GET',
+  path: '/api/features',
+  status: 0,
+  code: 'NETWORK_ERROR',
+  requestId: undefined
+}
+[truex] feature flags failed { code: 'NETWORK_ERROR', status: 0, requestId: undefined }
+[truex] api request failed {
+  method: 'POST',
+  path: '/api/sessions/s1/approval-mode',
+  status: 422,
+  code: 'HTTP_422',
+  requestId: undefined
+}
+✔ the picker is hidden when approval modes are off (0.34325ms)
+✔ autopilot is offered only when it is switched on (0.866584ms)
+✔ the selected mode is the session's, then the draft, then the default (0.559792ms)
+✔ an unavailable autopilot selection falls back to an offered mode (0.055167ms)
+✔ features load from platform and failures mean off (15.387833ms)
+✔ changing the mode posts it to the session (0.480375ms)
+✔ records answered by a mode say which mode (0.066958ms)
+✔ tool decisions use the mode label when a mode allowed them (0.05925ms)
+✔ missing or mismatched effective approval mode is not confirmation (0.174625ms)
+✔ a different effective approval mode is rejected (0.169ms)
+(node:42399) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ first message and retry cannot run after approval confirmation fails (29.144583ms)
+✔ oversized normal message stays editable and creates no session or row (7.442042ms)
+✔ editor stays usable during catalog loading and local dispatch, while Send is gated (30.035167ms)
+✔ successful goal command cannot clear B typed while A awaits creation (4.798542ms)
+✔ delayed suggestion never replaces B typed before it starts sending (8.282833ms)
+✔ double submit creates and dispatches once; B survives slow creation and acceptance (5.498542ms)
+✔ definite creation failure restores only the unchanged submitted draft (8.789208ms)
+✔ uncertain send preserves B and its unknown row without automatic resend (7.876125ms)
+✔ retry confirms the requested approval mode on the same session before dispatch (4.411834ms)
+✔ goal creation and existing command retries require confirmed approval mode (4.183291ms)
+✔ a pending approval update gates sends and overlapping mode changes (3.862125ms)
+✔ a mismatched approval confirmation blocks first send (3.701084ms)
+✔ disabled approval modes make no configuration request; steering is explicit (5.76075ms)
+✔ navigation invalidates late creation without sending, attaching or replacing B (4.110917ms)
+✔ normal input boundaries reject whitespace/non-string and preserve UTF-16 length (32.060459ms)
+✔ suggestion restores previous draft only when no later edit owns the composer (14.309667ms)
+✔ a newer same-value draft keeps ownership after a goal completes (5.266541ms)
+✔ existing capability command sends frozen A and preserves B on failure (7.239125ms)
+✔ configured creation sends the frozen selected mode and skips a redundant update (5.189959ms)
+✔ older platform response still confirms the selected mode before sending (3.780958ms)
+(node:42400) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/projects.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[truex] api request failed {
+  method: 'POST',
+  path: '/api/projects',
+  status: 400,
+  code: 'INVALID_PROJECT',
+  requestId: undefined
+}
+✔ project names are trimmed and limited to 80 characters (0.596208ms)
+✔ projects sort by most recent update, then name (8.377333ms)
+✔ menu offers add for loose conversations and move/remove otherwise (0.12325ms)
+✔ draft project resolves only while the project exists (0.093542ms)
+✔ session body includes projectId only when set (0.655709ms)
+✔ API helpers call the project endpoints (14.825875ms)
+✔ invalid names are rejected before any request (0.590208ms)
+✔ server validation errors surface with their code (0.321542ms)
+✔ creation includes an explicit approval mode while preserving old body defaults (0.062167ms)
+ℹ tests 39
+ℹ suites 0
+ℹ pass 39
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 398.591833

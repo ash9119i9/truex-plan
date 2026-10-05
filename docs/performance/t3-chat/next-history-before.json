@@ -1,0 +1,358 @@
+{
+  "root": "/tmp/truex-chat-next-before",
+  "node": "v24.21.0",
+  "bodyBytes": 1024,
+  "warmups": 1,
+  "measuredRuns": 7,
+  "scope": "isolated Mongo/service CPU; no browser/network/provider latency; metadata remains O(total history), giant groups stay complete",
+  "results": [
+    {
+      "turns": 10,
+      "medianMs": 0.7554580000000897,
+      "medianCpuMs": 1.528,
+      "payloadDocuments": 20,
+      "dbJsonBytes": 23061,
+      "metadataDocsExamined": 20,
+      "samples": [
+        {
+          "elapsedMs": 1.2176249999997708,
+          "cpuMs": 1.528,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.7554580000000897,
+          "cpuMs": 1.13,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.6994999999997162,
+          "cpuMs": 1.738,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.9846659999998337,
+          "cpuMs": 3.432,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.9356669999997393,
+          "cpuMs": 2.156,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.6719589999997879,
+          "cpuMs": 0.845,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        },
+        {
+          "elapsedMs": 0.5675000000001091,
+          "cpuMs": 0.604,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20,
+              "jsonBytes": 23061
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "turns": 100,
+      "medianMs": 1.4819579999998496,
+      "medianCpuMs": 1.365,
+      "payloadDocuments": 200,
+      "dbJsonBytes": 231751,
+      "metadataDocsExamined": 200,
+      "samples": [
+        {
+          "elapsedMs": 3.2250420000000304,
+          "cpuMs": 12.393,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 4.305665999999746,
+          "cpuMs": 14.407,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.7113750000003165,
+          "cpuMs": 1.941,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.4487500000000182,
+          "cpuMs": 1.341,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.4819579999998496,
+          "cpuMs": 1.365,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.2791659999998046,
+          "cpuMs": 1.021,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        },
+        {
+          "elapsedMs": 1.2807920000000195,
+          "cpuMs": 1.341,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 200,
+              "jsonBytes": 231751
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "turns": 1000,
+      "medianMs": 8.99979200000007,
+      "medianCpuMs": 13.396,
+      "payloadDocuments": 2000,
+      "dbJsonBytes": 2329451,
+      "metadataDocsExamined": 2000,
+      "samples": [
+        {
+          "elapsedMs": 8.912750000000415,
+          "cpuMs": 11.814,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 2000,
+              "jsonBytes": 2329451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 9.669666999999663,
+          "cpuMs": 21.146,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 2000,
+              "jsonBytes": 2329451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 9.608084000000417,
+          "cpuMs": 14.278,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 2000,
+              "jsonBytes": 2329451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 8.592083000000002,
+          "cpuMs": 12.358,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 2000,
+              "jsonBytes": 2329451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 8.99979200000007,
+          "cpuMs": 13.396,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 2000,
+              "jsonBytes": 2329451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 8.900417000000289,
+          "cpuMs": 8.025,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 2000,
+              "jsonBytes": 2329451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 9.548624999999902,
+          "cpuMs": 14.616,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 2000,
+              "jsonBytes": 2329451
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "turns": 10000,
+      "medianMs": 72.97029100000054,
+      "medianCpuMs": 82.426,
+      "payloadDocuments": 20000,
+      "dbJsonBytes": 23414451,
+      "metadataDocsExamined": 20000,
+      "samples": [
+        {
+          "elapsedMs": 77.68304100000023,
+          "cpuMs": 107.153,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20000,
+              "jsonBytes": 23414451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 76.96858300000031,
+          "cpuMs": 90.219,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20000,
+              "jsonBytes": 23414451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 71.3198339999999,
+          "cpuMs": 76.006,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20000,
+              "jsonBytes": 23414451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 72.97029100000054,
+          "cpuMs": 82.861,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20000,
+              "jsonBytes": 23414451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 71.81716700000015,
+          "cpuMs": 75.064,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20000,
+              "jsonBytes": 23414451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 72.65579200000047,
+          "cpuMs": 82.426,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20000,
+              "jsonBytes": 23414451
+            }
+          ]
+        },
+        {
+          "elapsedMs": 73.10399999999936,
+          "cpuMs": 77.395,
+          "reads": [
+            {
+              "kind": "payload",
+              "documents": 20000,
+              "jsonBytes": 23414451
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

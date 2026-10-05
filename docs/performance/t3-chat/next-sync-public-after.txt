@@ -1,0 +1,13 @@
+{"ts":"2026-10-05T18:09:12.394Z","level":"warn","msg":"Rejected malformed synchronized update","op":"stream","bytes":7,"error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)","errorName":"SyntaxError","stack":"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\n    at JSON.parse (<anonymous>)\n    at PublicEventStream.push (/Users/ashok/truex-plan/platform/src/public.ts:858:26)\n    at <anonymous> (/Users/ashok/truex-plan/platform/test/sync-public.test.ts:47:30)\n    at getActual (node:assert:611:5)\n    at strict.throws (node:assert:759:24)\n    at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/sync-public.test.ts:47:10)\n    at Test.runInAsyncScope (node:async_hooks:227:14)\n    at Test.run (node:internal/test_runner/test:1402:25)\n    at Test.start (node:internal/test_runner/test:1262:17)\n    at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)"}
+{"ts":"2026-10-05T18:09:12.395Z","level":"warn","msg":"skipped malformed live update","op":"stream","bytes":7,"error":"Expected property name or '}' in JSON at position 1 (line 1 column 2)","errorName":"SyntaxError","stack":"SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)\n    at JSON.parse (<anonymous>)\n    at PublicEventStream.push (/Users/ashok/truex-plan/platform/src/public.ts:858:26)\n    at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/sync-public.test.ts:50:29)\n    at Test.runInAsyncScope (node:async_hooks:227:14)\n    at Test.run (node:internal/test_runner/test:1402:25)\n    at Test.start (node:internal/test_runner/test:1262:17)\n    at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)"}
+✔ a malformed synchronized frame cannot be skipped before a valid high-water marker (2.76825ms)
+✔ synchronization marker exposes only authoritative operational projection (0.273625ms)
+✔ unsupported or incoherent markers never become public completion (0.088958ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 91.807458

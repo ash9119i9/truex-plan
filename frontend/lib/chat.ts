@@ -699,6 +699,35 @@ export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
 // the first. Retain its buffer for correct delta assembly, but don't render that
 // shadow. Two completed messages (even identical ones) remain distinct.
 export function visibleEntries(entries: Entry[]): Entry[] {
+  const partialTurns = new Set<string>();
+  for (const entry of entries)
+    if (
+      entry.kind === "message" &&
+      entry.role === "assistant" &&
+      !entry.final &&
+      entry.turnId &&
+      entry.text.trim()
+    )
+      partialTurns.add(entry.turnId);
+  if (!partialTurns.size) return entries.slice();
+  // Prefix matches are contiguous in lexical order. Index once by turn, then
+  // inspect the first finalized text >= the partial text. This avoids scanning
+  // the transcript per interrupted answer, even for many items in one turn.
+  const finalized = new Map<string, string[]>();
+  for (const entry of entries) {
+    if (
+      entry.kind !== "message" ||
+      entry.role !== "assistant" ||
+      !entry.final ||
+      !entry.turnId ||
+      !partialTurns.has(entry.turnId)
+    )
+      continue;
+    let answers = finalized.get(entry.turnId);
+    if (!answers) finalized.set(entry.turnId, (answers = []));
+    answers.push(entry.text.trim());
+  }
+  for (const answers of finalized.values()) answers.sort();
   return entries.filter((e) => {
     if (
       e.kind !== "message" ||
@@ -708,13 +737,16 @@ export function visibleEntries(entries: Entry[]): Entry[] {
       !e.text.trim()
     )
       return true;
-    return !entries.some(
-      (other) =>
-        other.kind === "message" &&
-        other.role === "assistant" &&
-        other.final &&
-        other.turnId === e.turnId &&
-        other.text.trim().startsWith(e.text.trim()),
-    );
+    const answers = finalized.get(e.turnId);
+    if (!answers) return true;
+    const prefix = e.text.trim();
+    let low = 0,
+      high = answers.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (answers[middle] < prefix) low = middle + 1;
+      else high = middle;
+    }
+    return !answers[low]?.startsWith(prefix);
   });
 }

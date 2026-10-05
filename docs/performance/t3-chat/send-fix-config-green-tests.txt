@@ -1,0 +1,23 @@
+✔ configuration starts independent reads together after the agent gate (2.687042ms)
+✔ missing agent starts no configuration reads (0.281541ms)
+✔ missing model fails before slow reads finish and later failures are observed (1.575292ms)
+▶ concurrent read failures retain the existing validation precedence
+  ✔ model,tenant,user,skills (0.393292ms)
+  ✔ tenant,user,skills (0.297291ms)
+  ✔ user,skills (0.247958ms)
+{"ts":"2026-10-05T19:17:32.700Z","level":"warn","msg":"user MCP skipped: a tenant MCP uses its name","op":"configuration","agentId":"agent","mcpId":"user-reserved","name":"reserved"}
+{"ts":"2026-10-05T19:17:32.700Z","level":"warn","msg":"user MCP skipped: a tenant MCP uses its name","op":"configuration","agentId":"agent","mcpId":"user-shared","name":"shared"}
+  ✔ skills (0.2575ms)
+✔ concurrent read failures retain the existing validation precedence (1.452958ms)
+✔ tenant names win including unattached reservations; skill order and decrypted config are preserved (3.835916ms)
+✔ each build checks DNS again, rejects private answers, and retains DNS-outage behavior (0.248542ms)
+✔ connector validation precedes missing skills; missing skills still fail closed (0.139375ms)
+✔ duplicate tenant names and reserved-name read failures still fail closed (0.133625ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 12
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 171.706833

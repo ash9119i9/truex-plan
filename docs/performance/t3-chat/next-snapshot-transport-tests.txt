@@ -1,0 +1,16 @@
+(node:76845) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ HTTP and AgentCore synchronization deliver identical replay/operational envelopes and zero-gap authority (256.227583ms)
+✔ AgentCore envelopes preserve errors and pagination; event streams retain cursor and abort signal (8.225167ms)
+✔ health and schemas share a stable runtime session; thread calls require the persisted session (0.89325ms)
+✔ HTTP transport keeps direct calls and Last-Event-ID behavior (12.680875ms)
+✔ source snapshot window is identical for HTTP and AgentCore and rejects invalid options (7.057583ms)
+✔ conversation creation, restart, streaming and ingestion reuse the stored AgentCore session (1523.7985ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1798.799417

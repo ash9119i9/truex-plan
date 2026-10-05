@@ -1,0 +1,248 @@
+(node:42056) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✖ closed reasoning excludes the full body and never joins or counts it (7.947958ms)
+✖ empty reasoning disappears; streaming empty trace remains a disclosure (0.23ms)
+✖ failed, interrupted and unknown terminal outcomes never guess 100 percent (7.778375ms)
+✖ terminal percentage uses authoritative plan progress including partial plans (0.755208ms)
+✖ closed activity never enumerates event bodies (0.302291ms)
+✖ Markdown controls leave code bytes and safe Markdown handling intact (4.050916ms)
+✖ long prompts expose an accessible disclosure and preserve stable turn anchors and full text (1.862541ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 0
+ℹ fail 7
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 418.895209
+
+✖ failing tests:
+
+test at frontend/test/next-details.test.ts:31:1
+✖ closed reasoning excludes the full body and never joins or counts it (7.947958ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(stringMarkup.length < 1200)
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts:34:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at frontend/test/next-details.test.ts:49:1
+✖ empty reasoning disappears; streaming empty trace remains a disclosure (0.23ms)
+  TypeError: text.trim is not a function
+      at ThinkingBlock (eval at load (file:///Users/ashok/truex-plan/frontend/test/next-details-runtime.ts:46:3), <anonymous>:15:24)
+      at Object.react_stack_bottom_frame (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:10371:18)
+      at renderWithHooks (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5361:19)
+      at renderElement (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5796:23)
+      at retryNode (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:6772:31)
+      at performWork (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:7919:19)
+      at startWork (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:8807:7)
+      at renderToStringImpl (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:8933:7)
+      at process.env.NODE_ENV.exports.renderToStaticMarkup (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:10426:14)
+      at render (file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts:13:3)
+
+test at frontend/test/next-details.test.ts:58:1
+✖ failed, interrupted and unknown terminal outcomes never guess 100 percent (7.778375ms)
+  AssertionError [ERR_ASSERTION]: failed
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts:64:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at frontend/test/next-details.test.ts:71:1
+✖ terminal percentage uses authoritative plan progress including partial plans (0.755208ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /aria-label="Plan progress"/. Input:
+  
+  '<div class="session-panel"><div class="p-head"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg><h2 class="p-title">Session activity</h2></div><div class="tabs" role="tablist" aria-label="Session activity"><button type="button" role="tab" id="session-tab-activity" aria-selected="true" aria-controls="session-tabpanel" tabindex="0" class="tab is-active">Activity</button><button type="button" role="tab" id="session-tab-agents" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Agents</button><button type="button" role="tab" id="session-tab-goal" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Goal</button><button type="button" role="tab" id="session-tab-plan" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Plan<span class="tab-count" aria-label="1 of 2 steps done">1/2</span></button><button type="button" role="tab" id="session-tab-insights" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Insights</button></div><div class="activity-body" id="session-tabpanel" role="tabpanel" aria-labelledby="session-tab-activity"><div class="live-head"><span class="pulse idle" aria-hidden="true"></span><span class="live-title" role="status">Idle</span><span class="live-meta">Waiting for a request</span></div><div class="live-card"><div class="live-row"><span class="tile"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span><div class="grow"><span class="strong">Last run: request failed</span><span class="muted sm">Finished 5:30 AM · 1 of 2 steps</span></div><span class="live-pct">100%</span></div><div class="bar" aria-hidden="true"><span style="width:100%"></span></div></div><div class="section-head"><span class="eyebrow">Recent</span></div><ol class="timeline" aria-label="Recent activity"><li class="tl-row"><span class="tl-dot is-bad"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span><div class="tl-body"><span class="tl-title">Request failed</span></div><time class="tl-time" dateTime="2026-10-05T00:00:01Z">5:30 AM</time></li></ol></div></div>'
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts:82:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<div class="session-panel"><div class="p-head"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg><h2 class="p-title">Session activity</h2></div><div class="tabs" role="tablist" aria-label="Session activity"><button type="button" role="tab" id="session-tab-activity" aria-selected="true" aria-controls="session-tabpanel" tabindex="0" class="tab is-active">Activity</button><button type="button" role="tab" id="session-tab-agents" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Agents</button><button type="button" role="tab" id="session-tab-goal" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Goal</button><button type="button" role="tab" id="session-tab-plan" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Plan<span class="tab-count" aria-label="1 of 2 steps done">1/2</span></button><button type="button" role="tab" id="session-tab-insights" aria-selected="false" aria-controls="session-tabpanel" tabindex="-1" class="tab">Insights</button></div><div class="activity-body" id="session-tabpanel" role="tabpanel" aria-labelledby="session-tab-activity"><div class="live-head"><span class="pulse idle" aria-hidden="true"></span><span class="live-title" role="status">Idle</span><span class="live-meta">Waiting for a request</span></div><div class="live-card"><div class="live-row"><span class="tile"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span><div class="grow"><span class="strong">Last run: request failed</span><span class="muted sm">Finished 5:30 AM · 1 of 2 steps</span></div><span class="live-pct">100%</span></div><div class="bar" aria-hidden="true"><span style="width:100%"></span></div></div><div class="section-head"><span class="eyebrow">Recent</span></div><ol class="timeline" aria-label="Recent activity"><li class="tl-row"><span class="tl-dot is-bad"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg></span><div class="tl-body"><span class="tl-title">Request failed</span></div><time class="tl-time" dateTime="2026-10-05T00:00:01Z">5:30 AM</time></li></ol></div></div>',
+    expected: /aria-label="Plan progress"/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at frontend/test/next-details.test.ts:88:1
+✖ closed activity never enumerates event bodies (0.302291ms)
+  Error: Hidden activity projected
+      at Object.get (file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts:92:15)
+      at ActivityTab (eval at load (file:///Users/ashok/truex-plan/frontend/test/next-details-runtime.ts:46:3), <anonymous>:76:12)
+      at Object.react_stack_bottom_frame (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:10371:18)
+      at renderWithHooks (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5361:19)
+      at renderElement (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5796:23)
+      at retryNode (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:6772:31)
+      at renderNodeDestructive (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:6717:11)
+      at renderNode (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:7268:18)
+      at renderChildrenArray (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:7029:11)
+      at retryNode (/Users/ashok/truex-plan/frontend/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:6796:13)
+
+test at frontend/test/next-details.test.ts:101:1
+✖ Markdown controls leave code bytes and safe Markdown handling intact (4.050916ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /aria-label="Copy code"/. Input:
+  
+  '<pre><code class="language-txt">  λ &lt;tag&gt; &amp; value\n' +
+    '\n' +
+    '</code></pre>\n' +
+    '<p><a href="">unsafe</a></p>\n' +
+    '&lt;script&gt;alert(1)&lt;/script&gt;'
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts:106:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<pre><code class="language-txt">  λ &lt;tag&gt; &amp; value\n\n</code></pre>\n<p><a href="">unsafe</a></p>\n&lt;script&gt;alert(1)&lt;/script&gt;',
+    expected: /aria-label="Copy code"/,
+    operator: 'match',
+    diff: 'simple'
+  }
+
+test at frontend/test/next-details.test.ts:116:1
+✖ long prompts expose an accessible disclosure and preserve stable turn anchors and full text (1.862541ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Show full message/. Input:
+  
+  '<div class="chat-messages"><article id="request-prompt" class="msg user" aria-label="Your message"><div class="bubble-wrap"><div class="bubble">Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    'Unicode λ\n' +
+    '</div></div></article><article class="msg agent" id="turn-turn-fixture" tabindex="-1" aria-label="Fixture response"><span class="agent-avatar" style="background:var(--accent-soft-2)" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span><div class="grow"><div class="msg-meta"><span class="strong">Fixture</span></div><div class="answer markdown"><p><strong>exact answer</strong></p></div></div></article></div>'
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/next-details.test.ts:133:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<div class="chat-messages"><article id="request-prompt" class="msg user" aria-label="Your message"><div class="bubble-wrap"><div class="bubble">Unicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\nUnicode λ\n</div></div></article><article class="msg agent" id="turn-turn-fixture" tabindex="-1" aria-label="Fixture response"><span class="agent-avatar" style="background:var(--accent-soft-2)" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path></svg></span><div class="grow"><div class="msg-meta"><span class="strong">Fixture</span></div><div class="answer markdown"><p><strong>exact answer</strong></p></div></div></article></div>',
+    expected: /Show full message/,
+    operator: 'match',
+    diff: 'simple'
+  }

@@ -1,0 +1,89 @@
+(node:41973) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✖ configured creation sends the frozen selected mode and skips a redundant update (26.279917ms)
+✖ older platform response still confirms the selected mode before sending (7.240792ms)
+(node:41974) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/projects.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✖ creation includes an explicit approval mode while preserving old body defaults (1.447791ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 0
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 201.869667
+
+✖ failing tests:
+
+test at frontend/test/composer-dispatch.test.ts:587:1
+✖ configured creation sends the frozen selected mode and skips a redundant update (26.279917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'readOnly'
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts:592:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'readOnly',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/composer-dispatch.test.ts:599:1
+✖ older platform response still confirms the selected mode before sending (7.240792ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'readOnly'
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/composer-dispatch.test.ts:602:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'readOnly',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at frontend/test/projects.test.ts:140:1
+✖ creation includes an explicit approval mode while preserving old body defaults (1.447791ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    {
+      agentId: 'agent',
+  -   approvalMode: 'readOnly',
+      projectId: 'proj_a',
+      subAgents: {}
+    }
+  
+      at TestContext.<anonymous> (file:///Users/ashok/truex-plan/frontend/test/projects.test.ts:141:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.start (node:internal/test_runner/test:1262:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: { agentId: 'agent', subAgents: {}, projectId: 'proj_a' },
+    expected: { agentId: 'agent', subAgents: {}, projectId: 'proj_a', approvalMode: 'readOnly' },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

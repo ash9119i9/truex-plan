@@ -1,0 +1,78 @@
+{
+  "warmPending": {
+    "header": "Fixture Assistant\u00b7working",
+    "ms": 45.69999999925494,
+    "pendingShown": true,
+    "unsafe": false
+  },
+  "failedRecovery": {
+    "errorShown": true,
+    "requests": [
+      {
+        "at": 1791224951847,
+        "finishedAt": 1791224951863,
+        "method": "GET",
+        "path": "/api/sessions/fixture-b?window=1&persisted=1"
+      },
+      {
+        "at": 1791224951847,
+        "finishedAt": 1791224952448,
+        "method": "GET",
+        "path": "/api/sessions/fixture-b?window=1"
+      },
+      {
+        "at": 1791224951848,
+        "method": "GET",
+        "path": "/api/sessions/fixture-b/events?window=1&sync=v1"
+      },
+      {
+        "at": 1791224952453,
+        "method": "GET",
+        "path": "/api/sessions/fixture-b/traces?persisted=1"
+      },
+      {
+        "at": 1791224952453,
+        "method": "GET",
+        "path": "/api/sessions/fixture-b/timings?persisted=1"
+      }
+    ],
+    "sample": {
+      "domMs": 7.799999997019768,
+      "mounted": 9,
+      "readyMs": 616.6999999992549,
+      "title": "Fixture B conversation"
+    }
+  },
+  "revocation": {
+    "oldContent": false,
+    "revokedShown": true,
+    "timeline": null
+  },
+  "legacy": {
+    "domMs": 25.599999997764826,
+    "mounted": 9,
+    "readyMs": 611.8000000007451,
+    "title": "Fixture B conversation"
+  },
+  "burst": {
+    "bodyError": false,
+    "exact": true,
+    "header": "Fixture Assistant\u00b7ready",
+    "length": 1000,
+    "mounted": 9,
+    "authoritativeInspection": {
+      "textExact": true,
+      "textLength": 1000,
+      "final": true,
+      "answerRowsForBurstItem": 1,
+      "totalEntries": 21,
+      "method": "native evaluate bounded parent React fiber memoizedProps.entries inspection; separate from DOM observer"
+    }
+  },
+  "notes": [
+    "Native production UI fixture; runtime protocol separately tested against actual manager/transport.",
+    "Pending fixture must use public detail.questions shape; discarded exploratory raw params fixture crashed outside valid public contract.",
+    "Offscreen virtualizer DOM node order is recycled; authoritative React entries and visible rows were checked in chronological order.",
+    "Restoring fixture authorization during a previous full-read flight can retain that flight's 403; fresh navigation verified legacy case."
+  ]
+}

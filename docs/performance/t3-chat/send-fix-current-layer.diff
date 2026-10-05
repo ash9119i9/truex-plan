@@ -1,0 +1,1836 @@
+--- before/frontend/test/chat-visibility.test.ts
++++ after/frontend/test/chat-visibility.test.ts
+@@ -0,0 +1,121 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { visibleEntries, type Entry } from "../lib/chat.ts";
++
++function legacy(entries: Entry[]) {
++  return entries.filter(
++    (entry) =>
++      entry.kind !== "message" ||
++      entry.role !== "assistant" ||
++      entry.final ||
++      !entry.turnId ||
++      !entry.text.trim() ||
++      !entries.some(
++        (other) =>
++          other.kind === "message" &&
++          other.role === "assistant" &&
++          other.final &&
++          other.turnId === entry.turnId &&
++          other.text.trim().startsWith(entry.text.trim()),
++      ),
++  );
++}
++
++test("visibility retains exact prefix, turn, completion, Unicode and reference semantics", () => {
++  let seed = 0x84583;
++  const pick = <T>(values: T[]): T => {
++    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
++    return values[seed % values.length];
++  };
++  for (let fixture = 0; fixture < 200; fixture++) {
++    const entries: Entry[] = Array.from({ length: 80 }, (_, index) => ({
++      kind: "message",
++      id: `${index}`,
++      itemId: `item-${index}`,
++      aliases: ["shared-alias"],
++      role: pick(["assistant", "user", "system"]),
++      turnId: pick([undefined, "", "a", "b", "__proto__"]),
++      text: pick([
++        "",
++        " \t\n",
++        " Hello ",
++        "Hello again",
++        "Hell",
++        "Hello divergent",
++        "😀",
++        "😀界",
++        "\ud83d",
++        "\u0000",
++        "a\u0000b",
++        "𐀀",
++        "\uffff",
++      ]),
++      final: pick([undefined, false, true]),
++      done: pick([undefined, false, true]),
++    }));
++    entries.splice(10, 0, {
++      kind: "thinking",
++      id: "thinking",
++      text: "Hello",
++      turnId: "a",
++    });
++    const before = structuredClone(entries);
++    const expected = legacy(entries);
++    const actual = visibleEntries(entries);
++    assert.deepEqual(actual, expected);
++    actual.forEach((entry, index) => assert.equal(entry, expected[index]));
++    assert.deepEqual(entries, before);
++  }
++});
++
++test("interrupted histories do not rescan the full transcript for every answer", () => {
++  let visits = 0;
++  const entries: Entry[] = Array.from({ length: 400 }, (_, index) => {
++    const entry: Entry = {
++      kind: "message",
++      id: `${index}`,
++      role: "assistant",
++      text: "Interrupted",
++      turnId: `turn-${index}`,
++      final: false,
++      done: true,
++    };
++    return new Proxy(entry, {
++      get(target, key, receiver) {
++        if (key === "kind") visits++;
++        return Reflect.get(target, key, receiver);
++      },
++    });
++  });
++  assert.equal(visibleEntries(entries).length, entries.length);
++  assert.ok(
++    visits <= entries.length * 4,
++    `Expected linear entry visits, saw ${visits}`,
++  );
++});
++
++test("many finalized answers in one turn do not cause repeated linear prefix searches", (t) => {
++  let comparisons = 0;
++  const original = String.prototype.startsWith;
++  t.mock.method(
++    String.prototype,
++    "startsWith",
++    function (this: string, prefix: string, position?: number) {
++      comparisons++;
++      return original.call(this, prefix, position);
++    },
++  );
++  const entries: Entry[] = Array.from({ length: 800 }, (_, index) => ({
++    kind: "message",
++    id: `${index}`,
++    role: "assistant",
++    turnId: "same",
++    text: index < 400 ? `z-partial-${index}` : `a-final-${index}`,
++    final: index >= 400,
++  }));
++  assert.equal(visibleEntries(entries).length, entries.length);
++  assert.ok(
++    comparisons <= entries.length,
++    `Expected bounded prefix checks, saw ${comparisons}`,
++  );
++});
+--- before/frontend/test/chat-batch.test.ts
++++ after/frontend/test/chat-batch.test.ts
+@@ -4,6 +4,7 @@
+ import { applyChatEvent, type Entry } from "../lib/chat.ts";
+ import type { DomainEvent } from "../../shared/contracts.ts";
+ import { transport } from "../lib/transport.ts";
++import { advanceSourceSync, type SourceSync } from "../lib/source-sync.ts";
+ 
+ let seq = 0;
+ function event(
+@@ -45,6 +46,247 @@
+   );
+   assert.equal(events.length, 1000);
+   assert.equal(events.at(-1)?.cursor, `c${seq}`);
++});
++
++const reasoning = (
++  delta = "x",
++  data: Record<string, unknown> = {},
++  identity: Partial<DomainEvent> = {},
++) =>
++  event(
++    "reasoning.delta",
++    { delta, method: "item/reasoning/textDelta", ...data },
++    { itemId: "reason", ...identity },
++  );
++
++test("1000 adjacent reasoning fragments coalesce per exact raw or summary channel", () => {
++  for (const method of [
++    undefined,
++    "item/reasoning/textDelta",
++    "item/reasoning/summaryTextDelta",
++  ]) {
++    const { actual, projected } = oracle(
++      Array.from({ length: 1000 }, () => reasoning("x", { method })),
++    );
++    assert.equal(projected.length, 1);
++    assert.equal(
++      actual[0].kind === "thinking" && actual[0].text,
++      "x".repeat(1000),
++    );
++  }
++});
++
++test("reasoning identities, channels, indexed parts and ordinals are ordering boundaries", () => {
++  const variations = [
++    reasoning("b", {}, { threadId: "other" }),
++    reasoning("b", {}, { turnId: "other" }),
++    reasoning("b", {}, { itemId: "other" }),
++    reasoning("b", { method: "item/reasoning/summaryTextDelta" }),
++    reasoning("b", { method: undefined }),
++    reasoning("b", { channel: "content" }),
++    reasoning("b", { contentIndex: 0 }),
++    reasoning("b", { summaryIndex: 0 }),
++    reasoning("b", { messageIndex: 0 }),
++  ];
++  for (const middle of variations) {
++    const { projected } = oracle([
++      reasoning("a"),
++      reasoning("a"),
++      middle,
++      reasoning("c"),
++      reasoning("c"),
++    ]);
++    assert.equal(projected.length, 3);
++    assert.equal(projected[1], middle);
++  }
++  const { projected } = oracle([
++    reasoning("a", {
++      contentIndex: 2,
++      summaryIndex: 0,
++      messageIndex: 1,
++      channel: "content",
++      itemId: "reason",
++    }),
++    reasoning("b", {
++      contentIndex: 2,
++      summaryIndex: 0,
++      messageIndex: 1,
++      channel: "content",
++      itemId: "reason",
++    }),
++    reasoning("c", {
++      contentIndex: 3,
++      summaryIndex: 0,
++      messageIndex: 1,
++      channel: "content",
++      itemId: "reason",
++    }),
++    reasoning("d", {
++      contentIndex: 3,
++      summaryIndex: 1,
++      messageIndex: 1,
++      channel: "content",
++      itemId: "reason",
++    }),
++    reasoning("e", {
++      contentIndex: 3,
++      summaryIndex: 1,
++      messageIndex: 1,
++      channel: "summary",
++      itemId: "reason",
++    }),
++  ]);
++  assert.deepEqual(
++    projected.map((frame) => frame.data.delta),
++    ["ab", "c", "d", "e"],
++  );
++});
++
++test("reasoning malformed identities, channels, signals and payloads remain passthrough", () => {
++  const frames = [
++    ...[undefined, ""].flatMap((missing) => [
++      reasoning("x", {}, { threadId: missing }),
++      reasoning("x", {}, { turnId: missing }),
++      reasoning("x", {}, { itemId: missing }),
++    ]),
++    ...[null, -1, 0.5, NaN, Infinity, "0", {}].flatMap((value) =>
++      ["messageIndex", "summaryIndex", "contentIndex"].map((key) =>
++        reasoning("x", { [key]: value }),
++      ),
++    ),
++    ...[null, 1, {}].map((channel) => reasoning("x", { channel })),
++    reasoning("x", { method: "unknown" }),
++    reasoning("x", { signals: [] }),
++    reasoning("x", { status: "done" }),
++    reasoning("x", { done: true }),
++    reasoning("x", { itemId: "conflicting" }),
++    ...[{}, { delta: null }, { delta: 5 }, [], null, undefined].map(
++      (data) => ({ ...reasoning(), data }) as DomainEvent,
++    ),
++  ];
++  for (const frame of frames) {
++    const input = [reasoning(), frame, frame, reasoning()];
++    const projected = coalesceChatEvents(input);
++    assert.equal(projected.length, 4);
++    assert.equal(projected[1], frame);
++    let expected: Entry[] | undefined;
++    let failure: unknown;
++    try {
++      expected = input.reduce(applyChatEvent, []);
++    } catch (error) {
++      failure = error;
++    }
++    if (failure instanceof Error)
++      assert.throws(() => projected.reduce(applyChatEvent, []), {
++        name: failure.name,
++        message: failure.message,
++      });
++    else assert.deepEqual(projected.reduce(applyChatEvent, []), expected);
++  }
++});
++
++test("reasoning final, tool, snapshot, turn, answer and approval frames remain barriers", () => {
++  const barriers = [
++    event("message.delta", { delta: "answer" }),
++    event("message.final", { text: "answer" }),
++    event(
++      "item.started",
++      { item: { type: "reasoning", id: "reason" } },
++      { itemId: "reason" },
++    ),
++    event(
++      "item.completed",
++      { item: { type: "reasoning", id: "reason", summary: ["final"] } },
++      { itemId: "reason" },
++    ),
++    event("item.completed", { item: { type: "tool", id: "tool" } }),
++    event("turn.completed", {}),
++    event("turn.started", {}),
++    event("snapshot", { messages: [], state: { kind: "idle" } }),
++    event("approval.requested", {}),
++    event("error", {}),
++    event("resync.required", {}),
++  ];
++  for (const barrier of barriers) {
++    const { projected } = oracle([
++      reasoning("a"),
++      reasoning("b"),
++      barrier,
++      reasoning("c"),
++      reasoning("d"),
++    ]);
++    assert.equal(projected.length, 3);
++    assert.equal(projected[1], barrier);
++  }
++});
++
++test("late, completed, Unicode and interleaved reasoning preserve the full reducer oracle", () => {
++  const initial = oracle([
++    event("message.final", { text: "Saved answer" }),
++    reasoning("prefix:"),
++  ]).actual;
++  for (const done of [false, true]) {
++    const entries = initial.map((entry) =>
++      entry.kind === "thinking" ? { ...entry, done } : entry,
++    );
++    const { projected } = oracle(
++      [
++        reasoning("\ud83d"),
++        reasoning("\ude00\u0000界"),
++        reasoning(""),
++        reasoning("summary", { method: "item/reasoning/summaryTextDelta" }),
++        event("message.delta", { delta: "answer" }),
++        reasoning("tail"),
++        reasoning("end"),
++      ],
++      entries,
++    );
++    assert.equal(projected.length, 4);
++  }
++});
++
++test("source projection retains original cursor accounting across reasoning batches and stale replays", () => {
++  let state: SourceSync = {
++    phase: "ready",
++    fromCursor: null,
++    snapshotCursor: null,
++    pair: { protocol: 1, threadId: "thread", cursor: "g:0", entries: [] },
++  };
++  const input = [
++    reasoning("a"),
++    reasoning("b"),
++    reasoning("c", { method: "item/reasoning/summaryTextDelta" }),
++    reasoning("d", { method: "item/reasoning/summaryTextDelta" }),
++    event(),
++    event(),
++    event(
++      "item.completed",
++      { item: { id: "reason", type: "reasoning", summary: ["final"] } },
++      { itemId: "reason" },
++    ),
++    reasoning("ignored"),
++    reasoning("ignored"),
++    event("turn.completed", {}),
++  ].map((frame, index) => ({
++    ...frame,
++    seq: index + 1,
++    cursor: `g:${index + 1}`,
++  }));
++  let expected: Entry[] = [];
++  for (const batch of [
++    input.slice(0, 2),
++    [input[1], input[0], ...input.slice(2, 6)],
++    input.slice(6),
++  ]) {
++    const result = advanceSourceSync(state, batch);
++    assert.equal(result.failure, null);
++    expected = result.accepted.reduce(applyChatEvent, expected);
++    assert.deepEqual(result.state.pair?.entries, expected);
++    assert.equal(result.state.pair?.cursor, result.accepted.at(-1)?.cursor);
++    state = result.state;
++  }
++  assert.equal(state.pair?.cursor, "g:10");
++  assert.equal(advanceSourceSync(state, input).accepted.length, 0);
+ });
+ 
+ test("thread, turn, item and ordinal differences split adjacent runs", () => {
+@@ -308,7 +550,10 @@
+               };
+       const next = event(type, data, identity);
+       events.push(next);
+-      if (type === "message.delta" && i % 3 === 0)
++      if (
++        (type === "message.delta" || type === "reasoning.delta") &&
++        i % 3 === 0
++      )
+         events.push({ ...next, data: { ...data, delta: "b" } });
+       if (i % 10 === 9) {
+         initial = oracle(events, initial).actual;
+@@ -397,43 +642,46 @@
+   };
+ }
+ 
+-for (const publication of ["paint", "timer", "navigation"] as const)
+-  test(`coalesced projection preserves raw events and terminal cursor during ${publication} publication`, (t) => {
+-    let entries: Entry[] = [];
+-    let applications = 0;
+-    const accepted: DomainEvent[] = [];
+-    const stream = streamFixture(t, (raw) => {
+-      assert.equal(
+-        stream.store.size,
+-        0,
+-        "checkpoint follows accepted publication",
++for (const type of ["message.delta", "reasoning.delta"] as const)
++  for (const publication of ["paint", "timer", "navigation"] as const)
++    test(`coalesced ${type} projection preserves raw events and terminal cursor during ${publication} publication`, (t) => {
++      let entries: Entry[] = [];
++      let applications = 0;
++      const accepted: DomainEvent[] = [];
++      const stream = streamFixture(t, (raw) => {
++        assert.equal(
++          stream.store.size,
++          0,
++          "checkpoint follows accepted publication",
++        );
++        entries = coalesceChatEvents(raw).reduce((state, frame) => {
++          applications++;
++          return applyChatEvent(state, frame);
++        }, entries);
++        accepted.push(...raw);
++      });
++      const input = Array.from({ length: 1000 }, () =>
++        type === "message.delta" ? event() : reasoning(),
+       );
+-      entries = coalesceChatEvents(raw).reduce((state, frame) => {
+-        applications++;
+-        return applyChatEvent(state, frame);
+-      }, entries);
+-      accepted.push(...raw);
++      for (const value of input) stream.emit(value);
++      assert.equal(entries.length, 0);
++      if (publication === "paint") stream.paint();
++      else if (publication === "timer") stream.timer();
++      else stream.stop.flush!();
++      stream.paint();
++      stream.timer();
++      assert.equal(applications, 1);
++      assert.deepEqual(entries, input.reduce(applyChatEvent, []));
++      assert.deepEqual(
++        accepted,
++        input.map((frame) => ({ ...frame, threadId: "test" })),
++      );
++      assert.ok(
++        input.every((frame) => frame.threadId === "thread"),
++        "wire fixtures remain unchanged by trusted subscription scope stamping",
++      );
++      assert.equal(stream.store.get("cursor:test"), input.at(-1)?.cursor);
+     });
+-    const input = Array.from({ length: 1000 }, () => event());
+-    for (const value of input) stream.emit(value);
+-    assert.equal(entries.length, 0);
+-    if (publication === "paint") stream.paint();
+-    else if (publication === "timer") stream.timer();
+-    else stream.stop.flush!();
+-    stream.paint();
+-    stream.timer();
+-    assert.equal(applications, 1);
+-    assert.deepEqual(entries, input.reduce(applyChatEvent, []));
+-    assert.deepEqual(
+-      accepted,
+-      input.map((frame) => ({ ...frame, threadId: "test" })),
+-    );
+-    assert.ok(
+-      input.every((frame) => frame.threadId === "thread"),
+-      "wire fixtures remain unchanged by trusted subscription scope stamping",
+-    );
+-    assert.equal(stream.store.get("cursor:test"), input.at(-1)?.cursor);
+-  });
+ 
+ test("rejected navigation ownership publishes and acknowledges no coalesced state", (t) => {
+   let active = true;
+--- before/frontend/lib/chat-batch.ts
++++ after/frontend/lib/chat-batch.ts
+@@ -1,4 +1,27 @@
+ import type { DomainEvent } from "../../shared/contracts";
++
++// Unknown reasoning metadata may carry a boundary signal. Keep such frames
++// intact rather than dropping it from a merged projection-only frame.
++const reasoningKeys = new Set([
++  "delta",
++  "method",
++  "threadId",
++  "turnId",
++  "itemId",
++  "messageIndex",
++  "summaryIndex",
++  "contentIndex",
++  "channel",
++]);
++const reasoningIdentity = [
++  "method",
++  "channel",
++  "summaryIndex",
++  "contentIndex",
++] as const;
++const validOrdinal = (value: unknown) =>
++  value === undefined ||
++  (Number.isSafeInteger(value) && (value as number) >= 0);
+ 
+ // Projection-only input: callers must retain the original frames for cursor
+ // deduplication, checkpoints, follow policy, telemetry and other projections.
+@@ -21,7 +44,7 @@
+   for (const event of events) {
+     const ordinal = event?.data?.messageIndex;
+     const compatible =
+-      event?.type === "message.delta" &&
++      (event?.type === "message.delta" || event?.type === "reasoning.delta") &&
+       typeof event.threadId === "string" &&
+       !!event.threadId &&
+       typeof event.turnId === "string" &&
+@@ -32,8 +55,24 @@
+       typeof event.data === "object" &&
+       !Array.isArray(event.data) &&
+       typeof event.data.delta === "string" &&
+-      (ordinal === undefined ||
+-        (Number.isSafeInteger(ordinal) && ordinal >= 0));
++      validOrdinal(ordinal) &&
++      (event.type !== "reasoning.delta" ||
++        (Object.keys(event.data).every((key) => reasoningKeys.has(key)) &&
++          [
++            undefined,
++            "item/reasoning/textDelta",
++            "item/reasoning/summaryTextDelta",
++          ].includes(event.data.method) &&
++          (event.data.channel === undefined ||
++            typeof event.data.channel === "string") &&
++          validOrdinal(event.data.summaryIndex) &&
++          validOrdinal(event.data.contentIndex) &&
++          ["threadId", "turnId", "itemId"].every(
++            (key) =>
++              event.data[key] === undefined ||
++              event.data[key] ===
++                event[key as "threadId" | "turnId" | "itemId"],
++          )));
+     if (!compatible) {
+       flush();
+       projected.push(event);
+@@ -41,10 +80,13 @@
+     }
+     if (
+       head &&
+-      (head.threadId !== event.threadId ||
++      (head.type !== event.type ||
++        head.threadId !== event.threadId ||
+         head.turnId !== event.turnId ||
+         head.itemId !== event.itemId ||
+-        head.data.messageIndex !== ordinal)
++        head.data.messageIndex !== ordinal ||
++        (event.type === "reasoning.delta" &&
++          reasoningIdentity.some((key) => head!.data[key] !== event.data[key])))
+     )
+       flush();
+     head ??= event;
+--- before/frontend/lib/chat.ts
++++ after/frontend/lib/chat.ts
+@@ -699,6 +699,35 @@
+ // the first. Retain its buffer for correct delta assembly, but don't render that
+ // shadow. Two completed messages (even identical ones) remain distinct.
+ export function visibleEntries(entries: Entry[]): Entry[] {
++  const partialTurns = new Set<string>();
++  for (const entry of entries)
++    if (
++      entry.kind === "message" &&
++      entry.role === "assistant" &&
++      !entry.final &&
++      entry.turnId &&
++      entry.text.trim()
++    )
++      partialTurns.add(entry.turnId);
++  if (!partialTurns.size) return entries.slice();
++  // Prefix matches are contiguous in lexical order. Index once by turn, then
++  // inspect the first finalized text >= the partial text. This avoids scanning
++  // the transcript per interrupted answer, even for many items in one turn.
++  const finalized = new Map<string, string[]>();
++  for (const entry of entries) {
++    if (
++      entry.kind !== "message" ||
++      entry.role !== "assistant" ||
++      !entry.final ||
++      !entry.turnId ||
++      !partialTurns.has(entry.turnId)
++    )
++      continue;
++    let answers = finalized.get(entry.turnId);
++    if (!answers) finalized.set(entry.turnId, (answers = []));
++    answers.push(entry.text.trim());
++  }
++  for (const answers of finalized.values()) answers.sort();
+   return entries.filter((e) => {
+     if (
+       e.kind !== "message" ||
+@@ -708,13 +737,16 @@
+       !e.text.trim()
+     )
+       return true;
+-    return !entries.some(
+-      (other) =>
+-        other.kind === "message" &&
+-        other.role === "assistant" &&
+-        other.final &&
+-        other.turnId === e.turnId &&
+-        other.text.trim().startsWith(e.text.trim()),
+-    );
++    const answers = finalized.get(e.turnId);
++    if (!answers) return true;
++    const prefix = e.text.trim();
++    let low = 0,
++      high = answers.length;
++    while (low < high) {
++      const middle = Math.floor((low + high) / 2);
++      if (answers[middle] < prefix) low = middle + 1;
++      else high = middle;
++    }
++    return !answers[low]?.startsWith(prefix);
+   });
+ }
+--- before/platform/test/runtime-resume-transport.test.ts
++++ after/platform/test/runtime-resume-transport.test.ts
+@@ -0,0 +1,82 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { createServer } from "node:http";
++import { once } from "node:events";
++import { randomUUID } from "node:crypto";
++import { Readable } from "node:stream";
++import { sdkStreamMixin } from "@smithy/core/serde";
++import { RuntimeTransport } from "../src/runtime-transport";
++
++const arn =
++  "arn:aws:bedrock-agentcore:us-east-1:502055890667:runtime/test_runtime";
++
++test("both runtime transports reject invalid operational preferences before dispatch", async (t) => {
++  let httpCalls = 0,
++    sdkCalls = 0;
++  const server = createServer((_req, res) => {
++    httpCalls++;
++    res.setHeader("Content-Type", "application/json");
++    res.end("{}");
++  });
++  server.listen(0, "127.0.0.1");
++  await once(server, "listening");
++  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
++  const owner = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
++  const transport = new RuntimeTransport(async () => {
++    sdkCalls++;
++    return {
++      $metadata: {},
++      response: sdkStreamMixin(
++        Readable.from([Buffer.from('{"status":200,"body":{}}')], {
++          objectMode: false,
++        }),
++      ),
++      contentType: "application/json",
++    };
++  });
++  for (const runtime of [owner, arn])
++    for (const response of [null, true, false, "full", 0, {}, []])
++      await assert.rejects(
++        transport.request({
++          owner: runtime,
++          sessionId: randomUUID(),
++          path: "/threads/t/resume",
++          method: "POST",
++          body: { response },
++        }),
++        { status: 400, code: "INVALID_INPUT" },
++      );
++  assert.equal(httpCalls, 0);
++  assert.equal(sdkCalls, 0);
++});
++
++test("operational preference stays in the AgentCore body and default resume is untouched", async () => {
++  const calls: any[] = [];
++  const transport = new RuntimeTransport(async (_region, command) => {
++    calls.push(
++      JSON.parse(Buffer.from(command.input.payload as Uint8Array).toString()),
++    );
++    return {
++      $metadata: {},
++      response: sdkStreamMixin(
++        Readable.from([Buffer.from('{"status":200,"body":{}}')], {
++          objectMode: false,
++        }),
++      ),
++      contentType: "application/json",
++    };
++  });
++  for (const body of [
++    { response: "operational", approvalMode: "ask" },
++    { approvalMode: "readOnly" },
++  ]) {
++    await transport.request({
++      owner: arn,
++      sessionId: randomUUID(),
++      path: "/threads/t/resume",
++      method: "POST",
++      body,
++    });
++    assert.deepEqual(calls.at(-1).body, body);
++  }
++});
+--- before/platform/test/send-preparation.test.ts
++++ after/platform/test/send-preparation.test.ts
+@@ -0,0 +1,137 @@
++import { test, type TestContext } from "node:test";
++import assert from "node:assert/strict";
++import { MongoMemoryServer } from "mongodb-memory-server";
++import { Store } from "../src/store";
++import { PlatformService } from "../src/service";
++import { insertFixtures, asUser, ashok } from "./fixtures";
++
++async function fixture(t: TestContext) {
++  const mongo = await MongoMemoryServer.create();
++  const store = await new Store(mongo.getUri(), "send_preparation").connect();
++  t.after(async () => {
++    await store.client.close();
++    await mongo.stop();
++  });
++  await insertFixtures(store);
++  const service = new PlatformService(store, ["http://fixture.invalid"], {
++    enabled: true,
++    defaultMode: "ask",
++    autopilot: false,
++    nameHeuristic: false,
++  });
++  service.call = async (_host, _path, _method, body) => ({
++    threadId: "fixture-thread",
++    approvalMode: body.approvalMode,
++  });
++  const session = await asUser(ashok, () => service.create("assistant"));
++  await store.sessions.updateOne(
++    { _id: session._id },
++    { $set: { title: "Titled" } },
++  );
++  return { service, store, session };
++}
++
++test("send requests operational preparation while ordinary resume keeps its full contract", async (t) => {
++  const { service, session } = await fixture(t);
++  const requests: { path: string; body: any }[] = [];
++  service.call = async (_host, path, _method, body) => {
++    requests.push({ path, body });
++    if (path.endsWith("/resume"))
++      return { approvalMode: body.approvalMode, messages: [], pending: [] };
++    if (path.endsWith("/turns")) return { turnId: "turn", steer: false };
++    throw new Error(`Unexpected fixture path ${path}`);
++  };
++  await asUser(ashok, () => service.resume(session));
++  assert.equal(requests[0].body.response, undefined);
++  requests.length = 0;
++  await asUser(ashok, () =>
++    service.message(session._id, "Question", "send-once"),
++  );
++  assert.equal(requests[0].body.response, "operational");
++  assert.equal(requests[0].body.approvalMode, "ask");
++  assert.deepEqual(
++    requests.map((r) => r.path),
++    ["/threads/fixture-thread/resume", "/threads/fixture-thread/turns"],
++  );
++});
++
++test("acceptance timing includes preparation and receipt work, preserving the old timing field", async (t) => {
++  const { service, store, session } = await fixture(t);
++  const configuration = service.configuration.bind(service);
++  service.configuration = async (...args) => {
++    await new Promise((resolve) => setTimeout(resolve, 25));
++    return configuration(...args);
++  };
++  service.call = async (_host, path, _method, body) => {
++    if (path.endsWith("/resume")) return { approvalMode: body.approvalMode };
++    if (path.endsWith("/turns")) return { turnId: "timed-turn", steer: false };
++    throw new Error(`Unexpected fixture path ${path}`);
++  };
++  const result = await asUser(ashok, () =>
++    service.message(session._id, "Question", "timed"),
++  );
++  assert.ok(
++    result.platformTiming,
++    "send must expose all application acceptance phases",
++  );
++  const timing = result.platformTiming;
++  assert.deepEqual(Object.keys(timing).sort(), [
++    "authorizationMs",
++    "dispatchMs",
++    "preparationMs",
++    "receiptMs",
++    "totalMs",
++  ]);
++  for (const value of Object.values(timing))
++    assert.ok(
++      typeof value === "number" && Number.isFinite(value) && value >= 0,
++    );
++  assert.ok(timing.preparationMs >= 20, "configuration wait is included");
++  assert.ok(
++    timing.totalMs >=
++      timing.preparationMs + timing.dispatchMs + timing.authorizationMs,
++  );
++  assert.ok(
++    result.platformRoundTripMs < timing.totalMs,
++    "legacy runtime+receipt field is unchanged",
++  );
++  assert.equal(
++    (
++      await store.messages.findOne({
++        sessionId: session._id,
++        clientId: "timed",
++      })
++    )?.delivery,
++    "accepted",
++  );
++});
++
++test("operational preparation does not bypass saved settings or legacy approval confirmation", async (t) => {
++  const { service, store, session } = await fixture(t);
++  await store.sessions.updateOne(
++    { _id: session._id },
++    { $set: { settings: { model: "saved-model", effort: "medium" } } },
++  );
++  const paths: string[] = [];
++  service.call = async (_host, path, _method, body) => {
++    paths.push(path);
++    if (path.endsWith("/resume")) {
++      assert.equal(body.response, "operational");
++      assert.equal(body.model, "saved-model");
++      assert.equal(body.config.model_reasoning_effort, "medium");
++      return {};
++    }
++    if (path.endsWith("/approval-mode")) return { mode: body.mode };
++    if (path.endsWith("/capabilities")) {
++      assert.deepEqual(body.params, { model: "saved-model", effort: "medium" });
++      return {};
++    }
++    if (path.endsWith("/turns")) return { turnId: "legacy-turn" };
++    throw new Error(`Unexpected fixture path ${path}`);
++  };
++  await asUser(ashok, () => service.message(session._id, "Question", "legacy"));
++  assert.deepEqual(
++    paths.map((path) => path.split("/").at(-1)),
++    ["resume", "approval-mode", "capabilities", "turns"],
++  );
++});
+--- before/platform/test/configuration-reads.test.ts
++++ after/platform/test/configuration-reads.test.ts
+@@ -0,0 +1,293 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { setImmediate } from "node:timers/promises";
++import { PlatformService } from "../src/service";
++import { Store } from "../src/store";
++import type {
++  AgentDocument,
++  McpDocument,
++  ModelDocument,
++} from "../src/documents";
++import { mcpNetwork } from "../src/mcp";
++import { encryptSecret } from "../src/secrets";
++import "./fixtures";
++
++const model: ModelDocument = {
++  _id: "model",
++  provider: "fixture",
++  baseUrl: "https://model.example/v1",
++  modelName: "fixture-model",
++  apiKey: "fixture-key",
++  wireApi: "responses",
++  reasoningEffort: "low",
++};
++const agent: AgentDocument = {
++  _id: "agent",
++  name: "Agent",
++  modelProfileId: "model",
++  skillIds: ["second", "first"],
++};
++const catalogSkills = ["first", "second"].map((name) => ({
++  _id: name,
++  name,
++  description: `${name} description`,
++  body: `${name} body`,
++  version: 1,
++}));
++function gate() {
++  let release!: () => void;
++  const promise = new Promise<void>((resolve) => (release = resolve));
++  return { promise, release };
++}
++function fixture(
++  options: {
++    agent?: AgentDocument | null;
++    model?: ModelDocument | null;
++    tenant?: McpDocument[];
++    owner?: McpDocument[];
++    reserved?: string[];
++    skills?: typeof catalogSkills;
++    beforeRead?: (kind: string) => Promise<void>;
++  } = {},
++) {
++  const reads: string[] = [];
++  async function read<T>(kind: string, value: T) {
++    reads.push(kind);
++    await options.beforeRead?.(kind);
++    return value;
++  }
++  const store = {
++    findAgent: () => read("agent", "agent" in options ? options.agent : agent),
++    findModel: () => read("model", "model" in options ? options.model : model),
++    findSkills: () => read("skills", options.skills ?? catalogSkills),
++    mcp: {
++      find(filter: Record<string, unknown>) {
++        const reserved = filter.agentIds === undefined;
++        const kind = reserved ? "reserved" : String(filter.scope);
++        if (!reserved) {
++          assert.equal(filter.agentIds, "agent");
++          assert.deepEqual(filter.enabled, { $ne: false });
++          if (filter.scope === "user") assert.equal(filter.ownerId, "owner");
++        }
++        const rows = reserved
++          ? (
++              options.reserved ??
++              options.tenant?.map((mcp) => mcp.name) ??
++              []
++            ).map((name) => ({ name }))
++          : filter.scope === "tenant"
++            ? (options.tenant ?? [])
++            : (options.owner ?? []);
++        return {
++          sort(order: Record<string, number>) {
++            assert.deepEqual(order, { name: 1 });
++            return this;
++          },
++          toArray: () => read(kind, rows),
++        };
++      },
++    },
++  } as unknown as Store;
++  return { service: new PlatformService(store), reads };
++}
++const connector = (name: string, scope: "tenant" | "user" = "tenant") =>
++  ({
++    _id: `${scope}-${name}`,
++    name,
++    scope,
++    transport: "http",
++    url: `https://config.example/${name}`,
++    auth: { kind: "none" },
++  }) satisfies McpDocument;
++
++test("configuration starts independent reads together after the agent gate", async () => {
++  const pendingAgent = gate();
++  const pending = gate();
++  const { service, reads } = fixture({
++    beforeRead: async (kind) => {
++      await (kind === "agent" ? pendingAgent.promise : pending.promise);
++    },
++  });
++  const building = service.configuration("agent", { ownerId: "owner" });
++  try {
++    await setImmediate();
++    assert.deepEqual([...reads], ["agent"]);
++    pendingAgent.release();
++    await setImmediate();
++    assert.deepEqual(
++      [...reads],
++      ["agent", "model", "tenant", "user", "skills"],
++    );
++  } finally {
++    pendingAgent.release();
++    pending.release();
++    await building;
++  }
++});
++
++test("missing agent starts no configuration reads", async () => {
++  const { service, reads } = fixture({ agent: null });
++  await assert.rejects(service.configuration("agent"), {
++    code: "AGENT_NOT_FOUND",
++  });
++  assert.deepEqual(reads, ["agent"]);
++});
++
++test("missing model fails before slow reads finish and later failures are observed", async () => {
++  const pending = gate();
++  const { service } = fixture({
++    model: null,
++    beforeRead: async (kind) => {
++      if (!["agent", "model"].includes(kind)) {
++        await pending.promise;
++        throw new Error(`${kind} unavailable`);
++      }
++    },
++  });
++  const result = service
++    .configuration("agent", { ownerId: "owner" })
++    .catch((error: unknown) => error);
++  try {
++    const observed: any = await Promise.race([result, setImmediate("pending")]);
++    assert.equal(observed.code, "MODEL_CONFIGURATION");
++  } finally {
++    pending.release();
++    await result;
++    await setImmediate();
++  }
++});
++
++test("concurrent read failures retain the existing validation precedence", async (t) => {
++  for (const failures of [
++    ["model", "tenant", "user", "skills"],
++    ["tenant", "user", "skills"],
++    ["user", "skills"],
++    ["skills"],
++  ]) {
++    await t.test(failures.join(","), async () => {
++      const errors = new Map(failures.map((kind) => [kind, new Error(kind)]));
++      const { service } = fixture({
++        beforeRead: async (kind) => {
++          if (errors.has(kind)) throw errors.get(kind);
++        },
++      });
++      await assert.rejects(
++        service.configuration("agent", { ownerId: "owner" }),
++        (error) => error === errors.get(failures[0]),
++      );
++      await setImmediate();
++    });
++  }
++});
++
++test("tenant names win including unattached reservations; skill order and decrypted config are preserved", async () => {
++  const lookup = mcpNetwork.lookup;
++  mcpNetwork.lookup = async () => ["203.0.113.12"];
++  try {
++    const tenant: McpDocument = connector("shared");
++    tenant.auth = { kind: "header", headerName: "x-api-key" };
++    tenant.apiKeyEnc = encryptSecret("tenant-secret");
++    const { service, reads } = fixture({
++      tenant: [tenant],
++      // Shadowed rows deliberately contain invalid URLs: they must be skipped.
++      owner: [
++        connector("own", "user"),
++        { ...connector("reserved", "user"), url: "https://10.0.0.1/mcp" },
++        { ...connector("shared", "user"), url: "https://10.0.0.1/mcp" },
++      ],
++      reserved: ["reserved", "shared"],
++    });
++    const config = await service.configuration("agent", {
++      ownerId: "owner",
++      cwd: "/fixture-workspace",
++    });
++    assert.deepEqual(config.config, {
++      web_search: "live",
++      "model_providers.profile_model": {
++        name: "fixture",
++        base_url: "https://model.example/v1",
++        wire_api: "responses",
++        experimental_bearer_token: "fixture-key",
++      },
++      model_reasoning_effort: "low",
++      "mcp_servers.shared": {
++        url: "https://config.example/shared",
++        http_headers: { "x-api-key": "tenant-secret" },
++      },
++      "mcp_servers.own": { url: "https://config.example/own" },
++    });
++    assert.deepEqual(
++      config.skills?.map((skill) => skill.name),
++      ["second", "first"],
++    );
++    assert.match(config.baseInstructions, /\["shared","own"\]/);
++    assert.equal(config.cwd, "/fixture-workspace");
++    assert.equal(config.tenantId, "default");
++    assert.ok(reads.includes("reserved"));
++    assert.equal(typeof config.mcpFingerprint, "string");
++  } finally {
++    mcpNetwork.lookup = lookup;
++  }
++});
++
++test("each build checks DNS again, rejects private answers, and retains DNS-outage behavior", async () => {
++  const lookup = mcpNetwork.lookup;
++  let addresses = ["203.0.113.12"];
++  let calls = 0;
++  mcpNetwork.lookup = async () => {
++    calls++;
++    return addresses;
++  };
++  try {
++    const { service, reads } = fixture({ tenant: [connector("sap")] });
++    await service.configuration("agent");
++    addresses = ["203.0.113.12", "10.0.0.1"];
++    await assert.rejects(
++      service.configuration("agent"),
++      /private network address/,
++    );
++    addresses = [];
++    await service.configuration("agent");
++    assert.equal(calls, 3);
++    assert.ok(!reads.includes("user"));
++    assert.ok(!reads.includes("reserved"));
++  } finally {
++    mcpNetwork.lookup = lookup;
++  }
++});
++
++test("connector validation precedes missing skills; missing skills still fail closed", async () => {
++  const { service } = fixture({
++    tenant: [{ ...connector("bad"), url: "https://10.0.0.1/mcp" }],
++    skills: [],
++  });
++  await assert.rejects(
++    service.configuration("agent"),
++    /private network address/,
++  );
++  const missing = fixture({ skills: [] });
++  await assert.rejects(missing.service.configuration("agent"), {
++    code: "SKILL_CONFIGURATION",
++    message: "Skill missing: second",
++  });
++});
++
++test("duplicate tenant names and reserved-name read failures still fail closed", async () => {
++  const duplicate = fixture({ tenant: [connector("sap"), connector("sap")] });
++  await assert.rejects(duplicate.service.configuration("agent"), {
++    code: "CONNECTOR_CONFIGURATION",
++    message: "Duplicate MCP server name: sap",
++  });
++  const unavailable = new Error("reserved-name query unavailable");
++  const reserved = fixture({
++    owner: [connector("own", "user")],
++    skills: [],
++    beforeRead: async (kind) => {
++      if (kind === "reserved") throw unavailable;
++    },
++  });
++  await assert.rejects(
++    reserved.service.configuration("agent", { ownerId: "owner" }),
++    (error) => error === unavailable,
++  );
++});
+--- before/platform/src/index.ts
++++ after/platform/src/index.ts
+@@ -485,17 +485,24 @@
+   );
+   http.post(
+     "/api/sessions/:id/messages",
+-    route(async (req, res) =>
+-      res
+-        .status(202)
+-        .json(
+-          await service.message(
+-            String(req.params.id),
+-            req.body.text,
+-            req.body.clientId,
+-          ),
+-        ),
+-    ),
++    route(async (req, res) => {
++      const result = await service.message(
++        String(req.params.id),
++        req.body.text,
++        req.body.clientId,
++      );
++      if (result.platformTiming)
++        res.set(
++          "Server-Timing",
++          Object.entries<number>(result.platformTiming)
++            .map(
++              ([phase, duration]) =>
++                `${phase.replace(/Ms$/, "")};dur=${duration.toFixed(2)}`,
++            )
++            .join(", "),
++        );
++      res.status(202).json(result);
++    }),
+   );
+   http.get(
+     "/api/sessions/:id/agents",
+--- before/platform/src/service.ts
++++ after/platform/src/service.ts
+@@ -24,6 +24,7 @@
+ import { historyAnchor } from "./history-window";
+ import { readHistoryWindow } from "./history-read";
+ import { messageTextError } from "../../shared/message-input";
++import type { RuntimeResumeOptions } from "../../shared/runtime-resume-options";
+ import {
+   creationApprovalOptions,
+   confirmRuntimeApproval,
+@@ -36,6 +37,7 @@
+   GoalHistoryEntry,
+   GoalReview,
+   Message,
++  MessageAcceptanceTiming,
+   Project,
+   Session,
+   SessionGoal,
+@@ -409,7 +411,35 @@
+   ) {
+     const agent = await this.store.findAgent(agentId);
+     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+-    const profile = await this.store.findModel(agent.modelProfileId);
++    // Observe failures immediately, then consume results in the existing
++    // validation order. A missing model still fails without waiting for MCPs
++    // or skills, and those outstanding reads cannot reject unhandled.
++    const settled = <T>(read: Promise<T>) =>
++      read.then(
++        (value) => ({ status: "fulfilled" as const, value }),
++        (reason: unknown) => ({ status: "rejected" as const, reason }),
++      );
++    const agentKey = String(agent._id);
++    const enabled = { agentIds: agentKey, enabled: { $ne: false } };
++    const modelRead = settled(this.store.findModel(agent.modelProfileId));
++    const tenantMcpRead = settled(
++      this.store.mcp
++        .find({ scope: "tenant", ...enabled })
++        .sort({ name: 1 })
++        .toArray(),
++    );
++    const ownerMcpRead = settled(
++      ownerId
++        ? this.store.mcp
++            .find({ scope: "user", ownerId, ...enabled })
++            .sort({ name: 1 })
++            .toArray()
++        : Promise.resolve([]),
++    );
++    const skillsRead = settled(this.skills(agent.skillIds || []));
++    const modelResult = await modelRead;
++    if (modelResult.status === "rejected") throw modelResult.reason;
++    const profile = modelResult.value;
+     const apiKey = profile?.apiKey || profile?.apikey;
+     if (!profile || !apiKey)
+       throw new ApiError(
+@@ -443,18 +473,12 @@
+         : this.gatewayConfig(profile, provider);
+     // Attachments live on the profiles (agentIds); agent.mcpProfileIds is
+     // legacy and no longer read.
+-    const agentKey = String(agent._id);
+-    const enabled = { agentIds: agentKey, enabled: { $ne: false } };
+-    const tenantMcps = await this.store.mcp
+-      .find({ scope: "tenant", ...enabled })
+-      .sort({ name: 1 })
+-      .toArray();
+-    const userMcps = ownerId
+-      ? await this.store.mcp
+-          .find({ scope: "user", ownerId, ...enabled })
+-          .sort({ name: 1 })
+-          .toArray()
+-      : [];
++    const tenantMcpResult = await tenantMcpRead;
++    if (tenantMcpResult.status === "rejected") throw tenantMcpResult.reason;
++    const tenantMcps = tenantMcpResult.value;
++    const ownerMcpResult = await ownerMcpRead;
++    if (ownerMcpResult.status === "rejected") throw ownerMcpResult.reason;
++    const userMcps = ownerMcpResult.value;
+     // Tenant names are reserved tenant-wide (attached here or not), so a user
+     // copy made before the tenant one existed is skipped, and the chat still
+     // starts. The owner sees the same warning in MCP settings.
+@@ -493,7 +517,9 @@
+         server.default_tools_approval_mode = "prompt";
+       config[`mcp_servers.${mcp.name}`] = server;
+     }
+-    const skills = await this.skills(agent.skillIds || []);
++    const skillsResult = await skillsRead;
++    if (skillsResult.status === "rejected") throw skillsResult.reason;
++    const skills = skillsResult.value;
+     return {
+       tenantId: currentTenantId(),
+       model: profile.modelName,
+@@ -1437,7 +1463,7 @@
+       );
+     return { mode: next };
+   }
+-  async resume(session: Session) {
++  async resume(session: Session, options: RuntimeResumeOptions = {}) {
+     // The stored owner, never the caller: resume also runs for admins reading
+     // a chat, cold resume, and background work without a user.
+     const config: any = await this.configuration(session.agentId, {
+@@ -1448,6 +1474,7 @@
+     if (session.settings?.model) config.model = session.settings.model;
+     if (session.settings?.effort)
+       config.config.model_reasoning_effort = session.settings.effort;
++    if (options.response) config.response = options.response;
+     const snapshot = await this.owned(session, "/resume", "POST", config);
+     await confirmRuntimeApproval(snapshot, config, (mode) =>
+       this.owned(session, "/approval-mode", "POST", { mode }),
+@@ -1481,6 +1508,7 @@
+     return snapshot;
+   }
+   async message(id: string, text: string, clientId: string) {
++    const started = performance.now();
+     const inputError = messageTextError(text);
+     if (inputError) throw new ApiError(400, inputError, "INVALID_INPUT");
+     if (typeof clientId !== "string" || !/^[-\w]{1,100}$/.test(clientId))
+@@ -1490,7 +1518,11 @@
+         "INVALID_INPUT",
+       );
+     const s = await this.sessionFor(id, "write");
+-    await this.resume(s);
++    const authorized = performance.now();
++    // Sending needs the current runtime configuration and approval acknowledgment,
++    // not another copy of the transcript. Older runtimes may still return it.
++    await this.resume(s, { response: "operational" });
++    const prepared = performance.now();
+     const key = `${id}:user:${clientId}`;
+     try {
+       await this.store.messages.insertOne({
+@@ -1521,6 +1553,7 @@
+     const begin = performance.now();
+     try {
+       const result = await this.owned(s, "/turns", "POST", { text, clientId });
++      const dispatched = performance.now();
+       await this.store.messages.updateOne(
+         { _id: key },
+         {
+@@ -1531,7 +1564,19 @@
+           },
+         },
+       );
+-      return { ...result, platformRoundTripMs: performance.now() - begin };
++      const accepted = performance.now();
++      const platformTiming: MessageAcceptanceTiming = {
++        authorizationMs: authorized - started,
++        preparationMs: prepared - authorized,
++        dispatchMs: dispatched - begin,
++        receiptMs: begin - prepared + accepted - dispatched,
++        totalMs: accepted - started,
++      };
++      return {
++        ...result,
++        platformRoundTripMs: accepted - begin,
++        platformTiming,
++      };
+     } catch (e) {
+       await this.store.messages.updateOne(
+         { _id: key },
+--- before/platform/src/runtime-transport.ts
++++ after/platform/src/runtime-transport.ts
+@@ -11,6 +11,7 @@
+   runtimeWindowQuery,
+   runtimeSyncOption,
+ } from "../../shared/runtime-read-options";
++import { runtimeResumeResponse } from "../../shared/runtime-resume-options";
+ 
+ const runtimeArn =
+   /^arn:(?:aws|aws-us-gov|aws-cn):bedrock-agentcore:([a-z0-9-]+):\d{12}:runtime\/[A-Za-z0-9_-]+$/;
+@@ -55,6 +56,19 @@
+   async request(input: RuntimeRequest): Promise<Response> {
+     const method = input.method ?? "GET";
+     const url = new URL(input.path, "http://runtime");
++    if (method === "POST" && /^\/threads\/[^/]+\/resume$/.test(url.pathname)) {
++      try {
++        runtimeResumeResponse(
++          (input.body as Record<string, unknown> | null | undefined)?.response,
++        );
++      } catch {
++        throw new ApiError(
++          400,
++          "Invalid runtime resume options",
++          "INVALID_INPUT",
++        );
++      }
++    }
+     let window: boolean | undefined;
+     let sync: "v1" | undefined;
+     try {
+--- before/agent-core/test/agentcore.test.ts
++++ after/agent-core/test/agentcore.test.ts
+@@ -250,3 +250,49 @@
+   assert.equal(starts, 3);
+   assert.equal(urls.length, 3);
+ });
++
++test("operational resume response is forwarded in the body and invalid modes reject before service startup", async (t) => {
++  let starts = 0;
++  const bodies: unknown[] = [];
++  const app = createAgentCoreApp({
++    ensureServices: async () => {
++      starts++;
++    },
++    fetch: (async (_url: URL | string, init?: RequestInit) => {
++      bodies.push(JSON.parse(String(init?.body)));
++      return new Response(
++        JSON.stringify({
++          messages: [],
++          state: { kind: "idle" },
++          approvalMode: "ask",
++        }),
++        { headers: { "content-type": "application/json" } },
++      );
++    }) as typeof fetch,
++  });
++  const runtime = app.listen(0, "127.0.0.1");
++  await new Promise<void>((resolve) => runtime.once("listening", resolve));
++  const url = `http://127.0.0.1:${(runtime.address() as { port: number }).port}`;
++  t.after(() => close(runtime));
++  const invoke = (body: unknown) =>
++    fetch(`${url}/invocations`, {
++      method: "POST",
++      headers: { "content-type": "application/json" },
++      body: JSON.stringify({
++        method: "POST",
++        path: "/threads/thread/resume",
++        body,
++      }),
++    });
++  const valid = {
++    response: "operational",
++    approvalMode: "ask",
++    mcpFingerprint: "fixture",
++  };
++  assert.equal((await invoke(valid)).status, 200);
++  assert.deepEqual(bodies, [valid]);
++  for (const response of [null, false, true, "full", "v2", [], {}])
++    assert.equal((await invoke({ response })).status, 400);
++  assert.equal(starts, 1);
++  assert.equal(bodies.length, 1);
++});
+--- before/agent-core/test/resume-response.test.ts
++++ after/agent-core/test/resume-response.test.ts
+@@ -0,0 +1,268 @@
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { EventEmitter } from "node:events";
++import { mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join } from "node:path";
++import { ThreadManager } from "../src/manager";
++
++class Runtime extends EventEmitter {
++  calls: { method: string; params: any }[] = [];
++  async request(method: string, params: any) {
++    this.calls.push({ method, params });
++    if (method === "thread/start") return { thread: { id: "thread" } };
++    if (method === "thread/resume")
++      return { thread: { id: "thread", turns: [] } };
++    if (method === "turn/start") return { turn: { id: "next" } };
++    return {};
++  }
++  respond() {}
++}
++async function fixture(t: any, create = true) {
++  const runtime = new Runtime();
++  const home = mkdtempSync(join(tmpdir(), "resume-response-"));
++  const manager = new ThreadManager(runtime, home);
++  t.after(() => {
++    manager.close();
++    rmSync(home, { recursive: true, force: true });
++  });
++  if (create)
++    await manager.create({ tenantId: "tenant-a", mcpFingerprint: "a" });
++  return { runtime, manager };
++}
++function retained(manager: ThreadManager) {
++  const thread = manager.threads.get("thread")!;
++  thread.messages = [
++    { id: "retained", turnId: "old", text: "body", final: true },
++  ];
++  thread.thinking = [
++    {
++      id: "thinking",
++      turnId: "old",
++      summary: "summary",
++      raw: "raw",
++      done: true,
++    },
++  ];
++  thread.diff = "retained diff";
++  return thread;
++}
++function noTranscript(t: any, manager: ThreadManager) {
++  t.mock.method(manager, "snapshot", () => {
++    throw new Error("full transcript materialized");
++  });
++}
++
++test("warm operational resume acknowledges mode and preserves pending/running authority without transcript materialization", async (t) => {
++  const { manager, runtime } = await fixture(t);
++  const thread = retained(manager);
++  thread.state = { kind: "running", turnId: "running" };
++  thread.plan = [{ step: "Check", status: "inProgress" }];
++  runtime.emit("serverRequest", {
++    id: 1,
++    method: "item/commandExecution/requestApproval",
++    params: { threadId: "thread", turnId: "running", itemId: "command" },
++  });
++  const expected = manager.snapshot("thread");
++  runtime.calls.length = 0;
++  noTranscript(t, manager);
++  const response = await manager.resume("thread", {
++    response: "operational",
++    tenantId: "tenant-a",
++    mcpFingerprint: "a",
++    approvalMode: "ask",
++  });
++  assert.deepEqual(response.state, expected.state);
++  assert.deepEqual(response.pending, expected.pending);
++  assert.deepEqual(response.plan, expected.plan);
++  assert.equal(response.approvalMode, "ask");
++  assert.deepEqual(response.messages, []);
++  assert.deepEqual(response.thinking, []);
++  assert.equal(response.diff, "");
++  assert.deepEqual(runtime.calls, []);
++  assert.equal(thread.sourceCovered, true);
++  assert.equal(thread.messages[0].text, "body");
++});
++
++test("default resume retains the entire existing snapshot and no unsolicited approval acknowledgment", async (t) => {
++  const { manager } = await fixture(t);
++  retained(manager);
++  const expected = manager.snapshot("thread");
++  assert.deepEqual(await manager.resume("thread", {}), expected);
++  assert.deepEqual(
++    await manager.resume("thread", { mcpFingerprint: "a" }),
++    expected,
++  );
++});
++
++test("invalid response modes reject before runtime, mode or configuration side effects; tenant checks remain enforced", async (t) => {
++  const { manager, runtime } = await fixture(t);
++  const thread = retained(manager);
++  runtime.calls.length = 0;
++  for (const response of [null, false, true, "full", "v2", [], {}])
++    await assert.rejects(
++      manager.resume("thread", {
++        response,
++        approvalMode: "auto",
++        mcpFingerprint: "b",
++      }),
++      /Invalid runtime resume response/,
++    );
++  await assert.rejects(
++    manager.resume("thread", {
++      response: "operational",
++      tenantId: "tenant-b",
++      approvalMode: "auto",
++      mcpFingerprint: "b",
++    }),
++    /Conversation not found/,
++  );
++  assert.deepEqual(runtime.calls, []);
++  assert.equal(thread.mcpFingerprint, "a");
++  assert.equal(thread.pendingResume, undefined);
++  assert.equal((manager as any).modes.has("thread"), false);
++});
++
++test("cold operational resume performs normal load and goal recovery without a discarded full snapshot", async (t) => {
++  const { manager, runtime } = await fixture(t, false);
++  noTranscript(t, manager);
++  const result = await manager.resume("thread", {
++    response: "operational",
++    approvalMode: "readOnly",
++    config: { "mcp_servers.sap": { url: "https://example.test/mcp" } },
++    mcpFingerprint: "b",
++  });
++  assert.deepEqual(
++    runtime.calls.map((call) => call.method),
++    ["thread/resume", "thread/goal/get"],
++  );
++  assert.equal("response" in runtime.calls[0].params, false);
++  assert.equal("approvalMode" in runtime.calls[0].params, false);
++  assert.equal("mcpFingerprint" in runtime.calls[0].params, false);
++  assert.equal(result.approvalMode, "readOnly");
++  assert.equal(result.state.kind, "idle");
++  assert.equal(manager.threads.get("thread")!.sourceCovered, false);
++});
++
++test("operational changed configuration stays pending while running and applies before the next turn", async (t) => {
++  const { manager, runtime } = await fixture(t);
++  const thread = retained(manager);
++  thread.state = { kind: "running", turnId: "running" };
++  runtime.calls.length = 0;
++  const original = manager.snapshot.bind(manager);
++  noTranscript(t, manager);
++  await manager.resume("thread", {
++    response: "operational",
++    mcpFingerprint: "b",
++    config: { "mcp_servers.sap": { url: "https://example.test/mcp" } },
++  });
++  assert.deepEqual(runtime.calls, []);
++  assert.equal(thread.pendingResume?.mcpFingerprint, "b");
++  assert.equal("response" in thread.pendingResume!.params, false);
++  t.mock.method(manager, "snapshot", original);
++  runtime.emit("notification", {
++    method: "turn/completed",
++    params: {
++      threadId: "thread",
++      turn: { id: "running", status: "completed" },
++    },
++  });
++  await manager.message("thread", "next");
++  assert.deepEqual(
++    runtime.calls.map((call) => call.method),
++    ["thread/unsubscribe", "thread/resume", "thread/goal/get", "turn/start"],
++  );
++  assert.equal("response" in runtime.calls[1].params, false);
++  assert.equal(thread.pendingResume, undefined);
++  assert.equal(thread.mcpFingerprint, "b");
++});
++
++test("operational idle configuration reload strips response option and preserves legacy cold-source coverage", async (t) => {
++  const { manager, runtime } = await fixture(t);
++  const thread = retained(manager);
++  runtime.calls.length = 0;
++  noTranscript(t, manager);
++  const result = await manager.resume("thread", {
++    response: "operational",
++    mcpFingerprint: "b",
++  });
++  assert.deepEqual(
++    runtime.calls.map((call) => call.method),
++    ["thread/unsubscribe", "thread/resume", "thread/goal/get"],
++  );
++  assert.equal("response" in runtime.calls[1].params, false);
++  assert.equal(thread.sourceCovered, false);
++  assert.equal(result.state.kind, "idle");
++});
++
++test("operational resume keeps bounded diagnostics and canceling a pending configuration requires the loaded fingerprint", async (t) => {
++  const { manager } = await fixture(t);
++  const thread = retained(manager);
++  thread.state = { kind: "running", turnId: "running" };
++  thread.timings = Array.from({ length: 25 }, (_, i) => ({
++    turnId: `turn-${i}`,
++  })) as any;
++  thread.traces = Array.from({ length: 25 }, (_, i) => ({
++    turnId: `turn-${i}`,
++  })) as any;
++  noTranscript(t, manager);
++  await manager.resume("thread", {
++    response: "operational",
++    mcpFingerprint: "b",
++  });
++  await manager.resume("thread", { response: "operational" });
++  assert.equal(thread.pendingResume?.mcpFingerprint, "b");
++  const result = await manager.resume("thread", {
++    response: "operational",
++    mcpFingerprint: "a",
++  });
++  assert.equal(thread.pendingResume, undefined);
++  assert.deepEqual(result.timings, thread.timings.slice(-10));
++  assert.deepEqual(result.traces, thread.traces.slice(-10));
++});
++
++test("a draining runtime retains its loaded thread and defers new configuration for operational resume", async (t) => {
++  const { manager, runtime } = await fixture(t);
++  manager.draining = true;
++  runtime.calls.length = 0;
++  noTranscript(t, manager);
++  const result = await manager.resume("thread", {
++    response: "operational",
++    mcpFingerprint: "b",
++  });
++  assert.equal(result.state.kind, "idle");
++  assert.deepEqual(runtime.calls, []);
++  assert.equal(
++    manager.threads.get("thread")!.pendingResume?.mcpFingerprint,
++    "b",
++  );
++});
++
++test("operational reload errors propagate without a successful acknowledgment and a retry loads normally", async (t) => {
++  const { manager, runtime } = await fixture(t);
++  let attempts = 0;
++  const request = runtime.request.bind(runtime);
++  t.mock.method(runtime, "request", async (method, params) => {
++    if (method === "thread/resume" && attempts++ === 0)
++      throw new Error("runtime unavailable");
++    return request(method, params);
++  });
++  noTranscript(t, manager);
++  await assert.rejects(
++    manager.resume("thread", {
++      response: "operational",
++      mcpFingerprint: "b",
++      approvalMode: "ask",
++    }),
++    /runtime unavailable/,
++  );
++  assert.equal(manager.threads.get("thread")!.loaded, false);
++  const result = await manager.resume("thread", {
++    response: "operational",
++    mcpFingerprint: "b",
++    approvalMode: "ask",
++  });
++  assert.equal(result.approvalMode, "ask");
++  assert.equal(manager.threads.get("thread")!.loaded, true);
++  assert.equal(manager.threads.get("thread")!.mcpFingerprint, "b");
++});
+--- before/agent-core/src/manager.ts
++++ after/agent-core/src/manager.ts
+@@ -52,6 +52,8 @@
+ import { skillSet, tenantId as parseTenant } from "./tenancy";
+ import { errorFields, log } from "../../shared/logging";
+ import type { RuntimeReadOptions } from "../../shared/runtime-read-options";
++import { runtimeResumeResponse } from "../../shared/runtime-resume-options";
++import type { RuntimeResumeOptions } from "../../shared/runtime-resume-options";
+ import { inventory, validateRequest } from "./schema";
+ import {
+   autoAnswer,
+@@ -524,8 +526,19 @@
+   }
+   async resume(id: string, input: any = {}) {
+     // Approval mode fields are Truex settings, not runtime parameters.
+-    const { approvalMode, approvalNameHeuristic, mcpFingerprint, ...params } =
+-      input || {};
++    const {
++      approvalMode,
++      approvalNameHeuristic,
++      mcpFingerprint,
++      response: requestedResponse,
++      ...params
++    } = input || {};
++    let response: RuntimeResumeOptions["response"];
++    try {
++      response = runtimeResumeResponse(requestedResponse);
++    } catch {
++      throw new HttpError(400, "Invalid runtime resume response");
++    }
+     if (approvalMode !== undefined) parseMode(approvalMode);
+     parseFingerprint(mcpFingerprint);
+     if (params.tenantId !== undefined) parseTenant(params.tenantId);
+@@ -541,24 +554,28 @@
+           ? {}
+           : { approvalMode: parseMode(approvalMode) }),
+       });
++      const snapshot = () =>
++        response === "operational"
++          ? this.operationalSnapshot(t)
++          : this.snapshot(id);
+       if (moded) this.reevaluate(t);
+       if (t.loaded) {
+         // No fingerprint, or the same one: the loaded config is current.
+-        if (mcpFingerprint === undefined) return confirmed(this.snapshot(id));
++        if (mcpFingerprint === undefined) return confirmed(snapshot());
+         if (mcpFingerprint === t.mcpFingerprint) {
+           t.pendingResume = undefined;
+-          return confirmed(this.snapshot(id));
++          return confirmed(snapshot());
+         }
+         // The runtime ignores config for a running thread; apply it before
+         // the next turn instead. A draining pod starts no new turns, so it
+         // keeps serving the loaded thread.
+         if (t.state.kind !== "idle" || this.draining) {
+           t.pendingResume = { params, mcpFingerprint };
+-          return confirmed(this.snapshot(id));
++          return confirmed(snapshot());
+         }
+         await this.unload(t);
+       }
+-      return confirmed(await this.load(t, params, mcpFingerprint));
++      return confirmed(await this.load(t, params, mcpFingerprint, response));
+     });
+   }
+   // Releases agent-core's subscription to a loaded runtime thread. With no
+@@ -582,7 +599,12 @@
+     await this.load(t, pending.params, pending.mcpFingerprint);
+   }
+   // Cold thread/resume. Runs inside serial().
+-  private async load(t: Thread, params: any, mcpFingerprint?: string) {
++  private async load(
++    t: Thread,
++    params: any,
++    mcpFingerprint?: string,
++    response?: RuntimeResumeOptions["response"],
++  ) {
+     const id = t.id;
+     // The asynchronous resume response can overlap live notifications. Do not
+     // guess how its restored bodies line up with our previously tracked deltas.
+@@ -624,7 +646,9 @@
+         });
+         this.setGoal(t, null);
+       }
+-      return this.snapshot(id);
++      return response === "operational"
++        ? this.operationalSnapshot(t)
++        : this.snapshot(id);
+     } catch (e) {
+       if (
+         /thread.*(not found|does not exist)|no rollout found|unable to find.*thread/i.test(
+--- before/agent-core/src/agentcore.ts
++++ after/agent-core/src/agentcore.ts
+@@ -7,6 +7,7 @@
+   runtimeWindowOption,
+   runtimeSyncOption,
+ } from "../../shared/runtime-read-options";
++import { runtimeResumeResponse } from "../../shared/runtime-resume-options";
+ 
+ type Method = "GET" | "POST" | "DELETE";
+ type Invocation = {
+@@ -83,6 +84,10 @@
+     throw new Error("Invalid event cursor");
+   if (input.body !== undefined && method !== "POST")
+     throw new Error("Only POST invocations can have a body");
++  if (method === "POST" && /\/threads\/[A-Za-z0-9_-]+\/resume$/.test(path))
++    runtimeResumeResponse(
++      (input.body as Record<string, unknown> | null | undefined)?.response,
++    );
+   const window = runtimeWindowOption(method, path, input.window);
+   const sync = runtimeSyncOption(method, path, input.sync);
+   if (
+--- before/shared/runtime-resume-options.ts
++++ after/shared/runtime-resume-options.ts
+@@ -0,0 +1,13 @@
++// Full resume responses remain the default for history and existing callers.
++export interface RuntimeResumeOptions {
++  response?: "operational";
++}
++
++export function runtimeResumeResponse(
++  value: unknown,
++): RuntimeResumeOptions["response"] {
++  if (value === undefined) return undefined;
++  if (value !== "operational")
++    throw new TypeError("Invalid runtime resume response");
++  return value;
++}
+--- before/shared/contracts.ts
++++ after/shared/contracts.ts
+@@ -206,6 +206,14 @@
+   order?: number;
+   messageIndex?: number;
+   runtimeItemId?: string;
++}
++/** Numeric server phases from message authorization through accepted receipt. */
++export interface MessageAcceptanceTiming {
++  authorizationMs: number;
++  preparationMs: number;
++  dispatchMs: number;
++  receiptMs: number;
++  totalMs: number;
+ }
+ export interface TurnTiming {
+   turnId: string;

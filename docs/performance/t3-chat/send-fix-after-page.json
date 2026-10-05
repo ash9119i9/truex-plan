@@ -1,0 +1,600 @@
+{
+  "node": "v24.21.0",
+  "scope": "Actual page handlers extracted by existing fixture, fake create/mode/acceptance. Measures synchronous setter and lock, not React paint/browser latency.",
+  "results": [
+    {
+      "scenario": {
+        "name": "new-configured-session",
+        "createMs": 80,
+        "modeMs": 0,
+        "acceptanceMs": 60
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "optimisticSetterMs": 0.01870799999983319,
+        "transportStartMs": 80.56829199999993,
+        "elapsedMs": 141.18170800000007
+      },
+      "p95ElapsedMs": 142.2767919999999,
+      "samples": [
+        {
+          "elapsedMs": 142.29212500000006,
+          "optimisticSetterMs": 0.017291000000000167,
+          "transportStartMs": 81.1840410000001,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.07720800000004,
+          "optimisticSetterMs": 0.02204200000005585,
+          "transportStartMs": 81.92558299999996,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 140.34895800000004,
+          "optimisticSetterMs": 0.02041600000006838,
+          "transportStartMs": 80.19183300000009,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 140.40133300000002,
+          "optimisticSetterMs": 0.02391699999998309,
+          "transportStartMs": 80.23304200000007,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 140.62237500000015,
+          "optimisticSetterMs": 0.02320800000006784,
+          "transportStartMs": 80.17062499999997,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.21570900000006,
+          "optimisticSetterMs": 0.019000000000005457,
+          "transportStartMs": 80.99595900000008,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.4050830000001,
+          "optimisticSetterMs": 0.02495800000019699,
+          "transportStartMs": 81.31458300000008,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 142.2767919999999,
+          "optimisticSetterMs": 0.01870799999983319,
+          "transportStartMs": 81.18858299999988,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 142.22891600000003,
+          "optimisticSetterMs": 0.018416000000115673,
+          "transportStartMs": 81.140625,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.16145800000004,
+          "optimisticSetterMs": 0.01841699999999946,
+          "transportStartMs": 81.02025000000003,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 140.36337499999968,
+          "optimisticSetterMs": 0.01799999999980173,
+          "transportStartMs": 80.26429200000007,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.22516700000006,
+          "optimisticSetterMs": 0.019667000000026746,
+          "transportStartMs": 80.15412500000002,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 140.69524999999976,
+          "optimisticSetterMs": 0.018458999999893422,
+          "transportStartMs": 80.61912499999971,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.2408330000003,
+          "optimisticSetterMs": 0.021750000000338332,
+          "transportStartMs": 80.1667080000002,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.24408300000005,
+          "optimisticSetterMs": 0.017333000000235188,
+          "transportStartMs": 80.154583,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.26304200000004,
+          "optimisticSetterMs": 0.02041700000017954,
+          "transportStartMs": 81.16429200000039,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.76829099999986,
+          "optimisticSetterMs": 0.01724999999987631,
+          "transportStartMs": 81.16266599999972,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 140.21841700000004,
+          "optimisticSetterMs": 0.020292000000154076,
+          "transportStartMs": 80.13329199999998,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 141.18170800000007,
+          "optimisticSetterMs": 0.01670800000010786,
+          "transportStartMs": 80.1050409999998,
+          "calls": [
+            "create",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 140.65408399999978,
+          "optimisticSetterMs": 0.017542000000048574,
+          "transportStartMs": 80.56829199999993,
+          "calls": [
+            "create",
+            "send"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "existing-session",
+        "createMs": 0,
+        "modeMs": 0,
+        "acceptanceMs": 60
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "optimisticSetterMs": 0.016375000000152795,
+        "transportStartMs": 0.022417000000132248,
+        "elapsedMs": 60.261083000000326
+      },
+      "p95ElapsedMs": 61.18829199999982,
+      "samples": [
+        {
+          "elapsedMs": 60.261083000000326,
+          "optimisticSetterMs": 0.022875000000112777,
+          "transportStartMs": 0.029125000000021828,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 61.09791700000005,
+          "optimisticSetterMs": 0.014708000000155153,
+          "transportStartMs": 0.021291999999903055,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 59.50916600000028,
+          "optimisticSetterMs": 0.016041000000313943,
+          "transportStartMs": 0.0215000000002874,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.53820799999994,
+          "optimisticSetterMs": 0.01733299999978044,
+          "transportStartMs": 0.02358299999968949,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.13070800000014,
+          "optimisticSetterMs": 0.018083000000387983,
+          "transportStartMs": 0.024125000000367436,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 61.09595799999988,
+          "optimisticSetterMs": 0.016375000000152795,
+          "transportStartMs": 0.022292000000106782,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.15491599999996,
+          "optimisticSetterMs": 0.020500000000083674,
+          "transportStartMs": 0.026124999999865395,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 61.14424999999983,
+          "optimisticSetterMs": 0.02554099999997561,
+          "transportStartMs": 0.03279099999963364,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.590290999999525,
+          "optimisticSetterMs": 0.015625,
+          "transportStartMs": 0.020958000000064203,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 61.18829199999982,
+          "optimisticSetterMs": 0.020499999999628926,
+          "transportStartMs": 0.026625000000422006,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.13029199999983,
+          "optimisticSetterMs": 0.01708299999972951,
+          "transportStartMs": 0.02250000000003638,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.109375,
+          "optimisticSetterMs": 0.01583299999947485,
+          "transportStartMs": 0.021707999999307503,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.546875,
+          "optimisticSetterMs": 0.01633300000048621,
+          "transportStartMs": 0.021708000000216998,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 61.07929199999944,
+          "optimisticSetterMs": 0.023166999999375548,
+          "transportStartMs": 0.031041999999615655,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.141333999999915,
+          "optimisticSetterMs": 0.016292000000248663,
+          "transportStartMs": 0.022042000000510598,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 61.25237500000003,
+          "optimisticSetterMs": 0.015291000000615895,
+          "transportStartMs": 0.020958000000064203,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.253999999999905,
+          "optimisticSetterMs": 0.01912499999980355,
+          "transportStartMs": 0.02616699999998673,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 61.117583000000195,
+          "optimisticSetterMs": 0.016332999999576714,
+          "transportStartMs": 0.022665999999844644,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 60.10612500000025,
+          "optimisticSetterMs": 0.016833000000588072,
+          "transportStartMs": 0.022417000000132248,
+          "calls": [
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 59.14141700000073,
+          "optimisticSetterMs": 0.014167000000270491,
+          "transportStartMs": 0.019584000000577362,
+          "calls": [
+            "send"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": {
+        "name": "legacy-platform-mode-confirmation",
+        "createMs": 80,
+        "modeMs": 40,
+        "acceptanceMs": 60
+      },
+      "repeats": 20,
+      "warmups": 2,
+      "p50": {
+        "optimisticSetterMs": 0.017665999999735504,
+        "transportStartMs": 121.1864999999998,
+        "elapsedMs": 181.34941700000036
+      },
+      "p95ElapsedMs": 183.33233399999972,
+      "samples": [
+        {
+          "elapsedMs": 180.78329200000007,
+          "optimisticSetterMs": 0.018167000000175904,
+          "transportStartMs": 120.67291699999987,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 180.42166700000053,
+          "optimisticSetterMs": 0.017375000000356522,
+          "transportStartMs": 120.23266700000022,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.31904200000008,
+          "optimisticSetterMs": 0.02375000000029104,
+          "transportStartMs": 121.21704200000022,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 183.69054200000028,
+          "optimisticSetterMs": 0.021125000000211003,
+          "transportStartMs": 122.21741699999984,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.5916669999997,
+          "optimisticSetterMs": 0.03724999999940337,
+          "transportStartMs": 121.4243749999996,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.71425,
+          "optimisticSetterMs": 0.020042000000103144,
+          "transportStartMs": 120.61074999999983,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 182.86175000000003,
+          "optimisticSetterMs": 0.019874999999956344,
+          "transportStartMs": 121.71966599999996,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 183.33233399999972,
+          "optimisticSetterMs": 0.023167000000285043,
+          "transportStartMs": 122.24695900000006,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.98316599999998,
+          "optimisticSetterMs": 0.016832999999678577,
+          "transportStartMs": 121.1880000000001,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.7555000000002,
+          "optimisticSetterMs": 0.017665999999735504,
+          "transportStartMs": 121.2993749999996,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.270708,
+          "optimisticSetterMs": 0.01616600000033941,
+          "transportStartMs": 121.17749999999978,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.34941700000036,
+          "optimisticSetterMs": 0.01633399999991525,
+          "transportStartMs": 120.2664590000004,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 182.0597090000001,
+          "optimisticSetterMs": 0.02400000000034197,
+          "transportStartMs": 121.60087500000009,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.2792499999996,
+          "optimisticSetterMs": 0.016082999999525782,
+          "transportStartMs": 121.1864999999998,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.29983300000004,
+          "optimisticSetterMs": 0.01583299999947485,
+          "transportStartMs": 120.21954099999948,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.2581250000003,
+          "optimisticSetterMs": 0.015249999999468855,
+          "transportStartMs": 120.18229100000008,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 180.65666600000077,
+          "optimisticSetterMs": 0.021875000000363798,
+          "transportStartMs": 120.48641599999974,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.4315829999996,
+          "optimisticSetterMs": 0.02124999999978172,
+          "transportStartMs": 121.17933300000004,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.2888750000002,
+          "optimisticSetterMs": 0.017541999999593827,
+          "transportStartMs": 121.19195899999977,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        },
+        {
+          "elapsedMs": 181.3856250000008,
+          "optimisticSetterMs": 0.016666999999870313,
+          "transportStartMs": 121.28670799999963,
+          "calls": [
+            "create",
+            "mode",
+            "send"
+          ]
+        }
+      ]
+    }
+  ]
+}

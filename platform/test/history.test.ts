@@ -533,8 +533,10 @@ test("windowed recovery bounds transcript and snapshot turns while legacy reads 
     expiresAt: session.createdAt,
     responseSchema: null,
   };
+  const snapshotPaths: string[] = [];
   t.mock.method(service, "owned", async (_s, path) => {
-    if (path === "/snapshot")
+    if (path === "/snapshot" || path === "/snapshot?window=1") {
+      snapshotPaths.push(path);
       return {
         state: { kind: "running", turnId: "active" },
         plan: [],
@@ -554,6 +556,7 @@ test("windowed recovery bounds transcript and snapshot turns while legacy reads 
           .filter((m) => m.role === "assistant")
           .map((m) => ({ id: m._id, turnId: m.turnId, raw: "Reasoning" })),
       };
+    }
     if (path === "/records") return [];
     return { data: [], nextCursor: null };
   });
@@ -579,6 +582,7 @@ test("windowed recovery bounds transcript and snapshot turns while legacy reads 
   const legacy = await owner(() => service.history("s"));
   assert.equal(legacy.messages.length, 32);
   assert.equal(legacy.snapshot!.messages.length, 17);
+  assert.deepEqual(snapshotPaths, ["/snapshot?window=1", "/snapshot"]);
   assert.equal(legacy.historyWindow, undefined);
   await assert.rejects(
     owner(() => service.history("s", { window: true, before: "corrupt" })),

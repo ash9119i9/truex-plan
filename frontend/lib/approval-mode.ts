@@ -92,7 +92,9 @@ export async function setApprovalMode(
     `/api/sessions/${encodeURIComponent(sessionId)}/approval-mode`,
     { mode },
   );
-  return (data?.mode as ApprovalMode) || mode;
+  if (data?.mode !== mode)
+    throw new Error("The approval mode was not confirmed.");
+  return data.mode;
 }
 
 // --- Audit record labels --------------------------------------------------

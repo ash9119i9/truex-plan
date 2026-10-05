@@ -1,0 +1,397 @@
+{
+  "profile": "/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-stall-profile-_v2ljfmr/CPU.20261006.002703.15023.0.001.cpuprofile",
+  "limitations": "Sampling CPU profile of entire diagnostic including fixture oracle/assertions/setup/transpile; self samples alone do not isolate production page cost. Data URLs absent. Separate callback timings exclude assertions.",
+  "sampleCount": 4205,
+  "topSelfSamples": [
+    {
+      "function": "applyChatEvent",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 556,
+      "samples": 2090,
+      "approxSelfMs": 2603.084
+    },
+    {
+      "function": "applyChatEvent",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 556,
+      "samples": 1279,
+      "approxSelfMs": 1602.291
+    },
+    {
+      "function": "",
+      "url": "file:///Users/ashok/truex-plan/docs/performance/t3-chat/stall-diagnosis-stream-probe.mjs",
+      "line": 1,
+      "samples": 229,
+      "approxSelfMs": 285.456
+    },
+    {
+      "function": "globalThis.applyBatch",
+      "url": "evalmachine.<anonymous>",
+      "line": 1,
+      "samples": 95,
+      "approxSelfMs": 104.045
+    },
+    {
+      "function": "detectModuleFormat",
+      "url": "node:internal/modules/esm/get_format",
+      "line": 94,
+      "samples": 45,
+      "approxSelfMs": 55.958
+    },
+    {
+      "function": "(garbage collector)",
+      "url": "",
+      "line": 0,
+      "samples": 43,
+      "approxSelfMs": 52.79
+    },
+    {
+      "function": "upsertMessage",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 78,
+      "samples": 29,
+      "approxSelfMs": 33.957
+    },
+    {
+      "function": "createContext",
+      "url": "node:vm",
+      "line": 225,
+      "samples": 27,
+      "approxSelfMs": 33.541
+    },
+    {
+      "function": "advanceSourceSync",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/source-sync.ts",
+      "line": 125,
+      "samples": 20,
+      "approxSelfMs": 13.585
+    },
+    {
+      "function": "parse",
+      "url": "",
+      "line": 0,
+      "samples": 16,
+      "approxSelfMs": 20.042
+    },
+    {
+      "function": "learnSkew",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/subagents.ts",
+      "line": 86,
+      "samples": 16,
+      "approxSelfMs": 17.458
+    },
+    {
+      "function": "",
+      "url": "evalmachine.<anonymous>",
+      "line": 8,
+      "samples": 14,
+      "approxSelfMs": 17.459
+    },
+    {
+      "function": "",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 649,
+      "samples": 12,
+      "approxSelfMs": 15.0
+    },
+    {
+      "function": "followTab",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/auto-tab.ts",
+      "line": 23,
+      "samples": 11,
+      "approxSelfMs": 13.791
+    },
+    {
+      "function": "",
+      "url": "evalmachine.<anonymous>",
+      "line": 37,
+      "samples": 8,
+      "approxSelfMs": 10.0
+    },
+    {
+      "function": "",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 672,
+      "samples": 8,
+      "approxSelfMs": 10.041
+    },
+    {
+      "function": "applySubAgentEvent",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/subagents.ts",
+      "line": 96,
+      "samples": 7,
+      "approxSelfMs": 7.999
+    },
+    {
+      "function": "strictEqual",
+      "url": "node:assert",
+      "line": 386,
+      "samples": 7,
+      "approxSelfMs": 8.625
+    },
+    {
+      "function": "harness",
+      "url": "file:///Users/ashok/truex-plan/docs/performance/t3-chat/stall-diagnosis-stream-probe.mjs",
+      "line": 33,
+      "samples": 7,
+      "approxSelfMs": 8.918
+    },
+    {
+      "function": "__require",
+      "url": "node:internal/deps/amaro/dist/index",
+      "line": 8,
+      "samples": 6,
+      "approxSelfMs": 7.542
+    },
+    {
+      "function": "",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 649,
+      "samples": 6,
+      "approxSelfMs": 6.374
+    },
+    {
+      "function": "",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 83,
+      "samples": 6,
+      "approxSelfMs": 6.292
+    },
+    {
+      "function": "applyChatEvent",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 556,
+      "samples": 6,
+      "approxSelfMs": 7.083
+    },
+    {
+      "function": "answerEntry",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 48,
+      "samples": 4,
+      "approxSelfMs": 3.792
+    },
+    {
+      "function": "answerEntry",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 48,
+      "samples": 4,
+      "approxSelfMs": 4.917
+    },
+    {
+      "function": "coalesceChatEvents",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat-batch.ts",
+      "line": 5,
+      "samples": 4,
+      "approxSelfMs": 2.958
+    },
+    {
+      "function": "onEvent",
+      "url": "file:///Users/ashok/truex-plan/docs/performance/t3-chat/stall-diagnosis-stream-probe.mjs",
+      "line": 46,
+      "samples": 4,
+      "approxSelfMs": 5.084
+    },
+    {
+      "function": "sourceCursor",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/source-sync.ts",
+      "line": 29,
+      "samples": 4,
+      "approxSelfMs": 5.042
+    },
+    {
+      "function": "",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 117,
+      "samples": 4,
+      "approxSelfMs": 5.042
+    },
+    {
+      "function": "fixture",
+      "url": "file:///Users/ashok/truex-plan/docs/performance/t3-chat/stall-diagnosis-stream-probe.mjs",
+      "line": 56,
+      "samples": 4,
+      "approxSelfMs": 5.042
+    },
+    {
+      "function": "",
+      "url": "file:///Users/ashok/truex-plan/frontend/node_modules/typescript/lib/typescript.js",
+      "line": 16,
+      "samples": 3,
+      "approxSelfMs": 3.75
+    },
+    {
+      "function": "",
+      "url": "node:internal/modules/esm/translators",
+      "line": 232,
+      "samples": 3,
+      "approxSelfMs": 3.75
+    },
+    {
+      "function": "answerEntry",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 48,
+      "samples": 3,
+      "approxSelfMs": 3.751
+    },
+    {
+      "function": "",
+      "url": "evalmachine.<anonymous>",
+      "line": 1,
+      "samples": 3,
+      "approxSelfMs": 3.75
+    },
+    {
+      "function": "(program)",
+      "url": "",
+      "line": 0,
+      "samples": 2,
+      "approxSelfMs": 11.625
+    },
+    {
+      "function": "#loadSync",
+      "url": "node:internal/modules/esm/loader",
+      "line": 818,
+      "samples": 2,
+      "approxSelfMs": 2.875
+    },
+    {
+      "function": "compileForInternalLoader",
+      "url": "node:internal/bootstrap/realm",
+      "line": 383,
+      "samples": 2,
+      "approxSelfMs": 2.542
+    },
+    {
+      "function": "passStringToWasm0",
+      "url": "node:internal/deps/amaro/dist/index",
+      "line": 195,
+      "samples": 2,
+      "approxSelfMs": 1.75
+    },
+    {
+      "function": "passStringToWasm0",
+      "url": "node:internal/deps/amaro/dist/index",
+      "line": 195,
+      "samples": 2,
+      "approxSelfMs": 0.916
+    },
+    {
+      "function": "upsertMessage",
+      "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+      "line": 78,
+      "samples": 2,
+      "approxSelfMs": 1.5
+    }
+  ],
+  "actualApplyBatchSubtree": {
+    "samples": 2314,
+    "topSelfSamples": [
+      {
+        "function": "applyChatEvent",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+        "line": 556,
+        "samples": 2096,
+        "approxSelfMs": 2610.167
+      },
+      {
+        "function": "globalThis.applyBatch",
+        "url": "evalmachine.<anonymous>",
+        "line": 1,
+        "samples": 95,
+        "approxSelfMs": 104.045
+      },
+      {
+        "function": "advanceSourceSync",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/source-sync.ts",
+        "line": 125,
+        "samples": 20,
+        "approxSelfMs": 13.585
+      },
+      {
+        "function": "learnSkew",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/subagents.ts",
+        "line": 86,
+        "samples": 16,
+        "approxSelfMs": 17.458
+      },
+      {
+        "function": "",
+        "url": "evalmachine.<anonymous>",
+        "line": 8,
+        "samples": 14,
+        "approxSelfMs": 17.459
+      },
+      {
+        "function": "",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+        "line": 649,
+        "samples": 13,
+        "approxSelfMs": 16.25
+      },
+      {
+        "function": "followTab",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/auto-tab.ts",
+        "line": 23,
+        "samples": 11,
+        "approxSelfMs": 13.791
+      },
+      {
+        "function": "",
+        "url": "evalmachine.<anonymous>",
+        "line": 37,
+        "samples": 8,
+        "approxSelfMs": 10.0
+      },
+      {
+        "function": "",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+        "line": 672,
+        "samples": 8,
+        "approxSelfMs": 10.041
+      },
+      {
+        "function": "answerEntry",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+        "line": 48,
+        "samples": 7,
+        "approxSelfMs": 7.543
+      },
+      {
+        "function": "applySubAgentEvent",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/subagents.ts",
+        "line": 96,
+        "samples": 7,
+        "approxSelfMs": 7.999
+      },
+      {
+        "function": "coalesceChatEvents",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/chat-batch.ts",
+        "line": 5,
+        "samples": 4,
+        "approxSelfMs": 2.958
+      },
+      {
+        "function": "onEvent",
+        "url": "file:///Users/ashok/truex-plan/docs/performance/t3-chat/stall-diagnosis-stream-probe.mjs",
+        "line": 46,
+        "samples": 4,
+        "approxSelfMs": 5.084
+      },
+      {
+        "function": "sourceCursor",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/source-sync.ts",
+        "line": 29,
+        "samples": 4,
+        "approxSelfMs": 5.042
+      },
+      {
+        "function": "upsertMessage",
+        "url": "file:///Users/ashok/truex-plan/frontend/lib/chat.ts",
+        "line": 78,
+        "samples": 2,
+        "approxSelfMs": 1.5
+      }
+    ]
+  }
+}

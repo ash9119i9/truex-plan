@@ -9,7 +9,7 @@ export const SIDEBAR_PAGE_COUNT = 25;
 
 const DAY = 86_400_000;
 
-function startOfDay(d: Date) {
+export function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
@@ -73,4 +73,21 @@ export function sidebarWindow<S extends Pick<SidebarSession, "_id">>(
     if (active) items.push(active);
   }
   return { items, hiddenCount: sessions.length - items.length };
+}
+
+// Presentation preference only: no session IDs, titles or transcript data.
+const EARLIER_EXPANDED_KEY = "truex-sidebar-earlier-expanded";
+export function loadEarlierExpanded(): boolean {
+  try {
+    return localStorage.getItem(EARLIER_EXPANDED_KEY) !== "false";
+  } catch {
+    return true;
+  }
+}
+export function saveEarlierExpanded(expanded: boolean): void {
+  try {
+    localStorage.setItem(EARLIER_EXPANDED_KEY, String(expanded));
+  } catch {
+    // Storage can be disabled/full; the current mounted shelf remains usable.
+  }
 }

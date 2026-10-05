@@ -1,0 +1,1091 @@
+{
+  "description": "Actual current page applyBatch callback CPU, real source/display/agent/observability/plan/follow projections; exact raw reducer oracle",
+  "limitations": "Synthetic 1000-event burst, maximum ordered-batch cap 2048; VM setters update refs but exclude React/reconciliation/Markdown/DOM/render/final paint. Source history models latest 10 assistant turns. No transport parsing, provider, network or backend. No production latency/p95 claim. CPU process includes V8 worker CPU. Cold phase has same projection path as legacy but was not benchmarked independently.",
+  "timestamp": "2026-10-05T18:56:35.540Z",
+  "node": "v24.21.0",
+  "sourceHashes": {
+    "frontend/app/page.tsx": "0f42579b7b8eb0343a9b966663b5e306c4818129f97942ceeaedb140e011a7ce",
+    "frontend/lib/chat.ts": "ffea93e441bf0504fd5e566da981bce615cf138c45a02aa1b73981a22f6e6962",
+    "frontend/lib/chat-batch.ts": "d572ae0dae2287b0a2ba1ed0d521db7109dcc68788b3b07378107fc390af2acb",
+    "frontend/lib/source-sync.ts": "17d999d96005c57434539922b002c1048a0fb5bd16a0db334e67bbbb2bd5d33b",
+    "frontend/lib/observability.ts": "f2d7593443b76c1e29ff5cdaa451b27971e25ede9a1b31bf0770bc3ffbbb57a1",
+    "frontend/lib/subagents.ts": "a530c6526b3def3321e55a2be91e223edf00fb33d81e6a6b6583a6c6557ca58e",
+    "frontend/lib/ordered-batch.ts": "67ac25ecfb440e5fab4b1ce4ec6f10737933bc646e0cc555e1d997c209dfad25"
+  },
+  "extractedCallbackSha256": "05403cf3a951b683fcff9af14087a7a3b80e9f6b11675c58fc9dd6b7348d1be2",
+  "warmups": 1,
+  "runs": 5,
+  "measurements": [
+    {
+      "size": 20,
+      "kind": "message",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 0.7119160000000022,
+          "processCpuMs": 0.967
+        },
+        {
+          "elapsedMs": 0.7337920000000224,
+          "processCpuMs": 1.441
+        },
+        {
+          "elapsedMs": 0.7085419999999942,
+          "processCpuMs": 1.558
+        },
+        {
+          "elapsedMs": 0.694958000000014,
+          "processCpuMs": 0.87
+        },
+        {
+          "elapsedMs": 0.6902499999999918,
+          "processCpuMs": 0.834
+        }
+      ],
+      "medianMs": 0.7085419999999942,
+      "maxMs": 0.7337920000000224,
+      "exactOracleState": true
+    },
+    {
+      "size": 20,
+      "kind": "message",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 0.8587089999999762,
+          "processCpuMs": 1.005
+        },
+        {
+          "elapsedMs": 0.8392910000000029,
+          "processCpuMs": 1.223
+        },
+        {
+          "elapsedMs": 0.8002079999999978,
+          "processCpuMs": 0.915
+        },
+        {
+          "elapsedMs": 0.9331669999999974,
+          "processCpuMs": 1.724
+        },
+        {
+          "elapsedMs": 0.8632499999999936,
+          "processCpuMs": 1.64
+        }
+      ],
+      "medianMs": 0.8587089999999762,
+      "maxMs": 0.9331669999999974,
+      "exactOracleState": true
+    },
+    {
+      "size": 20,
+      "kind": "reasoning",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 0.8975419999999872,
+          "processCpuMs": 2.128
+        },
+        {
+          "elapsedMs": 0.8297919999999976,
+          "processCpuMs": 0.932
+        },
+        {
+          "elapsedMs": 0.8594580000000178,
+          "processCpuMs": 0.974
+        },
+        {
+          "elapsedMs": 0.8358750000000157,
+          "processCpuMs": 0.95
+        },
+        {
+          "elapsedMs": 0.8460000000000036,
+          "processCpuMs": 1.38
+        }
+      ],
+      "medianMs": 0.8460000000000036,
+      "maxMs": 0.8975419999999872,
+      "exactOracleState": true
+    },
+    {
+      "size": 20,
+      "kind": "reasoning",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 1.1157500000000198,
+          "processCpuMs": 1.791
+        },
+        {
+          "elapsedMs": 1.116708000000017,
+          "processCpuMs": 1.27
+        },
+        {
+          "elapsedMs": 1.310040999999984,
+          "processCpuMs": 8.334
+        },
+        {
+          "elapsedMs": 1.0758749999999964,
+          "processCpuMs": 1.2
+        },
+        {
+          "elapsedMs": 1.138083999999992,
+          "processCpuMs": 3.86
+        }
+      ],
+      "medianMs": 1.116708000000017,
+      "maxMs": 1.310040999999984,
+      "exactOracleState": true
+    },
+    {
+      "size": 20,
+      "kind": "mixed",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 1.1209580000000017,
+          "processCpuMs": 1.224
+        },
+        {
+          "elapsedMs": 1.1243340000000046,
+          "processCpuMs": 1.521
+        },
+        {
+          "elapsedMs": 1.6385830000000112,
+          "processCpuMs": 2.265
+        },
+        {
+          "elapsedMs": 1.1138750000000073,
+          "processCpuMs": 1.341
+        },
+        {
+          "elapsedMs": 1.124750000000006,
+          "processCpuMs": 1.456
+        }
+      ],
+      "medianMs": 1.1243340000000046,
+      "maxMs": 1.6385830000000112,
+      "exactOracleState": true
+    },
+    {
+      "size": 20,
+      "kind": "mixed",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 1.9048329999999964,
+          "processCpuMs": 4.478
+        },
+        {
+          "elapsedMs": 1.3562089999999785,
+          "processCpuMs": 1.603
+        },
+        {
+          "elapsedMs": 1.3506670000000156,
+          "processCpuMs": 1.486
+        },
+        {
+          "elapsedMs": 1.463041000000004,
+          "processCpuMs": 1.822
+        },
+        {
+          "elapsedMs": 1.274000000000001,
+          "processCpuMs": 7.13
+        }
+      ],
+      "medianMs": 1.3562089999999785,
+      "maxMs": 1.9048329999999964,
+      "exactOracleState": true
+    },
+    {
+      "size": 2000,
+      "kind": "message",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 0.6692079999999692,
+          "processCpuMs": 0.767
+        },
+        {
+          "elapsedMs": 0.6736670000000231,
+          "processCpuMs": 0.766
+        },
+        {
+          "elapsedMs": 0.7082090000000107,
+          "processCpuMs": 0.84
+        },
+        {
+          "elapsedMs": 0.7017079999999964,
+          "processCpuMs": 1.256
+        },
+        {
+          "elapsedMs": 0.678957999999966,
+          "processCpuMs": 0.919
+        }
+      ],
+      "medianMs": 0.678957999999966,
+      "maxMs": 0.7082090000000107,
+      "exactOracleState": true
+    },
+    {
+      "size": 2000,
+      "kind": "message",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 0.7457919999999945,
+          "processCpuMs": 0.844
+        },
+        {
+          "elapsedMs": 0.7534580000000233,
+          "processCpuMs": 0.853
+        },
+        {
+          "elapsedMs": 0.7642500000000041,
+          "processCpuMs": 0.861
+        },
+        {
+          "elapsedMs": 0.7844590000000267,
+          "processCpuMs": 0.887
+        },
+        {
+          "elapsedMs": 0.7929999999999495,
+          "processCpuMs": 0.926
+        }
+      ],
+      "medianMs": 0.7642500000000041,
+      "maxMs": 0.7929999999999495,
+      "exactOracleState": true
+    },
+    {
+      "size": 2000,
+      "kind": "reasoning",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 16.774917000000016,
+          "processCpuMs": 16.961
+        },
+        {
+          "elapsedMs": 17.069458999999995,
+          "processCpuMs": 17.26
+        },
+        {
+          "elapsedMs": 17.189040999999975,
+          "processCpuMs": 17.361
+        },
+        {
+          "elapsedMs": 16.84804200000002,
+          "processCpuMs": 17.058
+        },
+        {
+          "elapsedMs": 16.940083000000016,
+          "processCpuMs": 23.594
+        }
+      ],
+      "medianMs": 16.940083000000016,
+      "maxMs": 17.189040999999975,
+      "exactOracleState": true
+    },
+    {
+      "size": 2000,
+      "kind": "reasoning",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 6.699250000000006,
+          "processCpuMs": 6.894
+        },
+        {
+          "elapsedMs": 6.757124999999974,
+          "processCpuMs": 11.532
+        },
+        {
+          "elapsedMs": 6.622292000000016,
+          "processCpuMs": 6.814
+        },
+        {
+          "elapsedMs": 6.614333000000045,
+          "processCpuMs": 6.773
+        },
+        {
+          "elapsedMs": 6.637875000000008,
+          "processCpuMs": 6.826
+        }
+      ],
+      "medianMs": 6.637875000000008,
+      "maxMs": 6.757124999999974,
+      "exactOracleState": true
+    },
+    {
+      "size": 2000,
+      "kind": "mixed",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 7.440667000000019,
+          "processCpuMs": 7.622
+        },
+        {
+          "elapsedMs": 7.542290999999977,
+          "processCpuMs": 7.727
+        },
+        {
+          "elapsedMs": 7.450832999999989,
+          "processCpuMs": 7.644
+        },
+        {
+          "elapsedMs": 7.604832999999985,
+          "processCpuMs": 7.775
+        },
+        {
+          "elapsedMs": 7.4148329999999305,
+          "processCpuMs": 7.579
+        }
+      ],
+      "medianMs": 7.450832999999989,
+      "maxMs": 7.604832999999985,
+      "exactOracleState": true
+    },
+    {
+      "size": 2000,
+      "kind": "mixed",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 7.680791999999997,
+          "processCpuMs": 7.808
+        },
+        {
+          "elapsedMs": 7.753417000000013,
+          "processCpuMs": 7.93
+        },
+        {
+          "elapsedMs": 7.703333000000043,
+          "processCpuMs": 7.932
+        },
+        {
+          "elapsedMs": 7.682624999999916,
+          "processCpuMs": 7.81
+        },
+        {
+          "elapsedMs": 7.688874999999939,
+          "processCpuMs": 7.859
+        }
+      ],
+      "medianMs": 7.688874999999939,
+      "maxMs": 7.753417000000013,
+      "exactOracleState": true
+    },
+    {
+      "size": 10000,
+      "kind": "message",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 0.6942910000000211,
+          "processCpuMs": 0.8
+        },
+        {
+          "elapsedMs": 0.6819580000000087,
+          "processCpuMs": 0.801
+        },
+        {
+          "elapsedMs": 0.68850000000009,
+          "processCpuMs": 0.802
+        },
+        {
+          "elapsedMs": 0.677541999999903,
+          "processCpuMs": 0.782
+        },
+        {
+          "elapsedMs": 0.7013329999999769,
+          "processCpuMs": 0.804
+        }
+      ],
+      "medianMs": 0.68850000000009,
+      "maxMs": 0.7013329999999769,
+      "exactOracleState": true
+    },
+    {
+      "size": 10000,
+      "kind": "message",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 0.8484170000000404,
+          "processCpuMs": 0.956
+        },
+        {
+          "elapsedMs": 0.8875830000000633,
+          "processCpuMs": 1.24
+        },
+        {
+          "elapsedMs": 0.8311660000000529,
+          "processCpuMs": 0.933
+        },
+        {
+          "elapsedMs": 0.88474999999994,
+          "processCpuMs": 1.02
+        },
+        {
+          "elapsedMs": 1.0868750000000773,
+          "processCpuMs": 1.341
+        }
+      ],
+      "medianMs": 0.88474999999994,
+      "maxMs": 1.0868750000000773,
+      "exactOracleState": true
+    },
+    {
+      "size": 10000,
+      "kind": "reasoning",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 27.954875000000015,
+          "processCpuMs": 28.199
+        },
+        {
+          "elapsedMs": 27.737375000000043,
+          "processCpuMs": 27.968
+        },
+        {
+          "elapsedMs": 27.840749999999957,
+          "processCpuMs": 28.061
+        },
+        {
+          "elapsedMs": 28.954707999999982,
+          "processCpuMs": 29.085
+        },
+        {
+          "elapsedMs": 31.571583000000032,
+          "processCpuMs": 31.956
+        }
+      ],
+      "medianMs": 27.954875000000015,
+      "maxMs": 31.571583000000032,
+      "exactOracleState": true
+    },
+    {
+      "size": 10000,
+      "kind": "reasoning",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 28.847541999999976,
+          "processCpuMs": 29.231
+        },
+        {
+          "elapsedMs": 28.42162499999995,
+          "processCpuMs": 28.706
+        },
+        {
+          "elapsedMs": 28.55904099999998,
+          "processCpuMs": 28.85
+        },
+        {
+          "elapsedMs": 28.91816700000004,
+          "processCpuMs": 29.296
+        },
+        {
+          "elapsedMs": 28.464666999999963,
+          "processCpuMs": 28.781
+        }
+      ],
+      "medianMs": 28.55904099999998,
+      "maxMs": 28.91816700000004,
+      "exactOracleState": true
+    },
+    {
+      "size": 10000,
+      "kind": "mixed",
+      "phase": "legacy",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 33.069124999999985,
+          "processCpuMs": 33.383
+        },
+        {
+          "elapsedMs": 33.871875000000045,
+          "processCpuMs": 34.139
+        },
+        {
+          "elapsedMs": 34.15720800000008,
+          "processCpuMs": 34.526
+        },
+        {
+          "elapsedMs": 33.68254200000001,
+          "processCpuMs": 34.021
+        },
+        {
+          "elapsedMs": 33.50158300000021,
+          "processCpuMs": 33.82
+        }
+      ],
+      "medianMs": 33.68254200000001,
+      "maxMs": 34.15720800000008,
+      "exactOracleState": true
+    },
+    {
+      "size": 10000,
+      "kind": "mixed",
+      "phase": "ready",
+      "originalEvents": 1000,
+      "sourceHistoricalEntries": 10,
+      "samples": [
+        {
+          "elapsedMs": 33.341249999999945,
+          "processCpuMs": 33.656
+        },
+        {
+          "elapsedMs": 33.632917000000134,
+          "processCpuMs": 33.904
+        },
+        {
+          "elapsedMs": 33.78908300000012,
+          "processCpuMs": 34.123
+        },
+        {
+          "elapsedMs": 38.17399999999998,
+          "processCpuMs": 69.506
+        },
+        {
+          "elapsedMs": 33.47712499999989,
+          "processCpuMs": 34.033
+        }
+      ],
+      "medianMs": 33.632917000000134,
+      "maxMs": 38.17399999999998,
+      "exactOracleState": true
+    }
+  ],
+  "isolated": [
+    {
+      "kind": "message",
+      "displayEntries": 10000,
+      "reducerCalls": 1,
+      "medianMs": 0.05883300000004965,
+      "samples": [
+        0.06491700000015044, 0.053915999999844644, 0.06737500000008367,
+        0.05583299999989322, 0.05883300000004965
+      ]
+    },
+    {
+      "kind": "reasoning",
+      "displayEntries": 10000,
+      "reducerCalls": 1000,
+      "medianMs": 29.491375000000062,
+      "samples": [
+        29.226708000000144, 29.491375000000062, 29.396291999999903,
+        29.622833000000355, 29.583708000000115
+      ]
+    },
+    {
+      "kind": "mixed",
+      "displayEntries": 10000,
+      "reducerCalls": 1000,
+      "medianMs": 33.452208000000155,
+      "samples": [
+        33.68779199999972, 33.731874999999945, 33.307708999999704,
+        33.37174999999979, 33.452208000000155
+      ]
+    }
+  ],
+  "publicationSizes": [
+    {
+      "kind": "message",
+      "batchSize": 1,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 42.56811100000368,
+          "largestCallbackMs": 0.35104199999977936,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 41.68272600000773,
+          "largestCallbackMs": 0.2077079999999114,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 42.397811000001184,
+          "largestCallbackMs": 0.2237079999999878,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 42.03885800000808,
+          "largestCallbackMs": 0.21608400000013717,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 42.688459000001785,
+          "largestCallbackMs": 0.22383399999989706,
+          "callbacks": 1000
+        }
+      ],
+      "medianTotalMs": 42.397811000001184,
+      "medianLargestCallbackMs": 0.2237079999999878,
+      "maxCallbackMs": 0.35104199999977936,
+      "exactOracleState": true
+    },
+    {
+      "kind": "message",
+      "batchSize": 16,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 3.312668000003214,
+          "largestCallbackMs": 0.08866699999998673,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 3.3564989999995305,
+          "largestCallbackMs": 0.093166999999994,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 3.440998999997646,
+          "largestCallbackMs": 0.08183299999973315,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 3.5856200000007448,
+          "largestCallbackMs": 0.15029200000026322,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 3.837623999999778,
+          "largestCallbackMs": 0.5126250000002983,
+          "callbacks": 63
+        }
+      ],
+      "medianTotalMs": 3.440998999997646,
+      "medianLargestCallbackMs": 0.093166999999994,
+      "maxCallbackMs": 0.5126250000002983,
+      "exactOracleState": true
+    },
+    {
+      "kind": "message",
+      "batchSize": 64,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 1.4422530000010738,
+          "largestCallbackMs": 0.13133300000026793,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 1.4585009999982503,
+          "largestCallbackMs": 0.1292910000001939,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 1.449831000001268,
+          "largestCallbackMs": 0.1356660000001284,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 1.447250000000622,
+          "largestCallbackMs": 0.1378330000002279,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 1.4609999999997854,
+          "largestCallbackMs": 0.13137499999993452,
+          "callbacks": 16
+        }
+      ],
+      "medianTotalMs": 1.449831000001268,
+      "medianLargestCallbackMs": 0.13137499999993452,
+      "maxCallbackMs": 0.1378330000002279,
+      "exactOracleState": true
+    },
+    {
+      "kind": "message",
+      "batchSize": 1000,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 0.7879580000003443,
+          "largestCallbackMs": 0.7879580000003443,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 0.7917919999999867,
+          "largestCallbackMs": 0.7917919999999867,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 0.7918330000002243,
+          "largestCallbackMs": 0.7918330000002243,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 0.785041000000092,
+          "largestCallbackMs": 0.785041000000092,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 0.801082999999835,
+          "largestCallbackMs": 0.801082999999835,
+          "callbacks": 1
+        }
+      ],
+      "medianTotalMs": 0.7917919999999867,
+      "medianLargestCallbackMs": 0.7917919999999867,
+      "maxCallbackMs": 0.801082999999835,
+      "exactOracleState": true
+    },
+    {
+      "kind": "reasoning",
+      "batchSize": 1,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 31.202242000001206,
+          "largestCallbackMs": 0.27404200000000856,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 31.03903099999752,
+          "largestCallbackMs": 0.1770000000001346,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 31.075029000002814,
+          "largestCallbackMs": 0.18383300000004965,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 31.591789999999037,
+          "largestCallbackMs": 0.2286669999998594,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 31.498251000002256,
+          "largestCallbackMs": 0.25529199999982666,
+          "callbacks": 1000
+        }
+      ],
+      "medianTotalMs": 31.202242000001206,
+      "medianLargestCallbackMs": 0.2286669999998594,
+      "maxCallbackMs": 0.27404200000000856,
+      "exactOracleState": true
+    },
+    {
+      "kind": "reasoning",
+      "batchSize": 16,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 29.002793999999085,
+          "largestCallbackMs": 0.6261669999998958,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 28.855752000002667,
+          "largestCallbackMs": 0.6160829999998896,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 28.932126000001517,
+          "largestCallbackMs": 0.6498750000000655,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 28.809245999997984,
+          "largestCallbackMs": 0.5847499999999854,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 29.06833400000005,
+          "largestCallbackMs": 0.61850000000004,
+          "callbacks": 63
+        }
+      ],
+      "medianTotalMs": 28.932126000001517,
+      "medianLargestCallbackMs": 0.61850000000004,
+      "maxCallbackMs": 0.6498750000000655,
+      "exactOracleState": true
+    },
+    {
+      "kind": "reasoning",
+      "batchSize": 64,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 28.630958000000646,
+          "largestCallbackMs": 2.0088329999998678,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 28.491125999998076,
+          "largestCallbackMs": 1.929457999999613,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 28.4100399999993,
+          "largestCallbackMs": 1.9432090000000244,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 28.442414000000554,
+          "largestCallbackMs": 1.9499590000000353,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 28.38208400000076,
+          "largestCallbackMs": 1.910457999999835,
+          "callbacks": 16
+        }
+      ],
+      "medianTotalMs": 28.442414000000554,
+      "medianLargestCallbackMs": 1.9432090000000244,
+      "maxCallbackMs": 2.0088329999998678,
+      "exactOracleState": true
+    },
+    {
+      "kind": "reasoning",
+      "batchSize": 1000,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 28.39758299999994,
+          "largestCallbackMs": 28.39758299999994,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 28.43154199999981,
+          "largestCallbackMs": 28.43154199999981,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 28.41362500000014,
+          "largestCallbackMs": 28.41362500000014,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 28.323417000000063,
+          "largestCallbackMs": 28.323417000000063,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 28.363832999999886,
+          "largestCallbackMs": 28.363832999999886,
+          "callbacks": 1
+        }
+      ],
+      "medianTotalMs": 28.39758299999994,
+      "medianLargestCallbackMs": 28.39758299999994,
+      "maxCallbackMs": 28.43154199999981,
+      "exactOracleState": true
+    },
+    {
+      "kind": "mixed",
+      "batchSize": 1,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 35.039699000024484,
+          "largestCallbackMs": 0.243916999999783,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 35.140835999992305,
+          "largestCallbackMs": 0.20337499999914144,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 35.39844500001891,
+          "largestCallbackMs": 0.18679200000042329,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 35.18506500001604,
+          "largestCallbackMs": 0.19679100000030303,
+          "callbacks": 1000
+        },
+        {
+          "totalMs": 36.41240700000071,
+          "largestCallbackMs": 0.2327079999995476,
+          "callbacks": 1000
+        }
+      ],
+      "medianTotalMs": 35.18506500001604,
+      "medianLargestCallbackMs": 0.20337499999914144,
+      "maxCallbackMs": 0.243916999999783,
+      "exactOracleState": true
+    },
+    {
+      "kind": "mixed",
+      "batchSize": 16,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 33.490043000000696,
+          "largestCallbackMs": 0.7347500000005311,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 33.31279400000312,
+          "largestCallbackMs": 0.6632920000001832,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 36.484293999998954,
+          "largestCallbackMs": 0.8765839999996388,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 34.440458999996736,
+          "largestCallbackMs": 0.7734159999999974,
+          "callbacks": 63
+        },
+        {
+          "totalMs": 34.724419999998645,
+          "largestCallbackMs": 0.7752499999996871,
+          "callbacks": 63
+        }
+      ],
+      "medianTotalMs": 34.440458999996736,
+      "medianLargestCallbackMs": 0.7734159999999974,
+      "maxCallbackMs": 0.8765839999996388,
+      "exactOracleState": true
+    },
+    {
+      "kind": "mixed",
+      "batchSize": 64,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 34.97937300000012,
+          "largestCallbackMs": 2.4001250000001164,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 38.013998999999785,
+          "largestCallbackMs": 2.8508339999998498,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 36.67745999999988,
+          "largestCallbackMs": 2.532458000000588,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 34.55254200000127,
+          "largestCallbackMs": 2.580041999999594,
+          "callbacks": 16
+        },
+        {
+          "totalMs": 38.26199899999847,
+          "largestCallbackMs": 6.553332999999839,
+          "callbacks": 16
+        }
+      ],
+      "medianTotalMs": 36.67745999999988,
+      "medianLargestCallbackMs": 2.580041999999594,
+      "maxCallbackMs": 6.553332999999839,
+      "exactOracleState": true
+    },
+    {
+      "kind": "mixed",
+      "batchSize": 1000,
+      "displayEntries": 10000,
+      "phase": "ready",
+      "samples": [
+        {
+          "totalMs": 34.50120800000059,
+          "largestCallbackMs": 34.50120800000059,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 33.59795800000029,
+          "largestCallbackMs": 33.59795800000029,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 34.60462499999994,
+          "largestCallbackMs": 34.60462499999994,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 33.949000000000524,
+          "largestCallbackMs": 33.949000000000524,
+          "callbacks": 1
+        },
+        {
+          "totalMs": 33.964208000000326,
+          "largestCallbackMs": 33.964208000000326,
+          "callbacks": 1
+        }
+      ],
+      "medianTotalMs": 33.964208000000326,
+      "medianLargestCallbackMs": 33.964208000000326,
+      "maxCallbackMs": 34.60462499999994,
+      "exactOracleState": true
+    }
+  ],
+  "scheduling": [
+    {
+      "mode": "foreground",
+      "simulatedFirstTextPublicationMs": 16.666666666666668,
+      "limitation": "Deterministic scheduler model, excludes browser timer clamping/event-loop stalls/paint"
+    },
+    {
+      "mode": "hidden",
+      "simulatedFirstTextPublicationMs": 50,
+      "limitation": "Deterministic scheduler model, excludes browser timer clamping/event-loop stalls/paint"
+    },
+    {
+      "mode": "barrier",
+      "simulatedFirstTextPublicationMs": 0,
+      "limitation": "Deterministic scheduler model, excludes browser timer clamping/event-loop stalls/paint"
+    }
+  ]
+}

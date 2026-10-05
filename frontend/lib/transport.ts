@@ -1,6 +1,7 @@
 import type { DomainEvent } from "../../shared/contracts";
 import { api, base } from "./api.ts";
 import { createOrderedBatch } from "./ordered-batch.ts";
+import { readSyncMarker } from "./source-sync.ts";
 
 // Connection states shown in the conversation header.
 export type StreamStatus = "Connected" | "Reconnecting" | "Disconnected";
@@ -13,6 +14,10 @@ export interface StreamFailure {
 }
 
 export interface SubscribeHandlers {
+  // Explicit null forces a source snapshot. Opt-in synchronization never trusts
+  // an independently stored cursor without the corresponding source projection.
+  sync?: "v1";
+  cursor?: string | null;
   // Opt-in ordered publication. Returning false rejects stale ownership and
   // prevents checkpointing frames which did not reach conversation state.
   onBatch?: (events: DomainEvent[]) => boolean | void;
@@ -91,6 +96,8 @@ function readEvent(raw: string): DomainEvent {
   )
     throw new TypeError("Invalid stream event envelope");
   const data = event.data;
+  if (event.type === "sync.completed" && !readSyncMarker(event))
+    throw new TypeError("Invalid synchronization marker");
   if (
     (event.type === "message.delta" || event.type === "reasoning.delta") &&
     typeof data.delta !== "string"
@@ -113,9 +120,14 @@ function readEvent(raw: string): DomainEvent {
 export const transport: Transport = {
   subscribe(sessionId, onEvent, onStatus, handlers = {}) {
     const key = `cursor:${sessionId}`,
-      cursor = readCursor(key);
+      cursor =
+        handlers.sync === "v1"
+          ? (handlers.cursor ?? "")
+          : handlers.cursor !== undefined
+            ? (handlers.cursor ?? "")
+            : readCursor(key);
     const source = new EventSource(
-      `${base}${sessionPath(sessionId)}/events?window=1${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`,
+      `${base}${sessionPath(sessionId)}/events?window=1${handlers.sync ? "&sync=v1" : ""}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`,
     );
     let failed = false;
     let closed = false;
@@ -163,7 +175,15 @@ export const transport: Transport = {
       if (closed) return;
       let event: DomainEvent;
       try {
-        event = readEvent(message.data);
+        // Public frames intentionally omit the internal runtime thread id. The
+        // authenticated subscription URL supplies their trusted public scope.
+        event = { ...readEvent(message.data), threadId: sessionId };
+        if (
+          handlers.sync === "v1" &&
+          event.type !== "resync.required" &&
+          event.cursor !== message.lastEventId
+        )
+          throw new TypeError("Stream cursor disagrees with source event");
       } catch (error) {
         batch.flush();
         if (closed) return;

@@ -1,0 +1,29 @@
+{
+  "scope": "Current applyChatEvent CPU only; no React, network, provider or proposed optimization. Node v24.21.0",
+  "results": [
+    {
+      "entries": 20,
+      "events": 1000,
+      "reducerApplications": 1000,
+      "repeats": 5,
+      "medianMs": 0.8688330000000093,
+      "exactFinalText": true
+    },
+    {
+      "entries": 2000,
+      "events": 1000,
+      "reducerApplications": 1000,
+      "repeats": 5,
+      "medianMs": 19.113292,
+      "exactFinalText": true
+    },
+    {
+      "entries": 10000,
+      "events": 1000,
+      "reducerApplications": 1000,
+      "repeats": 5,
+      "medianMs": 92.91837499999997,
+      "exactFinalText": true
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "beforeExitCode": 1,
+  "afterExitCode": 1,
+  "beforeWarnings": 55,
+  "afterWarnings": 55,
+  "introducedWarnings": [],
+  "removedWarnings": [],
+  "note": "Existing formatting debt retained; corrected frozen context includes unchanged tracked scripts; current scoped new-code checks separately pass"
+}

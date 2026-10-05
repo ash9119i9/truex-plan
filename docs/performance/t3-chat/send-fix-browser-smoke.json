@@ -1,0 +1,20 @@
+{
+  "answerPresent": true,
+  "draft": "Retained draft",
+  "error": null,
+  "messageRequests": [
+    {
+      "durationMs": 753,
+      "path": "/api/sessions/fixture-a/messages"
+    }
+  ],
+  "optimisticObservedMs": 42.80000000074506,
+  "posts": [
+    "/api/sessions/fixture-a/messages"
+  ],
+  "question": true,
+  "reasoningExpanded": "Reasoning\n1 word",
+  "reasoningPresent": true,
+  "scope": "Production frontend against isolated API fixture, smoke only; no provider or matched browser latency claim",
+  "visibleMessages": 9
+}

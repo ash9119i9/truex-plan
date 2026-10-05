@@ -1,0 +1,675 @@
+{
+  "mode": "configured-create",
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "clientDelayMs": 20,
+  "runtimeDelayMs": 8,
+  "repeats": 30,
+  "warmups": 2,
+  "scope": "Isolated actual service/Mongo with fake runtime; acceptance only, no provider/delta/paint measurement",
+  "p50Ms": 78.66458299999977,
+  "p95Ms": 83.22475000000031,
+  "samples": [
+    {
+      "index": 0,
+      "createMs": 32.265874999999824,
+      "sendToAcceptanceMs": 44.47612500000014,
+      "submitToAcceptanceMs": 77.01462500000002,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-0/resume",
+        "/threads/thread-0/turns"
+      ]
+    },
+    {
+      "index": 1,
+      "createMs": 32.955458000000135,
+      "sendToAcceptanceMs": 43.50212499999998,
+      "submitToAcceptanceMs": 76.70779199999993,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-1/resume",
+        "/threads/thread-1/turns"
+      ]
+    },
+    {
+      "index": 2,
+      "createMs": 33.599249999999984,
+      "sendToAcceptanceMs": 44.54254100000003,
+      "submitToAcceptanceMs": 78.34787499999993,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-2/resume",
+        "/threads/thread-2/turns"
+      ]
+    },
+    {
+      "index": 3,
+      "createMs": 33.46054200000003,
+      "sendToAcceptanceMs": 41.07954100000006,
+      "submitToAcceptanceMs": 74.78716700000018,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-3/resume",
+        "/threads/thread-3/turns"
+      ]
+    },
+    {
+      "index": 4,
+      "createMs": 31.96441600000003,
+      "sendToAcceptanceMs": 41.77562499999999,
+      "submitToAcceptanceMs": 73.96508300000005,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-4/resume",
+        "/threads/thread-4/turns"
+      ]
+    },
+    {
+      "index": 5,
+      "createMs": 31.670957999999928,
+      "sendToAcceptanceMs": 42.587166000000025,
+      "submitToAcceptanceMs": 74.51112499999999,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-5/resume",
+        "/threads/thread-5/turns"
+      ]
+    },
+    {
+      "index": 6,
+      "createMs": 33.807458,
+      "sendToAcceptanceMs": 43.64958300000012,
+      "submitToAcceptanceMs": 77.73000000000002,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-6/resume",
+        "/threads/thread-6/turns"
+      ]
+    },
+    {
+      "index": 7,
+      "createMs": 34.16650000000004,
+      "sendToAcceptanceMs": 43.020500000000084,
+      "submitToAcceptanceMs": 77.42849999999999,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-7/resume",
+        "/threads/thread-7/turns"
+      ]
+    },
+    {
+      "index": 8,
+      "createMs": 31.775666999999885,
+      "sendToAcceptanceMs": 44.35500000000002,
+      "submitToAcceptanceMs": 76.35854199999994,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-8/resume",
+        "/threads/thread-8/turns"
+      ]
+    },
+    {
+      "index": 9,
+      "createMs": 32.21012500000006,
+      "sendToAcceptanceMs": 42.76933299999973,
+      "submitToAcceptanceMs": 75.1964579999999,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-9/resume",
+        "/threads/thread-9/turns"
+      ]
+    },
+    {
+      "index": 10,
+      "createMs": 33.36433299999999,
+      "sendToAcceptanceMs": 44.119290999999976,
+      "submitToAcceptanceMs": 77.69320799999969,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-10/resume",
+        "/threads/thread-10/turns"
+      ]
+    },
+    {
+      "index": 11,
+      "createMs": 31.652458000000024,
+      "sendToAcceptanceMs": 44.048917000000074,
+      "submitToAcceptanceMs": 75.88533300000017,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-11/resume",
+        "/threads/thread-11/turns"
+      ]
+    },
+    {
+      "index": 12,
+      "createMs": 33.30475000000024,
+      "sendToAcceptanceMs": 45.80787499999997,
+      "submitToAcceptanceMs": 79.3199169999998,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-12/resume",
+        "/threads/thread-12/turns"
+      ]
+    },
+    {
+      "index": 13,
+      "createMs": 33.85391699999991,
+      "sendToAcceptanceMs": 43.43641600000001,
+      "submitToAcceptanceMs": 77.63087499999983,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-13/resume",
+        "/threads/thread-13/turns"
+      ]
+    },
+    {
+      "index": 14,
+      "createMs": 35.9575420000001,
+      "sendToAcceptanceMs": 48.734915999999885,
+      "submitToAcceptanceMs": 85.18033400000013,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-14/resume",
+        "/threads/thread-14/turns"
+      ]
+    },
+    {
+      "index": 15,
+      "createMs": 34.02737500000012,
+      "sendToAcceptanceMs": 46.504083000000264,
+      "submitToAcceptanceMs": 81.25466700000015,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-15/resume",
+        "/threads/thread-15/turns"
+      ]
+    },
+    {
+      "index": 16,
+      "createMs": 33.941291999999976,
+      "sendToAcceptanceMs": 48.04874999999993,
+      "submitToAcceptanceMs": 82.63891700000022,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-16/resume",
+        "/threads/thread-16/turns"
+      ]
+    },
+    {
+      "index": 17,
+      "createMs": 33.56029200000012,
+      "sendToAcceptanceMs": 48.616415999999845,
+      "submitToAcceptanceMs": 82.74962499999992,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-17/resume",
+        "/threads/thread-17/turns"
+      ]
+    },
+    {
+      "index": 18,
+      "createMs": 35.89954200000011,
+      "sendToAcceptanceMs": 45.59762499999988,
+      "submitToAcceptanceMs": 82.3047919999999,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-18/resume",
+        "/threads/thread-18/turns"
+      ]
+    },
+    {
+      "index": 19,
+      "createMs": 34.37237499999992,
+      "sendToAcceptanceMs": 45.10929100000021,
+      "submitToAcceptanceMs": 79.91662499999984,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-19/resume",
+        "/threads/thread-19/turns"
+      ]
+    },
+    {
+      "index": 20,
+      "createMs": 35.423375000000306,
+      "sendToAcceptanceMs": 44.357416999999714,
+      "submitToAcceptanceMs": 80.47641599999997,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-20/resume",
+        "/threads/thread-20/turns"
+      ]
+    },
+    {
+      "index": 21,
+      "createMs": 35.37762500000008,
+      "sendToAcceptanceMs": 47.07333299999982,
+      "submitToAcceptanceMs": 83.22475000000031,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-21/resume",
+        "/threads/thread-21/turns"
+      ]
+    },
+    {
+      "index": 22,
+      "createMs": 31.820124999999734,
+      "sendToAcceptanceMs": 45.29858400000012,
+      "submitToAcceptanceMs": 77.42549999999983,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-22/resume",
+        "/threads/thread-22/turns"
+      ]
+    },
+    {
+      "index": 23,
+      "createMs": 32.4900419999999,
+      "sendToAcceptanceMs": 45.699333000000024,
+      "submitToAcceptanceMs": 78.68074999999999,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-23/resume",
+        "/threads/thread-23/turns"
+      ]
+    },
+    {
+      "index": 24,
+      "createMs": 35.15491699999984,
+      "sendToAcceptanceMs": 43.884000000000015,
+      "submitToAcceptanceMs": 79.40029199999981,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-24/resume",
+        "/threads/thread-24/turns"
+      ]
+    },
+    {
+      "index": 25,
+      "createMs": 35.50045799999998,
+      "sendToAcceptanceMs": 42.74016700000038,
+      "submitToAcceptanceMs": 78.66458299999977,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-25/resume",
+        "/threads/thread-25/turns"
+      ]
+    },
+    {
+      "index": 26,
+      "createMs": 34.85454200000004,
+      "sendToAcceptanceMs": 47.20433400000002,
+      "submitToAcceptanceMs": 82.77195800000027,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-26/resume",
+        "/threads/thread-26/turns"
+      ]
+    },
+    {
+      "index": 27,
+      "createMs": 35.3442500000001,
+      "sendToAcceptanceMs": 45.28562499999998,
+      "submitToAcceptanceMs": 81.32179200000019,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-27/resume",
+        "/threads/thread-27/turns"
+      ]
+    },
+    {
+      "index": 28,
+      "createMs": 34.793916999999965,
+      "sendToAcceptanceMs": 44.47941700000001,
+      "submitToAcceptanceMs": 79.68604199999982,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-28/resume",
+        "/threads/thread-28/turns"
+      ]
+    },
+    {
+      "index": 29,
+      "createMs": 32.945624999999836,
+      "sendToAcceptanceMs": 45.91750000000002,
+      "submitToAcceptanceMs": 79.33787499999971,
+      "counts": {
+        "clientRequests": 2,
+        "runtimeRequests": 3,
+        "configurationCalls": 2,
+        "sessions.insertOne": 1,
+        "sessions.findOne": 1,
+        "messages.insertOne": 1,
+        "sessions.updateOne": 1,
+        "messages.updateOne": 1,
+        "messages.findOne": 0
+      },
+      "runtimePaths": [
+        "/threads",
+        "/threads/thread-29/resume",
+        "/threads/thread-29/turns"
+      ]
+    }
+  ]
+}

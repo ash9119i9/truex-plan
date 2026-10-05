@@ -154,3 +154,13 @@ test("tool decisions use the mode label when a mode allowed them", () => {
     "Not allowed",
   );
 });
+
+test("missing or mismatched effective approval mode is not confirmation", async (t) => {
+  mockFetch(t, {});
+  await assert.rejects(setApprovalMode("s1", "readOnly"), /not confirmed/);
+});
+
+test("a different effective approval mode is rejected", async (t) => {
+  mockFetch(t, { mode: "ask" });
+  await assert.rejects(setApprovalMode("s1", "readOnly"), /not confirmed/);
+});

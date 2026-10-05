@@ -1,0 +1,31 @@
+✔ approval mode config is off by default and rejects unsafe defaults (0.543167ms)
+✔ approval modes: MCP prompt mode, thread options and the approval-mode endpoint (2915.280084ms)
+✔ public sessions include approvalMode only when the feature is on (0.162125ms)
+✔ audit records show approvals settled by a mode and allow-for-chat (0.511625ms)
+▶ a persisted desired mode must be confirmed after reload before accepting a message
+  ✔ unconfirmed resume 0 is rejected before every durable/turn side effect (11.09675ms)
+  ✔ unconfirmed resume 1 is rejected before every durable/turn side effect (4.871375ms)
+  ✔ unconfirmed resume 2 is rejected before every durable/turn side effect (4.286208ms)
+  ✔ unconfirmed resume 3 is rejected before every durable/turn side effect (3.07125ms)
+  ✔ confirmed current resume accepts exactly one turn (2.899666ms)
+  ✔ confirmed legacy resume accepts exactly one turn (4.484584ms)
+  ✔ feature-off resume retains its old wire contract (4.181334ms)
+✔ a persisted desired mode must be confirmed after reload before accepting a message (2902.162375ms)
+✔ creation validates the existing approval-mode schema and keeps old defaults (0.771583ms)
+✔ creation confirmation uses exact ack or the supported older-runtime endpoint (0.229584ms)
+✔ configured creation applies and persists the selected mode without a follow-up update (2899.367416ms)
+✔ invalid creation mode rejects before configuration or runtime side effects (1171.1775ms)
+✔ older runtime mode confirmation and failed acknowledgment keep creation safe (1253.095542ms)
+✔ configured creation rejects forbidden projects before provisioning (1209.017667ms)
+✔ mismatched creation acknowledgment cleans up without storing or silently updating (1171.65975ms)
+{"ts":"2026-10-05T18:09:24.679Z","level":"warn","msg":"New conversation runtime cleanup failed","op":"create.cleanup","threadId":"created-thread","error":"cleanup unavailable","errorName":"Error","stack":"Error: cleanup unavailable\n    at PlatformService.service.call (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:331:38)\n    at PlatformService.create (/Users/ashok/truex-plan/platform/src/service.ts:1202:18)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async waitForActual (node:assert:615:5)\n    at async strict.rejects (node:assert:738:25)\n    at async TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/session-creation.test.ts:343:5)\n    at async Test.run (node:internal/test_runner/test:1404:7)\n    at async Test.processPendingSubtests (node:internal/test_runner/test:969:7)"}
+✔ database failure after configured runtime creation keeps its failure and attempts cleanup (1168.221083ms)
+✔ configured mode survives a new service instance and is reapplied before its first turn (1171.517875ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10307.249583

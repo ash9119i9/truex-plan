@@ -1,0 +1,76 @@
+✖ warm operational resume acknowledges mode and preserves pending/running authority without transcript materialization (190.411ms)
+✔ default resume retains the entire existing snapshot and no unsolicited approval acknowledgment (1.069583ms)
+✖ invalid response modes reject before runtime, mode or configuration side effects; tenant checks remain enforced (1.533791ms)
+✖ cold operational resume performs normal load and goal recovery without a discarded full snapshot (0.45275ms)
+✖ operational changed configuration stays pending while running and applies before the next turn (0.72375ms)
+✖ operational idle configuration reload strips response option and preserves legacy cold-source coverage (0.733625ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 1
+ℹ fail 5
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 481.813708
+
+✖ failing tests:
+
+test at test/resume-response.test.ts:2:2416
+✖ warm operational resume acknowledges mode and preserves pending/running authority without transcript materialization (190.411ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:40:52)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at <anonymous> (/Users/ashok/truex-plan/agent-core/src/manager.ts:550:33)
+      at async ThreadManager.serial (/Users/ashok/truex-plan/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:52:20)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at test/resume-response.test.ts:2:4067
+✖ invalid response modes reject before runtime, mode or configuration side effects; tenant checks remain enforced (1.533791ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:78:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid runtime resume response/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at test/resume-response.test.ts:2:4912
+✖ cold operational resume performs normal load and goal recovery without a discarded full snapshot (0.45275ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:40:52)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at ThreadManager.load (/Users/ashok/truex-plan/agent-core/src/manager.ts:627:19)
+      at async <anonymous> (/Users/ashok/truex-plan/agent-core/src/manager.ts:561:24)
+      at async ThreadManager.serial (/Users/ashok/truex-plan/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:89:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/resume-response.test.ts:2:5816
+✖ operational changed configuration stays pending while running and applies before the next turn (0.72375ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:40:52)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at <anonymous> (/Users/ashok/truex-plan/agent-core/src/manager.ts:557:33)
+      at async ThreadManager.serial (/Users/ashok/truex-plan/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:106:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at test/resume-response.test.ts:2:7020
+✖ operational idle configuration reload strips response option and preserves legacy cold-source coverage (0.733625ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:40:52)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at ThreadManager.load (/Users/ashok/truex-plan/agent-core/src/manager.ts:627:19)
+      at async <anonymous> (/Users/ashok/truex-plan/agent-core/src/manager.ts:561:24)
+      at async ThreadManager.serial (/Users/ashok/truex-plan/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/Users/ashok/truex-plan/agent-core/test/resume-response.test.ts:124:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

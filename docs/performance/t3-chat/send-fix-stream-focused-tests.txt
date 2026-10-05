@@ -1,0 +1,120 @@
+(node:35863) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat-batch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1000 compatible answer deltas use one projection application with exact state (10.233375ms)
+✔ 1000 adjacent reasoning fragments coalesce per exact raw or summary channel (9.527041ms)
+✔ reasoning identities, channels, indexed parts and ordinals are ordering boundaries (0.362125ms)
+✔ reasoning malformed identities, channels, signals and payloads remain passthrough (0.659334ms)
+✔ reasoning final, tool, snapshot, turn, answer and approval frames remain barriers (0.307208ms)
+✔ late, completed, Unicode and interleaved reasoning preserve the full reducer oracle (0.133083ms)
+✔ source projection retains original cursor accounting across reasoning batches and stale replays (0.312917ms)
+✔ thread, turn, item and ordinal differences split adjacent runs (0.104666ms)
+✔ every non-answer frame is an ordering barrier, including both reasoning channels (0.342625ms)
+✔ missing identities and invalid ordinals stay uncoalesced without changing legacy behavior (0.908042ms)
+✔ malformed payloads preserve the reducer's original result or failure (0.373042ms)
+✔ aliases, completed replay, conflicting ordinals and Unicode retain exact reducer state (0.160584ms)
+✔ seeded randomized batches equal the unoptimized reducer at every publication boundary (102.979042ms)
+✔ coalesced message.delta projection preserves raw events and terminal cursor during paint publication (2.796875ms)
+✔ coalesced message.delta projection preserves raw events and terminal cursor during timer publication (3.420291ms)
+✔ coalesced message.delta projection preserves raw events and terminal cursor during navigation publication (1.591333ms)
+✔ coalesced reasoning.delta projection preserves raw events and terminal cursor during paint publication (2.195333ms)
+✔ coalesced reasoning.delta projection preserves raw events and terminal cursor during timer publication (1.487792ms)
+✔ coalesced reasoning.delta projection preserves raw events and terminal cursor during navigation publication (1.514792ms)
+✔ rejected navigation ownership publishes and acknowledges no coalesced state (0.196625ms)
+✔ malformed transport frame flushes coalesced accepted text without acknowledging the rejected cursor (0.330833ms)
+(node:35864) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat-visibility.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ visibility retains exact prefix, turn, completion, Unicode and reference semantics (38.652208ms)
+✔ interrupted histories do not rescan the full transcript for every answer (0.42375ms)
+✔ many finalized answers in one turn do not cause repeated linear prefix searches (0.694292ms)
+(node:35865) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/chat.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ history, replay, and a snapshot render one authoritative reply (0.698375ms)
+✔ a final adopts its stream even when runtime changes the ID (0.076042ms)
+✔ different messages and turns are not collapsed by identical text (0.0735ms)
+✔ late reasoning is placed before the saved answer and updated in place (0.305625ms)
+✔ raw reasoning and summary streams never concatenate duplicate content (0.056125ms)
+✔ runtime agentMessage items cannot create a second answer row (0.054208ms)
+✔ completing a turn closes only its own partial content (0.057583ms)
+✔ provider replay on a second unfinished item stays hidden, including after completion (0.13325ms)
+✔ a partial replay that diverges becomes a separate visible message (0.076334ms)
+✔ reconnect restores thinking before its answer without duplicating either (0.179209ms)
+✔ command submissions and structured results survive history plus replayed goal answers (1.667959ms)
+✔ reconnect preserves completed command results and keeps thinking before the answer (0.310125ms)
+✔ resolved approvals stay in the chat after their turn, once (0.201083ms)
+✔ indexed history preserves alias precedence and removes superseded ordinal/text indexes (0.400208ms)
+✔ indexed history matches the live merger across deterministic mixed identity collisions (32.8ms)
+✔ history hydration does not mutate saved messages or collapse distinct same-text items in a large turn (6.685209ms)
+✔ recent history windows update their rows without moving the loaded older prefix or active tail (0.693042ms)
+✔ older pages prepend once and preserve existing anchor, reasoning, helper, and approval objects (0.225292ms)
+✔ a persisted final adopts stream aliases and keeps its stable row ID (0.1855ms)
+✔ history accepts a pending user without downgrading a terminal command result (0.104167ms)
+✔ a delta received during an older fetch remains live after the page is prepended (0.121834ms)
+✔ new recent rows fit before a pending active tail even when their window has no shared row (0.100667ms)
+✔ a newly persisted answer stays after reasoning/helpers and before a trailing resolved approval (0.09375ms)
+✔ empty or repeated windows leave the transcript reference unchanged (0.070125ms)
+✔ a stale history response cannot replace newer SSE text or finalize its live stream (0.164958ms)
+✔ history can finalize a cached partial when no new live event arrived during its request (0.093083ms)
+✔ legacy unfinished reasoning before a saved final does not move new recent rows ahead of old history (0.089333ms)
+✔ older rows with a reused turn ID prepend without adopting an unrelated active item (0.077ms)
+(node:35866) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/ordered-batch.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ 1000 delta frames publish once in original order and preserve all text (0.693083ms)
+✔ timer fallback publishes when animation frames do not run (0.577125ms)
+✔ flush and discard cancel stale scheduled callbacks (0.128ms)
+✔ queue count is bounded and reentrant publication retains new frames (1.010459ms)
+(node:35867) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/source-sync.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ canonical safe cursors reject zero padding, unsafe integers and malformed generations (1.527042ms)
+✔ a marker during HTTP recovery never makes a mixed durable display eligible (0.489166ms)
+✔ zero-gap warm replay restores running/pending authority without another transcript snapshot (0.10125ms)
+✔ missing deltas apply once before same-cursor marker; public filtered sequence gaps are allowed (0.144292ms)
+✔ wrong marker envelope, thread, generation, mode and coverage fail closed with no partial pair (0.277708ms)
+✔ oversized source projection is disqualified rather than silently truncated (0.063542ms)
+✔ display overlays retain durable commands/users while the source pair stays isolated (0.117833ms)
+✔ operational marker state requires coherent source cursor and valid running state (0.047083ms)
+✔ readiness deadlines, navigation cancellation and stale markers are deterministic (0.105167ms)
+✔ overlay preserves reasoning fallback identity and accepts its next itemless delta (0.156208ms)
+✔ implicit EventSource reconnect marker cannot silently reuse the original replay boundary (0.071708ms)
+✔ long-history cold hydration and repeated warm overlays preserve every request/answer order and identity (11.214458ms)
+(node:35868) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/transport.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the session id is encoded in the stream URL (0.69825ms)
+✔ source synchronization sends only explicitly paired cursors (0.133417ms)
+✔ actual public frames omit threadId; trusted URL scope enables1000-to1 projection coalescing (1.729916ms)
+✔ same-cursor synchronization marker flushes queued text before authority and checkpoint (0.506958ms)
+✔ invalid marker and mismatched SSE cursor cannot advance a paired stream (0.217667ms)
+✔ an unreadable frame resyncs without advancing the cursor (0.121542ms)
+✔ errors report Reconnecting while retrying and Disconnected once closed (0.069417ms)
+✔ stream.error passes the platform's reason on and closes the stream (0.135875ms)
+✔ 1000 ordered deltas publish once per frame and checkpoint after publication (7.763083ms)
+✔ the same 1000 delta fixture keeps legacy immediate delivery compatible (5.878125ms)
+✔ snapshots, finals, approvals and completion flush prior text in order (0.444875ms)
+✔ navigation flush and unsubscribe preserve queued deltas exactly once (0.256ms)
+✔ delivery failure leaves cursor behind and prevents later checkpoint leap (0.211375ms)
+✔ stale ownership rejects a batch without cursor advance or later delivery (0.127958ms)
+✔ malformed frame flushes accepted text then closes without checkpoint leap (0.14775ms)
+✔ fatal connection error flushes accepted text before reporting failure (0.127ms)
+✔ ordinary consumer failure does not acknowledge its frame (0.101417ms)
+✔ JSON scalars, arrays and invalid envelopes request recovery without checkpoint (0.240625ms)
+✔ invalid text delta and snapshot protocol shapes recover instead of entering reducers (0.359833ms)
+✔ unknown future event types keep envelope compatibility (0.063ms)
+ℹ tests 88
+ℹ suites 0
+ℹ pass 88
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 299.172208

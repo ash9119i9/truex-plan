@@ -1,0 +1,17 @@
+✔ creation validates the existing approval-mode schema and keeps old defaults (0.716666ms)
+✔ creation confirmation uses exact ack or the supported older-runtime endpoint (0.198292ms)
+✔ configured creation applies and persists the selected mode without a follow-up update (4798.8255ms)
+✔ invalid creation mode rejects before configuration or runtime side effects (4882.3465ms)
+✔ older runtime mode confirmation and failed acknowledgment keep creation safe (4745.775583ms)
+✔ configured creation rejects forbidden projects before provisioning (4774.912708ms)
+✔ mismatched creation acknowledgment cleans up without storing or silently updating (5864.490041ms)
+✔ database failure after configured runtime creation keeps its failure and attempts cleanup (5145.572083ms)
+✔ configured mode survives a new service instance and is reapplied before its first turn (3657.501042ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 34140.136791

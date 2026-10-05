@@ -1,0 +1,29 @@
+(node:54714) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/sidebar-lifecycle.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ unchanged memoized sidebar moves Today to Earlier at local midnight (39.926ms)
+✔ collapsed shelf preference survives an actual sidebar remount (16.2135ms)
+✔ hidden sidebar clock wakes only on visibility/focus and cleans up (6.98725ms)
+✔ midnight scheduling follows 23 and 25 hour local DST days (14.330875ms)
+✔ invalid stored preference keeps the default; remount stores only a boolean (5.720708ms)
+✔ denied preference storage leaves the mounted shelf usable (5.043333ms)
+✔ focus resynchronizes local calendar grouping after a time-zone change (8.024625ms)
+(node:54715) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/sidebar.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the Earlier shelf starts at ten rows and expands by twenty-five (0.314042ms)
+✔ a deep selected conversation stays reachable without expanding intervening rows (0.062541ms)
+✔ a collapsed shelf retains only the selected row and restores its limit on expansion (0.254917ms)
+✔ windowing does not mutate or remove Search and project menu data (0.055292ms)
+✔ empty lists, a short tail and refreshed missing selections stay valid (0.072167ms)
+✔ local date groups preserve source ordering and object references (0.094167ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 233.7245

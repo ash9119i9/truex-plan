@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type FocusEvent, type ReactNode } from "react";
 import { Icon } from "./icon";
+import type { DispatchState } from "@/lib/composer-submission";
 import { SLASH_COMMANDS_ENABLED } from "@/lib/slash-commands";
 
 // Composer frame from docs/truex-design-spec.html (Core components §2).
@@ -9,7 +10,9 @@ import { SLASH_COMMANDS_ENABLED } from "@/lib/slash-commands";
 
 // Spec copy (Core §2, Placeholder rotation).
 export const PLACEHOLDERS = [
-  SLASH_COMMANDS_ENABLED ? "Ask anything, or type / for commands" : "Ask anything",
+  SLASH_COMMANDS_ENABLED
+    ? "Ask anything, or type / for commands"
+    : "Ask anything",
   "Summarize last week's pipeline changes",
   "Compare Q2 vs Q3 revenue by region",
   "Draft a reply to the customer escalation",
@@ -39,6 +42,7 @@ export function Composer({
   onGoalCancel,
   busy,
   canSend,
+  dispatchState = null,
   onStop,
   hero = false,
   budget,
@@ -57,6 +61,8 @@ export function Composer({
   busy: boolean;
   /** Enables the send button (and shows it next to stop while busy, for steering). */
   canSend: boolean;
+  /** Local request state, separate from the running turn. */
+  dispatchState?: DispatchState;
   onStop: () => void;
   /** Empty-state variant: no max-width, taller textarea. */
   hero?: boolean;
@@ -139,12 +145,34 @@ export function Composer({
             <Icon name="stop" size={12} stroke={3} />
           </button>
         )}
-        {(!busy || canSend) && (
+        {dispatchState && (
+          <span className="muted" role="status">
+            {dispatchState === "creating"
+              ? "Creating…"
+              : dispatchState === "steering"
+                ? "Steering…"
+                : "Sending…"}
+          </span>
+        )}
+        {(!busy || canSend || dispatchState) && (
           <button
             type="submit"
             className="send"
             disabled={!canSend}
-            aria-label={goalMode ? "Start goal" : "Send"}
+            aria-label={
+              dispatchState === "creating"
+                ? "Creating"
+                : dispatchState === "steering"
+                  ? "Steering"
+                  : dispatchState === "sending"
+                    ? "Sending"
+                    : busy
+                      ? "Steer"
+                      : goalMode
+                        ? "Start goal"
+                        : "Send"
+            }
+            title={busy ? "Steer the current response" : undefined}
           >
             <Icon name="arrowUp" size={17} stroke={2.25} />
           </button>

@@ -6,6 +6,12 @@ import {
 import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { createHash } from "node:crypto";
 import { ApiError } from "./errors";
+import {
+  runtimeWindowOption,
+  runtimeWindowQuery,
+  runtimeSyncOption,
+} from "../../shared/runtime-read-options";
+import { runtimeResumeResponse } from "../../shared/runtime-resume-options";
 
 const runtimeArn =
   /^arn:(?:aws|aws-us-gov|aws-cn):bedrock-agentcore:([a-z0-9-]+):\d{12}:runtime\/[A-Za-z0-9_-]+$/;
@@ -39,6 +45,8 @@ export type RuntimeRequest = {
   requestId?: string;
   cursor?: string;
   signal?: AbortSignal;
+  window?: boolean;
+  sync?: "v1";
 };
 
 export class RuntimeTransport {
@@ -47,8 +55,55 @@ export class RuntimeTransport {
 
   async request(input: RuntimeRequest): Promise<Response> {
     const method = input.method ?? "GET";
+    const url = new URL(input.path, "http://runtime");
+    if (method === "POST" && /^\/threads\/[^/]+\/resume$/.test(url.pathname)) {
+      try {
+        runtimeResumeResponse(
+          (input.body as Record<string, unknown> | null | undefined)?.response,
+        );
+      } catch {
+        throw new ApiError(
+          400,
+          "Invalid runtime resume options",
+          "INVALID_INPUT",
+        );
+      }
+    }
+    let window: boolean | undefined;
+    let sync: "v1" | undefined;
+    try {
+      const queries = url.searchParams.getAll("window");
+      if (queries.length > 1)
+        throw new TypeError("Invalid runtime snapshot window");
+      const queried = runtimeWindowQuery(queries[0]);
+      window = runtimeWindowOption(
+        method,
+        url.pathname,
+        input.window === undefined ? queried : input.window,
+      );
+      if (queried && input.window === false)
+        throw new TypeError("Conflicting runtime snapshot window");
+      const syncQueries = url.searchParams.getAll("sync");
+      if (syncQueries.length > 1)
+        throw new TypeError("Invalid runtime synchronization mode");
+      sync = runtimeSyncOption(
+        method,
+        url.pathname,
+        input.sync === undefined ? syncQueries[0] : input.sync,
+      );
+      if (
+        syncQueries[0] !== undefined &&
+        input.sync !== undefined &&
+        syncQueries[0] !== input.sync
+      )
+        throw new TypeError("Conflicting runtime synchronization mode");
+    } catch {
+      throw new ApiError(400, "Invalid runtime read options", "INVALID_INPUT");
+    }
+    if (window) url.searchParams.set("window", "1");
+    if (sync) url.searchParams.set("sync", sync);
     if (!isAgentCoreRuntime(input.owner)) {
-      return fetch(input.owner + input.path, {
+      return fetch(input.owner + url.pathname + url.search, {
         method,
         headers: {
           "Content-Type": "application/json",
@@ -60,8 +115,11 @@ export class RuntimeTransport {
       });
     }
 
-    const url = new URL(input.path, "http://runtime");
-    if ([...url.searchParams.keys()].some((key) => key !== "cursor"))
+    if (
+      [...url.searchParams.keys()].some(
+        (key) => !["cursor", "window", "sync"].includes(key),
+      )
+    )
       throw new ApiError(400, "Unsupported runtime query", "INVALID_INPUT");
     let sessionId = input.sessionId;
     if (
@@ -96,6 +154,8 @@ export class RuntimeTransport {
           ...(input.body === undefined ? {} : { body: input.body }),
           ...(cursor === undefined ? {} : { cursor }),
           ...(input.requestId ? { requestId: input.requestId } : {}),
+          ...(window === undefined ? {} : { window }),
+          ...(sync === undefined ? {} : { sync }),
         }),
       ),
     });

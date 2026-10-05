@@ -1,0 +1,47 @@
+{
+  "frozenProductionPath": "original ThreadManager → original BusinessRuntime → captured CodexClient.request",
+  "forwarded": [
+    {
+      "method": "thread/resume",
+      "parameterKeys": [
+        "model",
+        "modelProvider",
+        "cwd",
+        "runtimeWorkspaceRoots",
+        "sandbox",
+        "approvalPolicy",
+        "baseInstructions",
+        "config",
+        "threadId"
+      ],
+      "includesResponse": false
+    },
+    {
+      "method": "thread/goal/get",
+      "parameterKeys": [
+        "threadId"
+      ],
+      "includesResponse": false
+    }
+  ],
+  "approvalAcknowledged": true,
+  "pinnedBinary": {
+    "relativePath": "vendor/codex/codex-rs/target/debug/codex",
+    "requests": [
+      {
+        "extraResponse": false,
+        "rpcCode": -32600,
+        "missingHistory": true,
+        "rejectsUnknownField": false
+      },
+      {
+        "extraResponse": true,
+        "rpcCode": -32600,
+        "missingHistory": true,
+        "rejectsUnknownField": false
+      }
+    ],
+    "modelTurnsStarted": 0
+  },
+  "conclusion": "Frozen production BusinessRuntime strips the opt-in field before thread/resume; the pinned binary also tolerates it on a direct missing-history resume."
+}

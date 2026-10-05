@@ -1,14 +1,25 @@
 "use client";
-import { memo, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  memo,
+  useId,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { Icon } from "./icon";
 import {
   convoTime,
+  loadEarlierExpanded,
+  saveEarlierExpanded,
   groupSidebarSessions,
   sidebarWindow,
   SIDEBAR_INITIAL_COUNT,
   SIDEBAR_PAGE_COUNT,
   type SidebarSession,
 } from "@/lib/sidebar";
+
+import { useSidebarDay } from "@/lib/use-sidebar-clock";
 
 export { convoGroup, convoTime } from "@/lib/sidebar";
 export type { SidebarSession } from "@/lib/sidebar";
@@ -47,18 +58,16 @@ function SidebarView<S extends SidebarSession>({
   /** Disables conversation selection and creation while a request is being sent. */
   busy?: boolean;
 }) {
-  const now = new Date();
-  const dayKey = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate(),
-  ).getTime();
+  const dayKey = useSidebarDay();
+  const now = new Date(dayKey);
   const groups = useMemo(
     () => groupSidebarSessions(sessions, new Date(dayKey)),
     [sessions, dayKey],
   );
   const [earlierCount, setEarlierCount] = useState(SIDEBAR_INITIAL_COUNT);
   const [earlierExpanded, setEarlierExpanded] = useState(true);
+  // Read after mount so server rendering and hydration keep the same default.
+  useEffect(() => setEarlierExpanded(loadEarlierExpanded()), []);
   const earlierId = useId();
   const earlier = useMemo(
     () =>
@@ -141,7 +150,11 @@ function SidebarView<S extends SidebarSession>({
               className="side-shelf-toggle eyebrow"
               aria-expanded={earlierExpanded}
               aria-controls={earlierId}
-              onClick={() => setEarlierExpanded((expanded) => !expanded)}
+              onClick={() => {
+                const next = !earlierExpanded;
+                setEarlierExpanded(next);
+                saveEarlierExpanded(next);
+              }}
             >
               <Icon name={earlierExpanded ? "chevron" : "chevronR"} size={12} />
               Earlier

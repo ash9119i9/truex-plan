@@ -1,5 +1,10 @@
-import type { Message } from "../../shared/contracts";
 import { ApiError } from "./errors";
+
+export interface HistoryBoundary {
+  _id: string;
+  role: string;
+  command?: unknown;
+}
 
 // This cursor anchors the authoritative conversation order, not a timestamp:
 // commands and reconstructed runtime messages can share the same timestamp.
@@ -40,8 +45,8 @@ export function historyAnchor(
   return value.beforeMessageId;
 }
 
-export function historyWindow(
-  messages: Message[],
+export function historyWindow<T extends HistoryBoundary>(
+  messages: T[],
   sessionId: string,
   beforeMessageId?: string,
 ) {

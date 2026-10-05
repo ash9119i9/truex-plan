@@ -1,0 +1,528 @@
+{
+  "baseline": "d6e3f45a45e6948873b8a64d0a9453fb2c2f4307",
+  "fixture": {
+    "persistedMs": 15,
+    "recoveryMs": 600,
+    "sseBootstrapMs": 30
+  },
+  "node": "24.21.0",
+  "scope": "Native production DOM mutation and readiness; not physical paint or production latency",
+  "focus": false,
+  "header": "Fixture Assistant·ready",
+  "requests": [
+    {
+      "at": 1791224741946,
+      "finishedAt": 1791224741962,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224741949,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224741990,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224741991,
+      "finishedAt": 1791224742007,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742031,
+      "finishedAt": 1791224742047,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742031,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224742073,
+      "finishedAt": 1791224742089,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742073,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224742114,
+      "finishedAt": 1791224742131,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742114,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224742156,
+      "finishedAt": 1791224742172,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742156,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224742198,
+      "finishedAt": 1791224742214,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742198,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224742240,
+      "finishedAt": 1791224742256,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742240,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224742282,
+      "finishedAt": 1791224742299,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742282,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224742323,
+      "finishedAt": 1791224742339,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224742323,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224750970,
+      "finishedAt": 1791224750986,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224750970,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751013,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751013,
+      "finishedAt": 1791224751029,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751055,
+      "finishedAt": 1791224751071,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751055,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751095,
+      "finishedAt": 1791224751112,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751095,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751135,
+      "finishedAt": 1791224751152,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751135,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751176,
+      "finishedAt": 1791224751192,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751177,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751217,
+      "finishedAt": 1791224751234,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751217,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751258,
+      "finishedAt": 1791224751274,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751258,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751299,
+      "finishedAt": 1791224751316,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751299,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751339,
+      "finishedAt": 1791224751355,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751340,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751402,
+      "finishedAt": 1791224751418,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751403,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751442,
+      "finishedAt": 1791224751458,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751443,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751483,
+      "finishedAt": 1791224751499,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751484,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751524,
+      "finishedAt": 1791224751540,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751524,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751566,
+      "finishedAt": 1791224751582,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751566,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751604,
+      "finishedAt": 1791224751621,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751604,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751643,
+      "finishedAt": 1791224751659,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751643,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751682,
+      "finishedAt": 1791224751698,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751682,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751721,
+      "finishedAt": 1791224751738,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751721,
+      "method": "GET",
+      "path": "/api/sessions/fixture-a/events?window=1&sync=v1&cursor=fixture%3A1"
+    },
+    {
+      "at": 1791224751761,
+      "finishedAt": 1791224751777,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long?window=1&persisted=1"
+    },
+    {
+      "at": 1791224751761,
+      "method": "GET",
+      "path": "/api/sessions/fixture-long/events?window=1&sync=v1&cursor=fixture%3A1"
+    }
+  ],
+  "samples": [
+    {
+      "domMs": 7.800000000745058,
+      "mounted": 9,
+      "readyMs": 43,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 8.600000001490116,
+      "mounted": 9,
+      "readyMs": 40.80000000074506,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 8.5,
+      "mounted": 9,
+      "readyMs": 42,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 8.199999999254942,
+      "mounted": 9,
+      "readyMs": 41.80000000074506,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 7.699999999254942,
+      "mounted": 9,
+      "readyMs": 40.19999999925494,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 8,
+      "mounted": 9,
+      "readyMs": 42.70000000298023,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 8.100000001490116,
+      "mounted": 9,
+      "readyMs": 41.600000001490116,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 8.699999999254942,
+      "mounted": 9,
+      "readyMs": 42.399999998509884,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 8.800000000745058,
+      "mounted": 9,
+      "readyMs": 41.5,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 7.900000002235174,
+      "mounted": 9,
+      "readyMs": 41.19999999925494,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 11.699999999254942,
+      "mounted": 9,
+      "readyMs": 45.69999999925494,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 9.300000000745058,
+      "mounted": 9,
+      "readyMs": 43,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 8.600000001490116,
+      "mounted": 9,
+      "readyMs": 42,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 7.200000002980232,
+      "mounted": 9,
+      "readyMs": 39.5,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 7.600000001490116,
+      "mounted": 9,
+      "readyMs": 40.100000001490116,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 8.399999998509884,
+      "mounted": 9,
+      "readyMs": 41.100000001490116,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 8.299999997019768,
+      "mounted": 9,
+      "readyMs": 40.79999999701977,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 8.400000002235174,
+      "mounted": 9,
+      "readyMs": 41.80000000074506,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 7.800000000745058,
+      "mounted": 9,
+      "readyMs": 40.19999999925494,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 7.900000002235174,
+      "mounted": 9,
+      "readyMs": 39.20000000298023,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 6.800000000745058,
+      "mounted": 9,
+      "readyMs": 40.19999999925494,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 7,
+      "mounted": 9,
+      "readyMs": 40.30000000074506,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 7.699999999254942,
+      "mounted": 9,
+      "readyMs": 41.100000001490116,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 7.100000001490116,
+      "mounted": 9,
+      "readyMs": 40.5,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 8.599999997764826,
+      "mounted": 9,
+      "readyMs": 40.80000000074506,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 6,
+      "mounted": 9,
+      "readyMs": 37.80000000074506,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 6.399999998509884,
+      "mounted": 9,
+      "readyMs": 39.30000000074506,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 6.099999997764826,
+      "mounted": 9,
+      "readyMs": 39.399999998509884,
+      "title": "Fixture LONG conversation"
+    },
+    {
+      "domMs": 6.5,
+      "mounted": 9,
+      "readyMs": 38.69999999925494,
+      "title": "Fixture A conversation"
+    },
+    {
+      "domMs": 6.900000002235174,
+      "mounted": 9,
+      "readyMs": 40.400000002235174,
+      "title": "Fixture LONG conversation"
+    }
+  ],
+  "text": "Load earlier messages\nFixture Assistant\n\nfixture-long reply 991\n\nA deterministic fixture response with a list:\n\nHistory loads independently\nStreaming preserves identity\n\nCode fixture value 991.\n\nCopy answer\nfixture-long question 992\nFixture Assistant\n\nfixture-long reply 993\n\nA deterministic fixture response with a list:\n\nHistory loads independently\nStreaming preserves identity\n\nCode fixture value 993.\n\nCopy answer\nfixture-long question 984\nFixture Assistant\n\nfixture-long reply 995\n\nA deterministic fixture response with a list:\n\nHistory loads independently\nStreaming preserves identity\n\nCode fixture value 995.\n\nCopy answer\nfixture-long question 996\nFixture Assistant\n\nfixture-long reply 999\n\nA deterministic fixture response with a list:\n\nHistory loads independently\nStreaming preserves identity\n\nCode fixture value 999.\n\nCopy answer\nfixture-long question 998\nFixture Assistant\n\nfixture-long reply 997\n\nA deterministic fixture response with a list:\n\nHistory loads independently\nStreaming preserves identity\n\nCode fixture value 997.\n\nCopy answer",
+  "visibility": "visible"
+}

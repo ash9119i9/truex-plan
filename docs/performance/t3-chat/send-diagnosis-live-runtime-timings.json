@@ -1,0 +1,175 @@
+{
+  "recordedAt": "2026-10-05T18:59:42.015Z",
+  "scope": "Existing saved public turn timings, read-only persisted requests. No new messages, model invocations, runtime resume, traces/context contents, or user text/IDs stored. Three most recent sessions; newest at most five saved timings each.",
+  "measurementBoundary": "Runtime clock starts before turn/start RPC and measures first agent answer text delta; excludes platform configuration/resume before turn, downstream SSE, React/paint, and earlier reasoning/tool output.",
+  "sessions": [
+    {
+      "session": 0,
+      "turns": [
+        {
+          "acceptMs": 34.82635500000015,
+          "adapterStreamMs": 5.972870999999941,
+          "deltaCount": 44,
+          "finalizeMs": 38.954445000000305,
+          "idleStreamMs": 2416.577091,
+          "maxGapMs": 1525.437766,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 2422.549962,
+          "totalMs": 4327.828441,
+          "ttftMs": 1866.3240339999998
+        }
+      ]
+    },
+    {
+      "session": 1,
+      "turns": [
+        {
+          "acceptMs": 19.83308300000499,
+          "adapterStreamMs": 2.174708999984432,
+          "deltaCount": 15,
+          "finalizeMs": 19.746084000005794,
+          "idleStreamMs": 204.21024900001066,
+          "maxGapMs": 170.96266699999978,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 206.3849579999951,
+          "totalMs": 4752.289667000005,
+          "ttftMs": 4526.158625000004
+        },
+        {
+          "acceptMs": 14.925791000001482,
+          "adapterStreamMs": 2.461290999999619,
+          "deltaCount": 9,
+          "finalizeMs": 44.30604199999652,
+          "idleStreamMs": 299.20054200000595,
+          "maxGapMs": 296.59554200000275,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 301.6618330000056,
+          "totalMs": 2759.843458000003,
+          "ttftMs": 2413.875583000001
+        },
+        {
+          "acceptMs": 16.475334000002476,
+          "adapterStreamMs": 1.7998330000118585,
+          "deltaCount": 3,
+          "finalizeMs": 28.254333000004408,
+          "idleStreamMs": 49.425791999994544,
+          "maxGapMs": 50.77529200000572,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 51.2256250000064,
+          "totalMs": 2794.3940000000002,
+          "ttftMs": 2714.9140419999894
+        },
+        {
+          "acceptMs": 16.497917000000598,
+          "adapterStreamMs": 3.2209550000261515,
+          "deltaCount": 22,
+          "finalizeMs": 43.15208299999358,
+          "idleStreamMs": 912.8628369999788,
+          "maxGapMs": 386.6884580000042,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 916.0837920000049,
+          "totalMs": 3445.5152919999964,
+          "ttftMs": 2486.279416999998
+        }
+      ]
+    },
+    {
+      "session": 2,
+      "turns": [
+        {
+          "acceptMs": 28.53868599998532,
+          "adapterStreamMs": 6.520470000104979,
+          "deltaCount": 58,
+          "finalizeMs": 35.04063499998301,
+          "idleStreamMs": 2552.348040999903,
+          "maxGapMs": 442.4448609999963,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 2558.868511000008,
+          "totalMs": 5643.049562999979,
+          "ttftMs": 3049.140416999988
+        },
+        {
+          "acceptMs": 25.524065000005066,
+          "adapterStreamMs": 12.498013000120409,
+          "deltaCount": 69,
+          "finalizeMs": 39.126115999999456,
+          "idleStreamMs": 2943.2294949999778,
+          "maxGapMs": 418.03220800007693,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 2955.727508000098,
+          "totalMs": 6320.7289390000515,
+          "ttftMs": 3325.875314999954
+        },
+        {
+          "acceptMs": 32.95435100002214,
+          "adapterStreamMs": 15.987215000088327,
+          "deltaCount": 98,
+          "finalizeMs": 20.94503300008364,
+          "idleStreamMs": 4424.9924059999175,
+          "maxGapMs": 465.15915800002404,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 4440.979621000006,
+          "totalMs": 7501.053504000069,
+          "ttftMs": 3039.128849999979
+        },
+        {
+          "acceptMs": 32.77177099999972,
+          "adapterStreamMs": 42.932492998894304,
+          "deltaCount": 262,
+          "finalizeMs": 30.056238000048324,
+          "idleStreamMs": 15778.697766001103,
+          "maxGapMs": 3832.8934230000013,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 15821.630258999998,
+          "totalMs": 19487.828258999973,
+          "ttftMs": 3636.1417619999265
+        },
+        {
+          "acceptMs": 25.241930999909528,
+          "adapterStreamMs": 18.194453000323847,
+          "deltaCount": 105,
+          "finalizeMs": 27.77996399998665,
+          "idleStreamMs": 8445.603301999741,
+          "maxGapMs": 3642.5151949999854,
+          "nonStreaming": false,
+          "status": "completed",
+          "streamMs": 8463.797755000065,
+          "totalMs": 17140.789300999953,
+          "ttftMs": 8649.211581999902
+        }
+      ]
+    }
+  ],
+  "latestTurn": {
+    "acceptMs": 34.82635500000015,
+    "adapterStreamMs": 5.972870999999941,
+    "deltaCount": 44,
+    "deltaRate": 18.162680105748834,
+    "finalizeMs": 38.954445000000305,
+    "idleStreamMs": 2416.577091,
+    "maxGapMs": 1525.437766,
+    "nonStreaming": false,
+    "status": "completed",
+    "streamMs": 2422.549962,
+    "totalMs": 4327.828441,
+    "ttftMs": 1866.3240339999998
+  },
+  "summary": {
+    "turns": 10,
+    "ttftMinMs": 1866.3240339999998,
+    "ttftMedianMs": 3044.1346334999835,
+    "ttftMaxMs": 8649.211581999902,
+    "acceptMinMs": 14.925791000001482,
+    "acceptMaxMs": 34.82635500000015,
+    "maxGapMs": 3832.8934230000013
+  }
+}

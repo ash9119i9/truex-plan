@@ -1,0 +1,22 @@
+[
+  {
+    "area": "frontend",
+    "exitCode": 0,
+    "seconds": 1.1770381927490234
+  },
+  {
+    "area": "platform",
+    "exitCode": 0,
+    "seconds": 42.35804796218872
+  },
+  {
+    "area": "agent-core",
+    "exitCode": 0,
+    "seconds": 34.7510347366333
+  },
+  {
+    "area": "model-gateway",
+    "exitCode": 0,
+    "seconds": 1.3438429832458496
+  }
+]

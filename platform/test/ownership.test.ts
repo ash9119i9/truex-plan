@@ -217,11 +217,13 @@ test(
     // callers.
     let threads = 0;
     const core = httpServer(async (req, res) => {
-      for await (const _ of req);
+      let body = "";
+      for await (const chunk of req) body += chunk;
       const path = new URL(req.url!, "http://x").pathname;
       const reply = (value: unknown) =>
         res.writeHead(200, { "Content-Type": "application/json" }).end(JSON.stringify(value));
-      if (path === "/threads") return reply({ threadId: "th-" + ++threads });
+      if (path === "/threads") return reply({ threadId: "th-" + ++threads, approvalMode: JSON.parse(body).approvalMode });
+      if (path.endsWith("/approval-mode")) return reply({ mode: JSON.parse(body).mode });
       if (path.endsWith("/events")) {
         res.writeHead(200, { "Content-Type": "text/event-stream" });
         res.write(": open\n\n");

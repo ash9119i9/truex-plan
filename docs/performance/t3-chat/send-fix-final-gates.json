@@ -1,0 +1,22 @@
+[
+  {
+    "name": "platform",
+    "exitCode": 0,
+    "seconds": 41.537302017211914
+  },
+  {
+    "name": "core-build",
+    "exitCode": 0,
+    "seconds": 0.8827428817749023
+  },
+  {
+    "name": "platform-build",
+    "exitCode": 0,
+    "seconds": 1.048914909362793
+  },
+  {
+    "name": "gateway-build",
+    "exitCode": 0,
+    "seconds": 0.6677651405334473
+  }
+]

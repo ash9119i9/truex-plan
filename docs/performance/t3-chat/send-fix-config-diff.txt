@@ -1,0 +1,75 @@
+--- frozen/configuration
++++ candidate/configuration
+@@ -4,7 +4,35 @@
+   ) {
+     const agent = await this.store.findAgent(agentId);
+     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+-    const profile = await this.store.findModel(agent.modelProfileId);
++    // Observe failures immediately, then consume results in the existing
++    // validation order. A missing model still fails without waiting for MCPs
++    // or skills, and those outstanding reads cannot reject unhandled.
++    const settled = <T>(read: Promise<T>) =>
++      read.then(
++        (value) => ({ status: "fulfilled" as const, value }),
++        (reason: unknown) => ({ status: "rejected" as const, reason }),
++      );
++    const agentKey = String(agent._id);
++    const enabled = { agentIds: agentKey, enabled: { $ne: false } };
++    const modelRead = settled(this.store.findModel(agent.modelProfileId));
++    const tenantMcpRead = settled(
++      this.store.mcp
++        .find({ scope: "tenant", ...enabled })
++        .sort({ name: 1 })
++        .toArray(),
++    );
++    const ownerMcpRead = settled(
++      ownerId
++        ? this.store.mcp
++            .find({ scope: "user", ownerId, ...enabled })
++            .sort({ name: 1 })
++            .toArray()
++        : Promise.resolve([]),
++    );
++    const skillsRead = settled(this.skills(agent.skillIds || []));
++    const modelResult = await modelRead;
++    if (modelResult.status === "rejected") throw modelResult.reason;
++    const profile = modelResult.value;
+     const apiKey = profile?.apiKey || profile?.apikey;
+     if (!profile || !apiKey)
+       throw new ApiError(
+@@ -38,18 +66,12 @@
+         : this.gatewayConfig(profile, provider);
+     // Attachments live on the profiles (agentIds); agent.mcpProfileIds is
+     // legacy and no longer read.
+-    const agentKey = String(agent._id);
+-    const enabled = { agentIds: agentKey, enabled: { $ne: false } };
+-    const tenantMcps = await this.store.mcp
+-      .find({ scope: "tenant", ...enabled })
+-      .sort({ name: 1 })
+-      .toArray();
+-    const userMcps = ownerId
+-      ? await this.store.mcp
+-          .find({ scope: "user", ownerId, ...enabled })
+-          .sort({ name: 1 })
+-          .toArray()
+-      : [];
++    const tenantMcpResult = await tenantMcpRead;
++    if (tenantMcpResult.status === "rejected") throw tenantMcpResult.reason;
++    const tenantMcps = tenantMcpResult.value;
++    const ownerMcpResult = await ownerMcpRead;
++    if (ownerMcpResult.status === "rejected") throw ownerMcpResult.reason;
++    const userMcps = ownerMcpResult.value;
+     // Tenant names are reserved tenant-wide (attached here or not), so a user
+     // copy made before the tenant one existed is skipped, and the chat still
+     // starts. The owner sees the same warning in MCP settings.
+@@ -88,7 +110,9 @@
+         server.default_tools_approval_mode = "prompt";
+       config[`mcp_servers.${mcp.name}`] = server;
+     }
+-    const skills = await this.skills(agent.skillIds || []);
++    const skillsResult = await skillsRead;
++    if (skillsResult.status === "rejected") throw skillsResult.reason;
++    const skills = skillsResult.value;
+     return {
+       tenantId: currentTenantId(),
+       model: profile.modelName,

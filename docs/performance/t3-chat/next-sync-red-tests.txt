@@ -1,0 +1,733 @@
+Pinned baseline d6e3f45a45e6948873b8a64d0a9453fb2c2f4307; expected failing regressions
+✖ zero-gap replay returns authoritative running/pending operational state with no transcript snapshot call (166.900042ms)
+✖ replay reaches one captured high-water before marker and later live delivery (1.293166ms)
+✖ cold sync has one bounded source snapshot and matching marker; default remains full snapshot (1.017916ms)
+✖ invalid, expired, changed-generation and future cursors fall back before any replay (0.911708ms)
+✖ replay count overflow falls back as a whole, with no partial text frames (12.857417ms)
+✖ multibyte and escaped raw/SSE replay byte overflow falls back before publishing partial frames (4.198ms)
+✖ oversized retained event evicts the queue and old cursor cannot replay past it (0.805375ms)
+✖ SSE framing overhead can exceed the replay cap even when raw JSON alone fits (5.639667ms)
+✖ restart invalidates old generation and zero-gap operational state does not revive a turn (1.57925ms)
+✔ slow consumer failure emits no synchronization marker and attaches no live subscriber (0.893625ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 1
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 489.779167
+
+✖ failing tests:
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:2760
+✖ zero-gap replay returns authoritative running/pending operational state with no transcript snapshot call (166.900042ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + 'snapshot'
+  - 'sync.completed'
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:101:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'snapshot',
+    expected: 'sync.completed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:4281
+✖ replay reaches one captured high-water before marker and later live delivery (1.293166ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'message.delta',
+      'message.delta',
+      'message.delta',
+  +   'snapshot'
+  -   'sync.completed'
+    ]
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:122:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'message.delta', 'message.delta', 'message.delta', 'snapshot' ],
+    expected: [ 'message.delta', 'message.delta', 'message.delta', 'sync.completed' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:5199
+✖ cold sync has one bounded source snapshot and matching marker; default remains full snapshot (1.017916ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'snapshot',
+  -   'sync.completed'
+    ]
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:153:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'snapshot' ],
+    expected: [ 'snapshot', 'sync.completed' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:6192
+✖ invalid, expired, changed-generation and future cursors fall back before any replay (0.911708ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'resync.required',
+      'snapshot',
+  -   'sync.completed'
+    ]
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:185:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'resync.required', 'snapshot' ],
+    expected: [ 'resync.required', 'snapshot', 'sync.completed' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:7185
+✖ replay count overflow falls back as a whole, with no partial text frames (12.857417ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  +   'message.delta',
+  -   'resync.required',
+      'snapshot',
+  -   'sync.completed'
+    ]
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:200:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      'message.delta', 'message.delta', 'message.delta', 'message.delta',
+      ... 402 more items
+    ],
+    expected: [ 'resync.required', 'snapshot', 'sync.completed' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:7662
+✖ multibyte and escaped raw/SSE replay byte overflow falls back before publishing partial frames (4.198ms)
+  AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+  
+    assert.ok(thread.replayBytes <= 8 * 1024 * 1024)
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:213:12)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:8408
+✖ oversized retained event evicts the queue and old cursor cannot replay past it (0.805375ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  1 !== 0
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:233:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 1,
+    expected: 0,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:9131
+✖ SSE framing overhead can exceed the replay cap even when raw JSON alone fits (5.639667ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'message.delta',
+  -   'resync.required',
+      'snapshot',
+  -   'sync.completed'
+    ]
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:258:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'message.delta', 'snapshot' ],
+    expected: [ 'resync.required', 'snapshot', 'sync.completed' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:2:9863
+✖ restart invalidates old generation and zero-gap operational state does not revive a turn (1.57925ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+  
+  + undefined
+  - 'generation_changed'
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-snapshot-benchmark-aYcWRA/snapshot-window-before.test.ts:274:10)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: 'generation_changed',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -51,6 +51,9 @@ import {
 import { HttpError, rpcText } from "./errors";
 import { skillSet, tenantId as parseTenant } from "./tenancy";
 import { errorFields, log } from "../../shared/logging";
+import type { RuntimeReadOptions } from "../../shared/runtime-read-options";
+import { runtimeResumeResponse } from "../../shared/runtime-resume-options";
+import type { RuntimeResumeOptions } from "../../shared/runtime-resume-options";
 import { inventory, validateRequest } from "./schema";
 import {
   autoAnswer,
@@ -94,6 +97,7 @@ interface Thread {
   state: TurnState;
   seq: number;
   events: DomainEvent[];
+  replayBytes: number;
   subscribers: Set<Response>;
   pending: Map<string, Pending>;
   messages: Snapshot["messages"];
@@ -121,6 +125,10 @@ interface Thread {
   // Text sent with turn/start, for the trace of the turn it starts.
   input?: string;
   loaded: boolean;
+  // Cold resume restores runtime history, but does not rebuild this manager's
+  // source transcript. Only a thread tracked continuously from creation may
+  // authorize a source projection/cursor pair.
+  sourceCovered: boolean;
   // MCP fingerprint the runtime thread was loaded with, from the platform.
   mcpFingerprint?: string;
   // A newer MCP configuration that arrived during a turn; applied before the
@@ -206,6 +214,8 @@ export function goalTokenDelta(usage: any) {
 // which a single large frame (an MCP tool result, a long replay) does on a
 // healthy client. Only a subscriber whose unsent data keeps growing is dropped.
 const maxBufferedBytes = 8 * 1024 * 1024;
+const maxReplayEvents = 500;
+const maxReplayBytes = 2 * 1024 * 1024;
 // The platform's hash of a thread's MCP configuration; opaque here.
 function parseFingerprint(value: unknown) {
   if (
@@ -247,6 +257,7 @@ export class ThreadManager {
   private dropped = new Set<string>();
   // Conversations started, resumed or forked through this manager.
   private roots = new Set<string>();
+  private replaySizes = new WeakMap<DomainEvent, number>();
   private locks = new Map<string, Promise<unknown>>();
   // Last goal written as a durable record, per thread.
   private goalRecords = new Map<string, string>();
@@ -289,6 +300,7 @@ export class ThreadManager {
       for (const t of this.threads.values()) {
         t.seq = 0;
         t.events = [];
+        t.replayBytes = 0;
         for (const p of [...t.pending.values()])
           this.settle(t, p, undefined, "runtime-exit", false);
         t.loaded = false;
@@ -419,6 +431,7 @@ export class ThreadManager {
         state: { kind: "idle" },
         seq: 0,
         events: [],
+        replayBytes: 0,
         subscribers: new Set(),
         pending: new Map(),
         messages: [],
@@ -433,6 +446,7 @@ export class ThreadManager {
         traces: [],
         contexts: new Map(),
         loaded: false,
+        sourceCovered: false,
         threadStartMs: 0,
       };
       this.threads.set(id, t);
@@ -496,9 +510,16 @@ export class ThreadManager {
       this.roots.add(t.id);
       this.setMode(t.id, approvalMode, approvalNameHeuristic);
       t.loaded = true;
+      t.sourceCovered = true;
       t.mcpFingerprint = mcpFingerprint;
       t.threadStartMs = performance.now() - started;
-      return { threadId: t.id, threadStartMs: t.threadStartMs };
+      return {
+        threadId: t.id,
+        threadStartMs: t.threadStartMs,
+        ...(approvalMode === undefined
+          ? {}
+          : { approvalMode: parseMode(approvalMode) }),
+      };
     } finally {
       this.reservations--;
     }
@@ -509,8 +530,15 @@ export class ThreadManager {
       approvalMode,
       approvalNameHeuristic,
       mcpFingerprint,
+      response: requestedResponse,
       ...params
     } = input || {};
+    let response: RuntimeResumeOptions["response"];
+    try {
+      response = runtimeResumeResponse(requestedResponse);
+    } catch {
+      throw new HttpError(400, "Invalid runtime resume response");
+    }
     if (approvalMode !== undefined) parseMode(approvalMode);
     parseFingerprint(mcpFingerprint);
     if (params.tenantId !== undefined) parseTenant(params.tenantId);
@@ -520,24 +548,34 @@ export class ThreadManager {
       this.ownedBy(t, params.tenantId);
       const moded = this.modes.has(id) || approvalMode !== undefined;
       this.setMode(id, approvalMode, approvalNameHeuristic);
+      const confirmed = (snapshot: Snapshot) => ({
+        ...snapshot,
+        ...(approvalMode === undefined
+          ? {}
+          : { approvalMode: parseMode(approvalMode) }),
+      });
+      const snapshot = () =>
+        response === "operational"
+          ? this.operationalSnapshot(t)
+          : this.snapshot(id);
       if (moded) this.reevaluate(t);
       if (t.loaded) {
         // No fingerprint, or the same one: the loaded config is current.
-        if (mcpFingerprint === undefined) return this.snapshot(id);
+        if (mcpFingerprint === undefined) return confirmed(snapshot());
         if (mcpFingerprint === t.mcpFingerprint) {
           t.pendingResume = undefined;
-          return this.snapshot(id);
+          return confirmed(snapshot());
         }
         // The runtime ignores config for a running thread; apply it before
         // the next turn instead. A draining pod starts no new turns, so it
         // keeps serving the loaded thread.
         if (t.state.kind !== "idle" || this.draining) {
           t.pendingResume = { params, mcpFingerprint };
-          return this.snapshot(id);
+          return confirmed(snapshot());
         }
         await this.unload(t);
       }
-      return this.load(t, params, mcpFingerprint);
+      return confirmed(await this.load(t, params, mcpFingerprint, response));
     });
   }
   // Releases agent-core's subscription to a loaded runtime thread. With no
@@ -561,8 +599,16 @@ export class ThreadManager {
     await this.load(t, pending.params, pending.mcpFingerprint);
   }
   // Cold thread/resume. Runs inside serial().
-  private async load(t: Thread, params: any, mcpFingerprint?: string) {
+  private async load(
+    t: Thread,
+    params: any,
+    mcpFingerprint?: string,
+    response?: RuntimeResumeOptions["response"],
+  ) {
     const id = t.id;
+    // The asynchronous resume response can overlap live notifications. Do not
+    // guess how its restored bodies line up with our previously tracked deltas.
+    t.sourceCovered = false;
     this.reserve();
     try {
       this.redactor.remember(params);
@@ -600,7 +646,9 @@ export class ThreadManager {
         });
         this.setGoal(t, null);
       }
-      return this.snapshot(id);
+      return response === "operational"
+        ? this.operationalSnapshot(t)
+        : this.snapshot(id);
     } catch (e) {
       if (
         /thread.*(not found|does not exist)|no rollout found|unable to find.*thread/i.test(
@@ -733,23 +781,74 @@ export class ThreadManager {
       return { ok: true };
     });
   }
-  snapshot(id: string): Snapshot {
+  snapshot(id: string, options: RuntimeReadOptions = {}): Snapshot {
     const t = this.thread(id);
+    let messages = t.messages,
+      thinking = t.thinking,
+      timings = t.timings,
+      traces = t.traces;
+    if (options.window) {
+      // Choose identities from raw records before mapping or JSON encoding any
+      // historical bodies. Keep whole selected turns, never truncate their text.
+      const turns = new Set<string>();
+      for (let i = messages.length - 1; i >= 0 && turns.size < 10; i--) {
+        const turnId = messages[i].turnId;
+        if (typeof turnId === "string") turns.add(turnId);
+      }
+      const active = this.activeTurn(t);
+      if (active) turns.add(active);
+      for (const p of t.pending.values())
+        if (typeof p.detail.turnId === "string") turns.add(p.detail.turnId);
+      for (const message of messages)
+        if (!message.final && typeof message.turnId === "string")
+          turns.add(message.turnId);
+      for (const entry of thinking)
+        if (!entry.done && typeof entry.turnId === "string")
+          turns.add(entry.turnId);
+      // Legacy finalized records lack a group identity. Keep a bounded recent
+      // tail; identity-less unfinished records must remain authoritative.
+      const legacy = new Set<Snapshot["messages"][number]>();
+      for (let i = messages.length - 1; i >= 0 && legacy.size < 20; i--)
+        if (messages[i].turnId === undefined) legacy.add(messages[i]);
+      messages = messages.filter(
+        (m) =>
+          !m.final ||
+          legacy.has(m) ||
+          (m.turnId !== undefined && turns.has(m.turnId)),
+      );
+      thinking = thinking.filter(
+        (r) => !r.done || (r.turnId !== undefined && turns.has(r.turnId)),
+      );
+      timings = timings.filter((timing) => turns.has(timing.turnId));
+      traces = traces.filter((trace) => turns.has(trace.turnId));
+    }
+    return {
+      ...this.operationalSnapshot(t),
+      messages,
+      thinking,
+      timings,
+      traces,
+      diff: options.window ? "" : t.diff,
+    };
+  }
+  // A synchronization boundary restores operational authority even when no
+  // event was missed, without reading or encoding the retained transcript.
+  private operationalSnapshot(t: Thread): Snapshot {
     return {
       cursor: `${this.generation}:${t.seq}`,
       state: t.state,
       pending: [...t.pending.values()]
         .filter((p) => !p.hidden)
         .map(({ timer, rawId, hidden, reviews, ...p }) => p),
-      messages: t.messages,
-      thinking: t.thinking,
+      messages: [],
+      thinking: [],
       plan: t.plan,
       goal: this.goalView(t),
-      diff: t.diff,
-      timings: t.timings,
-      traces: t.traces,
+      diff: "",
+      timings: t.timings.slice(-10),
+      traces: t.traces.slice(-10),
       rateLimits: this.rateLimits,
-      subAgents: this.agentsOf(id).map((c) => ({ ...c.agent })),
+      subAgents: this.agentsOf(t.id).map((c) => ({ ...c.agent })),
     };
   }
   agents(id: string): SubAgent[] {
@@ -1114,7 +1213,12 @@ export class ThreadManager {
         this.runtime.helpers.delete(c.agent.threadId);
     }
   }
-  subscribe(id: string, res: Response, cursor?: string) {
+  subscribe(
+    id: string,
+    res: Response,
+    cursor?: string,
+    options: RuntimeReadOptions = {},
+  ) {
     const t = this.thread(id);
     res.set({
       "Content-Type": "text/event-stream",
@@ -1123,41 +1227,49 @@ export class ThreadManager {
       "X-Accel-Buffering": "no",
     });
     res.flushHeaders();
-    if (cursor) {
-      const [generation, seqText] = cursor.split(":");
-      const seq = Number(seqText);
-      const oldest = t.events[0]?.seq ?? t.seq + 1;
-      if (
-        generation !== this.generation ||
-        !Number.isSafeInteger(seq) ||
-        seq < oldest - 1 ||
-        seq > t.seq
-      ) {
-        res.write(
-          `data: ${JSON.stringify({ type: "resync.required", data: { reason: "Cursor no longer retained" }, threadId: id })}\n\n`,
-        );
-      } else
-        for (const e of t.events.filter((e) => e.seq > seq)) {
-          if (!send(res, this.frame(e))) {
-            res.destroy();
-            return;
+    if (options.sync === "v1" && t.sourceCovered) {
+      if (!this.synchronize(t, res, cursor)) {
+        res.destroy();
+        return;
+      }
+    } else {
+      if (cursor) {
+        const [generation, seqText] = cursor.split(":");
+        const seq = Number(seqText);
+        const oldest = t.events[0]?.seq ?? t.seq + 1;
+        if (
+          generation !== this.generation ||
+          !Number.isSafeInteger(seq) ||
+          seq < oldest - 1 ||
+          seq > t.seq
+        ) {
+          res.write(
+            `data: ${JSON.stringify({ type: "resync.required", data: { reason: "Cursor no longer retained" }, threadId: id })}\n\n`,
+          );
+        } else
+          for (const e of t.events.filter((e) => e.seq > seq)) {
+            if (!send(res, this.frame(e))) {
+              res.destroy();
+              return;
+            }
           }
-        }
-    }
-    const snapshot = {
-      type: "snapshot",
-      threadId: id,
-      cursor: this.snapshot(id).cursor,
-      data: this.snapshot(id),
-    };
-    if (
-      !send(
-        res,
-        `id: ${snapshot.cursor}\ndata: ${JSON.stringify(snapshot)}\n\n`,
-      )
-    ) {
-      res.destroy();
-      return;
+      }
+      const data = this.snapshot(id, options);
+      const snapshot = {
+        type: "snapshot",
+        threadId: id,
+        cursor: data.cursor,
+        data,
+      };
+      if (
+        !send(
+          res,
+          `id: ${snapshot.cursor}\ndata: ${JSON.stringify(snapshot)}\n\n`,
+        )
+      ) {
+        res.destroy();
+        return;
+      }
     }
     t.subscribers.add(res);
     const timer = setInterval(() => {
@@ -1167,6 +1279,88 @@ export class ThreadManager {
       clearInterval(timer);
       t.subscribers.delete(res);
     });
+  }
+  private synchronize(t: Thread, res: Response, cursor?: string): boolean {
+    // Capture, encode, publish and subscriber attachment share one event-loop
+    // turn without an await, before the next runtime notification task.
+    const highWaterCursor = `${this.generation}:${t.seq}`;
+    const highWaterSeq = t.seq;
+    const oldest = t.events[0]?.seq ?? highWaterSeq + 1;
+    let reason: string | undefined;
+    let seq = 0;
+    if (!cursor) reason = "missing_cursor";
+    else {
+      const match = /^([A-Za-z0-9_-]{1,64}):(0|[1-9][0-9]{0,15})$/.exec(cursor);
+      if (!match || !Number.isSafeInteger(Number(match[2])))
+        reason = "invalid_cursor";
+      else {
+        seq = Number(match[2]);
+        if (match[1] !== this.generation) reason = "generation_changed";
+        else if (seq < oldest - 1) reason = "cursor_expired";
+        else if (seq > highWaterSeq) reason = "cursor_ahead";
+      }
+    }
+    const frames: string[] = [];
+    if (!reason) {
+      const replay = t.events.filter(
+        (event) => event.seq > seq && event.seq <= highWaterSeq,
+      );
+      if (replay.length > maxReplayEvents) reason = "replay_event_limit";
+      else {
+        let rawBytes = 0,
+          encodedBytes = 0;
+        for (const event of replay) {
+          const payload = JSON.stringify(event);
+          rawBytes += Buffer.byteLength(payload);
+          const frame = `id: ${event.cursor}\ndata: ${payload}\n\n`;
+          encodedBytes += Buffer.byteLength(frame);
+          if (rawBytes > maxReplayBytes || encodedBytes > maxReplayBytes) {
+            reason = "replay_byte_limit";
+            break;
+          }
+          frames.push(frame);
+        }
+      }
+    }
+    const mode = reason ? "snapshot" : "replay";
+    if (reason) {
+      // A missing paired cursor is an ordinary cold start. Other failures make
+      // replay unsafe; clients must recover rather than trusting their cache.
+      if (
+        cursor &&
+        !send(
+          res,
+          `data: ${JSON.stringify({ type: "resync.required", threadId: t.id, data: { reason } })}\n\n`,
+        )
+      )
+        return false;
+      const snapshot: DomainEvent = {
+        type: "snapshot",
+        threadId: t.id,
+        seq: highWaterSeq,
+        cursor: highWaterCursor,
+        at: new Date().toISOString(),
+        data: this.snapshot(t.id, { window: true }),
+      };
+      if (!send(res, this.frame(snapshot))) return false;
+    } else for (const frame of frames) if (!send(res, frame)) return false;
+    const operational = this.operationalSnapshot(t);
+    const marker: DomainEvent = {
+      type: "sync.completed",
+      threadId: t.id,
+      seq: highWaterSeq,
+      cursor: highWaterCursor,
+      at: new Date().toISOString(),
+      data: {
+        protocol: 1,
+        mode,
+        fromCursor: cursor ?? null,
+        highWaterCursor,
+        ...(reason ? { reason } : {}),
+        snapshot: operational,
+      },
+    };
+    return send(res, this.frame(marker));
   }
   private frame(event: DomainEvent) {
     return `id: ${event.cursor}\ndata: ${JSON.stringify(event)}\n\n`;
@@ -1341,10 +1535,20 @@ export class ThreadManager {
         });
       }
     }
+    const frame = this.frame(event);
+    const retainedBytes = Buffer.byteLength(frame);
+    this.replaySizes.set(event, retainedBytes);
     t.events.push(event);
-    if (t.events.length > this.replayLimit) t.events.shift();
-    for (const sub of t.subscribers)
-      if (!send(sub, this.frame(event))) sub.destroy();
+    t.replayBytes += retainedBytes;
+    while (
+      t.events.length > this.replayLimit ||
+      t.replayBytes > maxBufferedBytes
+    ) {
+      const dropped = t.events.shift();
+      if (!dropped) break;
+      t.replayBytes -= this.replaySizes.get(dropped) ?? 0;
+    }
+    for (const sub of t.subscribers) if (!send(sub, frame)) sub.destroy();
     if (lost) {
       // Subscribers learn why the stream ends before it is closed.
       this.emit(

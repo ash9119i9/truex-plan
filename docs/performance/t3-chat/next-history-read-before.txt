@@ -1,0 +1,26 @@
+✖ recent history bounds payload reads and preserves complete authoritative pages (1440.811625ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1738.729959
+
+✖ failing tests:
+
+test at platform/test/history-read.test.ts:2:1272
+✖ recent history bounds payload reads and preserves complete authoritative pages (1440.811625ms)
+  AssertionError [ERR_ASSERTION]: decoded 402 bodies for 20-message recent window
+      at TestContext.<anonymous> (/Users/ashok/truex-plan/platform/test/history-read.test.ts:35:10)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: false,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

@@ -1,0 +1,139 @@
+{
+  "fixture": "actual ThreadManager warm resume plus JSON serialization; synthetic 2048-character completed messages; no model/database/network",
+  "beforeSha256": "ead5e5cb4d5725c0c7d3ec71b02244b10db3b2e34b581dabc393870089f7464e",
+  "afterSha256": "8a881bfc64d80fa19fae2c151b5a4e4cdcb5e3a5d6ffc8e918002b84e1744bcd",
+  "results": [
+    {
+      "mode": "frozen-baseline",
+      "messageInputs": 100,
+      "retainedMessages": 100,
+      "response": "default-full",
+      "samples": 30,
+      "medianMs": 0.16866699999991397,
+      "p95Ms": 0.9990000000000236,
+      "responseBytes": 213850,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "frozen-baseline",
+      "messageInputs": 100,
+      "retainedMessages": 100,
+      "response": "operational",
+      "samples": 30,
+      "medianMs": 0.11924999999996544,
+      "p95Ms": 0.2235000000000582,
+      "responseBytes": 213850,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "frozen-baseline",
+      "messageInputs": 1000,
+      "retainedMessages": 1000,
+      "response": "default-full",
+      "samples": 30,
+      "medianMs": 0.8751670000001468,
+      "p95Ms": 1.1588330000004134,
+      "responseBytes": 2139851,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "frozen-baseline",
+      "messageInputs": 1000,
+      "retainedMessages": 1000,
+      "response": "operational",
+      "samples": 30,
+      "medianMs": 0.8201659999995172,
+      "p95Ms": 0.9202919999997903,
+      "responseBytes": 2139851,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "frozen-baseline",
+      "messageInputs": 10000,
+      "retainedMessages": 1000,
+      "response": "default-full",
+      "samples": 30,
+      "medianMs": 0.8124580000003334,
+      "p95Ms": 0.8585830000001806,
+      "responseBytes": 2143182,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "frozen-baseline",
+      "messageInputs": 10000,
+      "retainedMessages": 1000,
+      "response": "operational",
+      "samples": 30,
+      "medianMs": 0.7814170000001468,
+      "p95Ms": 0.8955000000005384,
+      "responseBytes": 2143182,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "working-tree",
+      "messageInputs": 100,
+      "retainedMessages": 100,
+      "response": "default-full",
+      "samples": 30,
+      "medianMs": 0.08387500000026193,
+      "p95Ms": 0.09658300000046438,
+      "responseBytes": 213850,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "working-tree",
+      "messageInputs": 100,
+      "retainedMessages": 100,
+      "response": "operational",
+      "samples": 30,
+      "medianMs": 0.0013340000004973263,
+      "p95Ms": 0.0014580000006390037,
+      "responseBytes": 181,
+      "snapshotCalls": 0
+    },
+    {
+      "mode": "working-tree",
+      "messageInputs": 1000,
+      "retainedMessages": 1000,
+      "response": "default-full",
+      "samples": 30,
+      "medianMs": 0.8166250000012951,
+      "p95Ms": 0.8566250000003492,
+      "responseBytes": 2139851,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "working-tree",
+      "messageInputs": 1000,
+      "retainedMessages": 1000,
+      "response": "operational",
+      "samples": 30,
+      "medianMs": 0.0013330000001587905,
+      "p95Ms": 0.005417000000306871,
+      "responseBytes": 182,
+      "snapshotCalls": 0
+    },
+    {
+      "mode": "working-tree",
+      "messageInputs": 10000,
+      "retainedMessages": 1000,
+      "response": "default-full",
+      "samples": 30,
+      "medianMs": 0.8226249999988795,
+      "p95Ms": 0.9102499999989959,
+      "responseBytes": 2143182,
+      "snapshotCalls": 35
+    },
+    {
+      "mode": "working-tree",
+      "messageInputs": 10000,
+      "retainedMessages": 1000,
+      "response": "operational",
+      "samples": 30,
+      "medianMs": 0.0012920000008307397,
+      "p95Ms": 0.0015829999993002275,
+      "responseBytes": 183,
+      "snapshotCalls": 0
+    }
+  ]
+}

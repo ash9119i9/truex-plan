@@ -150,6 +150,26 @@ test(
     const listedOff = (await off.sessions()).find((s) => s._id === created._id);
     assert.equal(listedOff && "approvalMode" in listedOff, false);
 
+    const validCall = on.call;
+    for (const confirmation of [
+      undefined,
+      {},
+      { mode: "ask" },
+      { mode: null },
+    ]) {
+      on.call = async () => confirmation;
+      await assert.rejects(on.setApprovalMode(created._id, "readOnly"), {
+        status: 502,
+        code: "INVALID_UPSTREAM_RESPONSE",
+      });
+      // Desired configuration remains durable so a later resume can apply it.
+      assert.equal(
+        (await store.sessions.findOne({ _id: created._id }))?.approvalMode,
+        "readOnly",
+      );
+    }
+    on.call = validCall;
+
     // Resume carries the saved mode; off sends neither field.
     calls.length = 0;
     await on.resume(saved!);

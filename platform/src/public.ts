@@ -574,6 +574,53 @@ export function publicEvent(e: any): any | null {
   switch (e.type) {
     case "snapshot":
       return { ...base, data: publicSnapshot(d) };
+    case "sync.completed":
+      if (
+        d.protocol !== 1 ||
+        !["replay", "snapshot"].includes(d.mode) ||
+        typeof d.highWaterCursor !== "string" ||
+        d.highWaterCursor !== e.cursor ||
+        !(d.fromCursor === null || typeof d.fromCursor === "string") ||
+        !d.snapshot ||
+        typeof d.snapshot !== "object" ||
+        d.snapshot.cursor !== d.highWaterCursor ||
+        !d.snapshot.state ||
+        typeof d.snapshot.state !== "object" ||
+        !["idle", "starting", "running", "interrupting"].includes(
+          d.snapshot.state.kind,
+        ) ||
+        (["running", "interrupting"].includes(d.snapshot.state.kind) &&
+          (typeof d.snapshot.state.turnId !== "string" ||
+            !d.snapshot.state.turnId)) ||
+        !Array.isArray(d.snapshot.pending) ||
+        !Array.isArray(d.snapshot.messages) ||
+        d.snapshot.messages.length ||
+        !Array.isArray(d.snapshot.thinking) ||
+        d.snapshot.thinking.length
+      )
+        return null;
+      return {
+        ...base,
+        data: {
+          protocol: 1,
+          mode: d.mode,
+          fromCursor: d.fromCursor,
+          highWaterCursor: d.highWaterCursor,
+          // Only explicit operational fields cross this trust boundary. No
+          // historical message/reasoning bodies can enter a completion marker.
+          snapshot: publicSnapshot({
+            ...d.snapshot,
+            messages: [],
+            thinking: [],
+          }),
+          ...(typeof d.reason === "string"
+            ? {
+                reason:
+                  "Conversation synchronization required a fresh snapshot.",
+              }
+            : {}),
+        },
+      };
     case "resync.required":
       return {
         ...base,
@@ -783,7 +830,10 @@ export class PublicEventStream {
   // Observes each public event, for example to persist goal summaries. An
   // observer may return a replacement event (for example a snapshot with the
   // saved plan filled in).
-  constructor(private readonly onEvent?: (event: any) => any) {}
+  constructor(
+    private readonly onEvent?: (event: any) => any,
+    private readonly strictSync = false,
+  ) {}
   push(chunk: Uint8Array): string {
     this.buffer += this.decoder.decode(chunk, { stream: true });
     if (this.buffer.length > 4 * 1024 * 1024)
@@ -805,21 +855,42 @@ export class PublicEventStream {
       if (!data) continue;
       let event;
       try {
-        event = publicEvent(JSON.parse(data));
+        const raw = JSON.parse(data);
+        if (
+          this.strictSync &&
+          (!raw ||
+            typeof raw.type !== "string" ||
+            !raw.data ||
+            typeof raw.data !== "object" ||
+            Array.isArray(raw.data))
+        )
+          throw new TypeError("Invalid synchronized event envelope");
+        event = publicEvent(raw);
+        if (this.strictSync && raw.type === "sync.completed" && !event)
+          throw new TypeError("Invalid synchronized completion marker");
       } catch (error) {
-        // One bad frame is dropped; the rest of the stream stays usable.
-        log("warn", "skipped malformed live update", {
-          op: "stream",
-          bytes: data.length,
-          ...errorFields(error),
-        });
+        // Legacy streams can skip a bad frame. A synchronized stream cannot
+        // acknowledge a high-water cursor after losing public state.
+        log(
+          "warn",
+          this.strictSync
+            ? "Rejected malformed synchronized update"
+            : "skipped malformed live update",
+          {
+            op: "stream",
+            bytes: data.length,
+            ...errorFields(error),
+          },
+        );
+        if (this.strictSync) throw error;
         continue;
       }
       if (event && this.onEvent)
         try {
           event = this.onEvent(event) ?? event;
-        } catch {
-          // Observers must never interrupt the live stream.
+        } catch (error) {
+          if (this.strictSync) throw error;
+          // Legacy observers do not interrupt the live stream.
         }
       if (event)
         output += `${event.cursor ? "id: " + event.cursor + "\n" : ""}data: ${JSON.stringify(event)}\n\n`;

@@ -1,0 +1,47 @@
+{
+  "nodeVersion": "v24.21.0",
+  "results": [
+    {
+      "name": "service",
+      "exitCode": 0,
+      "elapsedSeconds": 13.39534592628479,
+      "command": [
+        "node",
+        "--import",
+        "./platform/node_modules/tsx/dist/loader.mjs",
+        "docs/performance/t3-chat/send-diagnosis-service-probe.mjs"
+      ]
+    },
+    {
+      "name": "stream",
+      "exitCode": 0,
+      "elapsedSeconds": 4.208554983139038,
+      "command": [
+        "node",
+        "--experimental-strip-types",
+        "docs/performance/t3-chat/stall-diagnosis-stream-probe.mjs"
+      ]
+    },
+    {
+      "name": "render",
+      "exitCode": 0,
+      "elapsedSeconds": 0.52516770362854,
+      "command": [
+        "node",
+        "--experimental-strip-types",
+        "docs/performance/t3-chat/render-diagnosis-projection.mjs"
+      ]
+    },
+    {
+      "name": "page",
+      "exitCode": 0,
+      "elapsedSeconds": 8.981398820877075,
+      "command": [
+        "node",
+        "--import",
+        "./platform/node_modules/tsx/dist/loader.mjs",
+        "docs/performance/t3-chat/send-diagnosis-page-probe.mjs"
+      ]
+    }
+  ]
+}

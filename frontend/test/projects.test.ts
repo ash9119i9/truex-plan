@@ -135,3 +135,17 @@ test("server validation errors surface with their code", async (t) => {
     status: 400,
   });
 });
+
+test("creation includes an explicit approval mode while preserving old body defaults", () => {
+  assert.deepEqual(createSessionBody("agent", {}, "proj_a", "readOnly"), {
+    agentId: "agent",
+    subAgents: {},
+    projectId: "proj_a",
+    approvalMode: "readOnly",
+  });
+  assert.deepEqual(createSessionBody("agent", {}, null, "ask"), {
+    agentId: "agent",
+    subAgents: {},
+    approvalMode: "ask",
+  });
+});

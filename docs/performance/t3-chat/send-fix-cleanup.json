@@ -1,0 +1,20 @@
+{
+  "closed": [
+    {
+      "port": 4400,
+      "pid": 46346,
+      "taskOwned": true
+    },
+    {
+      "port": 3106,
+      "pid": 44433,
+      "taskOwned": true
+    }
+  ],
+  "userDevPortsUntouched": [
+    3000,
+    4000,
+    4100,
+    4200
+  ]
+}

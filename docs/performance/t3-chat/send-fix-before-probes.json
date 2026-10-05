@@ -1,0 +1,48 @@
+{
+  "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+  "nodeVersion": "v24.21.0",
+  "results": [
+    {
+      "name": "service",
+      "exitCode": 0,
+      "elapsedSeconds": 16.060277938842773,
+      "command": [
+        "node",
+        "--import",
+        "./platform/node_modules/tsx/dist/loader.mjs",
+        "docs/performance/t3-chat/send-diagnosis-service-probe.mjs"
+      ]
+    },
+    {
+      "name": "stream",
+      "exitCode": 0,
+      "elapsedSeconds": 5.194036960601807,
+      "command": [
+        "node",
+        "--experimental-strip-types",
+        "docs/performance/t3-chat/stall-diagnosis-stream-probe.mjs"
+      ]
+    },
+    {
+      "name": "render",
+      "exitCode": 0,
+      "elapsedSeconds": 2.171097993850708,
+      "command": [
+        "node",
+        "--experimental-strip-types",
+        "docs/performance/t3-chat/render-diagnosis-projection.mjs"
+      ]
+    },
+    {
+      "name": "page",
+      "exitCode": 0,
+      "elapsedSeconds": 9.429131984710693,
+      "command": [
+        "node",
+        "--import",
+        "./platform/node_modules/tsx/dist/loader.mjs",
+        "docs/performance/t3-chat/send-diagnosis-page-probe.mjs"
+      ]
+    }
+  ]
+}

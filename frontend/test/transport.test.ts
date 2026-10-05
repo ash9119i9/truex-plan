@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { transport } from "../lib/transport.ts";
+import { transport, type SubscribeHandlers } from "../lib/transport.ts";
+import { coalesceChatEvents } from "../lib/chat-batch.ts";
 import type { DomainEvent } from "../../shared/contracts.ts";
 
 // A minimal EventSource stand-in that lets tests drive the stream by hand.
@@ -33,6 +34,7 @@ function setup(
   t: any,
   onBatch?: (events: DomainEvent[]) => boolean | void,
   onEvent?: (event: DomainEvent) => unknown,
+  options: SubscribeHandlers = {},
 ) {
   FakeEventSource.instances = [];
   const store = new Map<string, string>();
@@ -56,7 +58,12 @@ function setup(
     "a b/c",
     onEvent ?? ((e) => events.push(e)),
     (s) => statuses.push(s),
-    { onBatch, onResync: () => resyncs++, onFailure: (f) => failures.push(f) },
+    {
+      onBatch,
+      onResync: () => resyncs++,
+      onFailure: (f) => failures.push(f),
+      ...options,
+    },
   );
   const source = FakeEventSource.instances[0];
   return {
@@ -141,6 +148,140 @@ function frame(
 test("the session id is encoded in the stream URL", (t) => {
   const { source } = setup(t);
   assert.match(source.url, /\/api\/sessions\/a%20b%2Fc\/events\?window=1$/);
+});
+
+test("source synchronization sends only explicitly paired cursors", (t) => {
+  for (const cursor of [null, undefined, "generation:10"]) {
+    const stream = setup(t, undefined, undefined, { sync: "v1", cursor });
+    assert.match(stream.source.url, /window=1&sync=v1/);
+    assert.equal(stream.source.url.includes("&cursor="), !!cursor);
+    if (cursor) assert.match(stream.source.url, /cursor=generation%3A10/);
+    stream.stop();
+  }
+});
+
+test("actual public frames omit threadId; trusted URL scope enables1000-to1 projection coalescing", (t) => {
+  const paint = animationFrames(t);
+  let received: DomainEvent[] = [];
+  const stream = setup(t, (events) => {
+    received = events;
+  });
+  for (let i = 1; i <= 1000; i++)
+    stream.source.onmessage!({
+      data: JSON.stringify({
+        type: "message.delta",
+        turnId: "turn",
+        itemId: "item",
+        seq: i,
+        cursor: `generation:${i}`,
+        data: { delta: "x", messageIndex: 0 },
+      }),
+      lastEventId: `generation:${i}`,
+    });
+  paint();
+  assert.equal(received.length, 1000);
+  assert.ok(received.every((event) => event.threadId === "a b/c"));
+  const projected = coalesceChatEvents(received);
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0].data.delta, "x".repeat(1000));
+  stream.stop();
+});
+
+test("same-cursor synchronization marker flushes queued text before authority and checkpoint", (t) => {
+  animationFrames(t);
+  const batches: DomainEvent[][] = [];
+  const stream = setup(
+    t,
+    (events) => {
+      batches.push(events);
+    },
+    undefined,
+    { sync: "v1", cursor: "generation:10" },
+  );
+  const delta = {
+    type: "message.delta",
+    seq: 11,
+    cursor: "generation:11",
+    turnId: "turn",
+    itemId: "answer",
+    data: { delta: "B" },
+  };
+  stream.source.onmessage!({
+    data: JSON.stringify(delta),
+    lastEventId: "generation:11",
+  });
+  const marker = {
+    type: "sync.completed",
+    seq: 11,
+    cursor: "generation:11",
+    data: {
+      protocol: 1,
+      mode: "replay",
+      fromCursor: "generation:10",
+      highWaterCursor: "generation:11",
+      snapshot: {
+        cursor: "generation:11",
+        state: { kind: "running", turnId: "turn" },
+        messages: [],
+        thinking: [],
+        pending: [],
+        plan: [],
+        timings: [],
+      },
+    },
+  };
+  stream.source.onmessage!({
+    data: JSON.stringify(marker),
+    lastEventId: "generation:11",
+  });
+  assert.deepEqual(
+    batches.map((batch) => batch.map((event) => event.type)),
+    [["message.delta"], ["sync.completed"]],
+  );
+  assert.equal(stream.store.get("cursor:a b/c"), "generation:11");
+  stream.stop();
+});
+
+test("invalid marker and mismatched SSE cursor cannot advance a paired stream", (t) => {
+  t.mock.method(console, "error", () => {});
+  for (const input of [
+    {
+      type: "sync.completed",
+      seq: 11,
+      cursor: "generation:11",
+      data: {
+        protocol: 1,
+        mode: "replay",
+        fromCursor: "generation:10",
+        highWaterCursor: "generation:11",
+        snapshot: {
+          cursor: "generation:9",
+          state: { kind: "idle" },
+          messages: [],
+          pending: [],
+        },
+      },
+    },
+    {
+      type: "message.delta",
+      seq: 11,
+      cursor: "generation:12",
+      data: { delta: "B" },
+    },
+  ]) {
+    const stream = setup(t, undefined, undefined, {
+      sync: "v1",
+      cursor: "generation:10",
+    });
+    stream.source.onmessage!({
+      data: JSON.stringify(input),
+      lastEventId: "generation:11",
+    });
+    assert.equal(stream.events.length, 0);
+    assert.equal(stream.resyncs(), 1);
+    assert.equal(stream.source.closed, true);
+    assert.equal(stream.cursorWrites(), 0);
+  }
 });
 
 test("an unreadable frame resyncs without advancing the cursor", (t) => {

@@ -1,0 +1,132 @@
+✖ operational resume response is forwarded in the body and invalid modes reject before service startup (27.6525ms)
+✖ warm operational resume acknowledges mode and preserves pending/running authority without transcript materialization (165.442167ms)
+✔ default resume retains the entire existing snapshot and no unsolicited approval acknowledgment (0.993917ms)
+✖ invalid response modes reject before runtime, mode or configuration side effects; tenant checks remain enforced (1.542791ms)
+✖ cold operational resume performs normal load and goal recovery without a discarded full snapshot (0.43275ms)
+✖ operational changed configuration stays pending while running and applies before the next turn (0.71675ms)
+✖ operational idle configuration reload strips response option and preserves legacy cold-source coverage (0.709708ms)
+✖ operational resume keeps bounded diagnostics and canceling a pending configuration requires the loaded fingerprint (0.705ms)
+✖ a draining runtime retains its loaded thread and defers new configuration for operational resume (0.655792ms)
+✖ operational reload errors propagate without a successful acknowledgment and a retry loads normally (0.783709ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 1
+ℹ fail 9
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 486.894416
+
+✖ failing tests:
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/agentcore.test.ts:2:7759
+✖ operational resume response is forwarded in the body and invalid modes reject before service startup (27.6525ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  
+  200 !== 400
+  
+      at TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/agentcore.test.ts:295:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 200,
+    expected: 400,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:2463
+✖ warm operational resume acknowledges mode and preserves pending/running authority without transcript materialization (165.442167ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:52:11)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at <anonymous> (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:550:33)
+      at async ThreadManager.serial (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:69:20)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:4114
+✖ invalid response modes reject before runtime, mode or configuration side effects; tenant checks remain enforced (1.542791ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:103:5)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /Invalid runtime resume response/,
+    operator: 'rejects',
+    diff: 'simple'
+  }
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:4959
+✖ cold operational resume performs normal load and goal recovery without a discarded full snapshot (0.43275ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:52:11)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at ThreadManager.load (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:627:19)
+      at async <anonymous> (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:561:24)
+      at async ThreadManager.serial (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:129:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:5863
+✖ operational changed configuration stays pending while running and applies before the next turn (0.71675ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:52:11)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at <anonymous> (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:557:33)
+      at async ThreadManager.serial (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:154:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:7067
+✖ operational idle configuration reload strips response option and preserves legacy cold-source coverage (0.709708ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:52:11)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at ThreadManager.load (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:627:19)
+      at async <anonymous> (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:561:24)
+      at async ThreadManager.serial (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:185:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:7725
+✖ operational resume keeps bounded diagnostics and canceling a pending configuration requires the loaded fingerprint (0.705ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:52:11)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at <anonymous> (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:557:33)
+      at async ThreadManager.serial (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:209:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:8643
+✖ a draining runtime retains its loaded thread and defers new configuration for operational resume (0.655792ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:52:11)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at <anonymous> (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:557:33)
+      at async ThreadManager.serial (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:229:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:2:9174
+✖ operational reload errors propagate without a successful acknowledgment and a retry loads normally (0.783709ms)
+  Error: full transcript materialized
+      at ThreadManager.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:52:11)
+      at Object.apply (node:internal/test_runner/mock/mock:805:20)
+      at ThreadManager.load (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:627:19)
+      at async <anonymous> (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:561:24)
+      at async ThreadManager.serial (/private/tmp/truex-send-fix-before-20261006/agent-core/src/manager.ts:459:14)
+      at async TestContext.<anonymous> (/private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-prepare-red-_eebp2my/resume-response.test.ts:260:18)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
