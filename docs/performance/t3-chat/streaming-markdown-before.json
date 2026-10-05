@@ -1,0 +1,87 @@
+{
+  "repo": "/tmp/truex-chat-before",
+  "mode": "full",
+  "node": "v24.21.0",
+  "cpu": "Apple M5",
+  "warmups": 1,
+  "sampleCount": 5,
+  "scope": "CPU-only ReactMarkdown+GFM parse/transform/server HTML serialization; final update full parse; no browser reconciliation/layout/network",
+  "results": {
+    "closed_code": {
+      "sourceChars": 20505,
+      "updates": 81,
+      "samples": [
+        {
+          "renderMs": 196.61895900000025,
+          "parseMs": 167.4081690000001,
+          "parsedChars": 1754181,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 180.48104099999978,
+          "parseMs": 160.29854700000004,
+          "parsedChars": 1754181,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 174.69320499999958,
+          "parseMs": 160.9954199999994,
+          "parsedChars": 1754181,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 180.54137699999967,
+          "parseMs": 162.7941709999999,
+          "parsedChars": 1754181,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 187.8933300000008,
+          "parseMs": 161.86200400000007,
+          "parsedChars": 1754181,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        }
+      ],
+      "medianRenderMs": 180.54137699999967,
+      "medianParseMs": 161.86200400000007
+    },
+    "prose_control": {
+      "sourceChars": 4490,
+      "updates": 81,
+      "samples": [
+        {
+          "renderMs": 268.13721300000043,
+          "parseMs": 196.16490999999996,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 263.4876710000017,
+          "parseMs": 183.78229400000055,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 270.924961000002,
+          "parseMs": 182.9502960000009,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 256.3843739999984,
+          "parseMs": 187.78471100000024,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 257.30637700000125,
+          "parseMs": 188.12562699999944,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        }
+      ],
+      "medianRenderMs": 263.4876710000017,
+      "medianParseMs": 187.78471100000024
+    }
+  }
+}

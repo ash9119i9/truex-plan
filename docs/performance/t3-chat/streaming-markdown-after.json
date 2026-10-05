@@ -1,0 +1,87 @@
+{
+  "repo": "/Users/ashok/truex-plan",
+  "mode": "incremental",
+  "node": "v24.21.0",
+  "cpu": "Apple M5",
+  "warmups": 1,
+  "sampleCount": 5,
+  "scope": "CPU-only ReactMarkdown+GFM parse/transform/server HTML serialization; final update full parse; no browser reconciliation/layout/network",
+  "results": {
+    "closed_code": {
+      "sourceChars": 20505,
+      "updates": 81,
+      "samples": [
+        {
+          "renderMs": 70.39720800000015,
+          "parseMs": 36.26241400000015,
+          "parsedChars": 134286,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 61.85258900000031,
+          "parseMs": 34.85675199999986,
+          "parsedChars": 134286,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 55.27488199999988,
+          "parseMs": 37.18200100000007,
+          "parsedChars": 134286,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 53.54616400000003,
+          "parseMs": 35.1970860000003,
+          "parsedChars": 134286,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        },
+        {
+          "renderMs": 54.10891699999979,
+          "parseMs": 35.87658100000033,
+          "parsedChars": 134286,
+          "htmlSha256": "1a955341f95cea3273ff5077b2938a7be0d2de56e86a782a2f0f3b46ad602866"
+        }
+      ],
+      "medianRenderMs": 55.27488199999988,
+      "medianParseMs": 35.87658100000033
+    },
+    "prose_control": {
+      "sourceChars": 4490,
+      "updates": 81,
+      "samples": [
+        {
+          "renderMs": 374.86670499999866,
+          "parseMs": 238.93575400000066,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 314.9755010000001,
+          "parseMs": 229.56979299999898,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 307.005204999999,
+          "parseMs": 224.62937099999954,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 347.1450409999993,
+          "parseMs": 224.27150300000062,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        },
+        {
+          "renderMs": 301.4292060000025,
+          "parseMs": 219.00045800000225,
+          "parsedChars": 456966,
+          "htmlSha256": "2325995acff5e7500fc7463647a79c41ec28630266516aae875f6c1a233b6f54"
+        }
+      ],
+      "medianRenderMs": 314.9755010000001,
+      "medianParseMs": 224.62937099999954
+    }
+  }
+}

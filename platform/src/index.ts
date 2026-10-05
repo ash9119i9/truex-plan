@@ -9,6 +9,7 @@ import {
   publicSession,
   publicTiming,
   publicTrace,
+  recentSnapshot,
   PublicEventStream,
   withPlanFallback,
   POLICY_VERSION,
@@ -465,9 +466,21 @@ async function main() {
   );
   http.get(
     "/api/sessions/:id",
-    route(async (req, res) =>
-      res.json(await service.history(String(req.params.id))),
-    ),
+    route(async (req, res) => {
+      const timings: string[] = [];
+      const history = await service.history(String(req.params.id), {
+        persistedOnly: req.query.persisted === "1",
+        window: req.query.window === "1",
+        before: req.query.before,
+        onTiming: (phase, duration) =>
+          timings.push(`${phase};dur=${duration.toFixed(2)}`),
+      });
+      res.set({
+        "Cache-Control": "private, no-store",
+        "Server-Timing": timings.join(", "),
+      });
+      res.json(history);
+    }),
   );
   http.post(
     "/api/sessions/:id/messages",
@@ -580,7 +593,8 @@ async function main() {
     "/api/sessions/:id/timings",
     route(async (req, res) => {
       const s = await service.sessionFor(String(req.params.id), "read");
-      await service.ingest(s);
+      res.set("Cache-Control", "private, no-store");
+      if (req.query.persisted !== "1") await service.ingest(s);
       const rows = ((await service.session(s._id)).timings || []).map(
         publicTiming,
       );
@@ -610,14 +624,16 @@ async function main() {
     "/api/sessions/:id/traces",
     route(async (req, res) => {
       const s = await service.sessionFor(String(req.params.id), "read");
+      res.set("Cache-Control", "private, no-store");
       // Stored traces stay readable while the assistant service is down.
-      await service.ingest(s).catch((error) =>
-        log("warn", "trace ingestion failed", {
-          sessionId: s._id,
-          op: "ingest",
-          ...errorFields(error),
-        }),
-      );
+      if (req.query.persisted !== "1")
+        await service.ingest(s).catch((error) =>
+          log("warn", "trace ingestion failed", {
+            sessionId: s._id,
+            op: "ingest",
+            ...errorFields(error),
+          }),
+        );
       res.json(
         sessionTraces(
           (await store.sessionTraces(s._id))
@@ -761,10 +777,13 @@ async function main() {
                   }),
                 );
             } else
-              return {
+              event = {
                 ...event,
                 data: withPlanFallback(event.data, { steps: planSteps }),
               };
+            return req.query.window === "1"
+              ? { ...event, data: recentSnapshot(event.data) }
+              : event;
           }
         });
         await relay(upstream.body as any, res, stream);

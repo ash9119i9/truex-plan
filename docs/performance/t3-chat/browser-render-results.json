@@ -1,0 +1,183 @@
+{
+  "date": "2026-10-05",
+  "scope": "Second pass compared with preserved first-pass source/build in /tmp/truex-chat-render-before. Same synthetic loopback API, same browser-render-probes.mjs functions, same visible1280x800 tab, sequential production webpack runs.",
+  "fixture": {
+    "normalPersistedDelayMs": 15,
+    "recoveryDelayMs": 600,
+    "longMessages": 1000,
+    "sessionMetadataRows": 503,
+    "streamEvents": 1000
+  },
+  "before": {
+    "long": {
+      "latestPresent": true,
+      "loadedAll": true,
+      "rows": 1000,
+      "samples": [
+        60, 100, 140, 180, 220, 260, 300, 340, 380, 420, 460, 500, 540, 580,
+        620, 660, 700, 740, 780, 820, 860, 900, 940, 980, 1000
+      ]
+    },
+    "sidebarRows": 503,
+    "warm": {
+      "samples": [
+        {
+          "ms": 91.39999999850988,
+          "rows": 20,
+          "title": "Fixture A conversation"
+        },
+        {
+          "ms": 154.59999999962747,
+          "rows": 1000,
+          "title": "Fixture LONG conversation"
+        },
+        {
+          "ms": 37.399999998509884,
+          "rows": 20,
+          "title": "Fixture A conversation"
+        },
+        {
+          "ms": 133.5,
+          "rows": 1000,
+          "title": "Fixture LONG conversation"
+        },
+        {
+          "ms": 36.100000001490116,
+          "rows": 20,
+          "title": "Fixture A conversation"
+        },
+        {
+          "ms": 128.59999999962747,
+          "rows": 1000,
+          "title": "Fixture LONG conversation"
+        }
+      ],
+      "visibility": "visible"
+    }
+  },
+  "after": {
+    "long": {
+      "latestPresent": true,
+      "loadedAll": true,
+      "rows": 10,
+      "samples": [
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10
+      ]
+    },
+    "sidebarRows": 13,
+    "warm": {
+      "samples": [
+        {
+          "ms": 62.899999998509884,
+          "rows": 9,
+          "title": "Fixture A conversation"
+        },
+        {
+          "ms": 38.29999999888241,
+          "rows": 9,
+          "title": "Fixture LONG conversation"
+        },
+        {
+          "ms": 25.800000000745058,
+          "rows": 9,
+          "title": "Fixture A conversation"
+        },
+        {
+          "ms": 33.69999999925494,
+          "rows": 9,
+          "title": "Fixture LONG conversation"
+        },
+        {
+          "ms": 31.200000001117587,
+          "rows": 9,
+          "title": "Fixture A conversation"
+        },
+        {
+          "ms": 25.800000000745058,
+          "rows": 9,
+          "title": "Fixture LONG conversation"
+        }
+      ],
+      "visibility": "visible"
+    }
+  },
+  "streamBefore": {
+    "cursorWrites": 1000,
+    "exact": true,
+    "lastCursor": "burst:999"
+  },
+  "streamAfter": {
+    "cursorWrites": 1,
+    "exact": true,
+    "lastCursor": "burst:999"
+  },
+  "checks": {
+    "cachedReadingPosition": {
+      "after": -128,
+      "before": -128,
+      "id": "turn-fixture-long-turn-490",
+      "rows": 9
+    },
+    "switches": {
+      "denied": {
+        "error": true,
+        "heldGone": true,
+        "rows": 0
+      },
+      "held": {
+        "hidden": "true",
+        "inert": true,
+        "oldText": true,
+        "statusOutsideInert": true
+      },
+      "rapid": {
+        "correct": true,
+        "url": "?session=fixture-a",
+        "wrong": false
+      }
+    },
+    "olderPrepend": {
+      "anchor": "request-fixture-long-client-980",
+      "beforeOffset": 82,
+      "afterOffset": 82
+    },
+    "goalJump": {
+      "previouslyMounted": false,
+      "loaded": true,
+      "focusedId": "turn-fixture-long-turn-10",
+      "offset": 12
+    },
+    "streamWhileReading": {
+      "beforeOffset": 12,
+      "afterOffset": 12,
+      "beforeScrollTop": 2699,
+      "afterScrollTop": 2699
+    },
+    "visualLoads": {
+      "stockLegendList": 2,
+      "t3PatchedLegendList": 1,
+      "offscreenUnmountNotIncluded": true
+    },
+    "sidebarSelectedOutsideWindow": {
+      "initial": 14,
+      "collapsed": 4,
+      "showMore": 39,
+      "selectedVisible": true
+    },
+    "mobile390": {
+      "documentWidth": 390,
+      "viewportScrollWidth": 390,
+      "latestMessagePresent": true,
+      "bottomGap": 0
+    }
+  },
+  "notes": [
+    "LONG switch medians:133.5ms before and33.7ms after, three samples each. Small development sample, notproductionp95.",
+    "FirstA switch ineachfresh run iscold; do notinclude it inwarmcomparisons.",
+    "Message DOM count measured with1000 loaded messages, verified latestPresent/loadedAll.",
+    "No Reactrender-countclaim: originalReact batchinginourSSEburst also combinedDOMmutations.",
+    "Sidebar counts measuremountedrows, not metadatafetchlatency; Todayremainsunbounded.",
+    "No T3applicationbenchmark or providerlatency measurement."
+  ]
+}

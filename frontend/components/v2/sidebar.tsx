@@ -1,37 +1,21 @@
 "use client";
-import type { ReactNode } from "react";
+import { memo, useId, useMemo, useState, type ReactNode } from "react";
 import { Icon } from "./icon";
+import {
+  convoTime,
+  groupSidebarSessions,
+  sidebarWindow,
+  SIDEBAR_INITIAL_COUNT,
+  SIDEBAR_PAGE_COUNT,
+  type SidebarSession,
+} from "@/lib/sidebar";
+
+export { convoGroup, convoTime } from "@/lib/sidebar";
+export type { SidebarSession } from "@/lib/sidebar";
 
 // Left sidebar (Layout & shell §3). Data comes in via props; nothing is fetched here.
 
-export interface SidebarSession {
-  _id: string;
-  title?: string;
-  createdAt: string;
-}
-
-const DAY = 86_400_000;
-
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-/** "Today" vs "Earlier" by the session's local createdAt date. */
-export function convoGroup(createdAt: string, now = new Date()): "Today" | "Earlier" {
-  return startOfDay(new Date(createdAt)) === startOfDay(now) ? "Today" : "Earlier";
-}
-
-/** h:mm AM/PM today, short weekday within 7 days, else short date ("Sep 3"). */
-export function convoTime(createdAt: string, now = new Date()): string {
-  const d = new Date(createdAt);
-  if (Number.isNaN(d.getTime())) return "";
-  const days = Math.round((startOfDay(now) - startOfDay(d)) / DAY);
-  if (days <= 0) return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-  if (days < 7) return d.toLocaleDateString("en-US", { weekday: "short" });
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-export function Sidebar<S extends SidebarSession>({
+function SidebarView<S extends SidebarSession>({
   sessions,
   activeId,
   onOpen,
@@ -60,16 +44,43 @@ export function Sidebar<S extends SidebarSession>({
   /** Shows an inline error line with Retry. */
   loadError?: string | null;
   onRetry?: () => void;
-  /** Disables row, new and nav buttons while a turn is running. */
+  /** Disables conversation selection and creation while a request is being sent. */
   busy?: boolean;
 }) {
   const now = new Date();
-  const groups: { label: "Today" | "Earlier"; items: S[] }[] = [
-    { label: "Today", items: [] },
-    { label: "Earlier", items: [] },
-  ];
-  for (const s of sessions)
-    groups[convoGroup(s.createdAt, now) === "Today" ? 0 : 1].items.push(s);
+  const dayKey = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+  ).getTime();
+  const groups = useMemo(
+    () => groupSidebarSessions(sessions, new Date(dayKey)),
+    [sessions, dayKey],
+  );
+  const [earlierCount, setEarlierCount] = useState(SIDEBAR_INITIAL_COUNT);
+  const [earlierExpanded, setEarlierExpanded] = useState(true);
+  const earlierId = useId();
+  const earlier = useMemo(
+    () =>
+      sidebarWindow(groups.earlier, {
+        count: earlierCount,
+        activeId,
+        expanded: earlierExpanded,
+      }),
+    [groups.earlier, earlierCount, activeId, earlierExpanded],
+  );
+  const rows = (items: S[]) =>
+    items.map((session) => (
+      <SidebarRow
+        key={session._id}
+        session={session}
+        active={session._id === activeId}
+        busy={busy}
+        time={convoTime(session.createdAt, now)}
+        onOpen={onOpen}
+        renderRowMenu={renderRowMenu}
+      />
+    ));
 
   return (
     <>
@@ -78,7 +89,9 @@ export function Sidebar<S extends SidebarSession>({
           <Icon name="spark" size={14} stroke={2} />
         </span>
         <span className="brand-word">truex</span>
-        <span className="brand-slash" aria-hidden="true">/</span>
+        <span className="brand-slash" aria-hidden="true">
+          /
+        </span>
         <span className="brand-sub">agents</span>
       </div>
 
@@ -115,52 +128,97 @@ export function Sidebar<S extends SidebarSession>({
             </button>
           </p>
         )}
-        {groups.map(
-          (g) =>
-            g.items.length > 0 && (
-              <div className="side-group" key={g.label}>
-                <div className="eyebrow">{g.label}</div>
-                {g.items.map((s) => {
-                  const menu = renderRowMenu?.(s);
-                  const active = s._id === activeId;
-                  return (
-                    <div
-                      key={s._id}
-                      className={[
-                        "convo-row",
-                        active && "is-active",
-                        menu && "has-menu",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <button
-                        type="button"
-                        className={active ? "convo is-active" : "convo"}
-                        aria-current={active ? "true" : undefined}
-                        disabled={busy}
-                        onClick={() => onOpen(s._id)}
-                      >
-                        <span className="convo-title">
-                          {s.title || "New conversation"}
-                        </span>
-                        <span className="convo-time">
-                          {convoTime(s.createdAt, now)}
-                        </span>
-                      </button>
-                      {menu && <span className="convo-menu">{menu}</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            ),
+        {groups.today.length > 0 && (
+          <section className="side-group" aria-label="Today">
+            <div className="eyebrow">Today</div>
+            {rows(groups.today)}
+          </section>
+        )}
+        {groups.earlier.length > 0 && (
+          <section className="side-group" aria-label="Earlier">
+            <button
+              type="button"
+              className="side-shelf-toggle eyebrow"
+              aria-expanded={earlierExpanded}
+              aria-controls={earlierId}
+              onClick={() => setEarlierExpanded((expanded) => !expanded)}
+            >
+              <Icon name={earlierExpanded ? "chevron" : "chevronR"} size={12} />
+              Earlier
+              <span className="side-shelf-count">{groups.earlier.length}</span>
+            </button>
+            <div id={earlierId}>
+              {rows(earlier.items)}
+              {earlierExpanded && earlier.hiddenCount > 0 && (
+                <button
+                  type="button"
+                  className="side-show-more"
+                  onClick={() =>
+                    setEarlierCount((count) => count + SIDEBAR_PAGE_COUNT)
+                  }
+                >
+                  Show more
+                  <span className="side-shelf-count">
+                    {earlier.hiddenCount} remaining
+                  </span>
+                </button>
+              )}
+            </div>
+          </section>
         )}
       </div>
 
-      <button type="button" className="side-link side-foot" onClick={onSettings}>
+      <button
+        type="button"
+        className="side-link side-foot"
+        onClick={onSettings}
+      >
         <Icon name="gear" size={16} />
         Settings
       </button>
     </>
   );
 }
+
+export const Sidebar = memo(SidebarView) as typeof SidebarView;
+
+function SidebarRowView<S extends SidebarSession>({
+  session,
+  active,
+  busy,
+  time,
+  onOpen,
+  renderRowMenu,
+}: {
+  session: S;
+  active: boolean;
+  busy: boolean;
+  time: string;
+  onOpen: (id: string) => void;
+  renderRowMenu?: (session: S) => ReactNode;
+}) {
+  const menu = renderRowMenu?.(session);
+  return (
+    <div
+      className={["convo-row", active && "is-active", menu && "has-menu"]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <button
+        type="button"
+        className={active ? "convo is-active" : "convo"}
+        aria-current={active ? "true" : undefined}
+        disabled={busy}
+        onClick={() => onOpen(session._id)}
+      >
+        <span className="convo-title">
+          {session.title || "New conversation"}
+        </span>
+        <span className="convo-time">{time}</span>
+      </button>
+      {menu && <span className="convo-menu">{menu}</span>}
+    </div>
+  );
+}
+
+const SidebarRow = memo(SidebarRowView) as typeof SidebarRowView;

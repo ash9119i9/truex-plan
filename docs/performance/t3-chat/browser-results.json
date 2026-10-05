@@ -1,0 +1,94 @@
+{
+  "date": "2026-10-05",
+  "baselineCommit": "e44b79e9c5eea2b5de000a0cfca6ffff8a5821ec",
+  "method": "T3 collaborative browser; visible tab; production Next webpack builds; same 1280x800 viewport and synthetic loopback API; click to target DOM followed by two requestAnimationFrame callbacks; 700ms settling between switches; fixture durable delay15ms and runtime recovery600ms; five samples (two cold then three warm).",
+  "before": [
+    {
+      "id": "a",
+      "ms": 634.7000000011176,
+      "rows": 40
+    },
+    {
+      "id": "b",
+      "ms": 645.9000000003725,
+      "rows": 40
+    },
+    {
+      "id": "a",
+      "ms": 636.1999999992549,
+      "rows": 40
+    },
+    {
+      "id": "b",
+      "ms": 627,
+      "rows": 40
+    },
+    {
+      "id": "a",
+      "ms": 637.5,
+      "rows": 40
+    }
+  ],
+  "after": [
+    {
+      "id": "a",
+      "ms": 51.90000000037253,
+      "rows": 20
+    },
+    {
+      "id": "b",
+      "ms": 65.70000000111759,
+      "rows": 20
+    },
+    {
+      "id": "a",
+      "ms": 33,
+      "rows": 20
+    },
+    {
+      "id": "b",
+      "ms": 31,
+      "rows": 20
+    },
+    {
+      "id": "a",
+      "ms": 31.800000000745058,
+      "rows": 20
+    }
+  ],
+  "paging": {
+    "after": {
+      "first": "fixture-long question 940",
+      "offset": -67.1875,
+      "rows": 60
+    },
+    "alert": null,
+    "before": {
+      "id": "turn-fixture-long-turn-490",
+      "offset": -67,
+      "rows": 20
+    }
+  },
+  "longOpen": {
+    "before": {
+      "ms": 863,
+      "rows": 1000,
+      "elements": 9001
+    },
+    "after": {
+      "ms": 47.5,
+      "rows": 20,
+      "elements": 182
+    },
+    "samples": 1
+  },
+  "checks": {
+    "draftRestored": true,
+    "rapidSwitchOldResponseIgnored": true,
+    "accessRevokedClearsTranscript": true,
+    "recoverySingleflightWithNewLiveSnapshot": true,
+    "newLiveTextAndRunningStatePreserved": true,
+    "automaticReconnectDurableCatchup": true,
+    "manualReconnectDurableCatchup": true
+  }
+}

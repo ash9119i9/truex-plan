@@ -413,3 +413,5 @@
    needs the composer's width or it shrinks to fit its content. */
 .composer-form { width: 100%; max-width: 740px; }
 .hero-composer .composer-form { max-width: none; }
+
+.conversation-loading { padding: 32px; color: var(--ink-2); }

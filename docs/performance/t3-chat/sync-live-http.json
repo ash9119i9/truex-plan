@@ -1,0 +1,119 @@
+{
+  "description": "Same real local session, 3 paired rounds; aggregate timings only, no chat content or identity.",
+  "records": [
+    {
+      "round": 1,
+      "mode": "sequential",
+      "ms": 2208.6007910000003,
+      "responses": [
+        {
+          "persisted": true,
+          "status": 200,
+          "ms": 466.19241700000003,
+          "timing": "authorization;dur=228.65, persisted;dur=233.63"
+        },
+        {
+          "persisted": false,
+          "status": 200,
+          "ms": 1742.1415,
+          "timing": "authorization;dur=227.14, recovery;dur=1048.10, persisted;dur=463.21"
+        }
+      ]
+    },
+    {
+      "round": 1,
+      "mode": "parallel",
+      "ms": 1643.2449579999998,
+      "responses": [
+        {
+          "persisted": true,
+          "status": 200,
+          "ms": 460.86366599999974,
+          "timing": "authorization;dur=228.21, persisted;dur=230.42"
+        },
+        {
+          "persisted": false,
+          "status": 200,
+          "ms": 1643.0139170000002,
+          "timing": "authorization;dur=228.87, recovery;dur=949.94, persisted;dur=461.42"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "mode": "sequential",
+      "ms": 2140.761834,
+      "responses": [
+        {
+          "persisted": true,
+          "status": 200,
+          "ms": 462.14074999999957,
+          "timing": "authorization;dur=228.08, persisted;dur=232.40"
+        },
+        {
+          "persisted": false,
+          "status": 200,
+          "ms": 1678.5982080000003,
+          "timing": "authorization;dur=268.68, recovery;dur=944.83, persisted;dur=462.74"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "mode": "parallel",
+      "ms": 1979.5339999999997,
+      "responses": [
+        {
+          "persisted": true,
+          "status": 200,
+          "ms": 687.0839169999999,
+          "timing": "authorization;dur=227.71, persisted;dur=229.37"
+        },
+        {
+          "persisted": false,
+          "status": 200,
+          "ms": 1979.3372500000005,
+          "timing": "authorization;dur=235.97, recovery;dur=1020.79, persisted;dur=483.58"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "mode": "sequential",
+      "ms": 2282.7814580000013,
+      "responses": [
+        {
+          "persisted": true,
+          "status": 200,
+          "ms": 479.2225409999992,
+          "timing": "authorization;dur=237.22, persisted;dur=240.10"
+        },
+        {
+          "persisted": false,
+          "status": 200,
+          "ms": 1803.4967500000002,
+          "timing": "authorization;dur=236.62, recovery;dur=1051.14, persisted;dur=513.35"
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "mode": "parallel",
+      "ms": 1650.034375000001,
+      "responses": [
+        {
+          "persisted": true,
+          "status": 200,
+          "ms": 503.27829100000054,
+          "timing": "authorization;dur=249.99, persisted;dur=250.26"
+        },
+        {
+          "persisted": false,
+          "status": 200,
+          "ms": 1649.635792000001,
+          "timing": "authorization;dur=227.36, recovery;dur=959.74, persisted;dur=459.38"
+        }
+      ]
+    }
+  ]
+}

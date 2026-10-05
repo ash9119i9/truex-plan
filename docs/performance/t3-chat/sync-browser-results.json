@@ -1,0 +1,123 @@
+{
+  "description": "Same visible 1280x800 native T3 browser, production webpack builds; isolated fixture persisted=460ms recovery=1650ms; 3 alternating A/B switches. Before=pre-concurrency implementation on3102; after=candidate on3104.",
+  "before": [
+    {
+      "exactlyTwo": true,
+      "readyMs": 2179.4000000003725,
+      "requests": [
+        {
+          "completedMs": 462,
+          "persisted": true,
+          "startedMs": 0
+        },
+        {
+          "completedMs": 2117,
+          "persisted": false,
+          "startedMs": 465
+        }
+      ]
+    },
+    {
+      "exactlyTwo": true,
+      "readyMs": 2177.199999999255,
+      "requests": [
+        {
+          "completedMs": 462,
+          "persisted": true,
+          "startedMs": 0
+        },
+        {
+          "completedMs": 2119,
+          "persisted": false,
+          "startedMs": 467
+        }
+      ]
+    },
+    {
+      "exactlyTwo": true,
+      "readyMs": 2184.4000000003725,
+      "requests": [
+        {
+          "completedMs": 462,
+          "persisted": true,
+          "startedMs": 0
+        },
+        {
+          "completedMs": 2116,
+          "persisted": false,
+          "startedMs": 464
+        }
+      ]
+    }
+  ],
+  "after": [
+    {
+      "exactlyTwo": true,
+      "readyMs": 1715,
+      "requests": [
+        {
+          "completedMs": 463,
+          "persisted": true,
+          "startedMs": 0
+        },
+        {
+          "completedMs": 1652,
+          "persisted": false,
+          "startedMs": 0
+        }
+      ]
+    },
+    {
+      "exactlyTwo": true,
+      "readyMs": 1698,
+      "requests": [
+        {
+          "completedMs": 463,
+          "persisted": true,
+          "startedMs": 0
+        },
+        {
+          "completedMs": 1653,
+          "persisted": false,
+          "startedMs": 1
+        }
+      ]
+    },
+    {
+      "exactlyTwo": true,
+      "readyMs": 1736,
+      "requests": [
+        {
+          "completedMs": 463,
+          "persisted": true,
+          "startedMs": 0
+        },
+        {
+          "completedMs": 1652,
+          "persisted": false,
+          "startedMs": 0
+        }
+      ]
+    }
+  ],
+  "safety": {
+    "denied": {
+      "errorVisible": true,
+      "held": false,
+      "messageRows": 0
+    },
+    "earlyRecovery": {
+      "elapsed": 910.3000000007451,
+      "historyRequests": 2,
+      "lockedUntilSaved": true,
+      "preservedDelta": true,
+      "ready": true
+    },
+    "rapidSwitch": {
+      "latestVisible": true,
+      "ready": true,
+      "selected": "fixture-b",
+      "title": "Fixture B conversation"
+    }
+  }
+}

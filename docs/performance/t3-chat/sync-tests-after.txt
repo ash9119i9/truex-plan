@@ -1,0 +1,17 @@
+(node:49510) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Users/ashok/truex-plan/frontend/test/session-history.test.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /Users/ashok/truex-plan/frontend/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ opening and resync share recovery, while persisted reads remain independent (0.554ms)
+✔ failed and synchronously throwing reads are retryable without orphan rejections (0.171083ms)
+✔ opening starts saved and recovery reads together and retains fast completed recovery (0.085875ms)
+✔ early recovery failure remains observable after slow saved history (1.263917ms)
+✔ failed saved reads leave recovery rejection handled and a new opening retryable (0.236583ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 5
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 53.856375

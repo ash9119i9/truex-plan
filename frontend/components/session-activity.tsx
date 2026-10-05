@@ -63,6 +63,7 @@ export function SessionActivity({
   onToggleWide,
   onClose,
   onDetailChange,
+  onViewTurn,
   follow,
   onFollow,
 }: {
@@ -92,13 +93,18 @@ export function SessionActivity({
   onClose?: () => void;
   // True while a helper's detail view is open (PANEL_SIZE_DEFAULT detail=max).
   onDetailChange?: (open: boolean) => void;
+  onViewTurn?: (turnId: string) => Promise<boolean>;
   // Follow activity: new goals, plans and helpers bring their tab forward.
   follow?: boolean;
   onFollow?: (on: boolean) => void;
 }) {
   const [localPanel, setLocalPanel] = useState<SessionTab>("activity");
   const [detail, setDetail] = useState(false);
-  const panel: SessionTab = isTab(tab) ? tab : tab === undefined ? localPanel : "activity";
+  const panel: SessionTab = isTab(tab)
+    ? tab
+    : tab === undefined
+      ? localPanel
+      : "activity";
   const setPanel = (next: SessionTab) => (onTab ?? setLocalPanel)(next);
   const agents = subAgents?.agents || [];
   const active = agents.filter(isRunning).length;
@@ -255,10 +261,15 @@ export function SessionActivity({
             goal={goal}
             review={goalReview}
             plan={plan}
+            onViewTurn={onViewTurn}
           />
         )}
         {panel === "plan" && (
-          <PlanPanel key="plan" plan={plan} awaitingApproval={awaitingApproval} />
+          <PlanPanel
+            key="plan"
+            plan={plan}
+            awaitingApproval={awaitingApproval}
+          />
         )}
         {panel === "insights" && (
           <InsightsPanel
@@ -379,7 +390,9 @@ function ActivityTab({
                 <Icon name={completedIcon(last)} size={16} />
               </span>
               <div className="grow">
-                <span className="strong">Last run: {eventLabel(last).toLowerCase()}</span>
+                <span className="strong">
+                  Last run: {eventLabel(last).toLowerCase()}
+                </span>
                 <span className="muted sm">
                   {lastMs !== null
                     ? `Completed in ${formatDuration(lastMs)}`
@@ -479,7 +492,11 @@ function eventLabel(e: DomainEvent): string {
 
 function completedIcon(e: DomainEvent): IconName {
   const status = e.data.turn?.status;
-  return status === "failed" ? "x" : status === "interrupted" ? "stop" : "check";
+  return status === "failed"
+    ? "x"
+    : status === "interrupted"
+      ? "stop"
+      : "check";
 }
 
 // Spec timeline icons, matched to the platform's plain-words labels.
@@ -500,7 +517,8 @@ function eventIcon(e: DomainEvent): IconName {
 function timeLabel(at?: string) {
   const t = at ? new Date(at) : null;
   if (!t || Number.isNaN(t.getTime())) return "";
-  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const day = (d: Date) =>
+    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const diff = Math.round((day(new Date()) - day(t)) / 86_400_000);
   if (diff === 0)
     return t.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });

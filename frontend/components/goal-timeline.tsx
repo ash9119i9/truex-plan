@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, warnFailure } from "@/lib/api";
 import {
   formatDuration,
@@ -21,7 +21,10 @@ import type {
 } from "../../shared/contracts";
 
 // Spec pill tones: running pulses, paused/blocked warn, done accent, ended muted.
-const pillTone: Record<GoalStatus, "s-running" | "s-paused" | "s-done" | "s-ended"> = {
+const pillTone: Record<
+  GoalStatus,
+  "s-running" | "s-paused" | "s-done" | "s-ended"
+> = {
   active: "s-running",
   paused: "s-paused",
   blocked: "s-paused",
@@ -57,17 +60,49 @@ export function GoalTimeline({
   goal,
   review,
   plan = [],
+  onViewTurn,
 }: {
   sessionId?: string;
   goal: Goal | null;
   review: GoalReview | null;
   plan?: PlanStep[];
+  onViewTurn?: (turnId: string) => Promise<boolean>;
 }) {
-  const [entries, setEntries] = useState<GoalHistoryEntry[]>([]);
-  const [failed, setFailed] = useState(false);
+  const [historyState, setHistoryState] = useState<{
+    sessionId?: string;
+    entries: GoalHistoryEntry[];
+    failed: boolean;
+  }>({ entries: [], failed: false });
+  const entries =
+    historyState.sessionId === sessionId ? historyState.entries : [];
+  const failed = historyState.sessionId === sessionId && historyState.failed;
+  const currentSession = useRef(sessionId);
+  currentSession.current = sessionId;
+  const viewRequest = useRef(0);
   // The turn whose chat anchor couldn't be found.
   const [missing, setMissing] = useState<string | null>(null);
-  function viewTurn(turnId: string) {
+  useEffect(() => {
+    setMissing(null);
+    return () => {
+      viewRequest.current++;
+    };
+  }, [sessionId]);
+  async function viewTurn(turnId: string) {
+    if (onViewTurn) {
+      const request = ++viewRequest.current;
+      let found = false;
+      try {
+        found = await onViewTurn(turnId);
+      } catch (error) {
+        warnFailure("view goal turn", error);
+      }
+      if (
+        request === viewRequest.current &&
+        currentSession.current === sessionId
+      )
+        setMissing(found ? null : turnId);
+      return;
+    }
     const target = document.getElementById(`turn-${turnId}`);
     if (!target) {
       setMissing(turnId);
@@ -88,7 +123,7 @@ export function GoalTimeline({
   const reviewKey = review ? `${review.decision}:${review.at}` : "";
   useEffect(() => {
     if (!sessionId) {
-      setEntries([]);
+      setHistoryState({ entries: [], failed: false });
       return;
     }
     let active = true;
@@ -97,12 +132,20 @@ export function GoalTimeline({
       api(`/api/sessions/${sessionId}/goal/history`)
         .then((data) => {
           if (!active) return;
-          setEntries(data.entries || []);
-          setFailed(false);
+          setHistoryState({
+            sessionId,
+            entries: data.entries || [],
+            failed: false,
+          });
         })
         .catch((e) => {
           warnFailure("goal history", e);
-          if (active) setFailed(true);
+          if (active)
+            setHistoryState((old) => ({
+              sessionId,
+              entries: old.sessionId === sessionId ? old.entries : [],
+              failed: true,
+            }));
         });
     }, 400);
     return () => {
@@ -129,7 +172,11 @@ export function GoalTimeline({
             }))
             .reverse()
             .map(({ entry, change }, i) => (
-              <li key={`${entry.at}:${i}`} className="tl-row" data-kind={entry.kind}>
+              <li
+                key={`${entry.at}:${i}`}
+                className="tl-row"
+                data-kind={entry.kind}
+              >
                 <span className="tl-dot">
                   <Icon name={historyIcon[entry.kind] || "pulse"} size={14} />
                 </span>
@@ -188,8 +235,8 @@ export function GoalTimeline({
           </span>
           <span className="strong">No active goal</span>
           <span className="muted sm">
-            Give the assistant an outcome. It keeps working until it&apos;s done,
-            paused or out of budget.
+            Give the assistant an outcome. It keeps working until it&apos;s
+            done, paused or out of budget.
           </span>
         </div>
         {!!entries.length && history}
@@ -206,7 +253,9 @@ export function GoalTimeline({
       ? Math.round((progress.done / progress.total) * 100)
       : 0;
   const tokens = goalTokens(goal);
-  const tone = goalAccepted(goal, review) ? "s-done" : pillTone[goal.status] || "s-ended";
+  const tone = goalAccepted(goal, review)
+    ? "s-done"
+    : pillTone[goal.status] || "s-ended";
   const started = startedLabel(goal.createdAt);
 
   return (

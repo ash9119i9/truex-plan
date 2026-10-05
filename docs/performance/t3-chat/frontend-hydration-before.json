@@ -1,0 +1,60 @@
+{
+  "benchmark": "Truex historyEntries CPU-only hydration",
+  "measuredAt": "2026-10-05T10:42:29.412Z",
+  "repo": "/tmp/truex-chat-before",
+  "chatSourceSha256": "ef40456295e99383e5179584e3b3a831a65a665c90202ffdc298dd17446f8d4a",
+  "nodeVersion": "v24.21.0",
+  "v8Version": "13.6.233.17-node.53",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "cpuModel": "Apple M5",
+  "warmupRunsPerFixture": 1,
+  "measuredRunsPerFixture": 5,
+  "measurements": [
+    {
+      "fixture": "alternating-distinct-turns",
+      "messages": 100,
+      "samplesMs": [
+        0.1320830000000015, 0.13437500000000568, 0.1198750000000004,
+        0.08362500000000495, 0.07408399999999915
+      ],
+      "medianMs": 0.1198750000000004
+    },
+    {
+      "fixture": "alternating-distinct-turns",
+      "messages": 1000,
+      "samplesMs": [
+        3.212083, 3.208167000000003, 3.6135829999999984, 3.1127499999999984,
+        3.170084000000003
+      ],
+      "medianMs": 3.208167000000003
+    },
+    {
+      "fixture": "alternating-distinct-turns",
+      "messages": 5000,
+      "samplesMs": [
+        65.266583, 41.426874999999995, 34.15991699999998, 34.436375,
+        34.19154199999997
+      ],
+      "medianMs": 34.436375
+    },
+    {
+      "fixture": "alternating-distinct-turns",
+      "messages": 10000,
+      "samplesMs": [
+        140.59695800000003, 139.75808400000005, 146.747791, 143.01429199999995,
+        141.08687499999996
+      ],
+      "medianMs": 141.08687499999996
+    },
+    {
+      "fixture": "single-turn-distinct-items-same-text",
+      "messages": 10000,
+      "samplesMs": [
+        1071.097209, 1052.1464580000002, 1051.2882089999994, 1051.091875,
+        1048.7877500000004
+      ],
+      "medianMs": 1051.2882089999994
+    }
+  ]
+}

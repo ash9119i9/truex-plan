@@ -1,0 +1,17 @@
+✔ backend readiness waits for an actual listener, then resolves (209.86375ms)
+✔ backend readiness times out and aborts without an open listener (104.044583ms)
+✔ backend readiness rejects invalid ports and deadlines immediately (0.785792ms)
+✔ dev launcher startup: local (1962.574084ms)
+✔ dev launcher startup: remote (2531.375666ms)
+✔ dev launcher startup: quoted (2427.849625ms)
+✔ dev launcher startup: no-gateway (2367.067917ms)
+✔ dev launcher startup: cancel (1021.784334ms)
+✔ dev launcher startup: backend-exit (989.1865ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 11719.483167

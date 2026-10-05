@@ -366,6 +366,37 @@ test(
       assert.equal(rejected.status, 403);
     }
     await stop(core);
+    // Browsing the durable transcript and receipts does not need the runtime.
+    const persistedResponse = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions/${session._id}?persisted=1&window=1`,
+    );
+    assert.equal(persistedResponse.status, 200);
+    assert.equal(
+      persistedResponse.headers.get("cache-control"),
+      "private, no-store",
+    );
+    assert.match(
+      persistedResponse.headers.get("server-timing") || "",
+      /authorization;dur=.*persisted;dur=/,
+    );
+    assert.doesNotMatch(
+      persistedResponse.headers.get("server-timing") || "",
+      /recovery;/,
+    );
+    const persistedHistory = await persistedResponse.json();
+    assert.equal(persistedHistory.messages.length, 2);
+    assert.equal(persistedHistory.snapshot, null);
+    assert.equal(persistedHistory.recoveryError, null);
+    assert.deepEqual(persistedHistory.historyWindow, {
+      hasOlder: false,
+      beforeCursor: null,
+    });
+    assert.equal(
+      (await call(`/api/sessions/${session._id}/timings?persisted=1`)).turns
+        .length,
+      1,
+    );
+    await call(`/api/sessions/${session._id}/traces?persisted=1`);
     core = launch("agent-core", coreEnv);
     await wait(async () => {
       const res = await fetch(`http://127.0.0.1:${corePort}/healthz`);

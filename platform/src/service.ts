@@ -5,6 +5,7 @@ import {
   publicSession,
   publicApproval,
   publicSnapshot,
+  recentSnapshot,
   publicPlan,
   publicStoredPlan,
   withPlanFallback,
@@ -20,7 +21,9 @@ import { Store } from "./store";
 import { newAgent } from "./agents";
 import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
+import { historyAnchor, historyWindow } from "./history-window";
 import { isDeepStrictEqual } from "node:util";
+import type { AnyBulkWriteOperation } from "mongodb";
 import type {
   CommandRecord,
   Goal,
@@ -103,7 +106,13 @@ import {
   isAgentCoreRuntime,
   runtimeHosts,
 } from "./runtime-transport";
-import { checkProject, checkSession, ownerFilter, type Access } from "./access";
+import {
+  chatVisibility,
+  checkProject,
+  checkSession,
+  ownerFilter,
+  type Access,
+} from "./access";
 // Codex edits an objective in place, so the creation time identifies a goal.
 function sameGoal(saved: SessionGoal | undefined, goal: Goal) {
   return !!saved && (saved.createdAt ?? null) === (goal.createdAt ?? null);
@@ -274,6 +283,16 @@ function projectName(name: unknown) {
 }
 export class PlatformService {
   readonly hosts: string[];
+  // Only active recovery work is shared. Persisted reads and authorization
+  // remain per request, and no conversation response survives this promise.
+  private historyRecoveries = new Map<
+    string,
+    Promise<{
+      snapshot: any;
+      recoveryError: string | null;
+      recoveryErrorRef: { code: string; requestId?: string } | null;
+    }>
+  >();
   private polling = false;
   private timer?: NodeJS.Timeout;
   private nextHost = 0;
@@ -1493,68 +1512,120 @@ export class PlatformService {
         s,
         `/items${cursor ? "?cursor=" + encodeURIComponent(cursor) : ""}`,
       );
+      const users = page.data.filter(
+        (entry: any) => entry.item.type === "userMessage",
+      );
+      const existingUsers = users.length
+        ? await this.store.messages
+            .find(
+              {
+                sessionId: s._id,
+                $or: [
+                  {
+                    clientId: {
+                      $in: users.map(
+                        (entry: any) => entry.item.clientId || entry.item.id,
+                      ),
+                    },
+                  },
+                  { itemId: { $in: users.map((entry: any) => entry.item.id) } },
+                ],
+              },
+              { projection: { _id: 1, clientId: 1, itemId: 1 } },
+            )
+            .toArray()
+        : [];
+      type Identity = Pick<Message, "_id" | "clientId" | "itemId">;
+      const byClient = new Map<string, Identity>(
+        existingUsers.filter((m) => m.clientId).map((m) => [m.clientId!, m]),
+      );
+      const byItem = new Map<string, Identity>(
+        existingUsers.filter((m) => m.itemId).map((m) => [m.itemId!, m]),
+      );
+      let writes: AnyBulkWriteOperation<Message>[] = [];
+      const flush = async () => {
+        if (!writes.length) return;
+        // Ordered writes preserve runtime ordering and stop on the first
+        // failure. Retrying the whole reconciliation remains idempotent.
+        await this.store.messages.bulkWrite(writes, { ordered: true });
+        writes = [];
+      };
       for (const entry of page.data) {
         const { item, turnId } = entry;
         if (item.type === "agentMessage") {
           const messageIndex = assistantIndexes.get(turnId) || 0;
           assistantIndexes.set(turnId, messageIndex + 1);
-          await this.store.messages.updateOne(
-            { _id: `${s._id}:assistant:${turnId}:${messageIndex}` },
-            {
-              $set: { order: order++, runtimeItemId: item.id },
-              $setOnInsert: {
-                sessionId: s._id,
-                role: "assistant",
-                text: item.text,
-                turnId,
-                messageIndex,
-                itemId: item.id,
-                at: s.createdAt,
+          writes.push({
+            updateOne: {
+              filter: { _id: `${s._id}:assistant:${turnId}:${messageIndex}` },
+              update: {
+                $set: { order: order++, runtimeItemId: item.id },
+                $setOnInsert: {
+                  sessionId: s._id,
+                  role: "assistant",
+                  text: item.text,
+                  turnId,
+                  messageIndex,
+                  itemId: item.id,
+                  at: s.createdAt,
+                },
               },
+              upsert: true,
             },
-            { upsert: true },
-          );
+          });
         }
         if (item.type === "userMessage") {
           const clientId = item.clientId || item.id;
-          const existing = await this.store.messages.findOne({
-            sessionId: s._id,
-            $or: [{ clientId }, { itemId: item.id }],
-          });
+          const existing = byClient.get(clientId) || byItem.get(item.id);
           if (existing)
-            await this.store.messages.updateOne(
-              { _id: existing._id },
-              {
-                $set: {
-                  itemId: item.id,
-                  turnId,
-                  delivery: "accepted",
-                  order: order++,
+            writes.push({
+              updateOne: {
+                filter: { _id: existing._id },
+                update: {
+                  $set: {
+                    itemId: item.id,
+                    turnId,
+                    delivery: "accepted",
+                    order: order++,
+                  },
                 },
               },
-            );
+            });
           if (!existing)
-            await this.store.messages.updateOne(
-              { _id: `${s._id}:runtime-user:${item.id}` },
-              {
-                $setOnInsert: {
-                  sessionId: s._id,
-                  role: "user",
-                  text: (item.content || [])
-                    .filter((c: any) => c.type === "text")
-                    .map((c: any) => c.text)
-                    .join("\n"),
-                  turnId,
-                  itemId: item.id,
-                  at: s.createdAt,
-                  delivery: "accepted",
-                  order: order++,
+            writes.push({
+              updateOne: {
+                filter: { _id: `${s._id}:runtime-user:${item.id}` },
+                update: {
+                  $setOnInsert: {
+                    sessionId: s._id,
+                    role: "user",
+                    text: (item.content || [])
+                      .filter((c: any) => c.type === "text")
+                      .map((c: any) => c.text)
+                      .join("\n"),
+                    turnId,
+                    itemId: item.id,
+                    at: s.createdAt,
+                    delivery: "accepted",
+                    order: order++,
+                  },
                 },
+                upsert: true,
               },
-              { upsert: true },
-            );
+            });
+          // Model the identity fields after this queued write, so a later
+          // item in the page sees the same aliases as item-by-item writes.
+          if (existing?.itemId && byItem.get(existing.itemId) === existing)
+            byItem.delete(existing.itemId);
+          const identity: Identity = existing || {
+            _id: `${s._id}:runtime-user:${item.id}`,
+          };
+          identity.itemId = item.id;
+          byItem.set(item.id, identity);
         }
+        if (writes.length >= 500) await flush();
       }
+      await flush();
       cursor = page.nextCursor;
     } while (cursor);
   }
@@ -1571,8 +1642,8 @@ export class PlatformService {
       at: new Date().toISOString(),
     });
   }
-  async history(id: string) {
-    const s = await this.sessionFor(id, "read");
+  private async recoverHistory(s: Session) {
+    const id = s._id;
     let snapshot = null,
       recoveryError = null,
       recoveryErrorRef: { code: string; requestId?: string } | null = null;
@@ -1597,17 +1668,85 @@ export class PlatformService {
         ...errorFields(e),
       });
     }
-    // Re-read once: recovery above may have changed the stored session.
-    const fresh = await this.session(id);
+    return { snapshot, recoveryError, recoveryErrorRef };
+  }
+  async history(
+    id: string,
+    options: {
+      persistedOnly?: boolean;
+      window?: boolean;
+      before?: unknown;
+      onTiming?: (
+        phase: "authorization" | "recovery" | "persisted",
+        durationMs: number,
+      ) => void;
+    } = {},
+  ) {
+    let started = performance.now();
+    const s = await this.sessionFor(id, "read");
+    options.onTiming?.("authorization", performance.now() - started);
+    if (!options.window && options.before !== undefined)
+      throw new ApiError(
+        400,
+        "A history cursor requires a conversation window",
+        "INVALID_HISTORY_CURSOR",
+      );
+    const anchor = options.window
+      ? historyAnchor(id, options.before)
+      : undefined;
+    let snapshot = null,
+      recoveryError = null,
+      recoveryErrorRef: { code: string; requestId?: string } | null = null;
+    if (!options.persistedOnly) {
+      const user = currentUser(),
+        tenant = currentTenant();
+      const key = JSON.stringify([
+        tenant?.dbName ?? currentTenantId(),
+        user?.id ?? null,
+        user?.role ?? null,
+        chatVisibility(),
+        id,
+        s.threadId,
+        s.agentCoreHost,
+        s.agentCoreSessionId ?? null,
+      ]);
+      started = performance.now();
+      let recovery = this.historyRecoveries.get(key);
+      if (!recovery) {
+        recovery = this.recoverHistory(s).finally(() => {
+          if (this.historyRecoveries.get(key) === recovery)
+            this.historyRecoveries.delete(key);
+        });
+        this.historyRecoveries.set(key, recovery);
+      }
+      ({ snapshot, recoveryError, recoveryErrorRef } = await recovery);
+      options.onTiming?.("recovery", performance.now() - started);
+    }
+    started = performance.now();
+    // A persisted-only read never starts or waits for runtime recovery.
+    const fresh = options.persistedOnly ? s : await this.session(id);
     const saved = fresh.plan;
-    return {
+    const ordered = orderConversation(
+      await this.store.messages.find({ sessionId: id }).toArray(),
+    );
+    const page = options.window ? historyWindow(ordered, id, anchor) : null;
+    const selected = page?.messages ?? ordered;
+    const visibleTurns = new Set(
+      selected
+        .map((message) => message.turnId)
+        .filter((id): id is string => typeof id === "string"),
+    );
+    const projectedSnapshot = snapshot
+      ? withPlanFallback(publicSnapshot(snapshot), saved)
+      : null;
+    const result = {
       session: publicSession(fresh, this.approvalModes),
-      messages: orderConversation(
-        await this.store.messages.find({ sessionId: id }).toArray(),
-      ),
-      snapshot: snapshot
-        ? withPlanFallback(publicSnapshot(snapshot), saved)
-        : null,
+      messages: selected,
+      ...(page ? { historyWindow: page.historyWindow } : {}),
+      snapshot:
+        projectedSnapshot && options.window
+          ? recentSnapshot(projectedSnapshot, visibleTurns)
+          : projectedSnapshot,
       // Saved plan, also available when agent-core is unreachable.
       plan: publicStoredPlan(saved),
       approvals: (fresh.approvals || []).map(publicApproval).filter(Boolean),
@@ -1618,6 +1757,8 @@ export class PlatformService {
         : null,
       recoveryErrorRef,
     };
+    options.onTiming?.("persisted", performance.now() - started);
+    return result;
   }
   async ingest(s: Session) {
     const records = await this.owned(s, "/records");

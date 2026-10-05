@@ -21,13 +21,28 @@ import { fitPanel, PANEL_W, CHAT_MIN, type PanelSize } from "@/lib/fit-panel";
 import { useFollowActivity } from "@/lib/use-follow-activity";
 import { useHotkeys } from "@/lib/use-hotkeys";
 import { useTheme } from "@/lib/use-theme";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ChatMessages } from "@/components/chat-messages";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useAppliedState } from "@/lib/use-applied-state";
+import { SessionCache } from "@/lib/session-cache";
+import { SessionHistory } from "@/lib/session-history";
+import {
+  ChatMessages,
+  type ChatTimelineProps,
+} from "@/components/chat-messages";
+import type { LegendListRef } from "@legendapp/list/react";
+import { timelineAnchorIndex } from "@/lib/timeline-anchor";
 import {
   applyChatEvent,
   addApprovals,
   historyEntries,
-  mergeHistoryEntries,
+  mergeHistoryWindow,
   type Entry,
 } from "@/lib/chat";
 import { SessionActivity } from "@/components/session-activity";
@@ -91,6 +106,8 @@ import {
 } from "@/lib/slash-commands";
 import type {
   AgentSummary,
+  ApprovalRecord,
+  Message,
   ApprovalMode,
   ApprovalModesConfig,
   PublicSession,
@@ -104,11 +121,48 @@ import type {
 import { agentHandle } from "../../shared/contracts";
 // The public payload includes the alpha approval mode when it is enabled.
 type Session = PublicSession;
+type HistoryWindow = { hasOlder: boolean; beforeCursor: string | null };
+type SavedConversation = {
+  session: Session;
+  entries: Entry[];
+  plan: PlanStep[];
+  timings: TurnTiming[];
+  observability: ObservabilityState;
+  traceSummary: TraceSummary | null;
+  subAgents: SubAgentState;
+  events: DomainEvent[];
+  goal: Goal | null;
+  goalReview: GoalReview | null;
+  text: string;
+  historyWindow: HistoryWindow | null;
+  expanded: boolean;
+  scrollTop: number;
+  following: boolean;
+  anchor?: { id: string; offset: number };
+};
+type SessionHistoryPayload = {
+  session: Session;
+  messages: Message[];
+  snapshot: DomainEvent["data"] | null;
+  approvals: ApprovalRecord[];
+  plan: { steps: PlanStep[] } | null;
+  goalReview: GoalReview | null;
+  recoveryError: string | null;
+  recoveryErrorRef: ErrorRefValue | null;
+  historyWindow: HistoryWindow | null;
+};
 export default function Home() {
   const [agents, setAgents] = useState<AgentSummary[]>([]),
     [agentId, setAgentId] = useState(""),
     [sessions, setSessions] = useState<Session[]>([]),
-    [session, setSession] = useState<Session | null>(null);
+    [session, setSession] = useState<Session | null>(null),
+    [selectedId, setSelectedId] = useState<string | null>(null),
+    [openingId, setOpeningId] = useState<string | null>(null),
+    [historyWindow, setHistoryWindow] = useState<HistoryWindow | null>(null),
+    [olderLoading, setOlderLoading] = useState(false),
+    [paintedConversation, setPaintedConversation] =
+      useState<SavedConversation | null>(null),
+    [liveFollowEnabled, setLiveFollowEnabled] = useState(true);
   // Alpha approval modes. A choice made before the chat exists is kept here
   // and sent once the session is created.
   const [approvalModes, setApprovalModes] =
@@ -116,13 +170,13 @@ export default function Home() {
     [draftMode, setDraftMode] = useState<ApprovalMode | null>(null),
     [modeError, setModeError] = useState(""),
     draftModeRef = useRef<ApprovalMode | null>(null);
-  const [entries, setEntries] = useState<Entry[]>([]),
-    [events, setEvents] = useState<DomainEvent[]>([]),
+  const [entries, setEntries, entriesRef] = useAppliedState<Entry[]>([]);
+  const [events, setEvents] = useState<DomainEvent[]>([]),
     [pending, setPending] = useState<PendingRequest[]>([]);
-  const [plan, setPlan] = useState<PlanStep[]>([]);
+  const [plan, setPlan, planRef] = useAppliedState<PlanStep[]>([]);
   const [timings, setTimings] = useState<TurnTiming[]>([]);
-  const [observability, setObservability] =
-      useState<ObservabilityState>(emptyObservability),
+  const [observability, setObservability, observabilityRef] =
+      useAppliedState<ObservabilityState>(emptyObservability),
     [traceSummary, setTraceSummary] = useState<TraceSummary | null>(null);
   const [text, setText] = useState(""),
     [error, setErrorText] = useState(""),
@@ -143,7 +197,8 @@ export default function Home() {
     [sessionsFailed, setSessionsFailed] = useState(false),
     [panel, setPanel] = useState<"mcp" | "tools" | "agents" | null>(null),
     [inspectorTab, setInspectorTab] = useState("activity"),
-    [subAgents, setSubAgents] = useState<SubAgentState>(emptySubAgents),
+    [subAgents, setSubAgents, subAgentsRef] =
+      useAppliedState<SubAgentState>(emptySubAgents),
     [delegation, setDelegation] = useState<DelegationPrefs>(defaultDelegation),
     [mcpVersion, setMcpVersion] = useState(0),
     [goal, setGoal] = useState<Goal | null>(null),
@@ -214,20 +269,46 @@ export default function Home() {
     addEventListener("resize", onResize);
     return () => removeEventListener("resize", onResize);
   }, []);
-  const scroll = useRef<HTMLDivElement>(null),
+  const scroll = useRef<HTMLElement | null>(null),
+    timelineList = useRef<LegendListRef | null>(null),
+    timelineSettling = useRef(false),
+    timelineNavigation = useRef(0),
+    historyWindowRef = useRef<HistoryWindow | null>(null),
     composer = useRef<HTMLTextAreaElement>(null),
     following = useRef(true),
+    streamFlush = useRef<(() => void) | null>(null),
+    heldTimeline = useRef<SavedConversation | null>(null),
     generation = useRef(0),
     preparation = useRef(new SessionPreparation<Session>()),
     openingSession = useRef(false),
     sessionRef = useRef<Session | null>(null),
     seen = useRef(new Set<string>()),
     sending = useRef(false),
+    liveRevision = useRef(0),
+    expandedHistory = useRef(false),
+    olderFlight = useRef(false),
+    conversationCache = useRef(new SessionCache<SavedConversation>()),
+    historyLoader = useRef(
+      new SessionHistory<SessionHistoryPayload>((id, persisted) =>
+        api(
+          `/api/sessions/${encodeURIComponent(id)}?window=1${persisted ? "&persisted=1" : ""}`,
+        ),
+      ),
+    ),
+    recoveryStarts = useRef(
+      new WeakMap<
+        Promise<SessionHistoryPayload>,
+        { token: number; revision: number }
+      >(),
+    ),
+    displayed = useRef<SavedConversation | null>(null),
+    restoreScroll = useRef<SavedConversation | null>(null),
     commandAttempt = useRef<{
       sessionId: string;
       text: string;
       clientId: string;
     } | null>(null);
+  historyWindowRef.current = historyWindow;
   // Setting a message always replaces the reference of the previous error.
   const setError = (message: string, detail: ErrorRefValue | null = null) => {
     setErrorText(message);
@@ -282,96 +363,446 @@ export default function Home() {
           : s,
       ),
     );
-  const open = useCallback(async (id: string) => {
-    const token = ++generation.current;
-    preparation.current.reset();
-    openingSession.current = true;
-    sending.current = false;
-    setDraftActive(false);
-    setPreparationStatus(null);
-    setView("chat");
-    setBusy(true);
-    setError("");
-    setNotice("");
-    setCommandOpen(false);
-    setDraftProjectId(null);
-    setModeError("");
-    try {
-      const data = await api("/api/sessions/" + id);
-      if (token !== generation.current) return;
-      sessionRef.current = data.session;
-      setSession(data.session);
-      setAgentId(data.session.agentId);
-      following.current = true;
-      const saved = addApprovals(
-        historyEntries(data.messages),
-        data.approvals || [],
-      );
-      setEntries(
-        data.snapshot
-          ? applyChatEvent(saved, {
-              type: "snapshot",
-              data: data.snapshot,
-            } as DomainEvent)
-          : saved,
-      );
-      setEvents([]);
-
-      seen.current.clear();
-      setPending(data.snapshot?.pending || []);
-      setSubAgents(rehydrate(emptySubAgents, data.snapshot?.subAgents || []));
-      // The saved plan stays available when agent-core is unreachable.
-      setPlan(data.snapshot?.plan || data.plan?.steps || []);
-      setGoal(data.snapshot?.goal || null);
-      setGoalReview(data.goalReview || null);
-      setFailure(null);
-      setTimings(data.snapshot?.timings || []);
-      setObservability(
-        data.snapshot
-          ? applyObservabilityEvent(emptyObservability, {
-              type: "snapshot",
-              data: data.snapshot,
-            } as DomainEvent)
-          : emptyObservability,
-      );
-      setTraceSummary(null);
-      void getTraces(id)
-        .then((traceData) => {
-          if (token !== generation.current) return;
-          setObservability((old) => ({
-            ...old,
-            traces: mergeTraces(old.traces, traceData?.traces),
-          }));
-          setTraceSummary(traceData?.summary || null);
-        })
-        .catch((e) => warnFailure("traces", e));
-      void api(`/api/sessions/${id}/timings`)
-        .then((timingData) => {
-          if (token === generation.current)
-            setTimings((old) => [
-              ...new Map(
-                [...timingData.turns, ...old].map((t: TurnTiming) => [
-                  t.turnId,
-                  t,
-                ]),
-              ).values(),
-            ]);
-        })
-        .catch((e) => warnFailure("timings", e));
-
-      setRunning(!!data.snapshot && data.snapshot.state.kind !== "idle");
-      if (data.recoveryError)
-        setError(data.recoveryError, data.recoveryErrorRef ?? null);
-      history.replaceState(null, "", "?session=" + id);
-    } catch (e) {
-      if (token === generation.current) reportError(e);
-    } finally {
-      if (token === generation.current) {
-        openingSession.current = false;
-        setBusy(false);
+  // Save only at navigation boundaries; serializing on every delta stalls streaming.
+  displayed.current = session
+    ? {
+        session,
+        entries,
+        plan,
+        timings,
+        observability,
+        traceSummary,
+        subAgents,
+        events,
+        goal,
+        goalReview,
+        text,
+        historyWindow,
+        expanded: expandedHistory.current,
+        scrollTop: 0,
+        following: following.current,
       }
+    : null;
+  const rememberDisplayed = useCallback(() => {
+    streamFlush.current?.();
+    const current = displayed.current;
+    if (!current) return;
+    const container = scroll.current;
+    const top = container?.getBoundingClientRect().top ?? 0;
+    const bottom = container?.getBoundingClientRect().bottom ?? 0;
+    const row =
+      container &&
+      [...container.querySelectorAll<HTMLElement>(".msg[id]")]
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.bottom > top && rect.top < bottom;
+        })
+        .sort(
+          (a, b) =>
+            a.getBoundingClientRect().top - b.getBoundingClientRect().top,
+        )[0];
+    const saved = {
+      ...current,
+      entries: entriesRef.current,
+      plan: planRef.current,
+      subAgents: subAgentsRef.current,
+      observability: observabilityRef.current,
+      scrollTop: container?.scrollTop ?? 0,
+      following: following.current,
+      anchor: row
+        ? { id: row.id, offset: row.getBoundingClientRect().top - top }
+        : undefined,
+    };
+    heldTimeline.current = saved.entries.length ? saved : heldTimeline.current;
+    conversationCache.current.set(current.session._id, saved);
+    return saved;
+  }, []);
+  const invalidateConversation = useCallback((id: string, error: unknown) => {
+    if (
+      !(error instanceof ApiRequestError) ||
+      (![401, 403, 404].includes(error.status) &&
+        !(error.status === 409 && error.code === "LEGACY_SESSION"))
+    )
+      return;
+    conversationCache.current.delete(id);
+    setPaintedConversation(null);
+    heldTimeline.current = null;
+    if (error.status === 401) conversationCache.current.clear();
+    if (sessionRef.current?._id === id) {
+      sessionRef.current = null;
+      setSession(null);
+      setEntries([]);
+      setPending([]);
+      setGoal(null);
+      setGoalReview(null);
+      setRunning(false);
+      setText("");
+      setPlan([]);
+      setTimings([]);
+      setSubAgents(emptySubAgents);
+      setEvents([]);
+      setObservability(emptyObservability);
+      setTraceSummary(null);
+      setDocuments([]);
+      setHistoryWindow(null);
+      setFailure(null);
     }
   }, []);
+  const recover = useCallback(
+    async (
+      id: string,
+      token: number,
+      flight = historyLoader.current.load(id),
+    ) => {
+      let start = recoveryStarts.current.get(flight);
+      if (!start) {
+        start = { token, revision: liveRevision.current };
+        recoveryStarts.current.set(flight, start);
+      }
+      const data = await flight;
+      if (token !== generation.current || sessionRef.current?._id !== id)
+        return;
+      // A queued delta is already newer than the HTTP snapshot, even before paint.
+      streamFlush.current?.();
+      sessionRef.current = data.session;
+      setSession(data.session);
+      setEntries((old) =>
+        addApprovals(
+          mergeHistoryWindow(data.messages, old, {
+            preserveLive:
+              start.token !== token || liveRevision.current !== start.revision,
+          }),
+          data.approvals || [],
+        ),
+      );
+      if (start.token === token && liveRevision.current === start.revision)
+        setGoalReview(data.goalReview || null);
+      if (!expandedHistory.current)
+        setHistoryWindow(data.historyWindow ?? null);
+      // Events received during recovery are newer than its snapshot. Preserve them.
+      if (
+        data.snapshot &&
+        start.token === token &&
+        liveRevision.current === start.revision
+      ) {
+        const currentSnapshot = data.snapshot;
+        const snapshot = {
+          type: "snapshot",
+          data: currentSnapshot,
+        } as DomainEvent;
+        setEntries((old) => applyChatEvent(old, snapshot));
+        setPending(data.snapshot.pending || []);
+        setSubAgents((old) => rehydrate(old, currentSnapshot.subAgents || []));
+        setPlan(data.snapshot.plan || data.plan?.steps || []);
+        setGoal(data.snapshot.goal || null);
+        setRunning(data.snapshot.state.kind !== "idle");
+        setTimings(data.snapshot.timings || []);
+        setObservability((old) => applyObservabilityEvent(old, snapshot));
+      }
+      if (data.recoveryError)
+        setError(data.recoveryError, data.recoveryErrorRef);
+    },
+    [],
+  );
+  const open = useCallback(
+    async (id: string) => {
+      if (sending.current) return;
+      rememberDisplayed();
+      const cached = conversationCache.current.get(id);
+      setPaintedConversation(cached ? null : heldTimeline.current);
+      const token = ++generation.current;
+      liveRevision.current = 0;
+      preparation.current.reset();
+      openingSession.current = true;
+      timelineSettling.current = true;
+      setOpeningId(id);
+      setSelectedId(id);
+      expandedHistory.current = cached?.expanded ?? false;
+      olderFlight.current = false;
+      setOlderLoading(false);
+      setHistoryWindow(cached?.historyWindow ?? null);
+      setDraftActive(false);
+      setPreparationStatus(null);
+      setView("chat");
+      setBusy(true);
+      setError("");
+      setNotice("");
+      setCommandOpen(false);
+      setDraftProjectId(null);
+      setModeError("");
+      setGoalMode(false);
+      setStatus("Not connected");
+      seen.current.clear();
+      sessionRef.current = cached?.session ?? null;
+      setSession(cached?.session ?? null);
+      if (cached) setAgentId(cached.session.agentId);
+      setEntries(cached?.entries ?? []);
+      setEvents(cached?.events ?? []);
+      // Pending actions are live state, never restored from the display cache.
+      setPending([]);
+      setSubAgents(cached?.subAgents ?? emptySubAgents);
+      setPlan(cached?.plan ?? []);
+      setGoal(cached?.goal ?? null);
+      setGoalReview(cached?.goalReview ?? null);
+      setTimings(cached?.timings ?? []);
+      setObservability(cached?.observability ?? emptyObservability);
+      setTraceSummary(cached?.traceSummary ?? null);
+      setFailure(null);
+      setRunning(false);
+      setText(cached?.text ?? "");
+      following.current = cached?.following ?? true;
+      setLiveFollowEnabled(following.current);
+      restoreScroll.current = cached ?? null;
+      history.replaceState(null, "", "?session=" + encodeURIComponent(id));
+      try {
+        const revision = liveRevision.current;
+        const { persisted, recovery } = historyLoader.current.loadForOpen(id);
+        // Record ownership at request start, before saved history or SSE can
+        // arrive. A completed recovery must not be re-requested after paint.
+        if (!recoveryStarts.current.has(recovery))
+          recoveryStarts.current.set(recovery, { token, revision });
+        const data = await persisted;
+        if (token !== generation.current) return;
+        streamFlush.current?.();
+        setPaintedConversation(null);
+        sessionRef.current = data.session;
+        setSession(data.session);
+        setAgentId(data.session.agentId);
+        setEntries((old) =>
+          addApprovals(
+            mergeHistoryWindow(data.messages, old, {
+              preserveLive: liveRevision.current !== revision,
+            }),
+            data.approvals || [],
+          ),
+        );
+        if (liveRevision.current === 0) setPlan(data.plan?.steps || []);
+        if (liveRevision.current === revision)
+          setGoalReview(data.goalReview || null);
+        if (!expandedHistory.current)
+          setHistoryWindow(data.historyWindow ?? null);
+        // Recovery is independent of first durable paint and shares resync requests.
+        await recover(id, token, recovery);
+        if (token !== generation.current) return;
+        void getTraces(id, true)
+          .then((traceData) => {
+            if (token !== generation.current) return;
+            setObservability((old) => ({
+              ...old,
+              traces: mergeTraces(old.traces, traceData?.traces),
+            }));
+            setTraceSummary(traceData?.summary || null);
+          })
+          .catch((e) => warnFailure("traces", e));
+        void api(`/api/sessions/${encodeURIComponent(id)}/timings?persisted=1`)
+          .then((timingData) => {
+            if (token === generation.current)
+              setTimings((old) => [
+                ...new Map(
+                  [...timingData.turns, ...old].map((t: TurnTiming) => [
+                    t.turnId,
+                    t,
+                  ]),
+                ).values(),
+              ]);
+          })
+          .catch((e) => warnFailure("timings", e));
+      } catch (e) {
+        if (token === generation.current) {
+          setPaintedConversation(null);
+          invalidateConversation(id, e);
+          reportError(e);
+        }
+      } finally {
+        if (token === generation.current) {
+          openingSession.current = false;
+          setOpeningId(null);
+          setBusy(false);
+        }
+      }
+    },
+    [rememberDisplayed, recover, invalidateConversation],
+  );
+  const restoreTimelineScroll = useCallback(async () => {
+    const saved = restoreScroll.current;
+    const list = timelineList.current;
+    const container = scroll.current;
+    const id = sessionRef.current?._id;
+    if (!list || !container || !id || (saved && saved.session._id !== id))
+      return;
+    if (!saved && !following.current) return;
+    const token = generation.current;
+    const navigation = ++timelineNavigation.current;
+    restoreScroll.current = null;
+    timelineSettling.current = true;
+    try {
+      if (saved && !saved.following) {
+        const index =
+          saved.anchor &&
+          timelineAnchorIndex(entriesRef.current, saved.anchor.id);
+        if (index !== undefined)
+          await list.scrollToIndex({
+            index,
+            animated: false,
+            viewOffset: saved.anchor?.offset ?? 0,
+          });
+        else
+          await list.scrollToOffset({
+            offset: saved.scrollTop,
+            animated: false,
+          });
+      } else if (following.current) await list.scrollToEnd({ animated: false });
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      if (
+        token !== generation.current ||
+        timelineList.current !== list ||
+        navigation !== timelineNavigation.current
+      )
+        return;
+      if (saved?.anchor && !saved.following) {
+        const anchor = document.getElementById(saved.anchor.id);
+        if (anchor && container.contains(anchor))
+          container.scrollTop +=
+            anchor.getBoundingClientRect().top -
+            container.getBoundingClientRect().top -
+            saved.anchor.offset;
+      }
+    } catch (error) {
+      if (
+        token === generation.current &&
+        timelineList.current === list &&
+        navigation === timelineNavigation.current
+      )
+        warnFailure("conversation scroll restoration", error);
+    } finally {
+      if (
+        token === generation.current &&
+        timelineList.current === list &&
+        navigation === timelineNavigation.current
+      )
+        timelineSettling.current = false;
+    }
+  }, []);
+  useLayoutEffect(() => {
+    if (restoreScroll.current && timelineList.current)
+      void restoreTimelineScroll();
+  }, [session?._id, entries, restoreTimelineScroll]);
+  const onTimelineViewport = useCallback((node: HTMLElement | null) => {
+    scroll.current = node;
+  }, []);
+  const cancelTimelineRestoration = useCallback(() => {
+    timelineNavigation.current++;
+    restoreScroll.current = null;
+    timelineSettling.current = false;
+  }, []);
+  const onTimelineScroll = useCallback(() => {
+    const container = scroll.current;
+    if (!container || timelineSettling.current) return;
+    const next =
+      container.scrollHeight - container.scrollTop - container.clientHeight <
+      80;
+    following.current = next;
+    setLiveFollowEnabled(next);
+  }, []);
+  const navigateTimeline = useCallback(async (anchorId: string) => {
+    const list = timelineList.current;
+    const index = timelineAnchorIndex(entriesRef.current, anchorId);
+    if (!list || index === undefined || openingSession.current) return false;
+    const token = generation.current;
+    const navigation = ++timelineNavigation.current;
+    following.current = false;
+    setLiveFollowEnabled(false);
+    restoreScroll.current = null;
+    timelineSettling.current = false;
+    try {
+      await list.scrollToIndex({ index, animated: false, viewOffset: 12 });
+    } catch (error) {
+      if (
+        token === generation.current &&
+        timelineList.current === list &&
+        navigation === timelineNavigation.current
+      )
+        warnFailure("conversation navigation", error);
+      if (navigation === timelineNavigation.current)
+        timelineSettling.current = false;
+      return false;
+    }
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    if (
+      token !== generation.current ||
+      timelineList.current !== list ||
+      navigation !== timelineNavigation.current
+    )
+      return false;
+    const target = document.getElementById(anchorId);
+    if (!target || !scroll.current?.contains(target)) return false;
+    target.focus({ preventScroll: true });
+    return true;
+  }, []);
+  const viewTimelineTurn = useCallback(
+    (turnId: string) => navigateTimeline(`turn-${turnId}`),
+    [navigateTimeline],
+  );
+  useEffect(() => {
+    // A page-instance cache cannot survive an account navigation via bfcache.
+    const clear = () => {
+      conversationCache.current.clear();
+      heldTimeline.current = null;
+    };
+    const revalidate = (event: PageTransitionEvent) => {
+      if (event.persisted) location.reload();
+    };
+    addEventListener("pagehide", clear);
+    addEventListener("pageshow", revalidate);
+    return () => {
+      removeEventListener("pagehide", clear);
+      removeEventListener("pageshow", revalidate);
+      clear();
+    };
+  }, []);
+  const loadEarlier = useCallback(async () => {
+    const id = sessionRef.current?._id;
+    const cursor = historyWindowRef.current?.beforeCursor;
+    if (!id || !cursor || olderFlight.current) return;
+    olderFlight.current = true;
+    setOlderLoading(true);
+    const token = generation.current;
+    try {
+      const data: SessionHistoryPayload = await api(
+        `/api/sessions/${encodeURIComponent(id)}?persisted=1&window=1&before=${encodeURIComponent(cursor)}`,
+      );
+      if (token !== generation.current || sessionRef.current?._id !== id)
+        return;
+      const saved = rememberDisplayed();
+      if (saved) {
+        restoreScroll.current = { ...saved, following: false };
+        following.current = false;
+        setLiveFollowEnabled(false);
+      }
+      setEntries((old) =>
+        addApprovals(
+          mergeHistoryWindow(data.messages, old, { older: true }),
+          data.approvals || [],
+        ),
+      );
+      expandedHistory.current = true;
+      setHistoryWindow(data.historyWindow ?? null);
+    } catch (e) {
+      if (token === generation.current) {
+        invalidateConversation(id, e);
+        reportError(e);
+      }
+    } finally {
+      if (token === generation.current) {
+        olderFlight.current = false;
+        setOlderLoading(false);
+      }
+    }
+  }, [rememberDisplayed, invalidateConversation]);
   // Browser-only preference; read after mount so server and client render match.
   useEffect(() => setDelegation(loadDelegation()), []);
   useEffect(() => {
@@ -399,44 +830,64 @@ export default function Home() {
     if (!session) return;
     const id = session._id;
     follow.reset();
+    let active = true;
+    let firstSnapshot = true;
+    const openingOwnsRecovery = openingSession.current;
     const reloadTranscript = () => {
       const token = generation.current;
-      void api("/api/sessions/" + id)
-        .then((data) => {
-          if (token !== generation.current || sessionRef.current?._id !== id)
-            return;
-          setEntries((old) =>
-            addApprovals(
-              mergeHistoryEntries(data.messages, old),
-              data.approvals || [],
-            ),
-          );
-        })
-        .catch((e) => {
-          if (token === generation.current) reportError(e);
-        });
+      void recover(id, token).catch((e) => {
+        if (active && token === generation.current) {
+          invalidateConversation(id, e);
+          reportError(e);
+        }
+      });
     };
     // Reload what the stream may have missed, as the platform asks on resync.
     const resync = () => {
       reloadTranscript();
       void listAgents(id)
         .then((list) => {
-          if (sessionRef.current?._id === id && Array.isArray(list))
+          if (active && sessionRef.current?._id === id && Array.isArray(list))
             setSubAgents((old) => rehydrate(old, list));
         })
         .catch((e) => warnFailure("helper agents", e));
     };
     setRetrying(false);
-    return transport.subscribe(
-      id,
-      (event) => {
-        if (sessionRef.current?._id !== id) return;
+    const applyBatch = (incoming: DomainEvent[]): boolean => {
+      if (!active || sessionRef.current?._id !== id) return false;
+      const newCursors = new Set<string>();
+      const batch = incoming.filter((event) => {
         if (event.type !== "snapshot" && event.cursor) {
-          if (seen.current.has(event.cursor)) return;
-          seen.current.add(event.cursor);
-          if (seen.current.size > 2000)
-            seen.current.delete(seen.current.values().next().value!);
+          if (seen.current.has(event.cursor) || newCursors.has(event.cursor))
+            return false;
+          newCursors.add(event.cursor);
         }
+        return true;
+      });
+      if (!batch.length) return true;
+      // Compute every projection before publishing or remembering a cursor.
+      // A malformed frame cannot commit only part of the conversation state.
+      const nextEntries = batch.reduce(applyChatEvent, entriesRef.current);
+      const nextAgents = batch.reduce(
+        (state, event) => applySubAgentEvent(state, event),
+        subAgentsRef.current,
+      );
+      const nextObservability = batch.reduce(
+        applyObservabilityEvent,
+        observabilityRef.current,
+      );
+      const nextPlan = batch.reduce(applyPlanEvent, planRef.current);
+      for (const cursor of newCursors) {
+        seen.current.add(cursor);
+        if (seen.current.size > 2000)
+          seen.current.delete(seen.current.values().next().value!);
+      }
+      liveRevision.current += batch.length;
+      setEntries(nextEntries);
+      setSubAgents(nextAgents);
+      setObservability(nextObservability);
+      setPlan(nextPlan);
+      for (const event of batch) {
         follow.onEvent(event);
         if (
           [
@@ -451,10 +902,6 @@ export default function Home() {
         )
           setEvents((old) => [...old.slice(-99), event]);
         const d = event.data;
-        setEntries((old) => applyChatEvent(old, event));
-        setSubAgents((old) => applySubAgentEvent(old, event));
-        setObservability((old) => applyObservabilityEvent(old, event));
-        setPlan((old) => applyPlanEvent(old, event));
         switch (event.type) {
           case "snapshot":
             setPending(d.pending);
@@ -470,7 +917,10 @@ export default function Home() {
               ).values(),
             ]);
 
-            reloadTranscript();
+            // Opening already performs one complete catch-up. A reconnect must
+            // catch up durable history again; the initial snapshot must not repeat it.
+            if (!firstSnapshot || !openingOwnsRecovery) reloadTranscript();
+            firstSnapshot = false;
             break;
           case "resync.required":
             resync();
@@ -535,15 +985,30 @@ export default function Home() {
             setFailure(turnFailure(d));
             break;
         }
-      },
-      setStatus,
+      }
+      return true;
+    };
+    const unsubscribe = transport.subscribe(
+      id,
+      (event) => applyBatch([event]),
+      (next) => active && sessionRef.current?._id === id && setStatus(next),
       {
+        onBatch: applyBatch,
         onResync: resync,
-        onFailure: (f) =>
-          setError(f.message, { code: f.code, requestId: f.requestId }),
+        onFailure: (f) => {
+          if (active && sessionRef.current?._id === id)
+            setError(f.message, { code: f.code, requestId: f.requestId });
+        },
       },
     );
-  }, [session?._id, streamKey]);
+    streamFlush.current = unsubscribe.flush ?? null;
+    return () => {
+      unsubscribe.flush?.();
+      active = false;
+      if (streamFlush.current === unsubscribe.flush) streamFlush.current = null;
+      unsubscribe();
+    };
+  }, [session?._id, streamKey, recover, invalidateConversation]);
   // A stream stuck reconnecting for a while gets a hint in the header.
   useEffect(() => {
     setSlowReconnect(false);
@@ -572,15 +1037,20 @@ export default function Home() {
     el.style.height = Math.min(el.scrollHeight, 240) + "px";
   }, [text]);
   useEffect(() => {
-    if (following.current)
-      scroll.current?.scrollTo({
-        top: scroll.current.scrollHeight,
-        behavior: "instant",
-      });
+    if (following.current && !timelineSettling.current)
+      void timelineList.current?.scrollToEnd({ animated: false });
   }, [entries, pending]);
   // A plain new chat clears any project; a project's "+" passes its id.
   function startDraft(projectId: string | null = null) {
+    rememberDisplayed();
     generation.current++;
+    setPaintedConversation(null);
+    setSelectedId(null);
+    setOpeningId(null);
+    setHistoryWindow(null);
+    expandedHistory.current = false;
+    olderFlight.current = false;
+    setOlderLoading(false);
     preparation.current.reset();
     openingSession.current = false;
     sending.current = false;
@@ -594,6 +1064,7 @@ export default function Home() {
     setCommandOpen(false);
     sessionRef.current = null;
     following.current = true;
+    setLiveFollowEnabled(true);
     setSession(null);
     draftModeRef.current = null;
     setDraftMode(null);
@@ -634,12 +1105,16 @@ export default function Home() {
   }
   // The chip jumps back to the newest helper block in the chat.
   function viewHelpers() {
-    const blocks = document.querySelectorAll<HTMLElement>(".helper-group");
-    const block = blocks[blocks.length - 1];
+    const block = entriesRef.current.findLast(
+      (entry) => entry.kind === "agents",
+    );
     if (!block) return openAgents();
-    following.current = false;
-    block.scrollIntoView({ block: "center" });
-    block.focus({ preventScroll: true });
+    const token = generation.current;
+    void navigateTimeline(`helpers-${block.id.replace(/[^\w-]/g, "-")}`).then(
+      (found) => {
+        if (!found && token === generation.current) openAgents();
+      },
+    );
   }
   // Keep the open conversation's projectId in step with sidebar moves.
   function updateCurrentProject(updated: Session) {
@@ -740,6 +1215,7 @@ export default function Home() {
     setPreparationStatus(null);
     sessionRef.current = created;
     setSession(created);
+    setSelectedId(created._id);
     history.replaceState(null, "", "?session=" + created._id);
     const chosen = draftModeRef.current;
     draftModeRef.current = null;
@@ -1049,7 +1525,7 @@ export default function Home() {
     setCommandOpen(prompt.startsWith("/"));
     setTimeout(() => composer.current?.focus(), 0);
   }
-  const empty = !session && !entries.length;
+  const empty = !selectedId && !session && !entries.length;
   const { isDark, toggle: toggleTheme } = useTheme();
   const rotatingPlaceholder = useRotatingPlaceholder(
     empty && !composerFocused && !text && !goalMode,
@@ -1082,7 +1558,7 @@ export default function Home() {
     setPanels((p) => ({ ...p, activity: !p.activity }));
   }
   function newChat() {
-    if (!busy && !sending.current) startDraft();
+    if ((!busy || openingSession.current) && !sending.current) startDraft();
   }
   useHotkeys({
     "mod+k": () => setPaletteOpen((o) => !o),
@@ -1108,15 +1584,21 @@ export default function Home() {
   const togglePop = (next: "agent" | "user") =>
     setPop((cur) => (cur === next ? null : next));
   // The list refreshes with the server-generated title; the open session may not.
-  const crumbTitle = session
-    ? sessions.find((s) => s._id === session._id)?.title ||
-      session.title ||
-      "Untitled conversation"
-    : entries.length
-      ? "New conversation"
-      : "";
-  const stateText =
-    session && status === "Reconnecting"
+  const crumbTitle =
+    selectedId && !session
+      ? sessions.find((s) => s._id === selectedId)?.title || "Conversation"
+      : session
+        ? sessions.find((s) => s._id === session._id)?.title ||
+          session.title ||
+          "Untitled conversation"
+        : entries.length
+          ? "New conversation"
+          : "";
+  const stateText = openingId
+    ? entries.length
+      ? "syncing…"
+      : "loading…"
+    : session && status === "Reconnecting"
       ? slowReconnect
         ? "still reconnecting…"
         : "reconnecting…"
@@ -1130,6 +1612,8 @@ export default function Home() {
               : "working"
             : "ready";
   function stopTurn() {
+    if (openingSession.current || !sessionRef.current) return;
+    const token = generation.current;
     void (async () => {
       const id = session!._id;
       try {
@@ -1140,7 +1624,7 @@ export default function Home() {
             method: "thread/goal/set",
             params: { status: "paused" },
           });
-          setGoal(data.goal);
+          if (token === generation.current) setGoal(data.goal);
           syncSessionGoal(id, data.goal);
         }
         await transport.interrupt(id).catch((e) => {
@@ -1148,10 +1632,160 @@ export default function Home() {
           if (!(e instanceof ApiRequestError && e.status === 409)) throw e;
         });
       } catch (e) {
-        reportError(e);
+        if (token === generation.current) reportError(e);
       }
     })();
   }
+  const fillComposer = useCallback((value: string) => {
+    setText(value);
+    setCommandOpen(false);
+    composer.current?.focus();
+  }, []);
+  const navigationActions = useRef({
+    openAgents,
+    askSuggestion,
+    newChat,
+    updateCurrentProject,
+  });
+  navigationActions.current = {
+    openAgents,
+    askSuggestion,
+    newChat,
+    updateCurrentProject,
+  };
+  const showHelper = useCallback(
+    (id: string) => navigationActions.current.openAgents(id),
+    [],
+  );
+  const suggest = useCallback(
+    (question: string) => navigationActions.current.askSuggestion(question),
+    [],
+  );
+  const openConversation = useCallback(
+    (id: string) => {
+      void open(id);
+    },
+    [open],
+  );
+  const refreshConversation = useCallback(() => {
+    const id = sessionRef.current?._id;
+    if (id) void open(id);
+  }, [open]);
+  const newConversation = useCallback(
+    () => navigationActions.current.newChat(),
+    [],
+  );
+  const showSearch = useCallback(() => setPaletteOpen(true), []);
+  const showAgents = useCallback(() => setView("agents"), []);
+  const showSettings = useCallback(() => setPanel("mcp"), []);
+  const retrySessions = useCallback(() => {
+    void refreshSessions();
+  }, [refreshSessions]);
+  const projectState = useRef(projects);
+  projectState.current = projects;
+  const renderSessionMenu = useCallback(
+    (s: Session) => (
+      <SessionMenu
+        session={s}
+        state={projectState.current}
+        disabled={busy}
+        onUpdated={(updated) =>
+          navigationActions.current.updateCurrentProject(updated)
+        }
+      />
+    ),
+    [
+      busy,
+      projects.projects,
+      projects.expanded,
+      projects.byProject,
+      projects.error,
+      projects.refreshFailed,
+    ],
+  );
+  const renderedGeneration = generation.current;
+  const paintOnly = paintedConversation !== null;
+  const paintedAgent = paintedConversation
+    ? agents.find((a) => a.id === paintedConversation.session.agentId)
+    : null;
+  const virtualized =
+    view === "chat" &&
+    (!empty || paintOnly) &&
+    (!!session || !!entries.length || paintOnly);
+  const initialTimelinePosition = useMemo(() => {
+    const saved = restoreScroll.current ?? paintedConversation;
+    if (!saved || saved.following) return {};
+    const index =
+      saved.anchor && timelineAnchorIndex(saved.entries, saved.anchor.id);
+    return index === undefined
+      ? { initialScrollOffset: saved.scrollTop }
+      : {
+          initialScrollIndex: {
+            index,
+            viewOffset: saved.anchor?.offset ?? 0,
+          },
+        };
+  }, [selectedId, paintOnly]);
+  const historyHeader = useMemo(
+    () =>
+      !paintOnly && historyWindow?.hasOlder ? (
+        <button
+          type="button"
+          className="text-btn history-earlier"
+          disabled={olderLoading}
+          onClick={() => void loadEarlier()}
+        >
+          {olderLoading ? "Loading earlier messages…" : "Load earlier messages"}
+        </button>
+      ) : null,
+    [paintOnly, historyWindow?.hasOlder, olderLoading, loadEarlier],
+  );
+  const requestFooter = useMemo(
+    () =>
+      session && !openingId
+        ? pending.map((request) => (
+            <RequestCard
+              key={request.requestId}
+              request={request}
+              plan={plan}
+              onAnswer={async (result) => {
+                await transport.answer(session._id, request.requestId, result);
+              }}
+            />
+          ))
+        : null,
+    [session, openingId, pending, plan],
+  );
+  const timeline = useMemo<ChatTimelineProps>(
+    () => ({
+      identity:
+        paintedConversation?.session._id ??
+        selectedId ??
+        session?._id ??
+        "draft",
+      listRef: timelineList,
+      onViewport: onTimelineViewport,
+      onScroll: onTimelineScroll,
+      following: !paintOnly && liveFollowEnabled,
+      ...initialTimelinePosition,
+      header: historyHeader,
+      footer: requestFooter,
+      onLoad: () => void restoreTimelineScroll(),
+    }),
+    [
+      paintedConversation?.session._id,
+      selectedId,
+      session?._id,
+      onTimelineViewport,
+      onTimelineScroll,
+      paintOnly,
+      liveFollowEnabled,
+      initialTimelinePosition,
+      historyHeader,
+      requestFooter,
+      restoreTimelineScroll,
+    ],
+  );
   const composerForm = (
     <form
       className="composer-form"
@@ -1294,7 +1928,9 @@ export default function Home() {
                   : PLACEHOLDERS[0]
           }
           value={text}
-          disabled={busy || (!session && !agentId)}
+          disabled={
+            (busy && !openingId) || (!session && !agentId && !openingId)
+          }
           onChange={(e) => {
             setText(e.target.value);
             setCommandOpen(
@@ -1349,24 +1985,17 @@ export default function Home() {
       <Panel kind="sidebar" open={sidebarShown} label="Conversations">
         <Sidebar
           sessions={sessions}
-          activeId={session?._id}
-          onOpen={(id) => void open(id)}
-          onNew={newChat}
-          onSearch={() => setPaletteOpen(true)}
-          onAgents={() => setView("agents")}
+          activeId={selectedId ?? session?._id}
+          onOpen={openConversation}
+          onNew={newConversation}
+          onSearch={showSearch}
+          onAgents={showAgents}
           agentsActive={view === "agents"}
-          onSettings={() => setPanel("mcp")}
-          busy={busy}
+          onSettings={showSettings}
+          busy={busy && !openingId}
           loadError={sessionsFailed ? "Couldn’t refresh" : null}
-          onRetry={() => void refreshSessions()}
-          renderRowMenu={(s) => (
-            <SessionMenu
-              session={s}
-              state={projects}
-              disabled={busy}
-              onUpdated={updateCurrentProject}
-            />
-          )}
+          onRetry={retrySessions}
+          renderRowMenu={renderSessionMenu}
         />
       </Panel>
       <main className="stage">
@@ -1395,19 +2024,51 @@ export default function Home() {
           }
         />
         <div
-          className="scroll"
+          className={virtualized ? "conversation-viewport" : "scroll"}
           // The board is a plain labelled region, not a live log.
-          role={view === "agents" ? "region" : "log"}
+          role={view === "agents" || virtualized ? "region" : "log"}
+          aria-busy={openingId ? true : undefined}
           aria-label={view === "agents" ? "Agents" : "Conversation"}
           aria-live={view === "agents" ? undefined : "off"}
-          ref={scroll}
-          onScroll={() => {
-            const el = scroll.current;
-            if (el)
-              following.current =
-                el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+          ref={virtualized ? undefined : onTimelineViewport}
+          onScroll={virtualized ? undefined : onTimelineScroll}
+          onWheelCapture={(event) => {
+            if (!virtualized || !event.deltaY) return;
+            cancelTimelineRestoration();
+            if (event.deltaY < 0) {
+              following.current = false;
+              setLiveFollowEnabled(false);
+            }
+          }}
+          onKeyDownCapture={(event) => {
+            if (
+              !virtualized ||
+              !(event.target instanceof HTMLElement) ||
+              event.target.closest(
+                'input, textarea, [contenteditable="true"]',
+              ) ||
+              !["ArrowUp", "PageUp", "Home"].includes(event.key)
+            )
+              return;
+            cancelTimelineRestoration();
+            following.current = false;
+            setLiveFollowEnabled(false);
+          }}
+          onPointerDownCapture={() => {
+            if (virtualized) cancelTimelineRestoration();
+          }}
+          onTouchMove={() => {
+            if (!virtualized) return;
+            cancelTimelineRestoration();
+            following.current = false;
+            setLiveFollowEnabled(false);
           }}
         >
+          {paintOnly && (
+            <p className="conversation-switching" role="status">
+              Loading conversation…
+            </p>
+          )}
           {view === "agents" ? (
             <AgentsView
               agents={agents}
@@ -1419,6 +2080,21 @@ export default function Home() {
               onChat={chatWith}
               onNew={() => setAgentDialogOpen(true)}
             />
+          ) : selectedId && !session && !entries.length && !paintOnly ? (
+            <p className="conversation-loading" role="status">
+              {openingId
+                ? "Loading conversation…"
+                : "Conversation could not be loaded."}
+              {!openingId && (
+                <button
+                  type="button"
+                  className="text-btn"
+                  onClick={() => void open(selectedId)}
+                >
+                  Retry
+                </button>
+              )}
+            </p>
           ) : empty ? (
             <Hero>
               {composerForm}
@@ -1429,46 +2105,35 @@ export default function Home() {
               )}
             </Hero>
           ) : (
-            <div className="thread">
+            <div
+              className={`conversation-thread${paintOnly ? " paint-only" : ""}`}
+              inert={paintOnly ? true : undefined}
+              aria-hidden={paintOnly ? true : undefined}
+            >
               <ChatMessages
-                sessionId={session?._id}
-                onPrompt={(prompt) => {
-                  setText(prompt);
-                  setCommandOpen(false);
-                  composer.current?.focus();
-                }}
-                entries={entries}
-                traces={observability.traces}
-                liveUsage={observability.liveUsage}
-                goal={goal}
-                goalReview={goalReview}
-                subAgents={subAgents}
-                onOpenAgent={openAgents}
-                onSuggest={askSuggestion}
+                timeline={timeline}
+                sessionId={openingId ? undefined : session?._id}
+                onPrompt={paintOnly ? undefined : fillComposer}
+                entries={paintedConversation?.entries ?? entries}
+                traces={
+                  paintedConversation?.observability.traces ??
+                  observability.traces
+                }
+                liveUsage={paintOnly ? {} : observability.liveUsage}
+                goal={paintOnly ? null : goal}
+                goalReview={paintOnly ? null : goalReview}
+                subAgents={paintedConversation?.subAgents ?? subAgents}
+                onOpenAgent={paintOnly ? undefined : showHelper}
+                onSuggest={paintOnly ? undefined : suggest}
                 suggestionsEnabled={
                   !busy && !goalMode && !failure && !pending.length
                 }
-                agentName={agent?.name || "Assistant"}
-                running={running}
-                onCommand={(command) => {
-                  setText(command);
-                  setCommandOpen(false);
-                  composer.current?.focus();
-                }}
-                onOpen={(id) => void open(id)}
-                onRefresh={() => session && void open(session._id)}
+                agentName={paintedAgent?.name || agent?.name || "Assistant"}
+                running={paintOnly ? false : running}
+                onCommand={paintOnly ? undefined : fillComposer}
+                onOpen={paintOnly ? undefined : openConversation}
+                onRefresh={paintOnly ? undefined : refreshConversation}
               />
-              {session &&
-                pending.map((p) => (
-                  <RequestCard
-                    key={p.requestId}
-                    request={p}
-                    plan={plan}
-                    onAnswer={async (result) => {
-                      await transport.answer(session._id, p.requestId, result);
-                    }}
-                  />
-                ))}
             </div>
           )}
         </div>
@@ -1490,24 +2155,26 @@ export default function Home() {
               {notice}
             </div>
           )}
-          {view === "chat" && session && goal && (
+          {view === "chat" && session && goal && !openingId && (
             <GoalBar
               key={session._id}
               sessionId={session._id}
               goal={goal}
               review={goalReview}
               onChange={(next, review) => {
+                if (generation.current !== renderedGeneration) return;
                 setGoal(next);
                 setGoalReview(review);
                 syncSessionGoal(session._id, next);
               }}
-              onReopen={(feedback) =>
+              onReopen={(feedback) => {
+                if (generation.current !== renderedGeneration) return;
                 applyPrompt(
                   feedback
                     ? `The goal isn’t complete yet: ${feedback}`
                     : "The goal isn’t complete yet. Please keep working on it.",
-                )
-              }
+                );
+              }}
               onProvideInput={() => {
                 setPanel(null);
                 setTimeout(() => composer.current?.focus(), 0);
@@ -1650,7 +2317,7 @@ export default function Home() {
               ? (Object.values(observability.liveUsage).at(-1) ?? null)
               : null
           }
-          sessionId={session?._id}
+          sessionId={openingId ? undefined : session?._id}
           goal={goal}
           goalReview={goalReview}
           tab={inspectorTab}
@@ -1677,6 +2344,7 @@ export default function Home() {
             setPanels((p) => ({ ...p, activity: false }));
           }}
           onDetailChange={setHelperOpen}
+          onViewTurn={viewTimelineTurn}
         />
       </Panel>
       <SearchPalette
@@ -1718,7 +2386,7 @@ export default function Home() {
       >
         <AssistantTools
           key={session?._id || "new"}
-          sessionId={session?._id}
+          sessionId={openingId ? undefined : session?._id}
           refreshKey={timings.length}
           running={running}
           onPrompt={applyPrompt}

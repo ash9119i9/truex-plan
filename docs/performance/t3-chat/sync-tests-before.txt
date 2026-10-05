@@ -1,0 +1,48 @@
+✔ opening and resync share recovery, while persisted reads remain independent (0.6075ms)
+✔ failed and synchronously throwing reads are retryable without orphan rejections (0.182ms)
+✖ opening starts saved and recovery reads together and retains fast completed recovery (0.100125ms)
+✖ early recovery failure remains observable after slow saved history (0.059875ms)
+✖ failed saved reads leave recovery rejection handled and a new opening retryable (0.062667ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 2
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52.879125
+
+✖ failing tests:
+
+test at ../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-sync-before-tests.9z2wscpu/test/session-history.test.ts:44:1
+✖ opening starts saved and recovery reads together and retains fast completed recovery (0.100125ms)
+  TypeError: history.loadForOpen is not a function
+      at TestContext.<anonymous> (file:///private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-sync-before-tests.9z2wscpu/test/session-history.test.ts:55:27)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-sync-before-tests.9z2wscpu/test/session-history.test.ts:69:1
+✖ early recovery failure remains observable after slow saved history (0.059875ms)
+  TypeError: history.loadForOpen is not a function
+      at TestContext.<anonymous> (file:///private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-sync-before-tests.9z2wscpu/test/session-history.test.ts:78:27)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)
+
+test at ../../../private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-sync-before-tests.9z2wscpu/test/session-history.test.ts:90:1
+✖ failed saved reads leave recovery rejection handled and a new opening retryable (0.062667ms)
+  TypeError: history.loadForOpen is not a function
+      at TestContext.<anonymous> (file:///private/var/folders/3d/_9vh0b892ld517rky0vj0z240000gn/T/truex-sync-before-tests.9z2wscpu/test/session-history.test.ts:96:27)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1402:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:974:18)
+      at Test.postRun (node:internal/test_runner/test:1542:19)
+      at Test.run (node:internal/test_runner/test:1467:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7)

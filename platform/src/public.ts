@@ -401,6 +401,34 @@ export function publicSnapshot(s: any) {
     })),
   };
 }
+// A recent-history client already owns its loaded older pages. Snapshots
+// refresh recent and active turns without resending every historical answer.
+// This bounds turn count, not bytes: a single large turn stays intact.
+export function recentSnapshot<T extends ReturnType<typeof publicSnapshot>>(
+  snapshot: T,
+  loadedTurns?: ReadonlySet<string>,
+): T {
+  const turns = new Set(loadedTurns);
+  if (!turns.size) {
+    for (
+      let index = snapshot.messages.length - 1;
+      index >= 0 && turns.size < 10;
+      index--
+    ) {
+      const turnId = snapshot.messages[index].turnId;
+      if (typeof turnId === "string") turns.add(turnId);
+    }
+  }
+  if (typeof snapshot.state.turnId === "string")
+    turns.add(snapshot.state.turnId);
+  return {
+    ...snapshot,
+    messages: snapshot.messages.filter((message: any) =>
+      turns.has(message.turnId),
+    ),
+    thinking: snapshot.thinking.filter((entry: any) => turns.has(entry.turnId)),
+  };
+}
 const count = (value: unknown) => Math.max(0, finite(value) ?? 0);
 const text = (value: unknown, max: number) =>
   typeof value === "string" ? value.slice(0, max) : null;

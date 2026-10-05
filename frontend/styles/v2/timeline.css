@@ -1,0 +1,42 @@
+.conversation-viewport {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.conversation-thread {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.chat-timeline-scroll {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  overflow-anchor: none;
+}
+/* Mounting a virtual cell is not a new message; keep its anchor geometry stable. */
+.chat-timeline-scroll .msg.agent {
+  animation: none;
+}
+.conversation-switching {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+  pointer-events: none;
+}
+.paint-only {
+  pointer-events: none;
+}

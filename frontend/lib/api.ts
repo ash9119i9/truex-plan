@@ -178,7 +178,7 @@ export const interruptAgent = (sessionId: string, agentId: string) =>
 // a masked reconstruction of what the model saw for one turn.
 const sessionPath = (sessionId: string) =>
   `/api/sessions/${encodeURIComponent(sessionId)}`;
-export const getTraces = (sessionId: string) =>
-  api(sessionPath(sessionId) + "/traces");
+export const getTraces = (sessionId: string, persisted = false) =>
+  api(sessionPath(sessionId) + `/traces${persisted ? "?persisted=1" : ""}`);
 export const getTurnContext = (sessionId: string, turnId: string) =>
   api(sessionPath(sessionId) + `/turns/${encodeURIComponent(turnId)}/context`);

@@ -1,0 +1,149 @@
+{
+  "date": "2026-10-05",
+  "scope": "Second pass, same Mac, visible1280x800 native T3 preview, production webpack builds, synthetic loopback API: durable15ms/recovery600ms",
+  "before": {
+    "long": {
+      "elapsedMs": 45540.5,
+      "rows": 1000,
+      "samples": [
+        60, 100, 140, 180, 220, 260, 300, 340, 380, 420, 460, 500, 540, 580,
+        620, 660, 700, 740, 780, 820, 860, 900, 940, 980, 1000
+      ]
+    },
+    "visible": "visible",
+    "warm": [
+      {
+        "ms": 47.30000000074506,
+        "rows": 20,
+        "title": "Fixture A conversation"
+      },
+      {
+        "ms": 143.30000000074506,
+        "rows": 1000,
+        "title": "Fixture LONG conversation"
+      },
+      {
+        "ms": 16.699999999254942,
+        "rows": 20,
+        "title": "Fixture A conversation"
+      },
+      {
+        "ms": 127.40000000037253,
+        "rows": 1000,
+        "title": "Fixture LONG conversation"
+      },
+      {
+        "ms": 14.900000000372529,
+        "rows": 20,
+        "title": "Fixture A conversation"
+      },
+      {
+        "ms": 123.89999999850988,
+        "rows": 1000,
+        "title": "Fixture LONG conversation"
+      }
+    ]
+  },
+  "after": {
+    "long": {
+      "anchor": {
+        "after": 82,
+        "before": 82,
+        "id": "request-fixture-long-client-980"
+      },
+      "samples": [
+        10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
+        10, 10, 10, 10, 10, 10, 10
+      ]
+    },
+    "sidebarRows": 13,
+    "visible": "visible",
+    "warm": [
+      {
+        "ms": 60,
+        "rows": 9,
+        "title": "Fixture A conversation"
+      },
+      {
+        "ms": 40.30000000074506,
+        "rows": 9,
+        "title": "Fixture LONG conversation"
+      },
+      {
+        "ms": 33.30000000074506,
+        "rows": 9,
+        "title": "Fixture A conversation"
+      },
+      {
+        "ms": 35,
+        "rows": 9,
+        "title": "Fixture LONG conversation"
+      },
+      {
+        "ms": 34.80000000074506,
+        "rows": 9,
+        "title": "Fixture A conversation"
+      },
+      {
+        "ms": 29.59999999962747,
+        "rows": 9,
+        "title": "Fixture LONG conversation"
+      }
+    ]
+  },
+  "beforeMore": {
+    "exact": true,
+    "last": {
+      "k": "cursor:fixture-b",
+      "v": "burst:999"
+    },
+    "length": 1000,
+    "mutations": 1,
+    "sidebarRows": 503,
+    "writes": 1000
+  },
+  "streamAfter": {
+    "exact": true,
+    "length": 1000,
+    "cursorWrites": 1,
+    "lastCursor": "burst:999",
+    "mutationObserverCallbacks": 2
+  },
+  "visual": {
+    "unpatched": {
+      "iframeLoads": 2,
+      "visibleIframes": 1
+    },
+    "patched": {
+      "frames": 1,
+      "gap": 0,
+      "loadedAll": true,
+      "loads": [
+        {
+          "at": 38386.29999999888,
+          "token": 0.9072601007789726
+        }
+      ],
+      "rows": 10
+    }
+  },
+  "goalJump": {
+    "wasMounted": false,
+    "wasLoaded": true,
+    "foundAndFocused": true,
+    "offsetCssPx": 12
+  },
+  "readingDuringStream": {
+    "offsetBefore": 12,
+    "offsetAfter": 12,
+    "scrollTopBefore": 2699,
+    "scrollTopAfter": 2699
+  },
+  "notes": [
+    "Warm first A sample is cold and excluded from warm A medians.",
+    "Report cached long transcript median only: three LONG samples per build.",
+    "Older loading walltime is not compared: polling/animation scheduling differs; mounted rows are directly measured.",
+    "MutationObserver callbacks are not React render counts; existing React batching also combined the immediate SSE burst.",
+    "Sidebar503 includes3Today+500Earlier. After13 includes3Today+10Earlier."
+  ]
+}
