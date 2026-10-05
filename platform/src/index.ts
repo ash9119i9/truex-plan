@@ -27,6 +27,8 @@ import {
   route,
   tenantMiddleware,
   userMiddleware,
+  responsePolicy,
+  privateJson,
 } from "./http";
 import { currentTenant, devTenantResolver, pocTenantResolver } from "./tenant";
 import {
@@ -54,6 +56,7 @@ async function main() {
   });
   const http = app.getHttpAdapter().getInstance();
   http.use(requestIdMiddleware);
+  http.use(responsePolicy);
   // Refuses an unknown mode, or google without its keys, before anything
   // else is built.
   const mode = authMode();
@@ -66,7 +69,7 @@ async function main() {
   app.enableCors({
     origin: origins,
     credentials: true,
-    exposedHeaders: [REQUEST_ID_HEADER],
+    exposedHeaders: [REQUEST_ID_HEADER, "ETag", "Server-Timing"],
   });
   http.disable("x-powered-by");
   // Unset by default. Set when a forwarder adds X-Forwarded-For, so req.ip
@@ -94,6 +97,7 @@ async function main() {
   };
   await connect();
   const service = new PlatformService(store);
+  void service.readCache.start();
   service.startIngestion();
   http.get("/livez", (_req: Request, res: Response) => res.json({ ok: true }));
   http.get(
@@ -230,7 +234,7 @@ async function main() {
   });
   http.get(
     "/api/agents",
-    route(async (_req, res) => res.json(await service.agents())),
+    route(async (req, res) => privateJson(req, res, await service.agents())),
   );
   // No role check yet: any user of the tenant may create agents (alpha).
   http.post(
@@ -241,7 +245,7 @@ async function main() {
   );
   http.get(
     "/api/models",
-    route(async (_req, res) => res.json(await service.models())),
+    route(async (req, res) => privateJson(req, res, await service.models())),
   );
   http.get(
     "/api/features",

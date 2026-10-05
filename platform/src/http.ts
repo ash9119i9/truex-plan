@@ -1,4 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { performance } from "node:perf_hooks";
+import { createHash } from "node:crypto";
 import type { Request, Response, NextFunction } from "express";
 import { httpError } from "../../shared/errors";
 import { tenantContext, type TenantRef, type TenantResolver } from "./tenant";
@@ -12,8 +14,70 @@ import {
 
 // The inbound request id, so agent-core calls can forward it without every
 // service method taking it as a parameter.
-export const requestContext = new AsyncLocalStorage<{ requestId: string }>();
+export const requestContext = new AsyncLocalStorage<{
+  requestId: string;
+  timings?: Map<string, number>;
+}>();
 export const currentRequestId = () => requestContext.getStore()?.requestId;
+
+export async function measure<T>(
+  name: "mongo" | "runtime" | "cache",
+  work: () => Promise<T>,
+): Promise<T> {
+  const start = performance.now();
+  try {
+    return await work();
+  } finally {
+    const timings = requestContext.getStore()?.timings;
+    if (timings)
+      timings.set(name, (timings.get(name) ?? 0) + performance.now() - start);
+  }
+}
+
+// Authenticated APIs opt in to validators individually after authorization.
+// Sensitive paths, errors and mutation responses remain non-storable.
+export function responsePolicy(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  res.setHeader("Cache-Control", "no-store");
+  const start = performance.now();
+  const json = res.json.bind(res);
+  res.json = ((value: unknown) => {
+    const timings = requestContext.getStore()?.timings;
+    const parts = [...(timings ?? [])].map(
+      ([name, ms]) => `${name};dur=${ms.toFixed(2)}`,
+    );
+    parts.push(`app;dur=${(performance.now() - start).toFixed(2)}`);
+    res.setHeader("Server-Timing", parts.join(", "));
+    return json(value);
+  }) as Response["json"];
+  next();
+}
+
+export function privateJson(req: Request, res: Response, value: unknown) {
+  const scope = [res.locals.tenant, res.locals.user?.id, res.locals.user?.role];
+  const etag = `"${createHash("sha256")
+    .update(JSON.stringify([scope, value]))
+    .digest("hex")}"`;
+  res.setHeader("Cache-Control", "private, no-cache");
+  res.setHeader("ETag", etag);
+  res.vary("Cookie");
+  res.vary("Authorization");
+  res.vary("x-truex-tenant");
+  res.vary("x-truex-user");
+  res.vary("x-truex-role");
+  const matches = req
+    .get("If-None-Match")
+    ?.split(",")
+    .map((item) => item.trim());
+  if (
+    matches?.some((item) => item === "*" || item.replace(/^W\//, "") === etag)
+  )
+    return res.status(304).end();
+  return res.json(value);
+}
 
 export function requestIdMiddleware(
   req: Request,
@@ -65,10 +129,12 @@ export const route =
     if (req.path.startsWith("/api/sessions/"))
       res.locals.sessionId = req.params.id;
     const run = () =>
-      requestContext.run({ requestId: res.locals.requestId }, () =>
-        Promise.resolve()
-          .then(() => fn(req, res))
-          .catch(next),
+      requestContext.run(
+        { requestId: res.locals.requestId, timings: new Map() },
+        () =>
+          Promise.resolve()
+            .then(() => fn(req, res))
+            .catch(next),
       );
     const user: UserRef | undefined = res.locals.user;
     const withUser = () => (user ? userContext.run(user, run) : run());

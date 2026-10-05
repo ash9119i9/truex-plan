@@ -13,6 +13,7 @@ export interface Usage {
   output_tokens: number;
   total_tokens: number;
   cached_tokens?: number;
+  cache_write_tokens?: number;
   reasoning_tokens?: number;
 }
 
@@ -199,8 +200,16 @@ function responsesUsage(usage: Usage) {
     output_tokens: usage.output_tokens,
     total_tokens: usage.total_tokens,
     // Codex requires cached_tokens / reasoning_tokens when the details objects exist.
-    ...(usage.cached_tokens !== undefined
-      ? { input_tokens_details: { cached_tokens: usage.cached_tokens } }
+    ...(usage.cached_tokens !== undefined ||
+    usage.cache_write_tokens !== undefined
+      ? {
+          input_tokens_details: {
+            cached_tokens: usage.cached_tokens ?? 0,
+            ...(usage.cache_write_tokens !== undefined
+              ? { cache_write_tokens: usage.cache_write_tokens }
+              : {}),
+          },
+        }
       : {}),
     ...(usage.reasoning_tokens !== undefined
       ? { output_tokens_details: { reasoning_tokens: usage.reasoning_tokens } }

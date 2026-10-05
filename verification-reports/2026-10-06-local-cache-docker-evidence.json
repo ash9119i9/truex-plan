@@ -1,0 +1,28 @@
+{
+  "verifiedAtUtc": "2026-10-05T20:55:02.839295+00:00",
+  "dockerEngine": "29.8.0",
+  "compose": "5.5.1",
+  "imageDigest": "sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11",
+  "runningContainer": "truex-plan-cache-valkey-1",
+  "hostEndpoint": "redis://127.0.0.1:6379",
+  "smoke": {
+    "node": "v24.21.0",
+    "ping": "PONG",
+    "sourceLoads": 1,
+    "ttlMs": 1892,
+    "twoIndependentApplicationClients": "PASS",
+    "remoteInvalidation": "PASS",
+    "sharedKeySecretFree": true
+  },
+  "files": [
+    {
+      "path": "compose.cache.yaml",
+      "sha256": "34b07833e6e40cf7215dababc1e84787ad8ec7878678c47ee5a2b636a4f828c7"
+    },
+    {
+      "path": "docs/APPLICATION_CACHE_OPERATIONS.md",
+      "sha256": "7f9a29b903eb93e875f4e6f7b24b36885d76517c87cca03e97e9568e89a23506"
+    }
+  ],
+  "ignoredPlatformEnvironment": "Five cache entries updated; values documented in operations guide; no secrets captured"
+}

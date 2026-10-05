@@ -1,5 +1,7 @@
 # Caching in every layer: plan
 
+**Superseded:** use [Application caching: POC to production AWS](APPLICATION_CACHING_PLAN.md) for the current proposal. This historical draft predates current authentication and user-scoped MCP behavior; its keys, consistency guarantees, cache-engine settings and provider claims must not be implemented without the newer review.
+
 Status: planned, not implemented (drafted 2026-10-01). Built from seven read-only code audits of the frontend, platform, agent-core, model-gateway, deploy config, the document path, and a general optimization sweep. Line references were checked on 2026-09-30 and may have drifted since.
 
 ## Summary

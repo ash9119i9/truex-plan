@@ -1,0 +1,102 @@
+{
+  "benchmark": "gateway-profile-cache",
+  "authority": "synthetic 2ms delay; no network/provider/Mongo calls",
+  "results": [
+    {
+      "mode": "disabled (single-flight retained)",
+      "requests": 400,
+      "concurrency": 16,
+      "authorityCalls": 112,
+      "errors": 0,
+      "elapsedMs": 38.512,
+      "p50Ms": 1.711,
+      "p95Ms": 2.756,
+      "p99Ms": 2.93,
+      "cache": {
+        "profiles": {
+          "entries": 0,
+          "bytes": 0
+        },
+        "secrets": {
+          "entries": 0,
+          "bytes": 0
+        },
+        "pending": 0,
+        "waiters": 0
+      }
+    },
+    {
+      "mode": "cold",
+      "requests": 400,
+      "concurrency": 16,
+      "authorityCalls": 8,
+      "errors": 0,
+      "elapsedMs": 3.88,
+      "p50Ms": 0.015,
+      "p95Ms": 0.324,
+      "p99Ms": 3.008,
+      "cache": {
+        "profiles": {
+          "entries": 8,
+          "bytes": 1064
+        },
+        "secrets": {
+          "entries": 0,
+          "bytes": 0
+        },
+        "pending": 0,
+        "waiters": 0
+      }
+    },
+    {
+      "mode": "warm",
+      "requests": 400,
+      "concurrency": 16,
+      "authorityCalls": 0,
+      "errors": 0,
+      "elapsedMs": 0.555,
+      "p50Ms": 0.015,
+      "p95Ms": 0.059,
+      "p99Ms": 0.072,
+      "cache": {
+        "profiles": {
+          "entries": 8,
+          "bytes": 1064
+        },
+        "secrets": {
+          "entries": 0,
+          "bytes": 0
+        },
+        "pending": 0,
+        "waiters": 0
+      }
+    },
+    {
+      "mode": "expired cache + authority outage (must fail closed)",
+      "requests": 400,
+      "concurrency": 16,
+      "authorityCalls": 112,
+      "errors": 400,
+      "elapsedMs": 38.577,
+      "p50Ms": 2.545,
+      "p95Ms": 2.685,
+      "p99Ms": 2.774,
+      "cache": {
+        "profiles": {
+          "entries": 0,
+          "bytes": 0
+        },
+        "secrets": {
+          "entries": 0,
+          "bytes": 0
+        },
+        "pending": 0,
+        "waiters": 0
+      }
+    }
+  ],
+  "improvement": {
+    "warmP95Percent": 97.9,
+    "coldOriginReductionPercent": 92.9
+  }
+}

@@ -46,7 +46,11 @@ const manager = new ThreadManager(
   Number(process.env.REPLAY_LIMIT || 500),
   Number(process.env.REQUEST_TIMEOUT_MS || 120000),
 );
-const stopSweeper = startWorkspaceSweeper(join(home, "business-workspaces"));
+const stopSweeper = startWorkspaceSweeper(
+  join(home, "business-workspaces"),
+  process.env,
+  (workspace) => client.invalidateWorkspace(workspace),
+);
 client.on("diagnostic", (line) =>
   log("debug", "codex runtime stderr", { line: manager.redactor.clean(line) }),
 );

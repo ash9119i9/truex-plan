@@ -1,0 +1,136 @@
+{
+  "node": "v24.21.0",
+  "arch": "arm64",
+  "fixtures": {
+    "agents": 200,
+    "models": 25
+  },
+  "source": "real local MongoMemoryServer and native Valkey; no synthetic delay; service layer; includes equality assertion cost",
+  "payloadBytes": 35145,
+  "results": [
+    {
+      "name": "disabled",
+      "calls": 128,
+      "concurrent": 8,
+      "elapsedMs": 121.17,
+      "p50Ms": 5.728,
+      "p95Ms": 12.704,
+      "p99Ms": 13.972,
+      "mongoCommands": 512,
+      "local": {
+        "hits": 0,
+        "misses": 0,
+        "loads": 0,
+        "deduped": 0,
+        "evictions": 0,
+        "rejected": 0,
+        "entries": 0,
+        "bytes": 0,
+        "pending": 0,
+        "waiters": 0
+      }
+    },
+    {
+      "name": "cold-L1-batches",
+      "calls": 128,
+      "concurrent": 8,
+      "elapsedMs": 38.76,
+      "p50Ms": 2.067,
+      "p95Ms": 3.187,
+      "p99Ms": 3.381,
+      "mongoCommands": 64,
+      "local": {
+        "hits": 0,
+        "misses": 256,
+        "loads": 32,
+        "deduped": 224,
+        "evictions": 0,
+        "rejected": 0,
+        "entries": 2,
+        "bytes": 35350,
+        "pending": 0,
+        "waiters": 0
+      }
+    },
+    {
+      "name": "warm-L1",
+      "calls": 128,
+      "concurrent": 8,
+      "elapsedMs": 13.84,
+      "p50Ms": 0.498,
+      "p95Ms": 0.663,
+      "p99Ms": 0.693,
+      "mongoCommands": 0,
+      "local": {
+        "hits": 258,
+        "misses": 256,
+        "loads": 32,
+        "deduped": 224,
+        "evictions": 0,
+        "rejected": 0,
+        "entries": 2,
+        "bytes": 35350,
+        "pending": 0,
+        "waiters": 0
+      }
+    },
+    {
+      "name": "warm-L2-empty-L1-batches",
+      "calls": 128,
+      "concurrent": 8,
+      "elapsedMs": 32.81,
+      "p50Ms": 1.876,
+      "p95Ms": 2.18,
+      "p99Ms": 2.38,
+      "mongoCommands": 48,
+      "local": {
+        "hits": 0,
+        "misses": 258,
+        "loads": 34,
+        "deduped": 224,
+        "evictions": 0,
+        "rejected": 0,
+        "entries": 2,
+        "bytes": 35350,
+        "pending": 0,
+        "waiters": 0
+      },
+      "valkey": {
+        "hits": 16,
+        "misses": 17,
+        "errors": 0,
+        "bypasses": 32
+      }
+    },
+    {
+      "name": "Valkey-outage-empty-L1-batches",
+      "calls": 128,
+      "concurrent": 8,
+      "elapsedMs": 40.88,
+      "p50Ms": 2.333,
+      "p95Ms": 2.801,
+      "p99Ms": 3.035,
+      "mongoCommands": 64,
+      "local": {
+        "hits": 0,
+        "misses": 514,
+        "loads": 66,
+        "deduped": 448,
+        "evictions": 0,
+        "rejected": 0,
+        "entries": 2,
+        "bytes": 35350,
+        "pending": 0,
+        "waiters": 0
+      },
+      "valkey": {
+        "hits": 16,
+        "misses": 17,
+        "errors": 0,
+        "bypasses": 32
+      }
+    }
+  ],
+  "authorityRevocation": "PASS",
+  "rssBytes": 296845312
+}

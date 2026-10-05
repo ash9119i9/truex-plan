@@ -1050,6 +1050,7 @@ test("token usage is published as turn usage and turn.completed carries a trace"
     usage: {
       inputTokens: 100,
       cachedInputTokens: 40,
+      cacheWriteInputTokens: 0,
       outputTokens: 30,
       reasoningOutputTokens: 10,
       totalTokens: 130,
@@ -1419,4 +1420,61 @@ test("a resume without an MCP fingerprint behaves as before", async (t) => {
     runtime.calls.map((x) => x.method),
     ["thread/resume", "thread/goal/get"],
   );
+});
+
+test("identical redacted final frames reach every subscriber only after durable persistence", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({});
+  manager.redactor.remember({ apiKey: "private-provider-key" });
+  const received: any[][] = [[], []];
+  for (const events of received) {
+    const res = Object.assign(new EventEmitter(), {
+      writableLength: 0,
+      set() {},
+      flushHeaders() {},
+      write(chunk: string) {
+        const data = chunk
+          .split("\n")
+          .find((line) => line.startsWith("data: "));
+        if (data) {
+          const event = JSON.parse(data.slice(6));
+          if (event.type === "message.final") {
+            assert.equal(
+              manager.records("thread_1")[0].event.data.text,
+              event.data.text,
+            );
+            assert.equal(event.data.text, "Saved [REDACTED]");
+          }
+          events.push(event);
+        }
+        return true;
+      },
+      destroy() {
+        this.emit("close");
+      },
+      end() {
+        this.emit("close");
+      },
+    });
+    manager.subscribe("thread_1", res as any);
+    t.after(() => res.emit("close"));
+    assert.equal(events[0].cursor, events[0].data.cursor);
+  }
+  runtime.emit("notification", {
+    method: "item/completed",
+    params: {
+      threadId: "thread_1",
+      turnId: "turn_1",
+      item: {
+        id: "final_1",
+        type: "agentMessage",
+        text: "Saved private-provider-key",
+      },
+    },
+  });
+  assert.equal(
+    received[0].filter((event) => event.type === "message.final").length,
+    1,
+  );
+  assert.deepEqual(received[0], received[1]);
 });

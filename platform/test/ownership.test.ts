@@ -335,6 +335,9 @@ test(
         timings: [],
       }),
     );
+    // Tenant indexes build in the background; catalog cache hits must not be
+    // used as an accidental delay before verifying the completed index build.
+    await store.ensureTenantIndexes(t1.dbName);
     const indexes = await store.withTenant(t1, () => store.sessions.indexes());
     assert.ok(indexes.some((i) => i.name === "userId_1_createdAt_-1"));
 

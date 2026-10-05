@@ -1,0 +1,196 @@
+{
+  "timestampMeaning": "log mtime observed after completion, not fabricated start time",
+  "gates": [
+    {
+      "gate": "core build",
+      "workingDirectory": "agent-core",
+      "command": "node node_modules/typescript/bin/tsc",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:32:48.191284+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-core-build-node24.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "gate": "core tests off",
+      "workingDirectory": "agent-core",
+      "command": "CACHE_RUNTIME_METADATA=off node node_modules/tsx/dist/cli.mjs --test --test-concurrency=1 test/*.test.ts",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:20:24.657362+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-core-tests-node24-serial.log",
+      "logSha256": "0400355043125ee8ca1b9809e2eec2bc4caa51dc54e8e22c7bd15659bd932701"
+    },
+    {
+      "gate": "core tests on",
+      "workingDirectory": "agent-core",
+      "command": "CACHE_RUNTIME_METADATA=on node node_modules/tsx/dist/cli.mjs --test --test-concurrency=1 test/*.test.ts",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:21:51.385931+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-core-cache-on-tests-node24-serial.log",
+      "logSha256": "4aa71f7c4247a45eec903a48d3ed6e91df24c7caddb0367b8cc6c6fd00348584"
+    },
+    {
+      "gate": "gateway build",
+      "workingDirectory": "model-gateway",
+      "command": "node node_modules/typescript/bin/tsc",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:32:48.191354+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-gateway-build-node24.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "gate": "gateway tests",
+      "workingDirectory": "model-gateway",
+      "command": "node node_modules/tsx/dist/cli.mjs --test test/*.test.ts",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:17:26.668769+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-gateway-tests-node24.log",
+      "logSha256": "2eb9a0b4724979669af2978a8f4f70970d374ae8b867224cf3a80bbd34c305f3"
+    },
+    {
+      "gate": "platform build",
+      "workingDirectory": "platform",
+      "command": "node node_modules/typescript/bin/tsc",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:29:00.850504+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-platform-build-node24.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "gate": "platform tests off",
+      "workingDirectory": "platform",
+      "command": "CACHE_L1=off node node_modules/tsx/dist/cli.mjs --test --test-concurrency=2 test/*.test.ts",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:29:50.957665+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-platform-default-final.log",
+      "logSha256": "af5b16b3af55ac37579b4d094d03f046d57d2530e9a157243b4ba3df485dceb2"
+    },
+    {
+      "gate": "platform tests on",
+      "workingDirectory": "platform",
+      "command": "CACHE_L1=on node node_modules/tsx/dist/cli.mjs --test --test-concurrency=1 test/*.test.ts",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:27:48.180591+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-platform-cache-on-final.log",
+      "logSha256": "47e7a402037366ca40c5aa569563c56a39423a9aefdcd9f03104667b765465ab"
+    },
+    {
+      "gate": "frontend tests",
+      "workingDirectory": "frontend",
+      "command": "node --experimental-strip-types --test test/*.test.ts",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:34:08.090035+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-frontend-tests-node24.log",
+      "logSha256": "39df8b8ff269dfb7b7c5b2b139bf02a637d8bb3862886751e5d9be025ce01720"
+    },
+    {
+      "gate": "frontend typecheck",
+      "workingDirectory": "frontend",
+      "command": "node node_modules/typescript/bin/tsc --noEmit",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:32:48.191205+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-frontend-typecheck-node24.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "gate": "frontend cache-on build",
+      "workingDirectory": "frontend",
+      "command": "NEXT_PUBLIC_CLIENT_CACHE=on node node_modules/next/dist/bin/next build",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:26:16.151035+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-frontend-cache-on-build.log",
+      "logSha256": "abb6135cf8b942aaee201901f7ccb9e914055fd6effb94ae9ef9799a8d01ea80"
+    },
+    {
+      "gate": "codex verification",
+      "workingDirectory": ".",
+      "command": "npm run codex:verify",
+      "nodeBinary": "npm wrapper; see verification report",
+      "observedLogCompletionUtc": "2026-10-05T20:15:34.117384+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-codex-verify.log",
+      "logSha256": "1fe2ff1a85797cb56242cb2da597989112c3ad0f9998eaf03c3c582e2085d2be"
+    },
+    {
+      "gate": "whole-repo formatting",
+      "workingDirectory": ".",
+      "command": "npm run format:check",
+      "nodeBinary": "npm wrapper; see verification report",
+      "observedLogCompletionUtc": "2026-10-05T20:24:53.900244+00:00",
+      "exitCode": 1,
+      "outcome": "FAIL: baseline",
+      "localLog": "truex-final-format.log",
+      "logSha256": "ad305f95995c2ec4961708bcdec63d003d918fff6171e8a5e194eb8d4f03ab19"
+    },
+    {
+      "gate": "targeted formatting",
+      "workingDirectory": ".",
+      "command": "node node_modules/prettier/bin/prettier.cjs --check changed-cache-files",
+      "nodeBinary": "/Users/ashok/.nvm/versions/node/v24.21.0/bin/node",
+      "observedLogCompletionUtc": "2026-10-05T20:33:24.874630+00:00",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-root-format.log",
+      "logSha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+    },
+    {
+      "gate": "final real cache tests",
+      "workingDirectory": ".",
+      "command": "REQUIRE_VALKEY_TESTS=on Node24 tsx --test platform/test/cache*.test.ts",
+      "exitCode": 0,
+      "outcome": "PASS 17/17; no skips",
+      "observedLogCompletionUtc": "2026-10-05T20:35:10.571903+00:00",
+      "localLog": "truex-final-cache-tests.log",
+      "logSha256": "5358d58e4ed04fe7ecee31ef60844e1b1143fd264e221b33eb45f9a358b49b6c"
+    },
+    {
+      "gate": "provider probe",
+      "workingDirectory": "model-gateway",
+      "command": "Node24 tsx scripts/provider-cache-probe.ts",
+      "exitCode": 0,
+      "outcome": "PASS dry run; 0 network calls",
+      "observedLogCompletionUtc": "2026-10-05T20:29:33.621403+00:00",
+      "localLog": "truex-final-provider-probe.log",
+      "logSha256": "948e336cd7827fd1aab6782ccc0e5cbf816121d0d3fb1be0e63db1cfe7f6fdf1"
+    },
+    {
+      "gate": "literal secret scan",
+      "workingDirectory": ".",
+      "command": "candidate literal patterns plus manual review",
+      "exitCode": 0,
+      "outcome": "PASS within limited scanner scope"
+    },
+    {
+      "gate": "frontend default build restored",
+      "workingDirectory": "frontend",
+      "command": "NEXT_PUBLIC_CLIENT_CACHE=off Node24 node_modules/next/dist/bin/next build",
+      "observedLogCompletionUtc": "2026-10-05T20:37:19.930Z",
+      "exitCode": 0,
+      "outcome": "PASS",
+      "localLog": "truex-final-frontend-default-build.log",
+      "logSha256": "a93bceee901550fb51a772cd6a839d74351aefeeea529d4b16f1cbe69ee3a839"
+    }
+  ]
+}

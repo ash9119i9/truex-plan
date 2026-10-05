@@ -54,6 +54,7 @@ type SweepOptions = {
   tempTtlMs: number;
   workspaceTtlMs?: number;
   now?: number;
+  onWorkspaceRemoved?: (workspace: string) => void;
 };
 type SweepResult = { tempCleared: number; workspacesRemoved: number };
 
@@ -123,6 +124,7 @@ async function sweepLevel(
       ) {
         await rm(workspace, { recursive: true, force: true });
         result.workspacesRemoved++;
+        opts.onWorkspaceRemoved?.(workspace);
         continue;
       }
       const tmp = join(workspace, "work", "tmp");
@@ -151,6 +153,7 @@ const positive = (value: string | undefined) => {
 export function startWorkspaceSweeper(
   root: string,
   env: NodeJS.ProcessEnv = process.env,
+  onWorkspaceRemoved?: (workspace: string) => void,
 ): () => void {
   const tempTtlMs = (positive(env.WORKSPACE_TEMP_TTL_HOURS) ?? 24) * HOUR,
     days = positive(env.WORKSPACE_TTL_DAYS),
@@ -160,7 +163,11 @@ export function startWorkspaceSweeper(
     if (running) return;
     running = true;
     try {
-      await sweepWorkspaces(root, { tempTtlMs, workspaceTtlMs });
+      await sweepWorkspaces(root, {
+        tempTtlMs,
+        workspaceTtlMs,
+        onWorkspaceRemoved,
+      });
     } catch (error) {
       console.error("Workspace sweep failed", error);
     } finally {

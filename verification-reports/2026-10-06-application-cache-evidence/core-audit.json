@@ -1,0 +1,22 @@
+{
+  "scope": "npm audit --omit=dev",
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "dependencies": {
+      "prod": 192,
+      "dev": 41,
+      "optional": 37,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 242
+    }
+  },
+  "vulnerabilities": {}
+}

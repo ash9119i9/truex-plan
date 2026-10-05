@@ -1,6 +1,18 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { api, userMessage } from "@/lib/api";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  api,
+  apiIdentityScope,
+  clientCacheEnabled,
+  onApiIdentityChange,
+  userMessage,
+} from "@/lib/api";
 import {
   validWidgetState,
   visualizationDocument,
@@ -10,6 +22,9 @@ import type {
   Visualization as Visual,
   VisualizationState,
 } from "../../shared/visualizations";
+
+const subscribeIdentity = (listener: () => void) =>
+  clientCacheEnabled() ? onApiIdentityChange(listener) : () => {};
 
 export function Visualization({
   sessionId,
@@ -21,6 +36,7 @@ export function Visualization({
   onPrompt?: (text: string) => void;
 }) {
   const [visual, setVisual] = useState<Visual | null>(null);
+  const [visualScope, setVisualScope] = useState<string | undefined>();
   const [error, setError] = useState("");
   const [runtimeError, setRuntimeError] = useState(false);
   const [height, setHeight] = useState(360);
@@ -34,21 +50,34 @@ export function Visualization({
   const iframe = useRef<HTMLIFrameElement>(null),
     dialog = useRef<HTMLDialogElement>(null);
   const state = useRef<VisualizationState | null>(null);
-  const stateKey = `truex-visualization:${sessionId}:${id}`;
+  const scoped = clientCacheEnabled();
+  const identity = useSyncExternalStore(
+    subscribeIdentity,
+    apiIdentityScope,
+    () => undefined,
+  );
+  const stateKey = `truex-visualization:${scoped ? identity + ":" : ""}${sessionId}:${id}`;
   useEffect(() => {
     let cancelled = false;
     setVisual(null);
     setError("");
+    setQuestion(null);
+    setExpanded(false);
     state.current = null;
     try {
-      const saved = JSON.parse(localStorage.getItem(stateKey) || "null");
+      const saved = scoped
+        ? null
+        : JSON.parse(localStorage.getItem(stateKey) || "null");
       if (validWidgetState(saved)) state.current = saved;
     } catch {
       /* Storage can be unavailable. */
     }
     api(`/api/sessions/${sessionId}/visualizations/${id}`)
       .then((value) => {
-        if (!cancelled) setVisual(value);
+        if (!cancelled) {
+          setVisual(value);
+          setVisualScope(apiIdentityScope());
+        }
       })
       .catch((error) => {
         if (!cancelled) setError(userMessage(error));
@@ -56,10 +85,13 @@ export function Visualization({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, id, stateKey]);
+  }, [sessionId, id, stateKey, scoped]);
   const source = useMemo(
-    () => (visual ? visualizationDocument(visual, state.current) : ""),
-    [visual, expanded, reload],
+    () =>
+      visual && (!scoped || visualScope === identity)
+        ? visualizationDocument(visual, state.current)
+        : "",
+    [visual, expanded, reload, scoped, visualScope, identity],
   );
   useEffect(() => {
     setLoaded(false);
@@ -68,6 +100,7 @@ export function Visualization({
     function receive(event: MessageEvent) {
       if (
         !iframe.current ||
+        (scoped && identity !== apiIdentityScope()) ||
         event.source !== iframe.current.contentWindow ||
         event.origin !== "null"
       )
@@ -89,7 +122,8 @@ export function Visualization({
       if (data.type === "state" && validWidgetState(data.state)) {
         state.current = data.state;
         try {
-          localStorage.setItem(stateKey, JSON.stringify(data.state));
+          if (!scoped)
+            localStorage.setItem(stateKey, JSON.stringify(data.state));
         } catch {
           /* Keep state in memory. */
         }
@@ -114,7 +148,7 @@ export function Visualization({
       clearTimeout(timer);
       window.removeEventListener("message", receive);
     };
-  }, [source, stateKey]);
+  }, [source, stateKey, scoped, identity]);
   useEffect(() => {
     if (expanded) dialog.current?.showModal();
     else dialog.current?.close();
@@ -141,7 +175,8 @@ export function Visualization({
         This visual could not be loaded. {error}
       </div>
     );
-  if (!visual) return <p role="status">Loading visual…</p>;
+  if (!visual || (scoped && visualScope !== identity))
+    return <p role="status">Loading visual…</p>;
   const frame = (
     <iframe
       ref={iframe}

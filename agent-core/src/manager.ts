@@ -505,12 +505,8 @@ export class ThreadManager {
   }
   async resume(id: string, input: any = {}) {
     // Approval mode fields are Truex settings, not runtime parameters.
-    const {
-      approvalMode,
-      approvalNameHeuristic,
-      mcpFingerprint,
-      ...params
-    } = input || {};
+    const { approvalMode, approvalNameHeuristic, mcpFingerprint, ...params } =
+      input || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
     parseFingerprint(mcpFingerprint);
     if (params.tenantId !== undefined) parseTenant(params.tenantId);
@@ -1144,11 +1140,12 @@ export class ThreadManager {
           }
         }
     }
+    const data = this.snapshot(id);
     const snapshot = {
       type: "snapshot",
       threadId: id,
-      cursor: this.snapshot(id).cursor,
-      data: this.snapshot(id),
+      cursor: data.cursor,
+      data,
     };
     if (
       !send(
@@ -1318,6 +1315,9 @@ export class ThreadManager {
       durable = this.goalRecords.get(t.id) !== key;
       this.goalRecords.set(t.id, key);
     }
+    // Serialize once for durable storage and all current subscribers. Keep no
+    // second serialized replay log: large tool results must not double retained memory.
+    let serialized: string | undefined;
     let lost = false;
     if (durable) {
       const dir = join(this.home, "adapter-records", t.id);
@@ -1326,8 +1326,9 @@ export class ThreadManager {
         `${this.generation}-${String(event.seq).padStart(12, "0")}.json`,
       );
       try {
+        serialized = JSON.stringify(event);
         mkdirSync(dir, { recursive: true });
-        writeFileSync(file + ".tmp", JSON.stringify(event));
+        writeFileSync(file + ".tmp", serialized);
         renameSync(file + ".tmp", file);
       } catch (e) {
         lost = true;
@@ -1343,8 +1344,10 @@ export class ThreadManager {
     }
     t.events.push(event);
     if (t.events.length > this.replayLimit) t.events.shift();
-    for (const sub of t.subscribers)
-      if (!send(sub, this.frame(event))) sub.destroy();
+    const frame = t.subscribers.size
+      ? `id: ${event.cursor}\ndata: ${serialized ?? JSON.stringify(event)}\n\n`
+      : "";
+    for (const sub of t.subscribers) if (!send(sub, frame)) sub.destroy();
     if (lost) {
       // Subscribers learn why the stream ends before it is closed.
       this.emit(

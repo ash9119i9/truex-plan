@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -6,9 +6,10 @@ import {
   readdir,
   rename,
   cp,
+  stat,
 } from "node:fs/promises";
 import Ajv from "ajv";
-import { join, extname } from "node:path";
+import { dirname, join, extname } from "node:path";
 import { Document, Packer, Paragraph, HeadingLevel } from "docx";
 import ExcelJS from "exceljs";
 import PptxGenJS from "pptxgenjs";
@@ -18,6 +19,11 @@ import type { DynamicToolSpec } from "../../shared/protocol/v2/DynamicToolSpec";
 import type { ConversationFile } from "../../shared/assistant-capabilities";
 import { HttpError } from "./errors";
 import type { Visualization } from "../../shared/visualizations";
+import {
+  RuntimeCache,
+  runtimeCacheEnabled,
+  sourceStamp,
+} from "./runtime-cache";
 
 const MAX_FILE = 1_048_576;
 const MAX_TEXT = 100_000;
@@ -195,25 +201,75 @@ function xmlText(xml: string): string {
 
 export class ConversationFiles {
   private queues = new Map<string, Promise<unknown>>();
+  private generation = 0;
+  private readonly lists = new RuntimeCache<{
+    stamp: string;
+    files: ConversationFile[];
+  }>(64, 4 * MAX_FILE, 30_000);
+  private readonly extracted = new RuntimeCache<string>(
+    64,
+    8 * MAX_FILE,
+    30_000,
+  );
   constructor(private readonly workspace: (threadId: string) => string) {}
   private directory(threadId: string) {
     return join(this.workspace(threadId), "files");
   }
   async list(threadId: string): Promise<ConversationFile[]> {
+    return this.loadList(threadId, false);
+  }
+  invalidate(workspace?: string) {
+    this.generation++;
+    if (workspace === undefined) {
+      this.lists.clear();
+      this.extracted.clear();
+    } else {
+      const dir = join(workspace, "files");
+      this.lists.delete(dir);
+      this.extracted.deletePrefix(dir + "\0");
+    }
+  }
+  private async loadList(threadId: string, authoritative: boolean) {
     const dir = this.directory(threadId);
     await mkdir(dir, { recursive: true, mode: 0o700 });
-    const names = await readdir(dir);
+    const names = (await readdir(dir))
+      .filter((n) => /^[a-f0-9-]{36}\.json$/.test(n))
+      .sort();
+    const enabled = !authoritative && runtimeCacheEnabled(),
+      started = this.generation;
+    // Validate individual metadata fingerprints as well as the directory:
+    // restore/overwrite can change contents without changing directory mtime.
+    const stamp = enabled
+      ? JSON.stringify([
+          sourceStamp(await stat(dir, { bigint: true })),
+          await Promise.all(
+            names.map(async (name) => [
+              name,
+              sourceStamp(await stat(join(dir, name), { bigint: true })),
+            ]),
+          ),
+        ])
+      : "";
+    if (enabled) {
+      const hit = this.lists.get(dir);
+      if (hit?.stamp === stamp) return structuredClone(hit.files);
+      this.lists.delete(dir);
+    }
     const records = await Promise.all(
-      names
-        .filter((n) => /^[a-f0-9-]{36}\.json$/.test(n))
-        .map(
-          async (n) =>
-            JSON.parse(
-              await readFile(join(dir, n), "utf8"),
-            ) as ConversationFile,
-        ),
+      names.map(
+        async (n) =>
+          JSON.parse(await readFile(join(dir, n), "utf8")) as ConversationFile,
+      ),
     );
-    return records.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    records.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    if (enabled && started === this.generation)
+      this.lists.set(
+        dir,
+        { stamp, files: structuredClone(records) },
+        Buffer.byteLength(JSON.stringify(records)) * 4 +
+          Buffer.byteLength(stamp),
+      );
+    return records;
   }
   async get(threadId: string, id: string) {
     const dir = this.directory(threadId),
@@ -272,7 +328,9 @@ export class ConversationFiles {
     const operation = previous
       .catch(() => {})
       .then(async () => {
-        const files = await this.list(threadId);
+        // Quotas always use authoritative metadata, including direct filesystem
+        // writers; no cached list can admit an extra file or skip byte limits.
+        const files = await this.loadList(threadId, true);
         if (
           files.length >= 50 ||
           files.reduce((sum, f) => sum + f.size, 0) + data.length >
@@ -304,6 +362,9 @@ export class ConversationFiles {
           mode: 0o600,
         });
         await rename(join(dir, id + ".pending"), join(dir, id + ".json"));
+        // Invalidate the path that was actually committed without another
+        // fallible authority read turning a successful write into an error.
+        this.invalidate(dirname(dir));
         return record;
       });
     this.queues.set(threadId, operation);
@@ -314,70 +375,59 @@ export class ConversationFiles {
     }
   }
   async copy(from: string, to: string) {
-    await this.list(from);
-    await cp(this.directory(from), this.directory(to), { recursive: true });
+    await this.loadList(from, true);
+    const workspace = this.workspace(to);
+    this.invalidate(workspace);
+    try {
+      await cp(this.directory(from), join(workspace, "files"), {
+        recursive: true,
+      });
+    } finally {
+      // Also discard partial-copy results when the filesystem copy fails.
+      this.invalidate(workspace);
+    }
   }
   async read(threadId: string, id: string, offset = 0) {
     if (!Number.isInteger(offset) || offset < 0)
       throw new HttpError(400, "Offset must be a nonnegative integer");
-    const file = await this.get(threadId, id),
-      extension = extname(file.name).slice(1).toLowerCase();
-    let content: string;
+    const file = await this.get(threadId, id);
+    let source: string | undefined;
     try {
-      content = await readFile(
+      source = await readFile(
         join(this.directory(threadId), fileId(id) + ".source"),
         "utf8",
       );
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      if (textFile(file.name)) {
-        if (file.data.includes(0))
-          throw new HttpError(400, "This text file contains binary data");
-        content = new TextDecoder("utf-8", { fatal: true }).decode(file.data);
-      } else if (extension === "pdf") {
-        const { PDFParse } = await import("pdf-parse");
-        const parser = new PDFParse({
-          data: file.data,
-          isEvalSupported: false,
-        });
-        try {
-          content = (await parser.getText({ first: 100 })).text;
-        } finally {
-          await parser.destroy();
-        }
-      } else if (["docx", "pptx", "xlsx"].includes(extension)) {
-        const parts = officeParts(file.data);
-        if (extension === "xlsx") {
-          const book = new ExcelJS.Workbook();
-          await book.xlsx.load(file.data as any);
-          const sheets: unknown[] = [];
-          book.eachSheet((sheet) => {
-            const rows: unknown[] = [];
-            sheet.eachRow((row) => {
-              if (rows.length < 2000)
-                rows.push((row.values as ExcelJS.CellValue[]).slice(1));
-            });
-            sheets.push({ name: sheet.name, rows });
-          });
-          content = JSON.stringify(sheets);
-        } else {
-          const names = Object.keys(parts)
-            .filter((n) =>
-              extension === "docx"
-                ? n === "word/document.xml"
-                : /^ppt\/slides\/slide\d+\.xml$/.test(n),
-            )
-            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-          content = names.map((n) => xmlText(strFromU8(parts[n]))).join("\n\n");
-        }
-      } else {
-        if (file.data.includes(0))
-          throw new HttpError(
-            400,
-            "This binary file type cannot be read as text",
-          );
-        content = new TextDecoder("utf-8", { fatal: true }).decode(file.data);
-      }
+    }
+    const enabled = runtimeCacheEnabled(),
+      started = this.generation;
+    // Metadata and bytes/source were read from the authority even on a hit.
+    // Restored/replaced files therefore cannot reuse text from old content.
+    const key = enabled
+      ? this.directory(threadId) +
+        "\0" +
+        id +
+        ":" +
+        createHash("sha256")
+          .update(
+            "extract-v1\0" +
+              file.name +
+              "\0" +
+              (source === undefined ? "binary\0" : "source\0"),
+          )
+          .update(source ?? file.data)
+          .digest("hex")
+      : "";
+    let content = enabled ? this.extracted.get(key) : undefined;
+    if (content === undefined) {
+      content = source ?? (await this.extract(file));
+      if (enabled && started === this.generation)
+        this.extracted.set(
+          key,
+          content,
+          Buffer.byteLength(content) * 2 + Buffer.byteLength(key),
+        );
     }
     return {
       id,
@@ -387,6 +437,59 @@ export class ConversationFiles {
       totalCharacters: content.length,
       note: "Document text extraction may omit images and layout. PDF extraction is limited to the first 100 pages; spreadsheets to 2000 rows per sheet. Read remaining text using nextOffset.",
     };
+  }
+  private async extract(file: Awaited<ReturnType<ConversationFiles["get"]>>) {
+    const extension = extname(file.name).slice(1).toLowerCase();
+    let content: string;
+    if (textFile(file.name)) {
+      if (file.data.includes(0))
+        throw new HttpError(400, "This text file contains binary data");
+      content = new TextDecoder("utf-8", { fatal: true }).decode(file.data);
+    } else if (extension === "pdf") {
+      const { PDFParse } = await import("pdf-parse");
+      const parser = new PDFParse({
+        data: file.data,
+        isEvalSupported: false,
+      });
+      try {
+        content = (await parser.getText({ first: 100 })).text;
+      } finally {
+        await parser.destroy();
+      }
+    } else if (["docx", "pptx", "xlsx"].includes(extension)) {
+      const parts = officeParts(file.data);
+      if (extension === "xlsx") {
+        const book = new ExcelJS.Workbook();
+        await book.xlsx.load(file.data as any);
+        const sheets: unknown[] = [];
+        book.eachSheet((sheet) => {
+          const rows: unknown[] = [];
+          sheet.eachRow((row) => {
+            if (rows.length < 2000)
+              rows.push((row.values as ExcelJS.CellValue[]).slice(1));
+          });
+          sheets.push({ name: sheet.name, rows });
+        });
+        content = JSON.stringify(sheets);
+      } else {
+        const names = Object.keys(parts)
+          .filter((n) =>
+            extension === "docx"
+              ? n === "word/document.xml"
+              : /^ppt\/slides\/slide\d+\.xml$/.test(n),
+          )
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        content = names.map((n) => xmlText(strFromU8(parts[n]))).join("\n\n");
+      }
+    } else {
+      if (file.data.includes(0))
+        throw new HttpError(
+          400,
+          "This binary file type cannot be read as text",
+        );
+      content = new TextDecoder("utf-8", { fatal: true }).decode(file.data);
+    }
+    return content;
   }
   async visualization(threadId: string, id: string): Promise<Visualization> {
     const file = await this.get(threadId, id);

@@ -4,7 +4,7 @@ import {
   type Server,
   type ServerResponse,
 } from "node:http";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { verifyGatewayToken } from "../../shared/gateway-token";
 import { sendError } from "./responses";
@@ -39,6 +39,7 @@ export interface GatewayOptions {
   upstreamFirstByteTimeoutMs?: number;
   /** Max silence mid-stream from the provider (default 120s, 0 disables). */
   upstreamIdleTimeoutMs?: number;
+  providerCacheControls?: boolean;
 }
 
 const ROUTE = /^\/p\/([^/]+)\/v1\/responses\/?$/;
@@ -135,7 +136,28 @@ export function createGateway(options: GatewayOptions) {
 
     meta.profileId = profileId;
     if (claims.tenantId) meta.tenantId = claims.tenantId;
-    const profile = await options.findProfile(profileId);
+    let profile: GatewayProfile | null;
+    try {
+      profile = await options.findProfile(profileId);
+    } catch (error) {
+      // A refresh/capacity failure never dispatches an expired profile. Source
+      // errors may contain connection credentials, so log only their class.
+      log(
+        JSON.stringify({
+          type: "error",
+          requestId: meta.requestId,
+          profileId,
+          errorName: error instanceof Error ? error.name : "Error",
+          reason: "profile_source_unavailable",
+        }),
+      );
+      return sendError(
+        res,
+        503,
+        "Model configuration is temporarily unavailable. Try again shortly.",
+        "server_error",
+      );
+    }
     meta.wireApi = profile?.wireApi;
     meta.model = profile?.modelName;
     const apiKey = profile?.apiKey || profile?.apikey;
@@ -184,6 +206,24 @@ export function createGateway(options: GatewayOptions) {
       ),
       signal: abort.signal,
       log,
+      providerCacheControls: options.providerCacheControls,
+      ...(options.providerCacheControls &&
+      profile.promptCache?.key === true &&
+      typeof input?.prompt_cache_key === "string" &&
+      input.prompt_cache_key.length > 0 &&
+      input.prompt_cache_key.length <= 512
+        ? {
+            promptCacheKey: createHmac("sha256", options.secret)
+              .update(
+                JSON.stringify([
+                  claims.tenantId ?? null,
+                  profileId,
+                  input.prompt_cache_key,
+                ]),
+              )
+              .digest("hex"),
+          }
+        : {}),
     });
   }
 }

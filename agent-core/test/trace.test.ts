@@ -96,7 +96,7 @@ test("main usage sums model calls and helper usage is kept apart", () => {
   const call = (input: number, output: number) => ({
     inputTokens: input,
     cachedInputTokens: 10,
-    cacheWriteInputTokens: 0,
+    cacheWriteInputTokens: input / 10,
     outputTokens: output,
     reasoningOutputTokens: 5,
     totalTokens: input + output,
@@ -114,6 +114,7 @@ test("main usage sums model calls and helper usage is kept apart", () => {
   assert.deepEqual(usage, {
     inputTokens: 400,
     cachedInputTokens: 20,
+    cacheWriteInputTokens: 40,
     outputTokens: 50,
     reasoningOutputTokens: 10,
     totalTokens: 450,
@@ -127,6 +128,7 @@ test("main usage sums model calls and helper usage is kept apart", () => {
   assert.deepEqual(trace.helperUsage, {
     inputTokens: 120,
     cachedInputTokens: 20,
+    cacheWriteInputTokens: 12,
     outputTokens: 12,
     reasoningOutputTokens: 10,
     totalTokens: 132,

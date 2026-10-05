@@ -4,6 +4,7 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { Store } from "../src/store";
 import { insertFixtures } from "./fixtures";
 import { PlatformService } from "../src/service";
+import { PlatformReadCache } from "../src/cache";
 import type { DomainEvent } from "../../shared/contracts";
 test(
   "MongoDB: isolated fixtures, redacted summaries, idempotent final/decision/timing persistence",
@@ -24,7 +25,19 @@ test(
       { _id: "default" },
       { $set: { apikey: "secret-test-key" } },
     );
-    const service = new PlatformService(store);
+    let cacheTime = Date.now();
+    const cache = new PlatformReadCache({
+      now: () => cacheTime,
+      jitter: () => 1,
+    });
+    const service = new PlatformService(
+      store,
+      undefined,
+      undefined,
+      undefined,
+      cache,
+    );
+    t.after(() => service.stop());
     assert.equal(
       JSON.stringify(await service.agents()).includes("secret-test-key"),
       false,
@@ -66,6 +79,14 @@ test(
       1,
     );
     await store.profiles.deleteOne({ _id: "default" });
+    // Direct database writers have a bounded display TTL, but configuration
+    // must immediately reject a missing profile even while the picker is warm.
+    await assert.rejects(service.configuration("assistant"), {
+      code: "MODEL_CONFIGURATION",
+    });
+    if (cache.enabled)
+      assert.equal((await service.agents())[0].provider, "fixture");
+    cacheTime += 15_000;
     assert.equal((await service.agents())[0].provider, "unknown");
   },
 );
@@ -109,8 +130,20 @@ test(
       modelProfileId: modelId.toHexString(),
       mcpProfileIds: [mcpId.toHexString()],
     });
-    const service = new PlatformService(store),
+    let cacheTime = Date.now();
+    const cache = new PlatformReadCache({
+      now: () => cacheTime,
+      jitter: () => 1,
+    });
+    const service = new PlatformService(
+        store,
+        undefined,
+        undefined,
+        undefined,
+        cache,
+      ),
       summaries = await service.agents();
+    t.after(() => service.stop());
     assert.equal(summaries[0].id, agentId.toHexString());
     assert.equal(summaries[0].model, "fixture-model");
     assert.doesNotMatch(
@@ -144,6 +177,12 @@ test(
       { _id: modelId },
       { $set: { wireApi: "responses", enabled: false } },
     );
+    await assert.rejects(service.configuration(agentId.toHexString()), {
+      code: "MODEL_CONFIGURATION",
+    });
+    if (cache.enabled)
+      assert.equal((await service.agents())[0].model, "fixture-model");
+    cacheTime += 15_000;
     assert.equal((await service.agents())[0].model, "unknown");
   },
 );

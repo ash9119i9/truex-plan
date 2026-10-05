@@ -2,7 +2,13 @@ import {
   businessCapabilities,
   businessCapabilityParams,
 } from "../../shared/business-capabilities";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { CodexClient } from "./client";
@@ -19,6 +25,11 @@ import {
 } from "./script-runner";
 import { visualizationInstructions } from "../../shared/visualizations";
 import { suggestionInstructions } from "../../shared/suggestions";
+import {
+  RuntimeCache,
+  runtimeCacheEnabled,
+  sourceStamp,
+} from "./runtime-cache";
 import {
   DEFAULT_TENANT,
   skillInstructions,
@@ -99,6 +110,11 @@ export class BusinessRuntime extends CodexClient {
     (id, name, data) => this.files.publish(id, name, data),
   );
   readonly scripts: ScriptTools;
+  private readonly markers = new RuntimeCache<{ stamp: string; record: any }>(
+    128,
+    8 * 1024 * 1024,
+    60_000,
+  );
   constructor(
     binary: string,
     home: string,
@@ -110,6 +126,10 @@ export class BusinessRuntime extends CodexClient {
       (id) => join(this.workspace(id), "work"),
       scriptRunner,
     );
+    this.on("exit", () => {
+      this.markers.clear();
+      this.files.invalidate();
+    });
     // tmp/ is scratch space for a single task.
     this.on("notification", (msg: any) => {
       const id = msg?.params?.threadId;
@@ -122,6 +142,10 @@ export class BusinessRuntime extends CodexClient {
   get scriptsEnabled() {
     return !(this.scriptRunner instanceof DisabledScriptRunner);
   }
+  invalidateWorkspace(workspace: string) {
+    this.markers.clear();
+    this.files.invalidate(workspace);
+  }
   private dynamicTools() {
     return [
       ...fileTools,
@@ -131,19 +155,14 @@ export class BusinessRuntime extends CodexClient {
   }
   visualizationToolsAvailable(id: string) {
     try {
-      return (
-        JSON.parse(readFileSync(this.marker(id), "utf8")).visualizationTools ===
-        1
-      );
+      return this.readMarker(id).visualizationTools === 1;
     } catch {
       return false;
     }
   }
   documentToolsAvailable(id: string) {
     try {
-      return (
-        JSON.parse(readFileSync(this.marker(id), "utf8")).documentTools === 1
-      );
+      return this.readMarker(id).documentTools === 1;
     } catch {
       return false;
     }
@@ -214,9 +233,28 @@ export class BusinessRuntime extends CodexClient {
     if (!/^[\w-]+$/.test(id)) throw new HttpError(400, "Invalid conversation");
     return join(this.home, "business-threads", id + ".json");
   }
+  private readMarker(id: string): any {
+    const path = this.marker(id);
+    if (!runtimeCacheEnabled()) return JSON.parse(readFileSync(path, "utf8"));
+    try {
+      // Stat remains authoritative on every hit: deletion, restore and external
+      // marker changes must not reuse a previous tenant or tool permission.
+      const stamp = sourceStamp(statSync(path, { bigint: true }));
+      const hit = this.markers.get(id);
+      if (hit?.stamp === stamp) return hit.record;
+      const raw = readFileSync(path, "utf8"),
+        record = JSON.parse(raw);
+      if (stamp === sourceStamp(statSync(path, { bigint: true })))
+        this.markers.set(id, { stamp, record }, Buffer.byteLength(raw) * 4);
+      return record;
+    } catch (error) {
+      this.markers.delete(id);
+      throw error;
+    }
+  }
   private workspace(id: string): string {
     try {
-      return JSON.parse(readFileSync(this.marker(id), "utf8")).cwd;
+      return this.readMarker(id).cwd;
     } catch {
       throw new HttpError(
         409,
@@ -227,7 +265,7 @@ export class BusinessRuntime extends CodexClient {
   }
   private record(id: string): any {
     try {
-      return JSON.parse(readFileSync(this.marker(id), "utf8"));
+      return this.readMarker(id);
     } catch {
       return {};
     }
@@ -246,9 +284,7 @@ export class BusinessRuntime extends CodexClient {
   }
   private helperSettings(id: string): SubAgentOptions {
     try {
-      return subAgentOptions(
-        JSON.parse(readFileSync(this.marker(id), "utf8")).subAgents,
-      );
+      return subAgentOptions(this.readMarker(id).subAgents);
     } catch {
       return subAgentOptions(undefined);
     }
@@ -388,6 +424,7 @@ export class BusinessRuntime extends CodexClient {
           mode: 0o600,
         },
       );
+      this.markers.delete(result.thread.id);
       return result;
     }
     if (method === "thread/resume") {
@@ -468,6 +505,7 @@ export class BusinessRuntime extends CodexClient {
             mode: 0o600,
           },
         );
+        this.markers.delete(result.thread.id);
         this.profiles.set(result.thread.id, { ...source, cwd });
         await this.files.copy(params.threadId, result.thread.id);
         await this.workspaceFiles.copy(params.threadId, result.thread.id);
@@ -508,7 +546,12 @@ export class BusinessRuntime extends CodexClient {
       ].includes(method)
     ) {
       this.workspace(params.threadId);
-      return super.request(method, params);
+      const result = await super.request(method, params);
+      if (method === "thread/delete") {
+        this.markers.delete(params.threadId);
+        this.files.invalidate();
+      }
+      return result;
     }
     throw new HttpError(
       403,

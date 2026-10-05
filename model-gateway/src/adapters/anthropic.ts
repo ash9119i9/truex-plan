@@ -26,6 +26,7 @@ export interface AnthropicRequest {
 export function toAnthropicRequest(
   input: any,
   profile: Pick<GatewayProfile, "modelName" | "maxOutputTokens" | "thinking">,
+  ttl?: "5m" | "1h",
 ): AnthropicRequest {
   const tools = new ToolNames();
   const anthropicTools: Anthropic.Tool[] = [];
@@ -45,13 +46,17 @@ export function toAnthropicRequest(
     max_tokens: profile.maxOutputTokens || DEFAULT_MAX_TOKENS,
     messages,
     stream: true,
-    cache_control: { type: "ephemeral" },
+    cache_control: { type: "ephemeral", ...(ttl ? { ttl } : {}) },
   };
   // An explicit breakpoint caches tools + system, the part every request of a
   // conversation shares. Proxies that drop top-level auto-caching keep it.
   if (system)
     params.system = [
-      { type: "text", text: system, cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: system,
+        cache_control: { type: "ephemeral", ...(ttl ? { ttl } : {}) },
+      },
     ];
   if (anthropicTools.length) {
     params.tools = anthropicTools;
@@ -499,6 +504,7 @@ export async function streamAnthropic(
           output_tokens: tokens.output,
           total_tokens: input + tokens.output,
           cached_tokens: tokens.cacheRead,
+          cache_write_tokens: tokens.cacheWrite,
         };
         out.complete(usage);
         return;
@@ -540,7 +546,12 @@ function errorBody(error: InstanceType<typeof Anthropic.APIError>): {
 
 export async function proxyAnthropic(ctx: AdapterContext) {
   const { profile, apiKey, res, signal, log } = ctx;
-  const { params, tools } = toAnthropicRequest(ctx.input, profile);
+  const declaredTtl = profile.promptCache?.ttl;
+  const ttl =
+    ctx.providerCacheControls && (declaredTtl === "5m" || declaredTtl === "1h")
+      ? declaredTtl
+      : undefined;
+  const { params, tools } = toAnthropicRequest(ctx.input, profile, ttl);
   const client = new Anthropic({
     apiKey,
     // Never pick up ANTHROPIC_AUTH_TOKEN from the gateway's environment.

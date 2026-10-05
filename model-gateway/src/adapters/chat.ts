@@ -15,7 +15,11 @@ export interface ChatRequest {
   tools: ToolNames;
 }
 
-export function toChatRequest(input: any, model: string): ChatRequest {
+export function toChatRequest(
+  input: any,
+  model: string,
+  cache?: { key?: string; retention?: "in_memory" | "24h" },
+): ChatRequest {
   const tools = new ToolNames();
   const chatTools: any[] = [];
   for (const tool of input.tools ?? []) {
@@ -33,6 +37,9 @@ export function toChatRequest(input: any, model: string): ChatRequest {
     stream: true,
     stream_options: { include_usage: true },
   };
+  if (cache?.key) body.prompt_cache_key = cache.key;
+  if (cache?.retention === "in_memory" || cache?.retention === "24h")
+    body.prompt_cache_retention = cache.retention;
   if (chatTools.length) {
     body.tools = chatTools;
     if (["auto", "none", "required"].includes(input.tool_choice))
@@ -274,6 +281,7 @@ function chatUsage(usage: any): Usage {
     output_tokens: output,
     total_tokens: Number(usage.total_tokens) || input + output,
     cached_tokens: usage.prompt_tokens_details?.cached_tokens,
+    cache_write_tokens: usage.prompt_tokens_details?.cache_write_tokens,
     reasoning_tokens: usage.completion_tokens_details?.reasoning_tokens,
   };
 }
@@ -296,7 +304,17 @@ export function isContextError(code: string, message: string) {
 
 export async function proxyChat(ctx: AdapterContext) {
   const { profile, apiKey, res, signal, log } = ctx;
-  const { body, tools } = toChatRequest(ctx.input, profile.modelName);
+  const { body, tools } = toChatRequest(
+    ctx.input,
+    profile.modelName,
+    ctx.providerCacheControls
+      ? {
+          key:
+            profile.promptCache?.key === true ? ctx.promptCacheKey : undefined,
+          retention: profile.promptCache?.retention,
+        }
+      : undefined,
+  );
   let upstream: Response;
   try {
     upstream = await ctx.fetch(chatUrl(profile.baseUrl), {

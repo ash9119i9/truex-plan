@@ -164,6 +164,7 @@ export function countsOf(b: any): TokenCounts {
   return {
     inputTokens: num(b?.inputTokens),
     cachedInputTokens: num(b?.cachedInputTokens),
+    cacheWriteInputTokens: num(b?.cacheWriteInputTokens),
     outputTokens: num(b?.outputTokens),
     reasoningOutputTokens: num(b?.reasoningOutputTokens),
     totalTokens: num(b?.totalTokens),
@@ -172,6 +173,8 @@ export function countsOf(b: any): TokenCounts {
 const add = (a: TokenCounts | null, b: TokenCounts): TokenCounts => ({
   inputTokens: (a?.inputTokens ?? 0) + b.inputTokens,
   cachedInputTokens: (a?.cachedInputTokens ?? 0) + b.cachedInputTokens,
+  cacheWriteInputTokens:
+    (a?.cacheWriteInputTokens ?? 0) + (b.cacheWriteInputTokens ?? 0),
   outputTokens: (a?.outputTokens ?? 0) + b.outputTokens,
   reasoningOutputTokens:
     (a?.reasoningOutputTokens ?? 0) + b.reasoningOutputTokens,

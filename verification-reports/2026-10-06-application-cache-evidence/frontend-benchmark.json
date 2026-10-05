@@ -1,0 +1,29 @@
+{
+  "workload": "simulated helper fixture; not production latency",
+  "results": [
+    {
+      "mode": "off",
+      "consumerReads": 60,
+      "metadataOriginCalls": 60,
+      "identityOriginCalls": 0,
+      "totalMs": 212,
+      "p95BurstMs": 10.67
+    },
+    {
+      "mode": "cold",
+      "consumerReads": 60,
+      "metadataOriginCalls": 20,
+      "identityOriginCalls": 20,
+      "totalMs": 257,
+      "p95BurstMs": 13.33
+    },
+    {
+      "mode": "warm",
+      "consumerReads": 60,
+      "metadataOriginCalls": 1,
+      "identityOriginCalls": 20,
+      "totalMs": 65,
+      "p95BurstMs": 3.17
+    }
+  ]
+}

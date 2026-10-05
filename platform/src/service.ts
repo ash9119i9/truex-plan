@@ -17,6 +17,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
+import { CacheCapacityError, SingleFlight } from "../../shared/cache";
+import { PlatformReadCache, publicRows } from "./cache";
 import { newAgent } from "./agents";
 import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
@@ -41,7 +43,7 @@ import {
 } from "../../shared/contracts";
 import { ApiError } from "./errors";
 export { ApiError } from "./errors";
-import { currentRequestId } from "./http";
+import { currentRequestId, measure } from "./http";
 import { errorFields, log } from "../../shared/logging";
 // Owner failures the platform acts on (failover, orphaned/dead sessions) or
 // that tell the user what to do; they keep their upstream status.
@@ -277,13 +279,29 @@ export class PlatformService {
   private polling = false;
   private timer?: NodeJS.Timeout;
   private nextHost = 0;
+  private readonly ingestion = new SingleFlight(32);
   constructor(
     readonly store: Store,
     hosts = runtimeHosts(),
     readonly approvalModes = approvalModesConfig(),
     readonly transport = new RuntimeTransport(),
+    readonly readCache = new PlatformReadCache(),
   ) {
     this.hosts = hosts.map((x) => x.trim().replace(/\/$/, ""));
+  }
+  private displayScope() {
+    const tenant = currentTenant();
+    const user = currentUser();
+    return [
+      this.store.catalogDatabase,
+      currentTenantId(),
+      tenant?.dbName ?? this.store.database,
+      user?.id ?? "internal",
+      user?.role ?? "internal",
+      tenant?.allowedModelIds?.slice().sort() ?? null,
+      tenant?.allowedSkillIds?.slice().sort() ?? null,
+      tenant?.chatVisibility ?? "all",
+    ];
   }
   async call(
     host: string,
@@ -300,14 +318,16 @@ export class PlatformService {
       );
     let response: Response;
     try {
-      response = await this.transport.request({
-        owner: host,
-        path,
-        method,
-        body,
-        requestId: currentRequestId(),
-        sessionId: runtimeSessionId,
-      });
+      response = await measure("runtime", () =>
+        this.transport.request({
+          owner: host,
+          path,
+          method,
+          body,
+          requestId: currentRequestId(),
+          sessionId: runtimeSessionId,
+        }),
+      );
     } catch (error) {
       if (error instanceof ApiError) throw error;
       if (
@@ -436,7 +456,10 @@ export class PlatformService {
     const reserved = userMcps.length ? await this.tenantNames() : new Set();
     const names = new Set<string>();
     for (const mcp of [...tenantMcps, ...userMcps]) {
-      if (names.has(mcp.name) || (mcp.scope === "user" && reserved.has(mcp.name))) {
+      if (
+        names.has(mcp.name) ||
+        (mcp.scope === "user" && reserved.has(mcp.name))
+      ) {
         if (mcp.scope === "user") {
           log("warn", "user MCP skipped: a tenant MCP uses its name", {
             op: "configuration",
@@ -577,6 +600,28 @@ export class PlatformService {
     };
   }
   async agents(): Promise<AgentSummary[]> {
+    return this.readCache.read(
+      this.readCache.key(this.displayScope(), "agents"),
+      15_000,
+      () => this.loadAgents(),
+      publicRows<AgentSummary>(
+        [
+          "id",
+          "name",
+          "description",
+          "provider",
+          "model",
+          "sandbox",
+          "handle",
+          "look",
+          "tint",
+          "builtin",
+        ],
+        ["id", "name", "provider", "model"],
+      ),
+    );
+  }
+  private async loadAgents(): Promise<AgentSummary[]> {
     const [agents, profiles] = await Promise.all([
       this.store.agents.find({ enabled: { $ne: false } }).toArray(),
       this.store.profiles
@@ -609,6 +654,18 @@ export class PlatformService {
   }
   /** Models the agent dialog may offer: enabled, allowed, and usable. */
   async models(): Promise<ModelOption[]> {
+    return this.readCache.read(
+      this.readCache.key(this.displayScope(), "models"),
+      30_000,
+      () => this.loadModels(),
+      publicRows<ModelOption>(
+        ["id", "name", "provider"],
+        ["id", "name", "provider"],
+      ),
+      true,
+    );
+  }
+  private async loadModels(): Promise<ModelOption[]> {
     const allowed = currentTenant()?.allowedModelIds;
     const rows = await this.store.profiles
       .find(
@@ -648,7 +705,12 @@ export class PlatformService {
         `@${agent.handle} is taken. Choose a different name.`,
         "AGENT_HANDLE_TAKEN",
       );
-    if (await this.store.agents.findOne({ handle: agent.handle }, { projection: { _id: 1 } }))
+    if (
+      await this.store.agents.findOne(
+        { handle: agent.handle },
+        { projection: { _id: 1 } },
+      )
+    )
       throw taken();
     try {
       await this.store.agents.insertOne(agent);
@@ -657,6 +719,7 @@ export class PlatformService {
       if (error?.code === 11000) throw taken();
       throw error;
     }
+    this.readCache.invalidate();
     return {
       id: String(agent._id),
       name: agent.name,
@@ -676,7 +739,11 @@ export class PlatformService {
   private mcpCaller() {
     const user = currentUser();
     if (!user)
-      throw new ApiError(401, "Sign in to manage MCP servers", "UNAUTHENTICATED");
+      throw new ApiError(
+        401,
+        "Sign in to manage MCP servers",
+        "UNAUTHENTICATED",
+      );
     return user;
   }
   private tenantAdmin() {
@@ -1620,6 +1687,27 @@ export class PlatformService {
     };
   }
   async ingest(s: Session) {
+    if (!this.readCache.enabled) return this.loadRecords(s);
+    const key = JSON.stringify([
+      currentTenantId(),
+      currentTenant()?.dbName ?? this.store.database,
+      s._id,
+      s.agentCoreHost,
+      s.agentCoreSessionId,
+    ]);
+    try {
+      return await this.ingestion.run(key, () => this.loadRecords(s));
+    } catch (error) {
+      if (error instanceof CacheCapacityError)
+        throw new ApiError(
+          503,
+          "Conversation synchronization is busy. Try again shortly.",
+          "INGEST_BUSY",
+        );
+      throw error;
+    }
+  }
+  private async loadRecords(s: Session) {
     const records = await this.owned(s, "/records");
     for (const record of records) {
       const event = record.event;
@@ -1685,6 +1773,7 @@ export class PlatformService {
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.transport.close();
+    this.readCache.close();
   }
   async command(
     id: string,
@@ -1998,12 +2087,7 @@ export class PlatformService {
     if (feedback.length > 4000)
       throw new ApiError(400, "Feedback is too long", "INVALID_REVIEW");
     const session = await this.sessionFor(id, "write");
-    const { goal } = await this.capability(
-      id,
-      "thread/goal/get",
-      {},
-      session,
-    );
+    const { goal } = await this.capability(id, "thread/goal/get", {}, session);
     if (!goal || goal.status !== "complete")
       throw new ApiError(
         409,

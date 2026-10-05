@@ -6,6 +6,7 @@
 // Styles: styles/v2/invite.css, class names prefixed jp- so the app's global classes can't leak in.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { clearApiCache } from "@/lib/api";
 import { CapabilitiesBoard, type BoardProfile } from "./capabilities-board";
 import { auraFor } from "@/lib/invite-aura";
 import {
@@ -219,6 +220,7 @@ export function JoinPage({ token }: { token: string }) {
 
   async function switchAccount(e: React.MouseEvent) {
     e.preventDefault();
+    clearApiCache();
     try {
       await fetch("/auth/logout", { method: "POST" });
     } catch {}

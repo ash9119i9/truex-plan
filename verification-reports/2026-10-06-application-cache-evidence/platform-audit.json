@@ -1,0 +1,134 @@
+{
+  "scope": "npm audit --omit=dev",
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 2,
+      "critical": 0,
+      "total": 2
+    },
+    "dependencies": {
+      "prod": 145,
+      "dev": 75,
+      "optional": 27,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 219
+    }
+  },
+  "vulnerabilities": {
+    "@nestjs/platform-express": {
+      "name": "@nestjs/platform-express",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "multer"
+      ],
+      "effects": [],
+      "range": "<=11.2.5 || 12.0.0-alpha.0 - 12.0.1",
+      "nodes": [
+        "node_modules/@nestjs/platform-express"
+      ],
+      "fixAvailable": true
+    },
+    "multer": {
+      "name": "multer",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1193790,
+          "name": "multer",
+          "dependency": "multer",
+          "title": "multer vulnerable to Denial of Service via crafted multipart field names",
+          "url": "https://github.com/advisories/GHSA-wc9g-mqfw-jrwm",
+          "severity": "high",
+          "cwe": [
+            "CWE-248"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<2.3.0"
+        },
+        {
+          "source": 1193791,
+          "name": "multer",
+          "dependency": "multer",
+          "title": "multer vulnerable to Denial of Service via file descriptor leak on aborted uploads",
+          "url": "https://github.com/advisories/GHSA-qfvm-cv95-jqjf",
+          "severity": "high",
+          "cwe": [
+            "CWE-400",
+            "CWE-459"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "=2.2.0"
+        },
+        {
+          "source": 1193792,
+          "name": "multer",
+          "dependency": "multer",
+          "title": "multer vulnerable to file size limit bypass via async fileFilter race condition",
+          "url": "https://github.com/advisories/GHSA-qvfw-j98x-7q72",
+          "severity": "low",
+          "cwe": [
+            "CWE-362"
+          ],
+          "cvss": {
+            "score": 3.7,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:N"
+          },
+          "range": "<2.3.0"
+        },
+        {
+          "source": 1193793,
+          "name": "multer",
+          "dependency": "multer",
+          "title": "multer vulnerable to Denial of Service via oversized array index in field names",
+          "url": "https://github.com/advisories/GHSA-535w-7cp7-47q4",
+          "severity": "high",
+          "cwe": [
+            "CWE-400"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<2.3.0"
+        },
+        {
+          "source": 1239935,
+          "name": "multer",
+          "dependency": "multer",
+          "title": "multer vulnerable to Denial of Service via orphaned disk writes on aborted uploads",
+          "url": "https://github.com/advisories/GHSA-3pph-fpjx-jg34",
+          "severity": "moderate",
+          "cwe": [
+            "CWE-400",
+            "CWE-459"
+          ],
+          "cvss": {
+            "score": 5.3,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+          },
+          "range": ">=2.2.0 <2.4.0"
+        }
+      ],
+      "effects": [
+        "@nestjs/platform-express"
+      ],
+      "range": "<=2.3.0",
+      "nodes": [
+        "node_modules/multer"
+      ],
+      "fixAvailable": true
+    }
+  }
+}

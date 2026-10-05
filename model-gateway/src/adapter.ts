@@ -23,6 +23,15 @@ export interface GatewayProfile {
    * that thinks for a long time before its first chunk. 0 disables.
    */
   firstByteTimeoutMs?: number;
+  /** Operator-declared provider capabilities; ignored unless CACHE_PROVIDER_CONTROLS is enabled. */
+  promptCache?: {
+    /** Chat endpoint accepts prompt_cache_key. The gateway scopes the incoming key. */
+    key?: boolean;
+    /** Chat endpoint/model supports this specific retention value. */
+    retention?: "in_memory" | "24h";
+    /** Anthropic endpoint/model supports an explicit cache TTL. */
+    ttl?: "5m" | "1h";
+  };
 }
 
 // Everything an adapter needs for one Codex request. The adapter owns the
@@ -38,6 +47,9 @@ export interface AdapterContext {
   /** Aborted when Codex disconnects (interrupt, timeout). */
   signal: AbortSignal;
   log: (line: string) => void;
+  providerCacheControls?: boolean;
+  /** HMAC of verified tenant/profile and incoming key; never a raw prompt/key. */
+  promptCacheKey?: string;
 }
 
 export type Adapter = (ctx: AdapterContext) => Promise<void>;

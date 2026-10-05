@@ -1,0 +1,44 @@
+# Local development only. Production application containers require TLS.
+name: truex-plan-cache
+services:
+  valkey:
+    # Official Valkey 9.1.2 Alpine image, pinned to the pulled release digest.
+    image: valkey/valkey:9.1.2-alpine@sha256:48332870af354a799964c0012ae1194a0bf2bf894eb508f945810596dc2d8d11
+    user: valkey
+    command:
+      - valkey-server
+      - --bind
+      - 0.0.0.0
+      - --protected-mode
+      # Docker forwards host traffic from a bridge address. Host loopback-only
+      # publishing and this project's private network are the local boundary.
+      - "no"
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --maxclients
+      - "128"
+    ports:
+      - "127.0.0.1:6379:6379"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /data:rw,noexec,nosuid,size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    cpus: 1.0
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 2s
+      start_period: 5s
+      retries: 5

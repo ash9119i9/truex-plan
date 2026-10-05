@@ -503,7 +503,7 @@ test("anthropic: text + thinking + tool_use stream, headers, url and usage", asy
         input_tokens: 130,
         output_tokens: 42,
         total_tokens: 172,
-        input_tokens_details: { cached_tokens: 100 },
+        input_tokens_details: { cached_tokens: 100, cache_write_tokens: 20 },
       });
     },
   );

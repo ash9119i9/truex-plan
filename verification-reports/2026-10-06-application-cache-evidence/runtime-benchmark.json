@@ -1,0 +1,62 @@
+{
+  "scope": "Local warmed filesystem, sequential requests; no AWS, network, model, or production scalability claim",
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "arch": "arm64",
+  "payloadBytes": {
+    "docx": 11006,
+    "xlsx": 45793
+  },
+  "fixture": {
+    "markerSkills": 10,
+    "documentParagraphs": 500,
+    "spreadsheetRows": 2000,
+    "listFiles": 50
+  },
+  "modes": {
+    "disabled": {
+      "marker": {
+        "samples": 300,
+        "p50Ms": 0.072,
+        "p95Ms": 0.086
+      },
+      "fileList50": {
+        "samples": 50,
+        "p50Ms": 0.778,
+        "p95Ms": 0.857
+      },
+      "docxExtraction": {
+        "samples": 30,
+        "p50Ms": 0.646,
+        "p95Ms": 0.962
+      },
+      "xlsxExtraction": {
+        "samples": 20,
+        "p50Ms": 10.543,
+        "p95Ms": 15.338
+      }
+    },
+    "enabled": {
+      "marker": {
+        "samples": 300,
+        "p50Ms": 0.003,
+        "p95Ms": 0.005
+      },
+      "fileList50": {
+        "samples": 50,
+        "p50Ms": 0.239,
+        "p95Ms": 0.292
+      },
+      "docxExtraction": {
+        "samples": 30,
+        "p50Ms": 0.11,
+        "p95Ms": 0.129
+      },
+      "xlsxExtraction": {
+        "samples": 20,
+        "p50Ms": 0.127,
+        "p95Ms": 0.129
+      }
+    }
+  }
+}

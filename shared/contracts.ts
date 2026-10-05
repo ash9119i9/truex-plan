@@ -412,6 +412,8 @@ export interface StepSpan {
 export interface TokenCounts {
   inputTokens: number;
   cachedInputTokens: number;
+  // Optional when older persisted traces/providers did not report cache writes.
+  cacheWriteInputTokens?: number;
   outputTokens: number;
   reasoningOutputTokens: number;
   totalTokens: number;

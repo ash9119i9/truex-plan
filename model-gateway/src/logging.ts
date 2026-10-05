@@ -87,6 +87,23 @@ export function accessLogLine(
       input_tokens: r.usage.input_tokens,
       output_tokens: r.usage.output_tokens,
       total_tokens: r.usage.total_tokens,
+      ...(r.usage.cached_tokens !== undefined
+        ? { cached_tokens: r.usage.cached_tokens }
+        : {}),
+      ...(r.usage.cache_write_tokens !== undefined
+        ? { cache_write_tokens: r.usage.cache_write_tokens }
+        : {}),
+      ...(r.usage.cached_tokens !== undefined ||
+      r.usage.cache_write_tokens !== undefined
+        ? {
+            uncached_input_tokens: Math.max(
+              0,
+              r.usage.input_tokens -
+                (r.usage.cached_tokens ?? 0) -
+                (r.usage.cache_write_tokens ?? 0),
+            ),
+          }
+        : {}),
     },
     rateLimit: r.rateLimit,
   });
