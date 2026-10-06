@@ -9,6 +9,7 @@ import { CodexClient } from "./client";
 import { HttpError } from "./errors";
 import { errorFields, log } from "../../shared/logging";
 import { ConversationFiles, fileTools } from "./file-tools";
+import { ChromiumPageRenderer, RenderError, type PageRenderer } from "./page-renderer";
 import { WorkspaceFiles, workspaceTools } from "./workspace-tools";
 import {
   DisabledScriptRunner,
@@ -93,7 +94,8 @@ export class BusinessRuntime extends CodexClient {
   // Helper agent threads spawned by conversations. They have no workspace of
   // their own and may only be interrupted.
   readonly helpers = new Set<string>();
-  readonly files = new ConversationFiles((id) => this.workspace(id));
+  readonly renderer: PageRenderer;
+  readonly files: ConversationFiles;
   readonly workspaceFiles = new WorkspaceFiles(
     (id) => this.workspace(id),
     (id, name, data) => this.files.publish(id, name, data),
@@ -104,8 +106,11 @@ export class BusinessRuntime extends CodexClient {
     home: string,
     timeoutMs?: number,
     readonly scriptRunner: ScriptRunner = scriptRunnerFromEnv(),
+    renderer?: PageRenderer,
   ) {
     super(binary, home, timeoutMs);
+    this.renderer = renderer ?? new ChromiumPageRenderer();
+    this.files = new ConversationFiles((id) => this.workspace(id), this.renderer);
     this.scripts = new ScriptTools(
       (id) => join(this.workspace(id), "work"),
       scriptRunner,
@@ -124,7 +129,7 @@ export class BusinessRuntime extends CodexClient {
   }
   private dynamicTools() {
     return [
-      ...fileTools,
+      ...fileTools.filter((item) => (item as { name?: string }).name !== "preview_visualization" || this.renderer.available()),
       ...workspaceTools,
       ...(this.scriptsEnabled ? scriptTools : []),
     ];
@@ -135,6 +140,13 @@ export class BusinessRuntime extends CodexClient {
         JSON.parse(readFileSync(this.marker(id), "utf8")).visualizationTools ===
         1
       );
+    } catch {
+      return false;
+    }
+  }
+  visualPreviewToolsAvailable(id: string) {
+    try {
+      return JSON.parse(readFileSync(this.marker(id), "utf8")).visualPreviewTools === 1;
     } catch {
       return false;
     }
@@ -156,6 +168,8 @@ export class BusinessRuntime extends CodexClient {
         !this.visualizationToolsAvailable(params.threadId)
       )
         throw new HttpError(409, "Start a new conversation to use Visualize");
+      if (params.tool === "preview_visualization" && !this.visualPreviewToolsAvailable(params.threadId))
+        throw new HttpError(409, "Start a new conversation to use Visual preview");
       if (!this.documentToolsAvailable(params.threadId))
         throw new HttpError(
           409,
@@ -178,12 +192,22 @@ export class BusinessRuntime extends CodexClient {
               params.tool,
               params.arguments,
             );
+      if (params.tool === "preview_visualization") {
+        const { imageUrl, ...diagnostics } = result as Awaited<ReturnType<PageRenderer["preview"]>>;
+        return {
+          success: true,
+          contentItems: [
+            { type: "inputText", text: JSON.stringify(diagnostics) },
+            ...(imageUrl ? [{ type: "inputImage", imageUrl }] : []),
+          ],
+        };
+      }
       return {
         success: true,
         contentItems: [{ type: "inputText", text: JSON.stringify(result) }],
       };
     } catch (error) {
-      if (!(error instanceof HttpError))
+      if (!(error instanceof HttpError) && !(error instanceof RenderError))
         log("error", "tool call failed", {
           threadId: params?.threadId,
           tool: params?.tool,
@@ -195,7 +219,7 @@ export class BusinessRuntime extends CodexClient {
           {
             type: "inputText",
             text:
-              error instanceof HttpError
+              error instanceof HttpError || error instanceof RenderError
                 ? error.message
                 : workspaceToolNames.has(params.tool) ||
                     params.tool === "run_script"
@@ -381,6 +405,7 @@ export class BusinessRuntime extends CodexClient {
           tenantId: tenant,
           documentTools: 1,
           visualizationTools: 1,
+          visualPreviewTools: this.renderer.available() ? 1 : 0,
           subAgents: subAgentOptions(params.subAgents),
           skills,
         }),
@@ -461,6 +486,7 @@ export class BusinessRuntime extends CodexClient {
             )
               ? 1
               : 0,
+            visualPreviewTools: this.visualPreviewToolsAvailable(params.threadId) ? 1 : 0,
             subAgents: this.helperSettings(params.threadId),
             skills: this.skills(params.threadId),
           }),

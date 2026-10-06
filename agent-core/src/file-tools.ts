@@ -18,6 +18,7 @@ import type { DynamicToolSpec } from "../../shared/protocol/v2/DynamicToolSpec";
 import type { ConversationFile } from "../../shared/assistant-capabilities";
 import { HttpError } from "./errors";
 import type { Visualization } from "../../shared/visualizations";
+import type { PageRenderer } from "./page-renderer";
 
 const MAX_FILE = 1_048_576;
 const MAX_TEXT = 100_000;
@@ -74,6 +75,15 @@ export const fileTools: DynamicToolSpec[] = [
       sourceId: string,
     },
     ["title", "description", "html"],
+  ),
+  tool(
+    "preview_visualization",
+    "Render a self-contained visualization fragment in an isolated headless browser. Returns text diagnostics and a screenshot without saving a file.",
+    {
+      html: { type: "string", minLength: 1, maxLength: 180000 },
+      width: { type: "integer", minimum: 240, maximum: 1600 },
+    },
+    ["html"],
   ),
   tool(
     "conversation_files",
@@ -195,7 +205,7 @@ function xmlText(xml: string): string {
 
 export class ConversationFiles {
   private queues = new Map<string, Promise<unknown>>();
-  constructor(private readonly workspace: (threadId: string) => string) {}
+  constructor(private readonly workspace: (threadId: string) => string, private readonly renderer?: PageRenderer) {}
   private directory(threadId: string) {
     return join(this.workspace(threadId), "files");
   }
@@ -408,6 +418,11 @@ export class ConversationFiles {
       return { files: await this.list(threadId) };
     if (name === "read_conversation_file")
       return this.read(threadId, args.id, args.offset);
+    if (name === "preview_visualization") {
+      if (!this.renderer?.available())
+        throw new HttpError(503, "Visual preview is unavailable. Enable VISUAL_RENDER with an executable CHROMIUM_PATH, then start a new conversation.");
+      return this.renderer.preview(args.html, { width: args.width });
+    }
     if (name === "create_visualization") {
       if (!args.title.trim() || !args.description.trim() || !args.html.trim())
         throw new HttpError(

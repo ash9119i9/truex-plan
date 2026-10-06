@@ -714,6 +714,15 @@ export function publicEvent(e: any): any | null {
               ? "Visualization could not be created"
               : "Visualization created"
             : "Creating an interactive visual";
+        if (
+          d.item.type === "dynamicToolCall" &&
+          d.item.tool === "preview_visualization"
+        )
+          labels.dynamicToolCall = complete
+            ? d.item.success === false
+              ? "Visual preview failed"
+              : "Visual preview ready"
+            : "Previewing visual";
         return {
           ...base,
           type: "activity.updated",
