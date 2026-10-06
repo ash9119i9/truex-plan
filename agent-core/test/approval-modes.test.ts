@@ -145,40 +145,45 @@ test("Omni dispatcher approvals cannot grant unrelated tools for a session or ch
   );
 });
 
-for (const mode of [undefined, "ask", "readOnly"] as const)
-  test(`Omni approval is single-call under ${mode || "legacy"} mode`, async (t) => {
-    const { runtime, manager } = fixture(t);
-    await manager.create({ ...(mode ? { approvalMode: mode } : {}) });
-    ask(runtime, 71, [tool("omni", "invoke_tool")]);
-    await tick();
-    const pending = manager.snapshot("thread_1").pending[0];
-    assert.ok(pending);
-    assert.deepEqual(
-      (pending.detail as any).questions[0].options.map((o: any) => o.label),
-      ["Allow", "Cancel"],
-    );
-    const qid = (pending.detail as any).questions[0].id;
-    for (const broad of [ALLOW_FOR_CHAT, "Allow for this session"])
-      assert.throws(
-        () =>
-          manager.answer("thread_1", pending.requestId, {
-            answers: { [qid]: { answers: [broad] } },
-          }),
-        /this call only/,
+for (const [server, name] of [
+  ["omni", "invoke_tool"],
+  ["adaptive", "invoke_tool"],
+  ["adaptive", "get_order"],
+])
+  for (const mode of [undefined, "ask", "readOnly"] as const)
+    test(`${server}/${name} approval is single-call under ${mode || "legacy"} mode`, async (t) => {
+      const { runtime, manager } = fixture(t);
+      await manager.create({ ...(mode ? { approvalMode: mode } : {}) });
+      ask(runtime, 71, [tool(server, name)]);
+      await tick();
+      const pending = manager.snapshot("thread_1").pending[0];
+      assert.ok(pending);
+      assert.deepEqual(
+        (pending.detail as any).questions[0].options.map((o: any) => o.label),
+        ["Allow", "Cancel"],
       );
-    assert.equal(reply(runtime, 71), undefined);
-    manager.answer("thread_1", pending.requestId, {
-      answers: { [qid]: { answers: ["Allow"] } },
+      const qid = (pending.detail as any).questions[0].id;
+      for (const broad of [ALLOW_FOR_CHAT, "Allow for this session"])
+        assert.throws(
+          () =>
+            manager.answer("thread_1", pending.requestId, {
+              answers: { [qid]: { answers: [broad] } },
+            }),
+          /this call only/,
+        );
+      assert.equal(reply(runtime, 71), undefined);
+      manager.answer("thread_1", pending.requestId, {
+        answers: { [qid]: { answers: ["Allow"] } },
+      });
+      assert.ok(reply(runtime, 71));
+      ask(runtime, 72, [tool(server, name)]);
+      await tick();
+      assert.equal(
+        reply(runtime, 72),
+        undefined,
+        "A different dispatcher invocation still needs its own decision",
+      );
     });
-    assert.ok(reply(runtime, 71));
-    ask(runtime, 72, [tool("omni", "invoke_tool")]);
-    await tick();
-    assert.equal(
-      reply(runtime, 72),
-      undefined,
-      "A different dispatcher invocation still needs its own decision",
-    );
-  });
 
 test("an unanswered Omni invocation expires as Cancel, not an automatic Allow", async (t) => {
   const { runtime, manager } = fixture(t, 35);

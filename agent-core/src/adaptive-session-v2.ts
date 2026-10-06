@@ -270,12 +270,16 @@ export class AdaptiveSessionV2 {
     });
     return filtered;
   }
-  guardModelResponse(response: Response, allowedNames = this.exposedNames) {
+  guardModelResponse(
+    response: Response,
+    allowedNames = this.exposedNames,
+    onInvocation?: (item: any) => void,
+  ) {
     if (!allowedNames)
       throw new Error(
         "A model request must be filtered before its response is accepted",
       );
-    return this.boundary.guard(response, allowedNames);
+    return this.boundary.guard(response, allowedNames, onInvocation);
   }
   /** Call only after the existing approval UI confirms this exact invocation. */
   approveInvocation(name: string, args: Record<string, unknown>) {

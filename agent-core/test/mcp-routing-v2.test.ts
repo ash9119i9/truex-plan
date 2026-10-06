@@ -44,6 +44,9 @@ test("V2 mode factory keeps Omni available and creates adaptive only on opt-in",
     try {
       assert.ok(adaptive.mcpServers.adaptive);
       assert.ok(adaptive.session);
+      // Discovery fallback exposes no business tools; instructions must still name the path.
+      assert.match(adaptive.instructions, /discover_tools/);
+      assert.doesNotMatch(adaptive.instructions, /already selected/);
     } finally {
       adaptive.close();
     }

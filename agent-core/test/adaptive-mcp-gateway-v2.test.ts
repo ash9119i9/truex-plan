@@ -29,6 +29,47 @@ const appData = {
   pagination: { total_found: 1000, has_more: true, next_offset: 1 },
 };
 const parse = (result: any) => JSON.parse(result.content[0].text);
+
+test("hydrates mixed draft-07 and 2020-12 MCP schemas without weakening validation", async (t) => {
+  const modern = {
+    name: "open_session",
+    inputSchema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: { target: { type: "string", minLength: 1 } },
+      required: ["target"],
+      unevaluatedProperties: false,
+    },
+  };
+  const f = await fixture(t, { qlik: [appTool], e2e: [modern] });
+  const tool = f.registry.find((tool) => tool.toolName === "open_session")!;
+  assert.equal(tool.inputSchema.$schema, modern.inputSchema.$schema);
+  f.gateway.setRouting({
+    mode: "direct_tools",
+    selected: [tool],
+    query: "open session",
+  });
+  for (const args of [
+    { target: "", fields: ["*"] },
+    { target: "web", extra: true, fields: ["*"] },
+    { target: "web" },
+  ]) {
+    const result = await f.invoke(tool.bindingName!, args);
+    assert.equal(result.isError, true);
+    assert.match(
+      JSON.stringify(result),
+      /Arguments do not match the exposed tool schema/,
+    );
+  }
+  assert.equal(f.calls.length, 0);
+  f.gateway.approveInvocation(tool.bindingName!, {
+    target: "web",
+    fields: ["*"],
+  });
+  await f.invoke(tool.bindingName!, { target: "web", fields: ["*"] });
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(f.calls[0].arguments, { target: "web" });
+});
 async function fixture(
   t: any,
   catalogs: Record<string, any[]> = { qlik: [appTool] },

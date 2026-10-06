@@ -72,7 +72,12 @@ export function isOmniInvocation(question: any): boolean {
   return (
     !!ref &&
     toolCandidates(ref).some(
-      (c) => c.server === "omni" && c.tool === "invoke_tool",
+      (c) =>
+        (c.server === "omni" && c.tool === "invoke_tool") ||
+        (c.server === "adaptive" &&
+          !["discover_server", "discover_tools", "get_tool_schema"].includes(
+            c.tool,
+          )),
     )
   );
 }

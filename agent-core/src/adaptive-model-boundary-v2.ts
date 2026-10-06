@@ -1,10 +1,15 @@
 import type { RegisteredTool } from "./tool-router-v2";
+import { mcpMethod } from "./mcp-method";
 
 export type RoutingModeV2 = "direct" | "omni" | "adaptive";
 export function routingModeV2(
-  value = process.env.MCP_ROUTING_MODE,
+  value: string | undefined = undefined,
 ): RoutingModeV2 {
-  if (value === undefined || value === "") return "direct";
+  if (value === undefined) {
+    const method = mcpMethod();
+    return method === "adaptive_v2" ? "adaptive" : method;
+  }
+  if (value === "") return "direct";
   if (value === "direct" || value === "omni" || value === "adaptive")
     return value;
   throw new Error("MCP_ROUTING_MODE must be direct, omni or adaptive");
@@ -254,7 +259,11 @@ export class AdaptiveModelBoundaryV2 {
   }
 
   /** Check emitted actions before Codex receives them; leave history untouched. */
-  guard(response: Response, allowedNames: ReadonlySet<string>): Response {
+  guard(
+    response: Response,
+    allowedNames: ReadonlySet<string>,
+    onInvocation?: (item: any) => void,
+  ): Response {
     if (!response.ok || !response.body) return response;
     const inspect = (event: any) => {
       const items = [
@@ -271,6 +280,7 @@ export class AdaptiveModelBoundaryV2 {
             throw new Error(
               "Provider returned a tool outside the current exposed set",
             );
+          if (event.type !== "response.output_item.added") onInvocation?.(item);
         }
     };
     const sse = response.headers
