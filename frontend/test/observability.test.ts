@@ -344,9 +344,51 @@ test("cost is formatted so a cheap turn never reads as free", () => {
   assert.equal(formatCost(NaN), "—");
 });
 
+const traceCost = (costMicros: number, requests: number, unpricedRequests: number) => ({
+  costMicros,
+  requests,
+  unpricedRequests,
+  inputTokens: 10_000,
+  cachedInputTokens: 6_000,
+  cacheWriteInputTokens: 0,
+  outputTokens: 2_300,
+  reasoningOutputTokens: 800,
+});
+
+test("a trace without a cost never wipes one the page already has", () => {
+  const priced = trace({ turnId: "a", cost: traceCost(100, 1, 0) });
+  // A snapshot of the same turn that lacks the cost keeps it...
+  const merged = mergeTraces([priced], [trace({ turnId: "a", totalMs: 9 })]);
+  assert.equal(merged[0].cost?.costMicros, 100);
+  assert.equal(merged[0].totalMs, 9);
+  // ...a newer cost still wins, and a turn never priced stays unpriced.
+  assert.equal(
+    mergeTraces([priced], [trace({ turnId: "a", cost: traceCost(250, 1, 0) })])[0].cost?.costMicros,
+    250,
+  );
+  assert.equal(mergeTraces([trace({ turnId: "b" })], [trace({ turnId: "b" })])[0].cost, undefined);
+  // The reload order: stored traces first, then the live snapshot.
+  const reloaded = applyObservabilityEvent(
+    { ...emptyObservability, traces: [priced] },
+    event("snapshot", { traces: [trace({ turnId: "a" })], rateLimits: null }),
+  );
+  assert.equal(reloaded.traces[0].cost?.costMicros, 100);
+});
+
+test("a finished turn's tokens and cost arrive in the same event", () => {
+  const done = applyObservabilityEvent(
+    emptyObservability,
+    event("turn.completed", { trace: trace({ cost: traceCost(23_748, 3, 0) }) }, "t1"),
+  );
+  // No second request: the one event the turn finished with has both.
+  const r = receipt(done.traces[0]);
+  assert.match(r.label, /used 12\.3k tokens/);
+  assert.equal(r.tokens, "12.3k tokens");
+  assert.equal(r.cost, "≈ $0.0237");
+});
+
 test("a turn's cost text keeps unpriced requests unknown, not free", () => {
   const cost = (costMicros: number, requests: number, unpricedRequests: number) => ({
-    turnId: "t",
     costMicros,
     requests,
     unpricedRequests,
@@ -362,7 +404,7 @@ test("the receipt shows the estimated cost, and is unchanged without one", () =>
   const plain = receipt(trace());
   assert.equal(plain.cost, null);
   const priced = receipt(
-    trace({ cost: { turnId: "t1", costMicros: 23_748, requests: 3, unpricedRequests: 0 } }),
+    trace({ cost: traceCost(23_748, 3, 0) }),
   );
   assert.equal(priced.cost, "≈ $0.0237");
   assert.match(priced.label, /estimated cost ≈ \$0\.0237/);
@@ -371,7 +413,7 @@ test("the receipt shows the estimated cost, and is unchanged without one", () =>
 
 test("session cost sums the turns that have one", () => {
   const withCost = (turnId: string, costMicros: number, unpricedRequests = 0) =>
-    trace({ turnId, cost: { turnId, costMicros, requests: 2, unpricedRequests } });
+    trace({ turnId, cost: traceCost(costMicros, 2, unpricedRequests) });
   assert.deepEqual(
     sessionCostTotals([withCost("a", 100), withCost("b", 250, 1), trace({ turnId: "c" })]),
     { costMicros: 350, requests: 4, unpricedRequests: 1 },

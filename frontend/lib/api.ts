@@ -180,8 +180,5 @@ const sessionPath = (sessionId: string) =>
   `/api/sessions/${encodeURIComponent(sessionId)}`;
 export const getTraces = (sessionId: string) =>
   api(sessionPath(sessionId) + "/traces");
-// Estimated cost of the conversation and of each turn.
-export const getSessionCost = (sessionId: string) =>
-  api(sessionPath(sessionId) + "/cost");
 export const getTurnContext = (sessionId: string, turnId: string) =>
   api(sessionPath(sessionId) + `/turns/${encodeURIComponent(turnId)}/context`);

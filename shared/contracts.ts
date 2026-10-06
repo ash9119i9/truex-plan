@@ -104,6 +104,8 @@ export interface Session {
   cursor?: string;
   approvals?: Record<string, unknown>[];
   timings?: TurnTiming[];
+  /** Tokens and estimated cost of the whole conversation. */
+  usage?: SessionUsage;
   goal?: SessionGoal;
   goalReview?: GoalReview;
   // The last cleared goal, so a replayed older update can't restore it.
@@ -429,6 +431,18 @@ export interface UsageCall extends TokenCounts {
   at: string;
   source: "main" | "helper";
   cacheWriteInputTokens: number;
+  // Set by the platform when the turn is recorded. A null cost means there was
+  // no usable price: the cost is unknown, not zero.
+  costMicros?: number | null;
+  pricingId?: string | null;
+  rates?: RateSnapshot | null;
+}
+// USD per 1M tokens, as the decimal strings that were in force for a request.
+export interface RateSnapshot {
+  input: string;
+  cachedInput: string;
+  cacheWrite: string;
+  output: string;
 }
 export interface RateLimitView {
   limitName: string | null;
@@ -478,17 +492,18 @@ export interface TurnTrace {
   // Summed usage of helper agents that ran during this turn.
   helperUsage: TokenCounts | null;
   // Per model request usage (main and helper), bounded; the basis for cost.
+  // The platform prices each request when it records the turn.
   calls?: UsageCall[];
   callsTruncated?: boolean;
-  // Added by the client from GET /cost; never stored on the trace.
-  cost?: TurnCost;
+  // What this turn cost, set by the platform when the turn completes and
+  // stored on the trace, so a turn's tokens and cost arrive together.
+  cost?: TraceCost;
   rateLimits: RateLimitView | null;
   privacy: PrivacyReport;
 }
-// Estimated cost, summed from recorded model requests (micro-USD).
-export interface UsageSummary {
+// Estimated cost and the tokens it was priced from (micro-USD).
+export interface CostTotals {
   costMicros: number;
-  costUsd: string;
   requests: number;
   // Requests with no usable price. Their cost is unknown, not zero.
   unpricedRequests: number;
@@ -498,11 +513,26 @@ export interface UsageSummary {
   outputTokens: number;
   reasoningOutputTokens: number;
 }
-export interface TurnCost {
+// Summed over every request of the turn, main and helper.
+export interface TraceCost extends CostTotals {
+  // Internal, for per-model totals; stripped from public responses.
+  modelName?: string | null;
+}
+export interface UsageSummary extends CostTotals {
+  costUsd: string;
+}
+export interface TurnCost extends Pick<
+  CostTotals,
+  "costMicros" | "requests" | "unpricedRequests"
+> {
   turnId: string;
-  costMicros: number;
-  requests: number;
-  unpricedRequests: number;
+}
+// Running totals of a conversation, stored on the session and updated once
+// per finished turn.
+export interface SessionUsage extends CostTotals {
+  turns: number;
+  // Internal replay guard: turns already counted. Never public.
+  turnIds?: string[];
 }
 // GET /api/sessions/:id/cost response.
 export interface SessionCost {

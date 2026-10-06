@@ -1608,8 +1608,13 @@ export class PlatformService {
       messages: orderConversation(
         await this.store.messages.find({ sessionId: id }).toArray(),
       ),
+      // The runtime has no prices, so each turn's cost is set here: a reload
+      // must show the same costs as before.
       snapshot: snapshot
-        ? withPlanFallback(publicSnapshot(snapshot), saved)
+        ? withPlanFallback(
+            publicSnapshot(await this.costs.pricedSnapshot(fresh, snapshot)),
+            saved,
+          )
         : null,
       // Saved plan, also available when agent-core is unreachable.
       plan: publicStoredPlan(saved),
@@ -1640,8 +1645,12 @@ export class PlatformService {
                 : null,
           });
       }
-      await this.store.persist(s._id, event);
-      await this.costs.record(s, event);
+      // The turn's cost goes on its trace before it is stored.
+      await this.store.persist(
+        s._id,
+        await this.costs.stamp(s, event),
+        s.userId ?? null,
+      );
     }
     if (records.length)
       await this.owned(s, "/records/ack", "POST", {

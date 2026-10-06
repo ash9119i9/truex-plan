@@ -628,7 +628,8 @@ async function main() {
       );
     }),
   );
-  // Estimated cost of one conversation, summed from its recorded requests.
+  // Estimated cost of one conversation: its stored running total and each
+  // turn's cost. The activity panel reads the same cost from the traces.
   http.get(
     "/api/sessions/:id/cost",
     route(async (req, res) => {
@@ -759,6 +760,9 @@ async function main() {
         };
         // Latest plan seen on this stream, starting from the saved one.
         let planSteps = s.plan?.steps;
+        // Prices a finished turn as it streams past, so its cost reaches the
+        // browser in the same event as its tokens.
+        const pricer = await service.costs.livePricer(s);
         const stream = new PublicEventStream((event) => {
           if (event.type === "goal.updated") remember(event.data.goal, event);
           if (event.type === "goal.cleared") remember(null, event);
@@ -800,7 +804,7 @@ async function main() {
                 data: withPlanFallback(event.data, { steps: planSteps }),
               };
           }
-        });
+        }, pricer.prepare);
         await relay(upstream.body as any, res, stream);
         if (!res.destroyed) endedStream(res, { requestId, sessionId: s._id });
       } catch (error) {

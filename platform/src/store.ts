@@ -8,7 +8,7 @@ import {
 import { MongoClient, Db } from "mongodb";
 import { publicPlan, type PlanStep } from "./public";
 import { ApiError } from "./errors";
-import type { PriceDocument, UsageRequestDocument } from "./costs";
+import { usageIncrement, type PriceDocument } from "./costs";
 import { errorFields, log } from "../../shared/logging";
 import {
   currentTenant,
@@ -34,7 +34,12 @@ import type {
 } from "../../shared/contracts";
 // One document per {sessionId, turnId}. Holds only the TurnTrace, which has no
 // raw text (privacy findings are already masked).
-export type TraceDocument = TurnTrace & { _id: string; sessionId: string };
+// userId is the session's owner when the turn finished, for per-user usage.
+export type TraceDocument = TurnTrace & {
+  _id: string;
+  sessionId: string;
+  userId?: string | null;
+};
 // Latest plan of a session, so the sidebar survives reload and agent-core
 // restart. Steps are stored already projected to {step, status}.
 export interface StoredPlan {
@@ -181,9 +186,8 @@ export class Store {
         db.collection("messages").createIndex({ sessionId: 1, at: 1 }),
         db.collection("sessions").createIndex({ status: 1 }),
         db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
-        db.collection("usage_requests").createIndex({ sessionId: 1, at: 1 }),
-        db.collection("usage_requests").createIndex({ userId: 1, at: 1 }),
-        db.collection("usage_requests").createIndex({ at: 1 }),
+        db.collection("traces").createIndex({ userId: 1, startedAt: 1 }),
+        db.collection("traces").createIndex({ startedAt: 1 }),
         db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
         db.collection("sessions").createIndex({ userId: 1, createdAt: -1 }),
         // Sparse: agents seeded before handles existed have none.
@@ -367,14 +371,10 @@ export class Store {
   get traces() {
     return this.db.collection<TraceDocument>("traces");
   }
-  // One document per model request, priced when it was recorded.
-  get usageRequests() {
-    return this.db.collection<UsageRequestDocument>("usage_requests");
-  }
   // Last `limit` traces of a session, oldest first.
   async sessionTraces(sessionId: string, limit = 200): Promise<TurnTrace[]> {
     const rows = await this.traces
-      .find({ sessionId }, { projection: { _id: 0, sessionId: 0 } })
+      .find({ sessionId }, { projection: { _id: 0, sessionId: 0, userId: 0 } })
       .sort({ startedAt: -1 })
       .limit(limit)
       .toArray();
@@ -412,7 +412,12 @@ export class Store {
     }
     return false;
   }
-  async persist(sessionId: string, event: DomainEvent) {
+  // `userId` is the session's owner, kept on the turn's trace for usage totals.
+  async persist(
+    sessionId: string,
+    event: DomainEvent,
+    userId?: string | null,
+  ) {
     if (event.type === "plan.updated")
       await this.savePlan(sessionId, {
         plan: event.data.plan,
@@ -460,8 +465,24 @@ export class Store {
     if (event.type === "turn.completed" && trace?.turnId)
       await this.traces.updateOne(
         { _id: `${sessionId}:${trace.turnId}` },
-        { $set: { ...trace, sessionId } },
+        {
+          $set: {
+            ...trace,
+            sessionId,
+            ...(userId !== undefined ? { userId } : {}),
+          },
+        },
         { upsert: true },
+      );
+    // Adds the turn to the conversation's running totals once: a replayed
+    // event finds its turn already counted and changes nothing.
+    if (event.type === "turn.completed" && trace?.turnId && trace.cost)
+      await this.sessions.updateOne(
+        { _id: sessionId, "usage.turnIds": { $ne: trace.turnId } },
+        {
+          $inc: usageIncrement(trace.cost),
+          $push: { "usage.turnIds": trace.turnId },
+        },
       );
   }
 }

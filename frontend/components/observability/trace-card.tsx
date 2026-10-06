@@ -6,7 +6,6 @@ import { getTurnContext, ApiRequestError } from "@/lib/api";
 import { costText, formatDuration } from "@/lib/observability";
 import type {
   TurnContext,
-  TurnCost,
   TurnTrace,
 } from "../../../shared/contracts";
 import { StepTimeline } from "./step-timeline";
@@ -61,7 +60,7 @@ export function TraceCard({
 }
 
 // Estimated cost of the turn, with a note when some requests had no price.
-function CostLine({ cost }: { cost?: TurnCost }) {
+function CostLine({ cost }: { cost?: TurnTrace["cost"] }) {
   const text = costText(cost);
   if (!cost || !text) return null;
   const unpriced = cost.unpricedRequests;

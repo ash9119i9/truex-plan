@@ -1,6 +1,6 @@
 # Cost tracking plan
 
-Status: implemented on `feat/cost-tracking` (backend, API and UI receipt/activity panel), verified locally with a placeholder price. Not yet reviewed against real provider billing. Resolves `backlog.txt:8` ("cost in dollars per turn/session, needs per-model price table").
+Status: implemented on `feat/cost-tracking` (backend, API and UI receipt/activity panel), verified locally with a placeholder price. Revised: cost is now stored on the turn's own trace and a session's totals on the session (see Design); the earlier per-request `usage_requests` collection was removed. Not yet reviewed against real provider billing. Resolves `backlog.txt:8` ("cost in dollars per turn/session, needs per-model price table").
 
 ## Problem
 
@@ -28,89 +28,106 @@ The platform records token counts per turn but no money. We need:
 
 ## Design
 
+Cost lives where the turn already lives. There is no second collection of token counts to drift from the first.
+
 ```text
-Codex model call ──usage──▶ agent-core trace.onUsage ──turn.completed (spooled)──▶ platform store
-                                  (also keep calls[])                                   │
-                                                          price lookup (catalog) ◀──────┤
-                                                                                        ▼
-                                                              usage_requests (1 doc / model call)
-                                                                       │ aggregate (index-backed)
-                                                       per conversation ◀┴▶ per user / per period
+Codex model call ──usage──▶ agent-core trace.onUsage ──turn.completed (spooled)──▶ platform
+                                 (also keeps calls[])                                  │
+                                                                                       ▼
+                                     price the turn once: priceTrace(trace, model, prices)
+                                     │                                  │
+                  live SSE relay ◀───┤                                  ├───▶ traces  (trace.cost, calls[].costMicros, userId)
+          (tokens + cost, one event) │                                  └───▶ sessions (usage: running totals, $inc once per turn)
 ```
 
-### Collection 1: `truex_model_pricing` (catalog DB, shared across tenants)
+One pure function, `priceTrace` in `platform/src/costs.ts`, prices a finished turn. The live stream and the stored copy both call it, so the cost the browser shows on the receipt is the cost that was saved.
 
-Managed in MongoDB like `truex_models` (the repo has no seed command). One document per model **per price period**:
+### Collection: `truex_model_pricing` (catalog DB, shared across tenants)
+
+Managed in MongoDB like `truex_models` (the repo has no seed command). One document per model **per price period**, matched by the provider's model name:
 
 ```json
 {
-  "_id": "price_gpt5_2026_10",
-  "modelId": "<truex_models._id>",
+  "_id": "price_sonnet_2026_10",
+  "modelName": "claude-sonnet-5",
   "currency": "USD",
-  "inputPerMTok": "1.25",
-  "cachedInputPerMTok": "0.125",
-  "outputPerMTok": "10.00",
-  "effectiveFrom": "2026-10-01T00:00:00Z",
+  "inputPerMTok": "3",
+  "cachedInputPerMTok": "0.3",
+  "cacheWritePerMTok": "3.75",
+  "outputPerMTok": "15",
+  "effectiveFrom": "2026-10-01T00:00:00.000Z",
   "effectiveTo": null,
   "note": "source URL / date verified"
 }
 ```
 
-- Rates are USD per 1M tokens, stored as **strings or Decimal128**, never JS floats.
-- Index `{ modelId: 1, effectiveFrom: -1 }`. Reject overlapping periods for one model.
-- Optional `cacheWritePerMTok` (Anthropic bills cache writes separately). Reasoning tokens: already counted inside output for the providers in use (verify per adapter, step 0). No separate field in v1.
-- Why separate from `truex_models`: prices change over time and must not rewrite history. Why not per-tenant: one price list for everyone.
+- Rates are USD per 1M tokens, stored as **strings**, never JS floats. Cached-input and cache-write default to the input rate.
+- Index `{ modelName: 1, effectiveFrom: -1 }`. `effectiveFrom` is inclusive, `effectiveTo` exclusive.
+- Prices change over time and must not rewrite history, which is why they are separate from `truex_models`.
 
-### Collection 2: `usage_requests` (tenant DB, source of truth)
+### On the trace (`traces`, tenant DB)
 
-One document per model call:
+`trace.cost` is the turn's total, summed over every request of the turn (main and helper):
 
 ```json
 {
-  "_id": "<sessionId>:<turnId>:<callSeq>",
-  "userId": "...", "sessionId": "...", "turnId": "...", "agentId": "...",
-  "modelId": "...", "modelName": "...",
-  "at": "ISO",
-  "inputTokens": 0, "cachedInputTokens": 0, "outputTokens": 0, "reasoningOutputTokens": 0,
-  "pricingId": "price_gpt5_2026_10",
-  "rates": { "input": "1.25", "cachedInput": "0.125", "output": "10.00" },
-  "costMicros": 12345,
-  "costStatus": "priced",
-  "source": "main"
+  "costMicros": 30063, "requests": 1, "unpricedRequests": 0,
+  "inputTokens": 7431, "cachedInputTokens": 0, "cacheWriteInputTokens": 0,
+  "outputTokens": 518, "reasoningOutputTokens": 0,
+  "modelName": "claude-sonnet-5"
 }
 ```
 
-- `costMicros` = integer micro-USD (1e-6). Integers avoid float drift when summing.
-- Formula: `((input - cached) * rate.input + cached * rate.cachedInput + output * rate.output) / 1e6 tokens`, rounded once per request (not per component).
-- **Rates are snapshotted onto the document.** Editing a price later never changes past costs.
-- `costStatus`: `priced` | `unpriced` (no price period covers the model/time). Unpriced stores tokens and `costMicros: null`. **Never write 0 for "unknown."**
-- `source`: `main` | `helper` (sub-agents). Helper usage today is summed without a model; step 0 decides whether helpers can be priced per call.
-- Idempotent: deterministic `_id`, `insertOne` ignoring duplicate-key (E11000). A replayed `turn.completed` never double-counts.
-- Indexes: `{ sessionId: 1, at: 1 }`, `{ userId: 1, at: 1 }`.
+- Each entry of `trace.calls[]` also carries its own `costMicros`, `pricingId` and a `rates` snapshot, so editing a price later never changes past costs.
+- `costMicros` is integer micro-USD. Formula: plain input, cached and cache-write tokens at their own rates plus output tokens, rounded once per request (half up).
+- A request with no usable price has `costMicros: null` on the call and is counted in `unpricedRequests`. **Never write 0 for "unknown."** A turn with unpriced requests shows "unpriced", not a number it cannot know.
+- A runtime that reports no `calls[]` (older agent-core) is priced from the turn's sums as one main and one helper request, without a cache-write split.
+- The trace also stores the session owner's `userId`, with indexes `{ userId: 1, startedAt: 1 }` and `{ startedAt: 1 }`.
+- Public API: `publicTrace` projects only the totals above. `modelName`, prices, rates and `calls` never leave the platform.
 
-### Totals (v1: no new collection)
+### On the session (`sessions`, tenant DB)
 
-- **Per conversation:** aggregate `usage_requests` by `sessionId` (`$sum costMicros`, tokens, count, and a count of `unpriced`).
-- **Per user:** aggregate by `userId` with `at` range (day or month).
-- Single source of truth, so no drift and no reconcile job. Bounded by indexes.
-- **Upgrade path (only if measured slow):** materialized rollups `usage_user_daily` (`_id = userId:YYYY-MM-DD`) updated with `$inc` only when the request insert succeeds. Do not build this up front.
+`session.usage` holds the conversation's running totals: `turns`, `costMicros`, `requests`, `unpricedRequests` and the token sums, plus `turnIds`, an internal replay guard that is never public.
 
-### Code changes (smallest safe diff)
+- Updated in `Store.persist` on `turn.completed`, with one `updateOne` filtered on `"usage.turnIds": { $ne: turnId }` and an atomic `$inc` plus `$push`. A replayed event finds its turn already counted and changes nothing, the same pattern as `timings`.
+- The trace upsert and the session `$inc` are separate writes. Both are safe to repeat, so a failure between them is repaired by the redelivery of the same record.
 
-| Step | File | Change |
-|---|---|---|
-| 1 | `shared/contracts.ts` | Add `TurnTrace.calls?: { seq, at, usage: TokenCounts }[]`; add `modelId?` to trace. Optional fields, so older consumers keep working. |
-| 2 | `agent-core/src/trace.ts` | In `onUsage`, also push the per-call counts into a **bounded** list (cap, e.g. 200/turn; record a `callsTruncated` flag if exceeded). Keep the existing summed `usage` unchanged. |
-| 3 | `platform/src/pricing.ts` (new, small) | `resolvePrice(modelId, at)` with a short TTL cache; pure `costMicros(counts, rates)` function. |
-| 4 | `platform/src/store.ts` | On `turn.completed`, after the trace upsert, build and insert `usage_requests` for each call. Add indexes to `tenantIndexes`. Failure to price or write **must not fail the turn**: log with ids and continue. |
-| 5 | `platform/src/http.ts`, `public.ts` | `GET /api/sessions/:id/cost` (owner only), `GET /api/me/usage?from&to`. Reuse existing owner/tenant checks. Admin per-user view later. |
-| 6 | `frontend/components/observability/*` | Show estimated cost per turn and a session total; label "estimated"; show "n unpriced" instead of a number when unpriced. |
-| 7 | `docs/mongodb.md` | Document the two collections and how to add a price. |
+### Totals
+
+- **Per conversation:** `GET /api/sessions/:id/cost` returns the stored `session.usage` (or sums the session's traces for a conversation that has none yet) and each turn's cost.
+- **Per user and for admins:** aggregated from `traces` by `userId` and `startedAt`, with a per-model and per-day split (`GET /api/me/usage`, `GET /api/usage/users`). Traces from before cost was recorded are not counted until `npm run rebuild:usage` prices them.
+
+### One event for tokens and cost
+
+The browser used to get tokens in the live `turn.completed` event and then fetch cost separately, so cost appeared late. Now `PublicEventStream` takes a `prepare` hook that sees each raw runtime event before it is made public. For a finished turn it calls the open stream's `livePricer`, which holds the session's model and that model's price list (loaded when the stream opens and again at `turn.started`), so pricing is synchronous and adds no database wait. If pricing fails the event is sent without a cost; the stored trace still gets one.
+
+A reload must show the same costs as before. The runtime never prices anything, and the page receives traces from three places: the stored traces (`GET /traces`), the conversation load (`GET /api/sessions/:id`) and the live stream's first `snapshot` event. The last two come from the runtime, so the platform prices them too (`livePricer`, `pricedSnapshot`), and a turn that is already stored shows the cost it was stored with, not a new price. Without this a reload replaced stored costs with the runtime's unpriced copies. The browser's `mergeTraces` also never lets a trace without a cost replace one that has it.
+
+### Code changes
+
+| File | Change |
+|---|---|
+| `shared/contracts.ts` | `UsageCall` gains `costMicros`, `pricingId`, `rates`; `TurnTrace.cost` (`TraceCost`); `Session.usage` (`SessionUsage`); shared `CostTotals`. |
+| `agent-core/src/trace.ts` | Keeps a bounded `calls[]` (cap 200, `callsTruncated` flag) next to the unchanged summed `usage`. |
+| `platform/src/costs.ts` | Pure `priceTrace`, `stampEvent`, `usageIncrement`, `costMicros`, `priceIn`; `Costs.stamp` (stored path), `Costs.livePricer` (live path), `sessionCost`, `userUsage`, `allUsersUsage`. |
+| `platform/src/service.ts` | `ingest` stamps the cost, then persists, passing the owner. |
+| `platform/src/store.ts` | `persist` stores `userId` on the trace and applies the guarded session `$inc`; new trace indexes. |
+| `platform/src/public.ts` | `publicCost` allowlist; `PublicEventStream` `prepare` hook (best effort: a failure never drops the event). |
+| `platform/src/index.ts` | Opens a `livePricer` per event stream. |
+| `frontend/app/page.tsx` | Removes the separate cost fetch and merge; the receipt reads `trace.cost`. |
+| `scripts/rebuild-usage.mjs` | Prices traces that lack a cost, gives traces their owner, rebuilds each session's `usage`. |
+
+### Repair and backfill
+
+`npm run rebuild:usage` is a dry run; `npm run rebuild:usage -- --confirm rebuild-usage` applies it to every tenant database. It prices only traces that have no cost (recorded rates are never rewritten), and it writes a session's `usage` only when it differs from what the traces add up to, so running it again changes nothing. Run it while the platform is idle.
+
+The `usage_requests` collection from the first version of this work is no longer read or written. Any existing copy is left in place; drop it once nothing needs it.
 
 ## Acceptance criteria
 
-1. A turn with 3 model calls produces 3 `usage_requests` and the session total equals their sum.
-2. Replaying the same `turn.completed` (retry, spool re-delivery) produces **no duplicate** documents and no change to totals.
+1. A turn with 3 model calls stores 3 priced entries in `trace.calls`, `trace.cost` equals their sum, and the session total equals the sum of its turns.
+2. Replaying the same `turn.completed` (retry, spool re-delivery) changes neither the trace nor the session totals.
+2a. The turn's tokens and cost arrive in the same live event.
 3. Changing a model's price creates a new period; previously stored costs are unchanged.
 4. A model with no price yields `unpriced`, tokens still recorded, and totals show the unpriced count rather than treating it as zero.
 5. A user can read only their own conversation and usage; tenant A cannot see tenant B (separate DBs).
@@ -122,34 +139,35 @@ One document per model call:
 
 | Risk | Severity | Protection |
 |---|---|---|
-| Double counting on retry or re-delivered spool record | High | Deterministic `_id` + duplicate-key ignore; test by replaying events. |
+| Double counting on retry or re-delivered spool record | High | Trace upsert is idempotent; the session `$inc` is guarded by `usage.turnIds`. Tested by replaying events, including concurrently. |
 | Silent zero cost for an unpriced or mistyped model, so spend looks lower than reality | High | `unpriced` status, never 0; count surfaced in API and UI; log warning per unpriced model. |
 | Wrong formula (cached counted twice, reasoning double-billed) | High | Verify against each provider's usage semantics and compare with a real provider bill before trusting; unit-test the formula per provider. |
 | Float drift in totals | Medium | String/Decimal128 rates, integer micro-USD costs. |
 | Price edited after the fact rewrites history | Medium | Rates snapshotted on each request; price periods immutable (append new period). |
 | Turn crashes or is interrupted mid-way, so its calls are never reported | Medium | Confirm a trace is emitted for failed/interrupted turns (step 0); otherwise cost under-reports. State this as a known limit. |
 | `calls[]` grows unbounded on a long tool loop | Medium | Cap per turn with a truncated flag. |
-| Cost write slows or blocks the event handler | Medium | Single `insertMany` with `ordered: false`; errors logged, never thrown into the turn path. |
+| Cost stamping slows or blocks the event handler | Medium | Prices come from one small per-model query; a database error leaves the record unacknowledged so it is redelivered. The live relay never waits on the database. |
+| Trace and session totals disagree after a partial failure | Medium | Both writes repeat safely; `npm run rebuild:usage` recomputes the session from its traces. |
 | Cross-tenant or cross-user leakage | High | Reuse existing owner/tenant guards; tests for both. |
 | `userId` missing on old sessions | Low | Such rows are attributed to the session only; the user view skips them and reports a count. |
 | Users read "cost" as an invoice | Low | Label "estimated"; provider bill is authoritative. |
 
 ## Rollout and compatibility
 
-- All changes are **additive** (optional contract fields, new collections). Old and new platform/agent-core versions can run together: old agent-core sends no `calls`, so nothing is recorded for those turns.
-- Order: add pricing docs in Mongo, deploy platform (ignores missing `calls`), then deploy agent-core. Rollback = redeploy previous versions; the new collections are inert.
-- Historical turns: optional one-off backfill from `traces.usage` as **turn-level** rows (marked `source: "backfill"`, calls unknown). Skip unless needed for history.
+- All changes are **additive** (optional contract fields and new indexes). Old and new platform/agent-core versions can run together: an old agent-core sends no `calls`, so its turns are priced from the turn sums.
+- Order: add pricing docs in Mongo, deploy platform (ignores missing `calls`), then deploy agent-core. Rollback = redeploy previous versions; the extra fields on traces and sessions are ignored.
+- Historical turns: `npm run rebuild:usage` prices them from `traces.usage` as turn-level requests (no cache-write split).
 
 ## Test plan
 
 - Unit: `costMicros` (cached split, zero, huge counts, rounding, missing fields); price-period lookup boundaries (`effectiveFrom` inclusive, `effectiveTo` exclusive).
-- Integration (Mongo): replay idempotency; unpriced path; owner and tenant isolation; aggregation totals; index use.
+- Integration (Mongo): replay idempotency (concurrent too); unpriced path; owner isolation; session, user and admin totals; index use; the rebuild script (dry run, apply, repeat).
 - Agent-core: `onUsage` produces `calls[]` and still the same summed `usage`; cap behavior.
 - End to end: one real turn on a priced model, compare tokens and cost with the provider's usage page.
 
 ## Observability
 
-Structured log per turn: `{ sessionId, turnId, calls, pricedCalls, unpricedCalls, costMicros }`. Warn when `unpriced > 0` with the model id. Metric: unpriced request rate, and cost-write failure rate.
+Structured log per turn: `{ sessionId, turnId, calls, unpricedCalls, truncated }`. Warn when `unpriced > 0` with the model id. Metric: unpriced request rate, and cost-write failure rate.
 
 ## Decisions (confirmed)
 

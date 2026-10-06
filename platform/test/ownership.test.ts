@@ -117,6 +117,7 @@ test("route coverage: every /api/sessions/:id route goes through sessionFor", ()
     "GET /api/sessions/:id": "read",
     "GET /api/sessions/:id/events": "read",
     "GET /api/sessions/:id/traces": "read",
+    "GET /api/sessions/:id/cost": "read",
     "GET /api/sessions/:id/timings": "read",
     "GET /api/sessions/:id/turns/:turnId/context": "read",
     "GET /api/sessions/:id/goal/history": "read",

@@ -8,7 +8,7 @@ import type {
   StepSpan,
   TokenCounts,
   TraceSummary,
-  TurnCost,
+  CostTotals,
   TurnTrace,
   TurnUsage,
 } from "../../shared/contracts";
@@ -148,7 +148,12 @@ export function formatCost(micros: number) {
 
 // What to say about a turn's cost. Null when no cost was recorded for it.
 // Unpriced requests are unknown, never counted as free.
-export function costText(cost: TurnCost | null | undefined) {
+export function costText(
+  cost:
+    | Pick<CostTotals, "costMicros" | "requests" | "unpricedRequests">
+    | null
+    | undefined,
+) {
   if (!cost || !cost.requests) return null;
   if (cost.unpricedRequests >= cost.requests) return "no price set";
   const amount = `≈ ${formatCost(cost.costMicros)}`;
@@ -407,12 +412,17 @@ export const emptyObservability: ObservabilityState = {
 const valid = (t: unknown): t is TurnTrace =>
   !!t && typeof (t as TurnTrace).turnId === "string";
 
-// Merge by turnId; incoming wins. Order by start time.
+// Merge by turnId; incoming wins, except that a trace without a cost never
+// replaces one that has it (a snapshot the platform could not price must not
+// make a reload lose what the page already knows). Order by start time.
 export function mergeTraces(old: TurnTrace[], incoming: unknown): TurnTrace[] {
   const list = Array.isArray(incoming) ? incoming.filter(valid) : [];
   if (!list.length) return old;
   const byId = new Map(old.map((t) => [t.turnId, t]));
-  for (const t of list) byId.set(t.turnId, t);
+  for (const t of list) {
+    const known = byId.get(t.turnId)?.cost;
+    byId.set(t.turnId, t.cost || !known ? t : { ...t, cost: known });
+  }
   return [...byId.values()].sort(
     (a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt) || 0,
   );

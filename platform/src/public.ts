@@ -5,6 +5,7 @@ import { ALLOW_FOR_CHAT, AUTO_MODE_REASON } from "../../shared/contracts";
 import { effectiveMode } from "./features";
 import type {
   ApprovalModesConfig,
+  CostTotals,
   Goal,
   Session,
   SubAgent,
@@ -503,6 +504,20 @@ function publicFinding(f: any): PrivacyFinding | null {
     sample: text(f.sample, 24) ?? "",
   };
 }
+// Cost totals only: no model name, price or rate leaves the platform.
+export function publicCost(c: any): CostTotals | null {
+  if (!c || typeof c !== "object") return null;
+  return {
+    costMicros: count(c.costMicros),
+    requests: count(c.requests),
+    unpricedRequests: count(c.unpricedRequests),
+    inputTokens: count(c.inputTokens),
+    cachedInputTokens: count(c.cachedInputTokens),
+    cacheWriteInputTokens: count(c.cacheWriteInputTokens),
+    outputTokens: count(c.outputTokens),
+    reasoningOutputTokens: count(c.reasoningOutputTokens),
+  };
+}
 // Allowlist projection of an observability trace: no thread ids or raw text.
 export function publicTrace(t: any): TurnTrace | null {
   if (!t || typeof t.turnId !== "string") return null;
@@ -522,6 +537,7 @@ export function publicTrace(t: any): TurnTrace | null {
       .filter((s: StepSpan | null): s is StepSpan => s !== null),
     usage: publicUsage(t.usage),
     helperUsage: publicCounts(t.helperUsage),
+    ...(publicCost(t.cost) ? { cost: publicCost(t.cost)! } : {}),
     rateLimits: publicRateLimits(t.rateLimits),
     privacy: {
       scannedChars: count(t.privacy?.scannedChars),
@@ -754,8 +770,13 @@ export class PublicEventStream {
   private decoder = new TextDecoder();
   // Observes each public event, for example to persist goal summaries. An
   // observer may return a replacement event (for example a snapshot with the
-  // saved plan filled in).
-  constructor(private readonly onEvent?: (event: any) => any) {}
+  // saved plan filled in). `prepare` sees each raw runtime event before it is
+  // made public, for example to price a finished turn from its per-request
+  // usage, which the public event no longer carries.
+  constructor(
+    private readonly onEvent?: (event: any) => any,
+    private readonly prepare?: (raw: any) => any,
+  ) {}
   push(chunk: Uint8Array): string {
     this.buffer += this.decoder.decode(chunk, { stream: true });
     if (this.buffer.length > 4 * 1024 * 1024)
@@ -777,7 +798,15 @@ export class PublicEventStream {
       if (!data) continue;
       let event;
       try {
-        event = publicEvent(JSON.parse(data));
+        const raw = JSON.parse(data);
+        let prepared = raw;
+        if (this.prepare)
+          try {
+            prepared = this.prepare(raw) ?? raw;
+          } catch {
+            // A failed preparation sends the event as it came.
+          }
+        event = publicEvent(prepared);
       } catch (error) {
         // One bad frame is dropped; the rest of the stream stays usable.
         log("warn", "skipped malformed live update", {
