@@ -1,4 +1,5 @@
 import Ajv, { type ValidateFunction } from "ajv";
+import Ajv2020 from "ajv/dist/2020";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
@@ -144,7 +145,7 @@ function frozen<T>(value: T): T {
   return value;
 }
 
-/** New opt-in experiment. No existing runtime, gateway or Codex code is modified. */
+/** Opt-in adaptive gateway; native tool dispatch remains with BusinessRuntime. */
 export class AdaptiveMcpGatewayV2 {
   readonly scope: Readonly<AdaptiveGatewayScope>;
   private configs: Record<string, ConnectorConfig>;
@@ -163,6 +164,22 @@ export class AdaptiveMcpGatewayV2 {
     validateFormats: false,
     allErrors: true,
   });
+  private readonly ajv2020 = new Ajv2020({
+    strict: false,
+    validateFormats: false,
+    allErrors: true,
+  });
+
+  /** Honor the upstream dialect while retaining draft-07 for existing tools. */
+  private compileToolSchema(schema: Record<string, any>): ValidateFunction {
+    const validator =
+      /^https:\/\/json-schema\.org\/draft\/2020-12\/schema#?$/.test(
+        schema.$schema || "",
+      )
+        ? this.ajv2020
+        : this.ajv;
+    return validator.compile(schema);
+  }
   private readonly fallbackDefinitions: TransportToolV2[];
   private readonly fallbackChecks = new Map<string, ValidateFunction>();
   private hydration?: Promise<RegisteredTool[]>;
@@ -649,8 +666,8 @@ export class AdaptiveMcpGatewayV2 {
           registered: frozen(descriptor),
           upstream: frozen(copy(tool)),
           projectionProperty,
-          validate: this.ajv.compile(inputSchema),
-          validateUpstream: this.ajv.compile(tool.inputSchema),
+          validate: this.compileToolSchema(inputSchema),
+          validateUpstream: this.compileToolSchema(tool.inputSchema),
         });
       }
       if (version !== this.registryVersion || this.stopped.signal.aborted)
@@ -1396,12 +1413,19 @@ export class AdaptiveMcpGatewayV2 {
       url: this.endpoint!,
       http_headers: { Authorization: `Bearer ${this.authToken}` },
       default_tools_approval_mode: "prompt",
-      tools: Object.fromEntries(
-        [
-          ...this.bindings.keys(),
-          ...this.fallbackDefinitions.map((tool) => tool.name),
-        ].map((name) => [name, { approval_mode: "prompt" }]),
-      ),
+      // Like Omni, metadata-only discovery needs no consent; invocations still prompt.
+      tools: Object.fromEntries([
+        ...[...this.bindings.keys()].map((name) => [
+          name,
+          { approval_mode: "prompt" },
+        ]),
+        ...this.fallbackDefinitions.map((tool) => [
+          tool.name,
+          {
+            approval_mode: tool.name === "invoke_tool" ? "prompt" : "approve",
+          },
+        ]),
+      ]),
     };
   }
   close() {

@@ -1204,6 +1204,13 @@ export class ThreadManager {
     status: string | undefined,
     at: number,
   ): TurnEnd {
+    if (
+      this.runtime instanceof BusinessRuntime &&
+      (t.clock?.turnId === turnId ||
+        ((t.state.kind === "running" || t.state.kind === "interrupting") &&
+          t.state.turnId === turnId))
+    )
+      this.runtime.finishMcpTurn(t.id);
     const end: TurnEnd = {};
     if (t.clock && t.clock.turnId === turnId) {
       const c = t.clock,
@@ -1935,8 +1942,27 @@ export class ThreadManager {
   ) {
     if (!t.pending.has(p.requestId)) return;
     if (reply) {
+      let response = wire === undefined ? result : wire;
+      if (
+        this.runtime instanceof BusinessRuntime &&
+        p.method === "item/tool/requestUserInput"
+      ) {
+        try {
+          this.runtime.approveMcpInvocation(t.id, p.detail, response);
+        } catch {
+          reason = "approval-invalid";
+          response = {
+            answers: Object.fromEntries(
+              (Array.isArray(p.detail?.questions)
+                ? p.detail.questions
+                : []
+              ).map((q: any) => [q.id, { answers: ["Cancel"] }]),
+            ),
+          };
+        }
+      }
       try {
-        this.runtime.respond(p.rawId, wire === undefined ? result : wire);
+        this.runtime.respond(p.rawId, response);
       } catch {
         reason = "runtime-unavailable";
       }

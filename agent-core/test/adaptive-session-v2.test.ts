@@ -192,6 +192,10 @@ test("external session routes before provider request, filters native tools and 
   try {
     const config = await session.start();
     assert.equal(config.default_tools_approval_mode, "prompt");
+    // Omni parity: metadata-only discovery is not prompted; invocation still is.
+    for (const name of ["discover_server", "discover_tools", "get_tool_schema"])
+      assert.equal(config.tools[name].approval_mode, "approve");
+    assert.equal(config.tools.invoke_tool.approval_mode, "prompt");
     await assert.rejects(session.filterModelRequest(body), /Route a user turn/);
     const plan = await session.beforeTurn("Hi bro?");
     assert.equal(plan.mode, "no_tools");

@@ -21,6 +21,11 @@ export interface PreparedMcpRoutingV2 {
   close(): void;
 }
 
+// Routing may select no tools and fall back to discovery; the model must not
+// read an empty direct selection as a missing connector.
+export const adaptiveInstructions =
+  "\nAttached business connectors are accessed through the adaptive MCP server. Logical connector names remain unchanged. Call business tools exposed directly for this turn. When none is exposed or none fits, use discover_server, discover_tools and get_tool_schema, then invoke_tool. A configured connector without directly exposed tools is still reachable through discovery. Greetings and general knowledge need no business connector calls. Projection never authorizes a business operation.";
+
 /** New operator entry point; importing this module never changes production configuration. */
 export async function prepareMcpRoutingV2(
   configs: Record<string, ConnectorConfig>,
@@ -38,7 +43,10 @@ export async function prepareMcpRoutingV2(
       close() {},
     };
   // Avoid wrapping a prepared gateway again through the legacy environment switch.
-  if (process.env.TRUEX_MCP_GATEWAY_MODE === "omni")
+  if (
+    process.env.MCP_METHOD === undefined &&
+    process.env.TRUEX_MCP_GATEWAY_MODE === "omni"
+  )
     throw new Error(
       "V2 prepared profiles require TRUEX_MCP_GATEWAY_MODE=direct; the V2 entry point owns the selected routing mode",
     );
@@ -70,8 +78,7 @@ export async function prepareMcpRoutingV2(
       mode,
       mcpServers: { adaptive: await session.start() },
       session,
-      instructions:
-        "\nUse the business tools exposed for this turn. The platform has already selected applicable tools. When discovery tools are exposed, use them to resolve the ambiguous request. Greetings and general knowledge need no business connector calls. Projection never authorizes a business operation.",
+      instructions: adaptiveInstructions,
       close() {
         session.close();
       },
