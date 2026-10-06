@@ -60,4 +60,6 @@ export interface ConversationFile {
   title?: string;
   description?: string;
   mode?: "inline" | "wide";
+  heights?: Array<[number, number]>;
+  height?: number;
 }

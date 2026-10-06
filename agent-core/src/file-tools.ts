@@ -19,6 +19,8 @@ import type { ConversationFile } from "../../shared/assistant-capabilities";
 import { HttpError } from "./errors";
 import type { Visualization } from "../../shared/visualizations";
 import type { PageRenderer } from "./page-renderer";
+import { MEASURE_WIDTHS } from "./page-renderer";
+import { log } from "../../shared/logging";
 
 const MAX_FILE = 1_048_576;
 const MAX_TEXT = 100_000;
@@ -72,6 +74,7 @@ export const fileTools: DynamicToolSpec[] = [
       description: { type: "string", minLength: 1, maxLength: 1000 },
       html: { type: "string", minLength: 1, maxLength: 180000 },
       mode: { type: "string", enum: ["inline", "wide"] },
+      height: { type: "integer", minimum: 80, maximum: 2000 },
       sourceId: string,
     },
     ["title", "description", "html"],
@@ -272,6 +275,7 @@ export class ConversationFiles {
     visualization?: Pick<
       ConversationFile,
       "kind" | "title" | "description" | "mode"
+      | "height"
     >,
   ): Promise<ConversationFile> {
     filename(name);
@@ -408,6 +412,8 @@ export class ConversationFiles {
       description: file.description!,
       mode: file.mode || "inline",
       html: file.data.toString("utf8"),
+      ...(file.heights ? { heights: file.heights } : {}),
+      ...(file.height ? { height: file.height } : {}),
     };
   }
   async execute(threadId: string, name: string, args: any) {
@@ -441,12 +447,32 @@ export class ConversationFiles {
           title: args.title.trim(),
           description: args.description.trim(),
           mode: args.mode || "inline",
+          ...(args.height ? { height: args.height } : {}),
         },
       );
+      let warnings: string[] = [];
+      if (this.renderer?.available()) {
+        try {
+          const measured = await this.renderer.measure(args.html, MEASURE_WIDTHS);
+          warnings = measured.warnings || [];
+          const heights = measured
+            .filter(([width, height]) => Number.isInteger(width) && Number.isInteger(height) && width >= 240 && width <= 1600 && height >= 1 && height <= 100000)
+            .slice(0, MEASURE_WIDTHS.length)
+            .sort((a, b) => a[0] - b[0]);
+          if (heights.length) {
+            const dir = this.directory(threadId);
+            await writeFile(join(dir, file.id + ".measure"), JSON.stringify({ ...file, heights }), { mode: 0o600 });
+            await rename(join(dir, file.id + ".measure"), join(dir, file.id + ".json"));
+          }
+        } catch {
+          log("warn", "visualization measurement failed", { op: "visual_render", kind: "measure", browserAvailable: this.renderer.available() });
+        }
+      }
       return {
         id: file.id,
         title: file.title,
         reference: `[truex-visualization:${file.id}]`,
+        ...(warnings.length ? { warnings } : {}),
       };
     }
     if (name !== "create_document")

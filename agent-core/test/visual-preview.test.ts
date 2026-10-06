@@ -64,3 +64,43 @@ test("preview marker gates old conversations and keeps actionable failure", asyn
   assert.equal(result.success, false);
   assert.match(result.contentItems[0].text, /Start a new conversation/);
 });
+
+test("publish stores bounded heights and warnings while revisions preserve old visuals", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "truex-preview-heights-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const files = new ConversationFiles((id) => join(root, id), {
+    available: () => true,
+    preview: async () => { throw new Error("not called"); },
+    measure: async (_html, widths) => Object.assign(widths.map((width) => [width, width + 10] as [number, number]).reverse(), { warnings: ["console error"] }),
+  });
+  const args = { title: "Chart", description: "A chart", html: "<p>Chart</p>", height: 800 };
+  const first = await files.execute("a", "create_visualization", args) as any;
+  assert.deepEqual(first.warnings, ["console error"]);
+  const visual = await files.visualization("a", first.id);
+  assert.equal(visual.height, 800);
+  assert.equal(visual.heights?.length, 9);
+  assert.deepEqual(visual.heights?.[0], [320, 330]);
+  const revised = await files.execute("a", "create_visualization", { ...args, sourceId: first.id, html: "<p>Revised</p>" }) as any;
+  assert.equal((await files.get("a", revised.id)).sourceId, first.id);
+  assert.equal((await files.visualization("a", first.id)).html, args.html);
+  await assert.rejects(files.execute("a", "create_visualization", { ...args, height: 79 }), /Invalid/);
+  await assert.rejects(files.execute("a", "create_visualization", { ...args, height: 2001 }), /Invalid/);
+});
+
+test("publish succeeds without heights when rendering is missing or times out", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "truex-preview-fallback-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const args = { title: "Chart", description: "A chart", html: "<p>Chart</p>" };
+  const missing = new ConversationFiles((id) => join(root, "missing", id));
+  const off = await missing.execute("a", "create_visualization", args) as any;
+  assert.deepEqual(Object.keys(off).sort(), ["id", "reference", "title"]);
+  assert.equal((await missing.visualization("a", off.id)).heights, undefined);
+  const failing = new ConversationFiles((id) => join(root, "failing", id), {
+    available: () => true,
+    preview: async () => { throw new Error("not called"); },
+    measure: async () => { throw new Error("timeout"); },
+  });
+  const result = await failing.execute("a", "create_visualization", args) as any;
+  assert.deepEqual(Object.keys(result).sort(), ["id", "reference", "title"]);
+  assert.equal((await failing.visualization("a", result.id)).heights, undefined);
+});

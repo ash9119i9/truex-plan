@@ -56,3 +56,18 @@ export function validWidgetState(value: unknown): value is VisualizationState {
   }
 }
 export { visualizationDocument, visualizationExport, visualizationCsp } from "../../shared/visualization-document.ts";
+
+export function visualizationFrameHeight(
+  visual: Visualization,
+  width: number,
+  reportedHeight?: number,
+): number {
+  const measured = visual.heights
+    ?.filter(([w, h]) => Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0)
+    .reduce<[number, number] | undefined>((best, pair) =>
+      !best || Math.abs(pair[0] - width) < Math.abs(best[0] - width) ? pair : best,
+    undefined);
+  const initial = measured ? Math.min(measured[1], visual.height ?? Infinity) : 360;
+  const candidate = Number.isFinite(reportedHeight) ? reportedHeight! + 4 : initial;
+  return Math.min(900, Math.max(160, Math.ceil(candidate)));
+}

@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, userMessage } from "@/lib/api";
 import {
   validWidgetState,
   visualizationDocument,
   visualizationExport,
+  visualizationFrameHeight,
 } from "@/lib/visualization";
 import type {
   Visualization as Visual,
@@ -23,7 +24,8 @@ export function Visualization({
   const [visual, setVisual] = useState<Visual | null>(null);
   const [error, setError] = useState("");
   const [runtimeError, setRuntimeError] = useState(false);
-  const [height, setHeight] = useState(360);
+  const [width, setWidth] = useState(728);
+  const [reportedHeight, setReportedHeight] = useState<number>();
   const [expanded, setExpanded] = useState(false);
   const [reload, setReload] = useState(0);
   const [question, setQuestion] = useState<{
@@ -32,12 +34,14 @@ export function Visualization({
   } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const iframe = useRef<HTMLIFrameElement>(null),
-    dialog = useRef<HTMLDialogElement>(null);
+    dialog = useRef<HTMLDialogElement>(null),
+    figure = useRef<HTMLElement>(null);
   const state = useRef<VisualizationState | null>(null);
   const stateKey = `truex-visualization:${sessionId}:${id}`;
   useEffect(() => {
     let cancelled = false;
     setVisual(null);
+    setReportedHeight(undefined);
     setError("");
     state.current = null;
     try {
@@ -61,9 +65,19 @@ export function Visualization({
     () => (visual ? visualizationDocument(visual, state.current) : ""),
     [visual, expanded, reload],
   );
+  useLayoutEffect(() => {
+    const element = expanded ? dialog.current : figure.current;
+    if (!element || !visual) return;
+    const update = () => setWidth(element.getBoundingClientRect().width || 728);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [visual, expanded]);
   useEffect(() => {
     setLoaded(false);
     setRuntimeError(false);
+    setReportedHeight(undefined);
     const timer = setTimeout(() => setRuntimeError(true), 12000);
     function receive(event: MessageEvent) {
       if (
@@ -85,7 +99,7 @@ export function Visualization({
       }
       if (data.type === "error") setRuntimeError(true);
       if (data.type === "resize" && Number.isFinite(data.height))
-        setHeight(Math.min(900, Math.max(160, data.height + 4)));
+        setReportedHeight(data.height);
       if (data.type === "state" && validWidgetState(data.state)) {
         state.current = data.state;
         try {
@@ -142,6 +156,7 @@ export function Visualization({
       </div>
     );
   if (!visual) return <p role="status">Loading visual…</p>;
+  const height = visualizationFrameHeight(visual, width, reportedHeight);
   const frame = (
     <iframe
       ref={iframe}
@@ -223,7 +238,7 @@ export function Visualization({
     </>
   );
   return (
-    <figure className={`visualization visualization-${visual.mode}`}>
+    <figure ref={figure} className={`visualization visualization-${visual.mode}`}>
       <figcaption>
         <strong>{visual.title}</strong>
         <p>{visual.description}</p>

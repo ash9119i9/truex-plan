@@ -6,6 +6,8 @@ export interface Visualization {
   description: string;
   html: string;
   mode: "inline" | "wide";
+  heights?: Array<[number, number]>;
+  height?: number;
 }
 export interface VisualizationState {
   modelContent: unknown;
