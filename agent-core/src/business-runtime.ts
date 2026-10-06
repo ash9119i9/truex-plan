@@ -9,7 +9,11 @@ import { CodexClient } from "./client";
 import { HttpError } from "./errors";
 import { errorFields, log } from "../../shared/logging";
 import { ConversationFiles, fileTools } from "./file-tools";
-import { ChromiumPageRenderer, RenderError, type PageRenderer } from "./page-renderer";
+import {
+  ChromiumPageRenderer,
+  RenderError,
+  type PageRenderer,
+} from "./page-renderer";
 import { WorkspaceFiles, workspaceTools } from "./workspace-tools";
 import {
   DisabledScriptRunner,
@@ -110,7 +114,10 @@ export class BusinessRuntime extends CodexClient {
   ) {
     super(binary, home, timeoutMs);
     this.renderer = renderer ?? new ChromiumPageRenderer();
-    this.files = new ConversationFiles((id) => this.workspace(id), this.renderer);
+    this.files = new ConversationFiles(
+      (id) => this.workspace(id),
+      this.renderer,
+    );
     this.scripts = new ScriptTools(
       (id) => join(this.workspace(id), "work"),
       scriptRunner,
@@ -129,7 +136,11 @@ export class BusinessRuntime extends CodexClient {
   }
   private dynamicTools() {
     return [
-      ...fileTools.filter((item) => (item as { name?: string }).name !== "preview_visualization" || this.renderer.available()),
+      ...fileTools.filter(
+        (item) =>
+          (item as { name?: string }).name !== "preview_visualization" ||
+          this.renderer.available(),
+      ),
       ...workspaceTools,
       ...(this.scriptsEnabled ? scriptTools : []),
     ];
@@ -146,7 +157,10 @@ export class BusinessRuntime extends CodexClient {
   }
   visualPreviewToolsAvailable(id: string) {
     try {
-      return JSON.parse(readFileSync(this.marker(id), "utf8")).visualPreviewTools === 1;
+      return (
+        JSON.parse(readFileSync(this.marker(id), "utf8")).visualPreviewTools ===
+        1
+      );
     } catch {
       return false;
     }
@@ -168,8 +182,14 @@ export class BusinessRuntime extends CodexClient {
         !this.visualizationToolsAvailable(params.threadId)
       )
         throw new HttpError(409, "Start a new conversation to use Visualize");
-      if (params.tool === "preview_visualization" && !this.visualPreviewToolsAvailable(params.threadId))
-        throw new HttpError(409, "Start a new conversation to use Visual preview");
+      if (
+        params.tool === "preview_visualization" &&
+        !this.visualPreviewToolsAvailable(params.threadId)
+      )
+        throw new HttpError(
+          409,
+          "Start a new conversation to use Visual preview",
+        );
       if (!this.documentToolsAvailable(params.threadId))
         throw new HttpError(
           409,
@@ -193,7 +213,9 @@ export class BusinessRuntime extends CodexClient {
               params.arguments,
             );
       if (params.tool === "preview_visualization") {
-        const { imageUrl, ...diagnostics } = result as Awaited<ReturnType<PageRenderer["preview"]>>;
+        const { imageUrl, ...diagnostics } = result as Awaited<
+          ReturnType<PageRenderer["preview"]>
+        >;
         return {
           success: true,
           contentItems: [
@@ -354,7 +376,12 @@ export class BusinessRuntime extends CodexClient {
       approvalPolicy: "on-request",
       baseInstructions:
         instructions +
-        visualizationInstructions +
+        visualizationInstructions(
+          params.threadId
+            ? this.visualPreviewToolsAvailable(params.threadId) &&
+                this.renderer.available()
+            : this.renderer.available(),
+        ) +
         suggestionInstructions +
         "\n\nAgent role:\n" +
         (params.baseInstructions || defaultRoles[scope]) +
@@ -486,7 +513,11 @@ export class BusinessRuntime extends CodexClient {
             )
               ? 1
               : 0,
-            visualPreviewTools: this.visualPreviewToolsAvailable(params.threadId) ? 1 : 0,
+            visualPreviewTools: this.visualPreviewToolsAvailable(
+              params.threadId,
+            )
+              ? 1
+              : 0,
             subAgents: this.helperSettings(params.threadId),
             skills: this.skills(params.threadId),
           }),

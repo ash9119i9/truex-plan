@@ -238,7 +238,10 @@ export function Visualization({
     </>
   );
   return (
-    <figure ref={figure} className={`visualization visualization-${visual.mode}`}>
+    <figure
+      ref={figure}
+      className={`visualization visualization-${visual.mode}`}
+    >
       <figcaption>
         <strong>{visual.title}</strong>
         <p>{visual.description}</p>

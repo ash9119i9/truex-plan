@@ -1,13 +1,15 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, realpathSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { once } from "node:events";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { log } from "../../shared/logging";
 import { visualizationDocument } from "../../shared/visualization-document";
 
-export const MEASURE_WIDTHS = [320, 375, 430, 520, 640, 728, 860, 1000, 1144] as const;
+export const MEASURE_WIDTHS = [
+  320, 375, 430, 520, 640, 728, 860, 1000, 1144,
+] as const;
 const PAGE_URL = "http://truex-visual-preview.invalid/page.html";
 const MAX_MESSAGES = 20;
 const MAX_TEXT = 500;
@@ -38,7 +40,10 @@ export interface PageRenderer {
 }
 
 export class RenderError extends Error {
-  constructor(message: string, readonly retryable: boolean) {
+  constructor(
+    message: string,
+    readonly retryable: boolean,
+  ) {
     super(message);
   }
 }
@@ -57,7 +62,10 @@ class RenderSemaphore {
       return () => this.release();
     }
     if (this.waiting.length >= this.limit)
-      throw new RenderError("Visual rendering is busy. Try again shortly.", true);
+      throw new RenderError(
+        "Visual rendering is busy. Try again shortly.",
+        true,
+      );
     const remaining = deadline - Date.now();
     if (remaining <= 0)
       throw new RenderError("Visual rendering timed out. Try again.", true);
@@ -67,7 +75,12 @@ class RenderSemaphore {
         reject,
         timer: setTimeout(() => {
           this.waiting = this.waiting.filter((item) => item !== waiter);
-          reject(new RenderError("Visual rendering timed out while waiting. Try again.", true));
+          reject(
+            new RenderError(
+              "Visual rendering timed out while waiting. Try again.",
+              true,
+            ),
+          );
         }, remaining),
       };
       this.waiting.push(waiter);
@@ -92,11 +105,39 @@ export function scrubbedChromiumEnv(profile: string): Record<string, string> {
     XDG_CONFIG_HOME: profile,
     XDG_CACHE_HOME: profile,
     XDG_RUNTIME_DIR: join(profile, "runtime"),
-    TMPDIR: tmpdir(),
+    TMPDIR: rendererTempRoot(),
   };
 }
 
-export function truncateConsole(level: string, value: string): RenderConsoleMessage {
+export function rendererTempRoot(root = tmpdir()): string {
+  const canonical = (value: string) => {
+    try {
+      return realpathSync(value);
+    } catch {
+      return resolve(value);
+    }
+  };
+  const actual = canonical(root);
+  for (const forbidden of [
+    "/mnt/state",
+    process.env.CODEX_HOME,
+    process.env.AGENT_WORKSPACE,
+  ]) {
+    if (!forbidden) continue;
+    const path = canonical(forbidden);
+    if (actual === path || actual.startsWith(path + sep))
+      throw new RenderError(
+        "Browser temporary storage must be outside persistent state.",
+        false,
+      );
+  }
+  return actual;
+}
+
+export function truncateConsole(
+  level: string,
+  value: string,
+): RenderConsoleMessage {
   return { level: level.slice(0, 20), text: value.slice(0, MAX_TEXT) };
 }
 
@@ -106,6 +147,7 @@ function executableReason(enabled: boolean, path: string): string {
   if (!isAbsolute(path)) return "CHROMIUM_PATH must be absolute";
   try {
     accessSync(path, constants.X_OK);
+    if (!statSync(path).isFile()) return "CHROMIUM_PATH is not a file";
     return "available";
   } catch {
     return "CHROMIUM_PATH is not executable";
@@ -118,10 +160,12 @@ function remaining(deadline: number): number {
 
 function killBrowserGroup(browser: Browser | undefined) {
   const child = browser?.process();
-  if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
+  if (!child?.pid) return;
   try {
-    if (process.platform === "win32") child.kill("SIGKILL");
-    else process.kill(-child.pid, "SIGKILL");
+    if (process.platform === "win32") {
+      if (child.exitCode === null && child.signalCode === null)
+        child.kill("SIGKILL");
+    } else process.kill(-child.pid, "SIGKILL");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
   }
@@ -147,7 +191,13 @@ async function closeBrowser(browser: Browser | undefined, force: boolean) {
 
 function documentFor(html: string): string {
   return visualizationDocument(
-    { id: "preview", title: "Visual preview", description: "", mode: "inline", html },
+    {
+      id: "preview",
+      title: "Visual preview",
+      description: "",
+      mode: "inline",
+      html,
+    },
     null,
   );
 }
@@ -159,9 +209,18 @@ type PageCapture = {
   blockedRequests: string[];
 };
 
-async function openPage(browser: Browser, html: string, width: number, stats: RenderStats): Promise<PageCapture> {
+async function openPage(
+  browser: Browser,
+  html: string,
+  width: number,
+  stats: RenderStats,
+): Promise<PageCapture> {
   const page = await browser.newPage();
-  await page.setViewport({ width, height: VIEWPORT_HEIGHT, deviceScaleFactor: 1 });
+  await page.setViewport({
+    width,
+    height: VIEWPORT_HEIGHT,
+    deviceScaleFactor: 1,
+  });
   const consoleMessages: RenderConsoleMessage[] = [];
   const blockedRequests: string[] = [];
   const blocked = (url: unknown) => {
@@ -175,11 +234,28 @@ async function openPage(browser: Browser, html: string, width: number, stats: Re
     if (consoleMessages.length < MAX_MESSAGES)
       consoleMessages.push(truncateConsole(level, value));
   };
-  page.on("console", (message) => record(message.type() === "warn" ? "warning" : message.type(), message.text()));
-  page.on("pageerror", (error) => record("error", error instanceof Error ? error.stack || error.message : String(error)));
-  page.on("dialog", (dialog) => { void dialog.dismiss().catch(() => {}); });
-  page.on("popup", (popup) => { if (popup) void popup.close().catch(() => {}); });
+  page.on("console", (message) =>
+    record(
+      message.type() === "warn" ? "warning" : message.type(),
+      message.text(),
+    ),
+  );
+  page.on("pageerror", (error) =>
+    record(
+      "error",
+      error instanceof Error ? error.stack || error.message : String(error),
+    ),
+  );
+  page.on("dialog", (dialog) => {
+    void dialog.dismiss().catch(() => {});
+  });
+  page.on("popup", (popup) => {
+    if (popup) void popup.close().catch(() => {});
+  });
   await page.exposeFunction("__truexBlockedResource", blocked);
+  await page.evaluateOnNewDocument(
+    "Object.defineProperty(window, 'open', { value: () => null, writable: false, configurable: false });",
+  );
   await page.evaluateOnNewDocument(() => {
     addEventListener("securitypolicyviolation", (event) => {
       void (window as any).__truexBlockedResource(event.blockedURI);
@@ -192,11 +268,13 @@ async function openPage(browser: Browser, html: string, width: number, stats: Re
       request.isNavigationRequest() &&
       request.frame() === page.mainFrame()
     ) {
-      void request.respond({
-        status: 200,
-        contentType: "text/html; charset=utf-8",
-        body: documentFor(html),
-      }).catch(() => {});
+      void request
+        .respond({
+          status: 200,
+          contentType: "text/html; charset=utf-8",
+          body: documentFor(html),
+        })
+        .catch(() => {});
     } else {
       blocked(request.url());
       void request.abort("blockedbyclient").catch(() => {});
@@ -231,32 +309,51 @@ export class ChromiumPageRenderer implements PageRenderer {
   private readonly enabled: boolean;
   private readonly executablePath: string;
   private readonly noSandbox: boolean;
-  constructor(options: {
-    enabled?: boolean;
-    executablePath?: string;
-    noSandbox?: boolean;
-    concurrency?: number;
-    logStartup?: boolean;
-  } = {}) {
+  private readonly availabilityReason: string;
+  constructor(
+    options: {
+      enabled?: boolean;
+      executablePath?: string;
+      noSandbox?: boolean;
+      concurrency?: number;
+      logStartup?: boolean;
+    } = {},
+  ) {
     this.enabled = options.enabled ?? process.env.VISUAL_RENDER === "1";
-    this.executablePath = options.executablePath ?? process.env.CHROMIUM_PATH ?? "";
-    this.noSandbox = options.noSandbox ?? process.env.CHROMIUM_NO_SANDBOX === "1";
-    const configured = options.concurrency ?? Number(process.env.VISUAL_RENDER_CONCURRENCY || 2);
-    const concurrency = Number.isInteger(configured) && configured >= 1 && configured <= 4 ? configured : 2;
+    this.executablePath =
+      options.executablePath ?? process.env.CHROMIUM_PATH ?? "";
+    this.noSandbox =
+      options.noSandbox ?? process.env.CHROMIUM_NO_SANDBOX === "1";
+    this.availabilityReason = executableReason(
+      this.enabled,
+      this.executablePath,
+    );
+    const configured =
+      options.concurrency ?? Number(process.env.VISUAL_RENDER_CONCURRENCY || 2);
+    const concurrency =
+      Number.isInteger(configured) && configured >= 1 && configured <= 4
+        ? configured
+        : 2;
     this.permits = new RenderSemaphore(concurrency);
     if (options.logStartup !== false) {
-      const reason = executableReason(this.enabled, this.executablePath);
-      log(this.enabled && (this.noSandbox || reason !== "available") ? "warn" : "info", "visual render startup", {
-        op: "visual_render",
-        enabled: reason === "available",
-        reason,
-        noSandbox: this.noSandbox,
-        concurrency,
-      });
+      const reason = this.availabilityReason;
+      log(
+        this.noSandbox || (this.enabled && reason !== "available")
+          ? "warn"
+          : "info",
+        "visual render startup",
+        {
+          op: "visual_render",
+          enabled: reason === "available",
+          reason,
+          noSandbox: this.noSandbox,
+          concurrency,
+        },
+      );
     }
   }
   available() {
-    return executableReason(this.enabled, this.executablePath) === "available";
+    return this.availabilityReason === "available";
   }
   private async render<T>(
     kind: "preview" | "measure",
@@ -275,9 +372,12 @@ export class ChromiumPageRenderer implements PageRenderer {
     const abort = new AbortController();
     try {
       if (!this.available())
-        throw new RenderError("Visual rendering is unavailable. Enable VISUAL_RENDER and set an executable CHROMIUM_PATH, then start a new conversation.", false);
+        throw new RenderError(
+          "Visual rendering is unavailable. Enable VISUAL_RENDER and set an executable CHROMIUM_PATH, then start a new conversation.",
+          false,
+        );
       release = await this.permits.acquire(deadline);
-      profile = await mkdtemp(join(tmpdir(), "truex-visual-render-"));
+      profile = await mkdtemp(join(rendererTempRoot(), "truex-visual-render-"));
       await mkdir(join(profile, "runtime"), { mode: 0o700 });
       const args = [
         "--disable-background-networking",
@@ -310,16 +410,23 @@ export class ChromiumPageRenderer implements PageRenderer {
         handleSIGTERM: false,
         handleSIGHUP: false,
       });
-      void launch.then((opened) => {
-        browser = opened;
-        if (expired) killBrowserGroup(opened);
-      }).catch(() => {});
+      void launch
+        .then((opened) => {
+          browser = opened;
+          if (expired) killBrowserGroup(opened);
+        })
+        .catch(() => {});
       const timeout = new Promise<never>((_resolve, reject) => {
         timer = setTimeout(() => {
           expired = true;
           abort.abort();
           killBrowserGroup(browser);
-          reject(new RenderError("Visual rendering timed out. Simplify the page and try again.", true));
+          reject(
+            new RenderError(
+              "Visual rendering timed out. Simplify the page and try again.",
+              true,
+            ),
+          );
         }, remaining(deadline));
       });
       const result = await Promise.race([
@@ -330,11 +437,15 @@ export class ChromiumPageRenderer implements PageRenderer {
       return result;
     } catch (error) {
       if (error instanceof RenderError) throw error;
-      throw new RenderError("The browser could not render this visual. Check the HTML and try again.", true);
+      throw new RenderError(
+        "The browser could not render this visual. Check the HTML and try again.",
+        true,
+      );
     } finally {
       if (timer) clearTimeout(timer);
       await closeBrowser(browser, !ok).catch(() => {});
-      if (profile) await rm(profile, { recursive: true, force: true }).catch(() => {});
+      if (profile)
+        await rm(profile, { recursive: true, force: true }).catch(() => {});
       release?.();
       log(ok ? "info" : "warn", "visual render", {
         op: "visual_render",
@@ -347,10 +458,16 @@ export class ChromiumPageRenderer implements PageRenderer {
       });
     }
   }
-  async preview(html: string, options: { width?: number } = {}): Promise<Preview> {
+  async preview(
+    html: string,
+    options: { width?: number } = {},
+  ): Promise<Preview> {
     const width = options.width ?? 728;
     if (!Number.isInteger(width) || width < 240 || width > 1600)
-      throw new RenderError("Preview width must be an integer from 240 to 1600.", false);
+      throw new RenderError(
+        "Preview width must be an integer from 240 to 1600.",
+        false,
+      );
     return this.render("preview", 20_000, async (browser, stats) => {
       const capture = await openPage(browser, html, width, stats);
       await settle(capture.page);
@@ -361,38 +478,61 @@ export class ChromiumPageRenderer implements PageRenderer {
         captureBeyondViewport: true,
         clip: { x: 0, y: 0, width, height: capturedHeight },
       });
-      const imageUrl = png.byteLength <= MAX_SCREENSHOT_BYTES
-        ? "data:image/png;base64," + Buffer.from(png).toString("base64")
-        : undefined;
+      const imageUrl =
+        png.byteLength <= MAX_SCREENSHOT_BYTES
+          ? "data:image/png;base64," + Buffer.from(png).toString("base64")
+          : undefined;
       return {
         width,
         contentHeight: height,
         capturedHeight,
         consoleMessages: capture.consoleMessages,
         blockedRequests: capture.blockedRequests,
-        ...(imageUrl ? { imageUrl } : { hint: "Screenshot omitted because it exceeded 10 MiB." }),
+        ...(imageUrl
+          ? { imageUrl }
+          : { hint: "Screenshot omitted because it exceeded 10 MiB." }),
       };
     });
   }
-  async measure(html: string, widths: readonly number[]): Promise<MeasuredHeights> {
+  async measure(
+    html: string,
+    widths: readonly number[],
+  ): Promise<MeasuredHeights> {
     if (
-      !widths.length || widths.length > 16 ||
-      widths.some((width) => !Number.isInteger(width) || width < 240 || width > 1600)
+      !widths.length ||
+      widths.length > 16 ||
+      widths.some(
+        (width) => !Number.isInteger(width) || width < 240 || width > 1600,
+      )
     )
-      throw new RenderError("Measurement widths must be integers from 240 to 1600.", false);
+      throw new RenderError(
+        "Measurement widths must be integers from 240 to 1600.",
+        false,
+      );
     return this.render("measure", 6_000, async (browser, stats) => {
       const capture = await openPage(browser, html, 728, stats);
       await settle(capture.page);
-      const initialErrors = capture.consoleMessages.filter((item) => item.level === "error").map((item) => item.text);
+      const initialErrors = capture.consoleMessages
+        .filter((item) => item.level === "error")
+        .map((item) => item.text);
       const pairs = [] as MeasuredHeights;
       let warnings = initialErrors;
       for (const width of [...new Set(widths)].sort((a, b) => a - b)) {
         capture.consoleMessages.length = 0;
-        await capture.page.setViewport({ width, height: VIEWPORT_HEIGHT, deviceScaleFactor: 1 });
+        await capture.page.setViewport({
+          width,
+          height: VIEWPORT_HEIGHT,
+          deviceScaleFactor: 1,
+        });
         await settle(capture.page);
         pairs.push([width, await contentHeight(capture.page)]);
         if (width === 728)
-          warnings = [...initialErrors, ...capture.consoleMessages.filter((item) => item.level === "error").map((item) => item.text)].slice(0, MAX_MESSAGES);
+          warnings = [
+            ...initialErrors,
+            ...capture.consoleMessages
+              .filter((item) => item.level === "error")
+              .map((item) => item.text),
+          ].slice(0, MAX_MESSAGES);
       }
       pairs.warnings = warnings;
       return pairs;

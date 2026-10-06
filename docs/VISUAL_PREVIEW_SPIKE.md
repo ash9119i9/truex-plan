@@ -1,5 +1,7 @@
 # Visual preview Phase 0 findings
 
+The Phase 0 no-go below records the original decision. The revised POC decision at the end supersedes it under explicit deployment conditions.
+
 Date: 2026-10-06. Branch: `feat/visual-preview`, created from `main`.
 
 **Decision: no-go for running Chromium inside the AgentCore process.** Phase 1–3 were not started. Use a separately isolated renderer service (option B) unless the runtime owner can provide and verify a stronger per-browser OS sandbox.
@@ -38,3 +40,11 @@ Select `puppeteer-core` if the renderer moves forward. It drives an explicit sys
 ## Gate
 
 (b) is not a go: the tested container cannot retain Chromium's OS sandbox, and no per-process isolation inside AgentCore was demonstrated. The proposed browser-level network controls do not close that process/filesystem boundary. A renderer service with its own restricted identity/container, no AgentCore files or credentials, OS-level network denial, resource caps, and verified browser sandbox is the appropriate next experiment. ARM64 launch/sandbox behavior and the deployed AgentCore runtime's exact isolation remain unverified.
+
+## Revised POC decision (2026-10-07)
+
+Proceed with an off-by-default renderer inside AgentCore for a limited POC. [AWS session documentation](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-sessions.html) states that each runtime session has a dedicated microVM with isolated compute, memory and filesystem, terminated and sanitized at session end. Truex maps one conversation to one `runtimeSessionId`. This limits a compromised browser to that conversation's microVM; it does not protect that conversation's files or credentials.
+
+[AWS security guidance](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-security-best-practices.html) states that any code in the VM can reach execution-role credentials via the metadata endpoint, and persistent filesystem permissions are stored but not enforced. A separate Chromium uid would therefore not protect `/mnt/state`. Browser request blocking and a scrubbed environment reduce ordinary page access but are not a security boundary against a browser exploit.
+
+POC acceptance depends on a least-privilege execution role, audited runtime network mode, one conversation per session, a patched system Chromium, fresh temporary profiles outside persistent state, explicit `CHROMIUM_NO_SANDBOX=1` only when required, hard timeouts, bounded concurrency and an off-by-default `VISUAL_RENDER` flag. A separate renderer service remains the stronger production design. ARM64 launch, actual AgentCore memory use, image size and real-provider screenshot delivery require the deployment checks in [VISUAL_PREVIEW_DEPLOY.md](VISUAL_PREVIEW_DEPLOY.md).

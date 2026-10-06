@@ -31,7 +31,7 @@ availability notice. Live output quality depends on the configured model.
 ## Agent contract
 
 `create_visualization` accepts `title`, `description`, `html`, optional `mode`
-(`inline` or `wide`), and optional `sourceId`. It stores a self-contained HTML
+(`inline` or `wide`), optional integer `height` hint (80–2000), and optional `sourceId`. It stores a self-contained HTML
 fragment and returns `[truex-visualization:<uuid>]`. The assistant places that
 reference on its own line. Complete references outside code fences render inline;
 other Markdown remains ordinary text. Raw HTML in an assistant message is not
@@ -44,6 +44,10 @@ there are no preloaded D3, Mermaid, Lucide or Tweak helpers. Use native SVG/HTML
 diagrams. Source is limited to 180,000 characters, with a 200,000-character bound on
 the serialized tool arguments and the existing 1 MB file limit. Documents and
 visuals share the 50-file / 25 MB conversation quota.
+
+When `VISUAL_RENDER=1` and `CHROMIUM_PATH` points to executable Chromium, new conversations also have `preview_visualization`. It accepts a self-contained HTML fragment (1–180,000 characters) and optional width (240–1600 pixels, default 728), and returns text diagnostics plus a capped PNG screenshot when possible. The preview saves nothing. The model should use it for complex, interactive or crowded visuals and revise console errors or blocked-resource reports before publishing. Simple pages can publish directly. Screenshots reach the Anthropic adapter and direct Responses providers; other gateway adapters replace images with `[image omitted]`, so diagnostics always remain in text.
+
+Publishing measures heights at nine widths from 320 to 1144 pixels when rendering is available. Measurement has a six-second total cap; failure does not stop publication. Saved heights guide the iframe's first paint, then its own resize reports take over. Older visuals without heights use the existing 360-pixel initial height. Preview has a 20-second cap, at most two concurrent renders by default, a bounded queue, a 4000-pixel screenshot height cap and capped console/request diagnostics.
 
 Supported `window.openai` bridge subset:
 
@@ -77,7 +81,9 @@ no endpoint for executing tools or sending chat messages. These controls use
 [browser iframe sandboxing](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe)
 and [CSP frame restrictions](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-src).
 They do not impose a JavaScript CPU budget; a broken or expensive generated visual
-may still affect browser responsiveness. No server executes the generated HTML.
+may still affect browser responsiveness. With server-side rendering enabled, AgentCore executes the same wrapper in a headless browser with an intercepted synthetic HTTP page, request denial, a blackhole proxy and host resolver rule. Each launch uses a scrubbed environment and a disposable profile in the system temp directory. Timeouts kill the spawned browser process group. `VISUAL_RENDER` is off by default; `CHROMIUM_NO_SANDBOX=1` is a separate, explicit operator choice when the runtime cannot support Chromium's OS sandbox.
+
+The headless browser shares its AgentCore session microVM. [AWS documents](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-security-best-practices.html) that code in that VM can obtain execution-role credentials and persistent filesystem permissions are not enforced. The browser controls are defense in depth, not isolation from the conversation's files or role. POC use requires a least-privilege role, verified runtime network mode and the checks in [VISUAL_PREVIEW_DEPLOY.md](VISUAL_PREVIEW_DEPLOY.md). A separate renderer service is the stronger production boundary.
 
 ## Verification
 

@@ -5,8 +5,15 @@ import type { Visualization } from "../../shared/visualizations.ts";
 
 const visual: Visualization = {
   id: "12345678-1234-1234-1234-123456789abc",
-  title: "Chart", description: "Chart", mode: "inline", html: "<p>Chart</p>",
-  heights: [[320, 200], [728, 500], [1000, 1200]],
+  title: "Chart",
+  description: "Chart",
+  mode: "inline",
+  html: "<p>Chart</p>",
+  heights: [
+    [320, 200],
+    [728, 500],
+    [1000, 1200],
+  ],
 };
 
 test("initial frame height picks nearest measured width and clamps", () => {
@@ -14,7 +21,10 @@ test("initial frame height picks nearest measured width and clamps", () => {
   assert.equal(visualizationFrameHeight(visual, 700), 500);
   assert.equal(visualizationFrameHeight(visual, 980), 900);
   assert.equal(visualizationFrameHeight({ ...visual, height: 300 }, 728), 300);
-  assert.equal(visualizationFrameHeight({ ...visual, heights: undefined }, 728), 360);
+  assert.equal(
+    visualizationFrameHeight({ ...visual, heights: undefined }, 728),
+    360,
+  );
   assert.equal(visualizationFrameHeight({ ...visual, heights: [] }, 728), 360);
 });
 

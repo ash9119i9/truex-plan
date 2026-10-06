@@ -6,6 +6,7 @@ import {
   readdir,
   rename,
   cp,
+  rm,
 } from "node:fs/promises";
 import Ajv from "ajv";
 import { join, extname } from "node:path";
@@ -208,7 +209,10 @@ function xmlText(xml: string): string {
 
 export class ConversationFiles {
   private queues = new Map<string, Promise<unknown>>();
-  constructor(private readonly workspace: (threadId: string) => string, private readonly renderer?: PageRenderer) {}
+  constructor(
+    private readonly workspace: (threadId: string) => string,
+    private readonly renderer?: PageRenderer,
+  ) {}
   private directory(threadId: string) {
     return join(this.workspace(threadId), "files");
   }
@@ -274,8 +278,7 @@ export class ConversationFiles {
     sourceId?: string,
     visualization?: Pick<
       ConversationFile,
-      "kind" | "title" | "description" | "mode"
-      | "height"
+      "kind" | "title" | "description" | "mode" | "height"
     >,
   ): Promise<ConversationFile> {
     filename(name);
@@ -426,7 +429,10 @@ export class ConversationFiles {
       return this.read(threadId, args.id, args.offset);
     if (name === "preview_visualization") {
       if (!this.renderer?.available())
-        throw new HttpError(503, "Visual preview is unavailable. Enable VISUAL_RENDER with an executable CHROMIUM_PATH, then start a new conversation.");
+        throw new HttpError(
+          503,
+          "Visual preview is unavailable. Enable VISUAL_RENDER with an executable CHROMIUM_PATH, then start a new conversation.",
+        );
       return this.renderer.preview(args.html, { width: args.width });
     }
     if (name === "create_visualization") {
@@ -453,19 +459,43 @@ export class ConversationFiles {
       let warnings: string[] = [];
       if (this.renderer?.available()) {
         try {
-          const measured = await this.renderer.measure(args.html, MEASURE_WIDTHS);
+          const measured = await this.renderer.measure(
+            args.html,
+            MEASURE_WIDTHS,
+          );
           warnings = measured.warnings || [];
           const heights = measured
-            .filter(([width, height]) => Number.isInteger(width) && Number.isInteger(height) && width >= 240 && width <= 1600 && height >= 1 && height <= 100000)
+            .filter(
+              ([width, height]) =>
+                Number.isInteger(width) &&
+                Number.isInteger(height) &&
+                width >= 240 &&
+                width <= 1600 &&
+                height >= 1 &&
+                height <= 100000,
+            )
             .slice(0, MEASURE_WIDTHS.length)
             .sort((a, b) => a[0] - b[0]);
           if (heights.length) {
             const dir = this.directory(threadId);
-            await writeFile(join(dir, file.id + ".measure"), JSON.stringify({ ...file, heights }), { mode: 0o600 });
-            await rename(join(dir, file.id + ".measure"), join(dir, file.id + ".json"));
+            await writeFile(
+              join(dir, file.id + ".measure"),
+              JSON.stringify({ ...file, heights }),
+              { mode: 0o600 },
+            );
+            await rename(
+              join(dir, file.id + ".measure"),
+              join(dir, file.id + ".json"),
+            );
           }
         } catch {
-          log("warn", "visualization measurement failed", { op: "visual_render", kind: "measure", browserAvailable: this.renderer.available() });
+          await rm(join(this.directory(threadId), file.id + ".measure"), {
+            force: true,
+          }).catch(() => {});
+          log("warn", "visualization measurement failed", {
+            op: "create_visualization",
+            browserAvailable: this.renderer.available(),
+          });
         }
       }
       return {
