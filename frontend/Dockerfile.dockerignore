@@ -1,0 +1,10 @@
+**
+!frontend/
+!frontend/**
+!shared/
+!shared/**
+**/node_modules
+**/.next
+**/.env
+**/.env.*
+**/*.tsbuildinfo
