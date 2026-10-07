@@ -30,6 +30,12 @@ availability notice. Live output quality depends on the configured model.
 
 ## Agent contract
 
+New conversations support `html_render` for complete HTML documents. Successful
+publication attaches the visual before the final reply without requiring a marker.
+If configured, `html_preview` returns a real Chromium screenshot, console messages
+and height to the model before publication. See [Visual replies](VISUAL_REPLIES.md)
+for setup and verification. Existing fragment-based visuals remain supported.
+
 `create_visualization` accepts `title`, `description`, `html`, optional `mode`
 (`inline` or `wide`), and optional `sourceId`. It stores a self-contained HTML
 fragment and returns `[truex-visualization:<uuid>]`. The assistant places that
@@ -77,7 +83,8 @@ no endpoint for executing tools or sending chat messages. These controls use
 [browser iframe sandboxing](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe)
 and [CSP frame restrictions](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy/frame-src).
 They do not impose a JavaScript CPU budget; a broken or expensive generated visual
-may still affect browser responsiveness. No server executes the generated HTML.
+may still affect browser responsiveness. The optional preview worker executes generated HTML in a disposable, network-denied
+container; publication does not require that service.
 
 ## Verification
 

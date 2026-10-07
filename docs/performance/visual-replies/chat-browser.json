@@ -1,0 +1,123 @@
+{
+  "measuredAt": "2026-10-06T21:44:38.058Z",
+  "scope": "T3 collaborative Chromium; production Next builds; synthetic 40-message sessions; 30 warm A/B session switches. DOM mutation timing to visible reply 39, excludes sidebar reopen wait. 1280x800; baseline resized back from1489 shortly after start. Shared development host, sequential nonrandomized samples, not statistical regression proof.",
+  "baseline": {
+    "samples": 30,
+    "medianMs": 13.200000002980232,
+    "p95Ms": 21.100000001490116,
+    "initialJsEncodedBytes": 358645,
+    "raw": {
+      "resources": [
+        {
+          "bytes": 4982,
+          "name": "2hwjuqcqgvuj5.js"
+        },
+        {
+          "bytes": 47624,
+          "name": "1-hsewkmtkmrl.js"
+        },
+        {
+          "bytes": 73331,
+          "name": "1tsuvtjg8l5pk.js"
+        },
+        {
+          "bytes": 3833,
+          "name": "turbopack-2q-wzxg8gkizi.js"
+        },
+        {
+          "bytes": 4091,
+          "name": "1ceq8xvp0n-wn.js"
+        },
+        {
+          "bytes": 841,
+          "name": "1a-tr728x3b6i.js"
+        },
+        {
+          "bytes": 223047,
+          "name": "087_obb4ccbjx.js"
+        },
+        {
+          "bytes": 896,
+          "name": "04o700t-l6m73.js"
+        }
+      ],
+      "samples": {
+        "errors": [],
+        "samples": [
+          29.900000005960464, 16.5, 9.399999998509884, 9.299999997019768,
+          8.100000001490116, 13.899999998509884, 13.200000002980232,
+          8.299999997019768, 10.399999998509884, 8.5, 21.100000001490116,
+          19.400000005960464, 8.900000005960464, 12.800000004470348,
+          10.399999998509884, 8.699999995529652, 13.899999998509884, 13.5,
+          10.100000001490116, 8.699999995529652, 13.399999998509884,
+          17.399999998509884, 18, 8.300000004470348, 14.399999998509884,
+          13.600000001490116, 18.600000001490116, 11.899999998509884,
+          12.399999998509884, 17.80000000447035
+        ]
+      }
+    }
+  },
+  "implemented": {
+    "samples": 30,
+    "medianMs": 8.800000004470348,
+    "p95Ms": 18.30000000447035,
+    "initialJsEncodedBytes": 358256,
+    "raw": {
+      "css": {
+        "bg": "rgb(23, 23, 23)",
+        "ink": "rgb(238, 244, 246)"
+      },
+      "resources": [
+        {
+          "bytes": 5372,
+          "name": "1szz7asocagt1.js"
+        },
+        {
+          "bytes": 47352,
+          "name": "0nzd8c7xgi9vz.js"
+        },
+        {
+          "bytes": 73331,
+          "name": "1tsuvtjg8l5pk.js"
+        },
+        {
+          "bytes": 3836,
+          "name": "turbopack-2-p2f37asu-hl.js"
+        },
+        {
+          "bytes": 4091,
+          "name": "1ceq8xvp0n-wn.js"
+        },
+        {
+          "bytes": 841,
+          "name": "1a-tr728x3b6i.js"
+        },
+        {
+          "bytes": 2109,
+          "name": "1gdwul9l4yhk1.js"
+        },
+        {
+          "bytes": 220428,
+          "name": "2761l-zy3j9ls.js"
+        },
+        {
+          "bytes": 896,
+          "name": "04o700t-l6m73.js"
+        }
+      ],
+      "samples": {
+        "errors": [],
+        "samples": [
+          41.600000001490116, 8.800000004470348, 7.700000002980232, 17.5, 6.5,
+          10.600000001490116, 17.299999997019768, 8.800000004470348,
+          15.100000001490116, 8.100000001490116, 9, 10.399999998509884,
+          10.399999998509884, 17.80000000447035, 18.30000000447035,
+          13.100000001490116, 17.599999994039536, 8.100000001490116,
+          6.899999998509884, 9.799999997019768, 13.5, 8.299999997019768,
+          8.100000001490116, 8, 8.200000002980232, 8.599999994039536,
+          8.299999997019768, 8.399999998509884, 8, 8.200000002980232
+        ]
+      }
+    }
+  }
+}

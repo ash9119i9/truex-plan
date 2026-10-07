@@ -1,11 +1,12 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, userMessage } from "@/lib/api";
+import { useTheme } from "@/lib/use-theme";
+import { validWidgetState } from "@/lib/visualization";
 import {
-  validWidgetState,
   visualizationDocument,
   visualizationExport,
-} from "@/lib/visualization";
+} from "@/lib/visualization-document";
 import type {
   Visualization as Visual,
   VisualizationState,
@@ -14,16 +15,26 @@ import type {
 export function Visualization({
   sessionId,
   id,
+  initialHeight,
   onPrompt,
 }: {
   sessionId: string;
   id: string;
+  initialHeight?: number;
   onPrompt?: (text: string) => void;
 }) {
   const [visual, setVisual] = useState<Visual | null>(null);
   const [error, setError] = useState("");
   const [runtimeError, setRuntimeError] = useState(false);
-  const [height, setHeight] = useState(360);
+  const { isDark } = useTheme();
+  const appearance: "light" | "dark" = isDark ? "dark" : "light";
+  const latestAppearance = useRef(appearance);
+  latestAppearance.current = appearance;
+  const [height, setHeight] = useState(
+    Number.isFinite(initialHeight)
+      ? Math.min(900, Math.max(160, initialHeight!))
+      : 360,
+  );
   const [expanded, setExpanded] = useState(false);
   const [reload, setReload] = useState(0);
   const [question, setQuestion] = useState<{
@@ -39,6 +50,7 @@ export function Visualization({
     let cancelled = false;
     setVisual(null);
     setError("");
+    setQuestion(null);
     state.current = null;
     try {
       const saved = JSON.parse(localStorage.getItem(stateKey) || "null");
@@ -57,11 +69,29 @@ export function Visualization({
       cancelled = true;
     };
   }, [sessionId, id, stateKey]);
-  const source = useMemo(
-    () => (visual ? visualizationDocument(visual, state.current) : ""),
-    [visual, expanded, reload],
-  );
+  const prepared = useMemo(() => {
+    if (!visual) return { source: "", error: "" };
+    try {
+      return {
+        source: visualizationDocument(
+          visual,
+          state.current,
+          false,
+          latestAppearance.current,
+        ),
+        error: "",
+      };
+    } catch {
+      return {
+        source: "",
+        error:
+          "This visual source could not be prepared. Ask Truex to simplify or revise it.",
+      };
+    }
+  }, [visual, expanded, reload]);
+  const source = prepared.source;
   useEffect(() => {
+    if (!source) return;
     setLoaded(false);
     setRuntimeError(false);
     const timer = setTimeout(() => setRuntimeError(true), 12000);
@@ -82,6 +112,14 @@ export function Visualization({
       if (data.type === "ready") {
         clearTimeout(timer);
         setLoaded(true);
+        iframe.current.contentWindow?.postMessage(
+          {
+            channel: "truex-visualization",
+            type: "theme",
+            appearance: latestAppearance.current,
+          },
+          "*",
+        );
       }
       if (data.type === "error") setRuntimeError(true);
       if (data.type === "resize" && Number.isFinite(data.height))
@@ -116,6 +154,12 @@ export function Visualization({
     };
   }, [source, stateKey]);
   useEffect(() => {
+    iframe.current?.contentWindow?.postMessage(
+      { channel: "truex-visualization", type: "theme", appearance },
+      "*",
+    );
+  }, [appearance]);
+  useEffect(() => {
     if (expanded) dialog.current?.showModal();
     else dialog.current?.close();
   }, [expanded]);
@@ -125,7 +169,7 @@ export function Visualization({
   function download() {
     if (!visual) return;
     const url = URL.createObjectURL(
-      new Blob([visualizationExport(visual, state.current)], {
+      new Blob([visualizationExport(visual, state.current, appearance)], {
         type: "text/html",
       }),
     );
@@ -135,10 +179,10 @@ export function Visualization({
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  if (error)
+  if (error || prepared.error)
     return (
       <div className="visualization-error" role="alert">
-        This visual could not be loaded. {error}
+        This visual could not be loaded. {error || prepared.error}
       </div>
     );
   if (!visual) return <p role="status">Loading visual…</p>;

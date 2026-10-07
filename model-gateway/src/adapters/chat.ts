@@ -101,6 +101,7 @@ function toMessages(input: any, tools: ToolNames): ChatMessage[] {
         role: "tool",
         tool_call_id: item.call_id,
         content: outputText(item.output),
+        toolImages: outputImages(item.output),
       });
     }
     // Reasoning, compaction and hosted-tool items have no Chat equivalent.
@@ -129,6 +130,7 @@ function markClosed(messages: ChatMessage[]) {
 function pairToolCalls(messages: ChatMessage[]): ChatMessage[] {
   const out: ChatMessage[] = [];
   let pending = new Set<string>();
+  let images: any[] = [];
   const flush = () => {
     for (const id of pending)
       out.push({
@@ -137,11 +139,23 @@ function pairToolCalls(messages: ChatMessage[]): ChatMessage[] {
         content: "No output: the call was interrupted.",
       });
     pending = new Set();
+    // Chat tool messages accept text only. Deliver associated images in a
+    // multimodal user message after ALL responses from the assistant turn.
+    if (images.length) out.push({ role: "user", content: images });
+    images = [];
   };
-  for (const { closed, ...message } of messages) {
+  for (const { closed, toolImages, ...message } of messages) {
     if (message.role === "tool") {
       if (!pending.delete(message.tool_call_id)) continue;
       out.push(message);
+      if (toolImages?.length)
+        images.push(
+          {
+            type: "text",
+            text: `Images from tool call ${message.tool_call_id}:`,
+          },
+          ...toolImages,
+        );
       continue;
     }
     flush();
@@ -184,12 +198,28 @@ function outputText(output: any): string {
         typeof part?.text === "string"
           ? part.text
           : part?.type === "input_image"
-            ? "[image omitted]"
+            ? outputImages([part]).length
+              ? "[Image supplied after this turn's tool results.]"
+              : "[Image not sent: unsupported or invalid inline image.]"
             : "",
       )
       .filter(Boolean)
       .join("\n");
   return output == null ? "" : JSON.stringify(output);
+}
+
+function outputImages(output: any): any[] {
+  return Array.isArray(output)
+    ? output.flatMap((part: any) =>
+        part?.type === "input_image" &&
+        typeof part.image_url === "string" &&
+        /^data:image\/(?:png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+={0,2}$/.test(
+          part.image_url,
+        )
+          ? [{ type: "image_url", image_url: { url: part.image_url } }]
+          : [],
+      )
+    : [];
 }
 
 interface PendingCall {

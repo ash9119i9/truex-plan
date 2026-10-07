@@ -1594,6 +1594,19 @@ export class PlatformService {
     let cursor: string | null = null,
       order = 0;
     const assistantIndexes = new Map<string, number>();
+    const artifacts = await this.store.messages
+      .find(
+        { sessionId: s._id, visuals: { $exists: true } },
+        { projection: { _id: 1, turnId: 1, at: 1 } },
+      )
+      .limit(50)
+      .toArray();
+    artifacts.sort(
+      (a, b) => a.at.localeCompare(b.at) || a._id.localeCompare(b._id),
+    );
+    const placed = new Set<string>();
+    const lastAssistantOrder = new Map<string, number>();
+    const userOrder = new Map<string, number>();
     do {
       const page = await this.owned(
         s,
@@ -1601,6 +1614,35 @@ export class PlatformService {
       );
       const users = page.data.filter(
         (entry: any) => entry.item.type === "userMessage",
+      );
+      // Canonical runtime history need not retain tool calls. Associate using
+      // the committed turn and timestamp rather than an invented item shape.
+      const turnIds = [
+        ...new Set<string>(
+          page.data
+            .filter((entry: any) => entry.item.type === "agentMessage")
+            .map((entry: any) => entry.turnId),
+        ),
+      ];
+      const assistantDates =
+        turnIds.length && artifacts.length
+          ? await this.store.messages
+              .find(
+                {
+                  sessionId: s._id,
+                  role: "assistant",
+                  turnId: { $in: turnIds },
+                  visuals: { $exists: false },
+                },
+                { projection: { turnId: 1, messageIndex: 1, at: 1 } },
+              )
+              .toArray()
+          : [];
+      const datesByIndex = new Map(
+        assistantDates.map((message) => [
+          `${message.turnId}:${message.messageIndex}`,
+          message.at,
+        ]),
       );
       const existingUsers = users.length
         ? await this.store.messages
@@ -1642,11 +1684,32 @@ export class PlatformService {
         if (item.type === "agentMessage") {
           const messageIndex = assistantIndexes.get(turnId) || 0;
           assistantIndexes.set(turnId, messageIndex + 1);
+          const assistantOrder = order++;
+          lastAssistantOrder.set(turnId, assistantOrder);
+          const date = datesByIndex.get(`${turnId}:${messageIndex}`);
+          const before = artifacts.filter(
+            (artifact) =>
+              !placed.has(artifact._id) &&
+              artifact.turnId === turnId &&
+              date &&
+              artifact.at <= date,
+          );
+          for (const [index, artifact] of before.entries()) {
+            writes.push({
+              updateOne: {
+                filter: { _id: artifact._id, sessionId: s._id },
+                update: {
+                  $set: { order: assistantOrder - 0.5 + index / 1000 },
+                },
+              },
+            });
+            placed.add(artifact._id);
+          }
           writes.push({
             updateOne: {
               filter: { _id: `${s._id}:assistant:${turnId}:${messageIndex}` },
               update: {
-                $set: { order: order++, runtimeItemId: item.id },
+                $set: { order: assistantOrder, runtimeItemId: item.id },
                 $setOnInsert: {
                   sessionId: s._id,
                   role: "assistant",
@@ -1662,6 +1725,7 @@ export class PlatformService {
           });
         }
         if (item.type === "userMessage") {
+          userOrder.set(turnId, order);
           const clientId = item.clientId || item.id;
           const existing = byClient.get(clientId) || byItem.get(item.id);
           if (existing)
@@ -1715,6 +1779,37 @@ export class PlatformService {
       await flush();
       cursor = page.nextCursor;
     } while (cursor);
+    // A crash may erase final-event timestamps. The final answer then owns
+    // placement; artifact-only turns remain adjacent to their user's message.
+    const remaining = artifacts.filter((artifact) => !placed.has(artifact._id));
+    const placements: AnyBulkWriteOperation<Message>[] = remaining.flatMap(
+      (artifact, index) => {
+        const last = artifact.turnId
+          ? lastAssistantOrder.get(artifact.turnId)
+          : undefined;
+        const user = artifact.turnId
+          ? userOrder.get(artifact.turnId)
+          : undefined;
+        const position =
+          last !== undefined
+            ? last - 0.5
+            : user !== undefined
+              ? user + 0.5
+              : undefined;
+        return position === undefined
+          ? []
+          : [
+              {
+                updateOne: {
+                  filter: { _id: artifact._id, sessionId: s._id },
+                  update: { $set: { order: position + index / 1000 } },
+                },
+              },
+            ];
+      },
+    );
+    if (placements.length)
+      await this.store.messages.bulkWrite(placements, { ordered: true });
   }
   // Saves the live plan from an agent-core snapshot. An empty snapshot plan
   // usually means agent-core restarted, so it never clears a saved plan.

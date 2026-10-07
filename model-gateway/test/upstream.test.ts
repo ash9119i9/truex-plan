@@ -139,3 +139,179 @@ test("upstream: a profile's firstByteTimeoutMs overrides the gateway default", a
   assert.match(r.text, /response\.failed/);
   assert.ok(r.ms < 2000, `took ${r.ms}ms`);
 });
+
+const anthropicStart = {
+  type: "message_start",
+  message: {
+    id: "msg_mock",
+    type: "message",
+    role: "assistant",
+    model: "m",
+    content: [],
+    stop_reason: null,
+    stop_sequence: null,
+    usage: { input_tokens: 1, output_tokens: 0 },
+  },
+};
+const anthropicEvent = (event: { type: string; [key: string]: unknown }) =>
+  `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+const anthropicText = (text: string) =>
+  anthropicEvent({
+    type: "content_block_delta",
+    index: 0,
+    delta: { type: "text_delta", text },
+  });
+const anthropicOpen = (req: any, res: any) => {
+  req.resume();
+  res.writeHead(200, { "Content-Type": "text/event-stream" });
+  res.write(anthropicEvent(anthropicStart));
+  res.write(
+    anthropicEvent({
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "text", text: "" },
+    }),
+  );
+};
+
+test("anthropic upstream: no headers timeout is a retryable 504", async () => {
+  const r = await run(
+    () => {},
+    { upstreamFirstByteTimeoutMs: 150 },
+    { wireApi: "anthropic" },
+  );
+  assert.equal(r.status, 504);
+  assert.match(r.text, /"code":"server_error"/);
+  assert.match(r.text, /did not respond in time/);
+  assert.match(r.logs.join("\n"), /upstream timed out/);
+  assert.ok(r.ms < 2000, `took ${r.ms}ms`);
+});
+
+test("anthropic upstream: headers without data report the first-byte timeout", async () => {
+  const r = await run(
+    queued,
+    { upstreamFirstByteTimeoutMs: 150, upstreamIdleTimeoutMs: 10_000 },
+    { wireApi: "anthropic" },
+  );
+  assert.equal(r.status, 200);
+  assert.match(r.text, /response\.failed/);
+  assert.match(r.text, /"code":"server_error"/);
+  assert.match(r.text, /no response from the model provider within 150ms/);
+  assert.ok(r.ms < 2000, `took ${r.ms}ms`);
+});
+
+test("anthropic upstream: partial output followed by silence reports the idle timeout", async () => {
+  const r = await run(
+    (req, res) => {
+      anthropicOpen(req, res);
+      res.write(anthropicText("partial"));
+    },
+    { upstreamFirstByteTimeoutMs: 10_000, upstreamIdleTimeoutMs: 150 },
+    { wireApi: "anthropic" },
+  );
+  assert.equal(r.status, 200);
+  assert.match(r.text, /response\.output_text\.delta/);
+  assert.match(r.text, /response\.failed/);
+  assert.match(r.text, /"code":"server_error"/);
+  assert.match(r.text, /no data from the model provider within 150ms/);
+  assert.ok(r.ms < 2000, `took ${r.ms}ms`);
+});
+
+test("anthropic upstream: steady output completes beyond the idle limit", async () => {
+  const r = await run(
+    async (req, res) => {
+      anthropicOpen(req, res);
+      for (const word of ["a", "b", "c", "d"]) {
+        await new Promise((r) => setTimeout(r, 75));
+        res.write(anthropicText(word));
+      }
+      res.write(anthropicEvent({ type: "content_block_stop", index: 0 }));
+      res.write(
+        anthropicEvent({
+          type: "message_delta",
+          delta: { stop_reason: "end_turn", stop_sequence: null },
+          usage: { output_tokens: 4 },
+        }),
+      );
+      res.end(anthropicEvent({ type: "message_stop" }));
+    },
+    { upstreamFirstByteTimeoutMs: 150, upstreamIdleTimeoutMs: 150 },
+    { wireApi: "anthropic" },
+  );
+  assert.equal(r.status, 200);
+  assert.match(r.text, /response\.completed/);
+  assert.doesNotMatch(r.text, /response\.failed/);
+  assert.ok(r.ms >= 300, `took ${r.ms}ms`);
+});
+
+test("anthropic upstream: ordinary connection failure stays a retryable 502", async () => {
+  const r = await run(
+    (req) => {
+      req.socket.destroy();
+    },
+    { upstreamFirstByteTimeoutMs: 150 },
+    { wireApi: "anthropic" },
+  );
+  assert.equal(r.status, 502);
+  assert.match(r.text, /The model provider is unreachable/);
+  assert.match(r.text, /"code":"server_error"/);
+});
+
+test("anthropic upstream: client cancellation stops upstream without recording failure", async () => {
+  const logs: string[] = [];
+  let upstreamClosed!: () => void;
+  const closed = new Promise<void>((resolve) => {
+    upstreamClosed = resolve;
+  });
+  const up = createServer((req, res) => {
+    res.on("close", upstreamClosed);
+    anthropicOpen(req, res);
+    res.write(anthropicText("partial"));
+  });
+  const upPort = await listen(up);
+  const gw = createGateway({
+    secret,
+    log: (line) => logs.push(line),
+    findProfile: async () => ({
+      _id: "p",
+      baseUrl: `http://127.0.0.1:${upPort}/v1`,
+      modelName: "m",
+      wireApi: "anthropic",
+      apiKey: "k",
+    }),
+    upstreamFirstByteTimeoutMs: 150,
+    upstreamIdleTimeoutMs: 150,
+  });
+  const port = await listen(gw);
+  let deadline: NodeJS.Timeout | undefined;
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/p/p/v1/responses`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${signGatewayToken("p", secret)}` },
+      body,
+    });
+    const reader = response.body!.getReader();
+    const first = await reader.read();
+    assert.equal(first.done, false);
+    await reader.cancel();
+    await Promise.race([
+      closed,
+      new Promise<never>((_, reject) => {
+        deadline = setTimeout(
+          () => reject(new Error("upstream did not close after cancellation")),
+          2000,
+        );
+      }),
+    ]);
+    assert.doesNotMatch(
+      logs.join("\n"),
+      /upstream stream failed|upstream timed out|"outcome":"failed"/,
+    );
+  } finally {
+    clearTimeout(deadline);
+    for (const server of [gw, up]) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }
+});

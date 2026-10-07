@@ -1,0 +1,73 @@
+{
+  "measuredAt": "2026-10-06T21:43:06.643Z",
+  "runtime": "v24.21.0",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "iterations": 30,
+  "warmups": 3,
+  "maximumTreeDepth": 128,
+  "notes": [
+    "Synthetic local JavaScript microbenchmark; excludes Chromium, transport and model latency.",
+    "Preparation parses then normalizes and serializes; validation parses with source locations before checking structure/depth.",
+    "The nesting guard prevents recursive serialization overflow; parsing occurs before rejection, so hostile nesting still incurs parser work.",
+    "Host theme/bootstrap add approximately 10 KiB to prepared documents."
+  ],
+  "results": [
+    {
+      "fixture": "text block",
+      "sourceCharacters": 5000,
+      "preparedCharacters": 15384,
+      "medianMs": 0.3311250000000001,
+      "p95Ms": 0.7581670000000003
+    },
+    {
+      "fixture": "inline script",
+      "sourceCharacters": 5000,
+      "preparedCharacters": 15384,
+      "medianMs": 0.25150000000000716,
+      "p95Ms": 0.38741699999999923
+    },
+    {
+      "fixture": "text block",
+      "sourceCharacters": 180000,
+      "preparedCharacters": 190384,
+      "medianMs": 2.809665999999993,
+      "p95Ms": 5.501208000000005
+    },
+    {
+      "fixture": "inline script",
+      "sourceCharacters": 180000,
+      "preparedCharacters": 190384,
+      "medianMs": 2.2315419999999904,
+      "p95Ms": 2.8489589999999794
+    },
+    {
+      "fixture": "nested document validation",
+      "nestedDivs": 50,
+      "sourceCharacters": 593,
+      "accepted": true,
+      "durationMs": 0.6239160000000084
+    },
+    {
+      "fixture": "nested document validation",
+      "nestedDivs": 128,
+      "sourceCharacters": 1451,
+      "accepted": false,
+      "durationMs": 0.4169579999999655
+    },
+    {
+      "fixture": "nested document validation",
+      "nestedDivs": 1000,
+      "sourceCharacters": 11043,
+      "accepted": false,
+      "durationMs": 4.123290999999995
+    },
+    {
+      "fixture": "nested document validation",
+      "nestedDivs": 5000,
+      "sourceCharacters": 55043,
+      "accepted": false,
+      "durationMs": 62.966042000000016
+    }
+  ]
+}

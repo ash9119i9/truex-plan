@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex usage pulse</title>
+<style>
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: transparent; color: var(--foreground); font-family: var(--font-sans, system-ui, sans-serif); }
+main { width: 100%; max-width: 760px; margin: 0 auto; padding: 8px 0 14px; }
+h1 { font-size: clamp(21px, 4vw, 28px); letter-spacing: -.035em; line-height: 1.1; margin: 0; }
+.sub { margin: 7px 0 20px; color: var(--muted-foreground); font-size: 13px; }
+.stats { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin-bottom: 24px; }
+.stat { border-top: 2px solid var(--border); padding-top: 9px; min-width: 0; }
+.stat:nth-child(1) { border-color: var(--viz-series-1, var(--chart-1)); }
+.stat:nth-child(2) { border-color: var(--viz-series-2, var(--chart-2)); }
+.stat:nth-child(3) { border-color: var(--viz-series-3, var(--chart-3)); }
+.value { font-variant-numeric: tabular-nums; font-size: clamp(21px, 4vw, 28px); font-weight: 650; letter-spacing: -.03em; }
+.label { margin-top: 2px; font-size: 12px; color: var(--muted-foreground); }
+section { margin-top: 23px; }
+h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
+.note { font-size: 12px; color: var(--muted-foreground); margin: 0 0 12px; }
+.days { display: grid; gap: 11px; }
+.day { display: grid; grid-template-columns: 42px minmax(0,1fr) 76px; gap: 10px; align-items: center; font-size: 12px; }
+.date { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+.track { height: 15px; background: color-mix(in srgb, var(--muted) 72%, transparent); border-radius: 3px; overflow: hidden; }
+.fill { height: 100%; background: var(--viz-series-1, var(--chart-1)); border-radius: 3px; min-width: 3px; }
+.amount { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.amount small { color: var(--muted-foreground); }
+.modelrow { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.stack { display: flex; height: 12px; gap: 2px; border-radius: 3px; overflow: hidden; }
+.seg1 { width: 91.3%; background: var(--viz-series-1, var(--chart-1)); }
+.seg2 { width: 8.7%; background: var(--viz-series-2, var(--chart-2)); }
+.legend { display: flex; flex-wrap: wrap; gap: 7px 17px; font-size: 12px; color: var(--muted-foreground); }
+.key { display: inline-flex; align-items: center; gap: 7px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--viz-series-1, var(--chart-1)); }
+.dot.alt { background: var(--viz-series-2, var(--chart-2)); }
+.top { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 9px; }
+.top li { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: baseline; gap: 12px; font-size: 12px; }
+.top .name { overflow-wrap: anywhere; }
+.top .n { font-variant-numeric: tabular-nums; color: var(--muted-foreground); white-space: nowrap; }
+hr { border: 0; border-top: 1px solid var(--border); margin: 20px 0 11px; }
+.foot { color: var(--muted-foreground); font-size: 11px; line-height: 1.5; }
+@media (max-width: 430px) { main { padding-top: 4px; } .stats { gap: 8px; } .day { grid-template-columns: 36px minmax(0,1fr) 70px; gap: 7px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Your Codex usage pulse</h1>
+    <p class="sub">Oct 2–6 · 23 earlier threads in this T3 project</p>
+  </header>
+  <div class="stats" aria-label="Summary">
+    <div class="stat"><div class="value">23</div><div class="label">threads</div></div>
+    <div class="stat"><div class="value">693</div><div class="label">timeline items</div></div>
+    <div class="stat"><div class="value">30</div><div class="label">items per thread · avg</div></div>
+  </div>
+  <section aria-labelledby="activity-title">
+    <h2 id="activity-title">The sprint peaked on Oct 5</h2>
+    <p class="note">Timeline activity by thread creation day · count of items</p>
+    <div class="days" role="img" aria-label="Daily timeline items: Oct 2, 206 across 5 threads; Oct 3, 85 across 3 threads; Oct 4, 37 across 2 threads; Oct 5, 297 across 7 threads; Oct 6, 68 across 6 threads.">
+      <div class="day"><span class="date">Oct 2</span><div class="track"><div class="fill" style="width:69.4%"></div></div><span class="amount">206 <small>· 5 threads</small></span></div>
+      <div class="day"><span class="date">Oct 3</span><div class="track"><div class="fill" style="width:28.6%"></div></div><span class="amount">85 <small>· 3 threads</small></span></div>
+      <div class="day"><span class="date">Oct 4</span><div class="track"><div class="fill" style="width:12.5%"></div></div><span class="amount">37 <small>· 2 threads</small></span></div>
+      <div class="day"><span class="date">Oct 5</span><div class="track"><div class="fill" style="width:100%"></div></div><span class="amount">297 <small>· 7 threads</small></span></div>
+      <div class="day"><span class="date">Oct 6</span><div class="track"><div class="fill" style="width:22.9%"></div></div><span class="amount">68 <small>· 6 threads</small></span></div>
+    </div>
+    <p class="note" style="margin-top:10px">Oct 5 accounts for 43% of the tracked activity.</p>
+  </section>
+  <section aria-labelledby="model-title">
+    <h2 id="model-title">Most threads used GPT-6.1-Sol</h2>
+    <p class="note">Model on thread record · 23 threads total</p>
+    <div class="modelrow" role="img" aria-label="21 threads used GPT-6.1-Sol; 2 used Claude Opus 5.5.">
+      <div class="stack"><span class="seg1"></span><span class="seg2"></span></div>
+      <div class="legend"><span class="key"><i class="dot"></i>GPT-6.1-Sol · 21</span><span class="key"><i class="dot alt"></i>Claude Opus 5.5 · 2</span></div>
+    </div>
+  </section>
+  <section aria-labelledby="long-title">
+    <h2 id="long-title">Longest threads by timeline activity</h2>
+    <ul class="top">
+      <li><span class="name">Open-Ended Greeting</span><span class="n">102 items</span></li>
+      <li><span class="name">Improve Chat and Sidebar Performance</span><span class="n">99 items</span></li>
+      <li><span class="name">Compare T3code and Runtime Adapter</span><span class="n">72 items</span></li>
+    </ul>
+  </section>
+  <hr>
+  <p class="foot">Token totals aren’t exposed in the available thread index, so this view uses timeline-item counts as an activity proxy. The current analytics thread is excluded to avoid counting its own inspection activity.</p>
+</main>
+</body>
+</html>

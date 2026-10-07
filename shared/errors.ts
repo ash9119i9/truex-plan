@@ -77,8 +77,8 @@ export function httpError(error: unknown, layer: "platform" | "agent-core") {
   };
 }
 
-/** Why a model call failed. Derived from Codex's error info and HTTP status
- * only, so it reads the same for every provider. */
+/** Why a model call failed. Derived from Codex's error info and HTTP status,
+ * with narrowly matched gateway stream failures for Codex's untyped errors. */
 export type ErrorReason =
   | "rateLimited"
   | "quota"
@@ -91,6 +91,7 @@ const errorReasons: Record<string, ErrorReason> = {
   PROVIDER_QUOTA_EXCEEDED: "quota",
   PROVIDER_AUTH_FAILED: "credentials",
   PROVIDER_UNAVAILABLE: "providerDown",
+  PROVIDER_TIMEOUT: "providerDown",
   PROVIDER_CONNECTION_FAILED: "providerDown",
   CONTEXT_LIMIT: "contextWindow",
 };
@@ -187,6 +188,30 @@ export function runtimeError(data: any): {
       "PROVIDER_CONNECTION_FAILED",
       "The connection to the model provider was interrupted. Check the conversation for a partial response before trying again.",
     );
+  // The pinned Codex maps generic response.failed events to `other`, retaining
+  // only a prefixed message. Recognize our exact gateway sentences; never relay
+  // the raw message or infer provider failures from arbitrary diagnostics.
+  if (kind === "other") {
+    const message = data?.error?.message ?? data?.message;
+    if (
+      typeof message === "string" &&
+      /^stream disconnected before completion: The model provider timed out: no (?:response|data) from the model provider within \d+(?:\.\d+)?ms\. Please retry\.(?![\s\S])/.test(
+        message,
+      )
+    )
+      return result(
+        "PROVIDER_TIMEOUT",
+        "The model provider stopped responding before this response finished. Check the conversation for a partial response before trying again.",
+      );
+    if (
+      message ===
+      "stream disconnected before completion: The connection to the model provider was interrupted."
+    )
+      return result(
+        "PROVIDER_CONNECTION_FAILED",
+        "The connection to the model provider was interrupted. Check the conversation for a partial response before trying again.",
+      );
+  }
   // agent-core's own codes: `code` on error events, `code`/`error.code` on
   // failed turns.
   const own = data?.code ?? data?.error?.code;

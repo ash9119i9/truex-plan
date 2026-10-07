@@ -1,6 +1,8 @@
 # Only the runtime services, pinned source-fetch scripts and artifact enter the context.
 **
 !Dockerfile
+!package.json
+!package-lock.json
 !codex.lock.json
 !scripts/
 !scripts/codex.mjs

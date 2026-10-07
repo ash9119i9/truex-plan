@@ -180,17 +180,19 @@ app.get("/threads/:id/events", (req, res) =>
     snapshotOptions(req.path, req.query.window, req.query.sync),
   ),
 );
-app.get("/threads/:id/snapshot", (req, res) =>
+app.get("/threads/:id/snapshot", async (req, res) => {
+  await manager.recoverPublications(req.params.id);
   res.json(
     manager.snapshot(
       req.params.id,
       snapshotOptions(req.path, req.query.window, req.query.sync),
     ),
-  ),
-);
-app.get("/threads/:id/records", (req, res) =>
-  res.json(manager.records(req.params.id)),
-);
+  );
+});
+app.get("/threads/:id/records", async (req, res) => {
+  await manager.recoverPublications(req.params.id);
+  res.json(manager.records(req.params.id));
+});
 app.post("/threads/:id/records/ack", (req, res) => {
   if (!Array.isArray(req.body.keys))
     throw new HttpError(400, "keys must be an array");

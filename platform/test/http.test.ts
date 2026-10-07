@@ -66,19 +66,28 @@ test(
       res.writeHead(200, { "Content-Type": "text/event-stream" });
       const emit = (x: any) =>
         res.write(`event: ${x.type}\ndata: ${JSON.stringify(x)}\n\n`);
-      if (n === 3) {
+      if (n === 3 || n === 4) {
         emit({ type: "response.created", response: { id: "visual-fixture" } });
         emit({
           type: "response.output_item.done",
           item: {
             type: "function_call",
-            call_id: "visual-call",
-            name: "create_visualization",
-            arguments: JSON.stringify({
-              title: "Chart fixture",
-              description: "Saved chart",
-              html: '<div id="chart">Fixture chart</div><script>document.getElementById("chart").textContent="Interactive chart";</script>',
-            }),
+            call_id: n === 3 ? "visual-call" : "render-call",
+            name: n === 3 ? "create_visualization" : "html_render",
+            arguments: JSON.stringify(
+              n === 3
+                ? {
+                    title: "Chart fixture",
+                    description: "Saved chart",
+                    html: '<div id="chart">Fixture chart</div><script>document.getElementById("chart").textContent="Interactive chart";</script>',
+                  }
+                : {
+                    title: "HTML reply fixture",
+                    description: "Saved complete document",
+                    height: 420,
+                    html: "<!doctype html><html><head><title>Fixture</title></head><body><button>HTML reply chart</button></body></html>",
+                  },
+            ),
           },
         });
         emit({
@@ -426,7 +435,7 @@ test(
         (await store.messages.countDocuments({
           sessionId: session._id,
           role: "assistant",
-        })) === 3,
+        })) === 4,
     );
     const savedFiles = await call(`/api/sessions/${session._id}/documents`);
     assert.equal(savedFiles.visualizationAvailable, true);
@@ -434,6 +443,32 @@ test(
       (file: any) => file.kind === "visualization",
     );
     assert.ok(visual);
+    const documentVisual = savedFiles.files.find(
+      (file: any) => file.sourceFormat === "document",
+    );
+    assert.ok(documentVisual);
+    const documentPath = `/api/sessions/${session._id}/visualizations/${documentVisual.id}`;
+    const published = await call(documentPath);
+    assert.equal(published.sourceFormat, "document");
+    assert.equal(published.height, 420);
+    assert.match(published.html, /HTML reply chart/);
+    const visualHistory = await call(`/api/sessions/${session._id}`);
+    const artifactIndex = visualHistory.messages.findIndex((message: any) =>
+      message.visuals?.some((visual: any) => visual.id === documentVisual.id),
+    );
+    assert.ok(artifactIndex >= 0);
+    assert.ok(
+      artifactIndex + 1 < visualHistory.messages.length,
+      JSON.stringify(visualHistory.messages),
+    );
+    assert.match(
+      visualHistory.messages[artifactIndex + 1].text,
+      /HTTP fixture reply 5/,
+    );
+    const crossDocument = await fetch(
+      `http://127.0.0.1:${platformPort}/api/sessions/${otherSession._id}/visualizations/${documentVisual.id}`,
+    );
+    assert.equal(crossDocument.status, 404);
     const visualPath = `/api/sessions/${session._id}/visualizations/${visual.id}`;
     assert.match((await call(visualPath)).html, /Fixture chart/);
     const crossSession = await fetch(
@@ -454,5 +489,13 @@ test(
       async () => (await fetch(`http://127.0.0.1:${corePort}/healthz`)).ok,
     );
     assert.equal((await call(visualPath)).title, "Chart fixture");
+    assert.equal((await call(documentPath)).title, "HTML reply fixture");
+    const restartedHistory = await call(`/api/sessions/${session._id}`);
+    assert.equal(
+      restartedHistory.messages.filter(
+        (message: any) => message.visuals?.length,
+      ).length,
+      1,
+    );
   },
 );

@@ -1,0 +1,91 @@
+{
+  "recordedAt": "2026-10-07",
+  "implementation": "Local T3-style Truex adaptation; no push/deploy",
+  "checks": [
+    {
+      "command": "npm test",
+      "status": "passed",
+      "agentCorePass": 206,
+      "platformPass": 213,
+      "gatewayPass": 61,
+      "optionalDockerSkipped": 5
+    },
+    {
+      "command": "npm --prefix frontend test",
+      "status": "passed",
+      "pass": 356
+    },
+    {
+      "command": "HTML_PREVIEW_DOCKER_TEST=1 agent-core/node_modules/.bin/tsx --test agent-core/test/html-preview-docker.test.ts",
+      "status": "passed",
+      "pass": 5,
+      "skip": 0
+    },
+    {
+      "command": "agent-core/node_modules/.bin/tsx --test agent-core/test/visual-runtime.test.ts",
+      "status": "passed",
+      "pass": 1,
+      "scope": "New tenant admission test added after full run"
+    },
+    {
+      "command": "agent-core/node_modules/.bin/tsx --test agent-core/test/trace.test.ts",
+      "status": "passed",
+      "pass": 9,
+      "scope": "After final fix: screenshot binary excluded from text context/PII scanning"
+    },
+    {
+      "command": "npm run build",
+      "status": "passed",
+      "scope": "All services and optimized Next build before final trace-only fix; agent-core build passed after that fix"
+    },
+    {
+      "command": "npm --prefix frontend run typecheck",
+      "status": "passed"
+    },
+    {
+      "command": "npm run codex:verify; npm run protocol:gen",
+      "status": "passed",
+      "pin": "4a942885c8b4745757a9f86ad2075e16c42483c5"
+    },
+    {
+      "command": "git diff --check",
+      "status": "passed"
+    },
+    {
+      "command": "npm run format:check",
+      "status": "pre-existing failure",
+      "warnings": 55,
+      "evidence": "format-baseline.json; each warning also fails with original HEAD input"
+    },
+    {
+      "command": "Targeted feature formatting checks",
+      "status": "passed"
+    },
+    {
+      "command": "npm audit --omit=dev --audit-level=high",
+      "status": "passed",
+      "scope": "Shared root production parser dependency only; zero reported vulnerabilities"
+    },
+    {
+      "command": "docker build -f platform/Dockerfile -t truex-platform:visual-replies .",
+      "status": "passed",
+      "parserResolution": "/app/node_modules/parse5/dist/cjs/index.js"
+    },
+    {
+      "command": "docker buildx build --platform linux/arm64 --target services-build --load -t truex-agentcore-services:visual-replies .",
+      "status": "passed",
+      "scope": "Before final trace-only fix; parser resolution and HTTP runner import smoke passed"
+    },
+    {
+      "command": "Full AgentCore runtime image build",
+      "status": "blocked by existing artifact absence",
+      "reason": "Checkout lacks prebuilt .runtime/agentcore/codex.json; compiling Rust/exporting release artifact was outside this feature"
+    }
+  ],
+  "remaining": [
+    "Private TLS service deployment and AWS production host validation",
+    "Live provider screenshot acceptance",
+    "Sustained production load and pixel screenshot comparison; T3 snapshot tool failed",
+    "Reader JavaScript CPU budget and exact generated visual content/design compliance"
+  ]
+}

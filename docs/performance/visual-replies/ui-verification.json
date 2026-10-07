@@ -1,0 +1,42 @@
+{
+  "measuredAt": "2026-10-07",
+  "environment": "T3 collaborative Chromium; optimized Next production build; synthetic source/history fixture on localhost4511; no external provider",
+  "checks": {
+    "publicationBeforeText": true,
+    "oneFrame": true,
+    "keyboardTabEnterTeamBefore": 5,
+    "keyboardTabEnterTeamAfter": 6,
+    "savedWidgetState": {
+      "modelContent": {
+        "team": 6
+      },
+      "privateContent": {}
+    },
+    "themeChangeKeepsFrameIdentity": true,
+    "dark": {
+      "background": "rgb(23, 23, 23)",
+      "text": "rgb(238, 244, 246)"
+    },
+    "light": {
+      "background": "rgb(255, 255, 255)",
+      "text": "rgb(31, 42, 48)"
+    },
+    "mobile": {
+      "viewport": 390,
+      "documentScrollWidth": 390,
+      "frameWidth": 312,
+      "innerWidth": 310,
+      "innerScrollWidth": 310
+    },
+    "followupDraftContainsCurrentTeam": true,
+    "expandDialogWidthOn390": 356,
+    "escapeClosesDialog": true,
+    "statePreservedAfterExpansion": true,
+    "reloadRestoresTeam": 6,
+    "followupTurnPostCount": 0
+  },
+  "limits": [
+    "Native preview_snapshot failed repeatedly; pixel screenshot comparison unavailable. Checks use DOM, computed styles, native keyboard and instrumentation in the synthetic visual.",
+    "No live provider or production deployment validated."
+  ]
+}

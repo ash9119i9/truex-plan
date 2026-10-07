@@ -3,6 +3,7 @@ import { BusinessRuntime } from "./business-runtime";
 import { Redactor } from "./redact";
 import { TraceBuilder, rateLimitView } from "./trace";
 import { randomUUID } from "node:crypto";
+import type { VisualAttachment } from "../../shared/visualizations";
 import {
   mkdirSync,
   writeFileSync,
@@ -101,6 +102,8 @@ interface Thread {
   subscribers: Set<Response>;
   pending: Map<string, Pending>;
   messages: Snapshot["messages"];
+  visuals: VisualAttachment[];
+  visualsRecovered?: boolean;
   thinking: NonNullable<Snapshot["thinking"]>;
   // Latest plan; kept across turns until a newer turn replaces it.
   plan: unknown;
@@ -435,6 +438,7 @@ export class ThreadManager {
         subscribers: new Set(),
         pending: new Map(),
         messages: [],
+        visuals: [],
         thinking: [],
         plan: null,
         planTurnId: null,
@@ -620,6 +624,7 @@ export class ThreadManager {
       t.mcpFingerprint = mcpFingerprint;
       t.pendingResume = undefined;
       this.roots.add(id);
+      await this.recoverVisuals(t);
       // Rebuild helper agents from the restored history.
       for (const turn of result.thread?.turns ?? []) {
         if (typeof turn?.id === "string") this.seeTurn(t, turn.id);
@@ -781,6 +786,40 @@ export class ThreadManager {
       return { ok: true };
     });
   }
+  private publishVisual(
+    t: Thread,
+    visual: VisualAttachment,
+    publishedAt?: string,
+  ) {
+    if (t.visuals.some((saved) => saved.id === visual.id))
+      return !this.draining;
+    t.visuals.push(visual);
+    this.emit(
+      t,
+      "visual.published",
+      { visual },
+      visual.turnId,
+      visual.callId,
+      publishedAt,
+    );
+    return !this.draining;
+  }
+  private async recoverVisuals(t: Thread) {
+    if (t.visualsRecovered) return;
+    if (
+      !(this.runtime instanceof BusinessRuntime) ||
+      !this.runtime.documentToolsAvailable(t.id)
+    )
+      return;
+    // Source and association commit atomically in the file record. Replaying
+    // this bounded journal repairs a crash before event creation/ingestion.
+    for (const record of await this.runtime.files.publicationRecords(t.id))
+      this.publishVisual(t, record.visual, record.at);
+    t.visualsRecovered = true;
+  }
+  async recoverPublications(id: string) {
+    await this.serial(id, () => this.recoverVisuals(this.thread(id)));
+  }
   snapshot(id: string, options: RuntimeReadOptions = {}): Snapshot {
     const t = this.thread(id);
     let messages = t.messages,
@@ -825,6 +864,7 @@ export class ThreadManager {
     return {
       ...this.operationalSnapshot(t),
       messages,
+      visuals: t.visuals,
       thinking,
       timings,
       traces,
@@ -841,6 +881,7 @@ export class ThreadManager {
         .filter((p) => !p.hidden)
         .map(({ timer, rawId, hidden, reviews, ...p }) => p),
       messages: [],
+      visuals: t.visuals,
       thinking: [],
       plan: t.plan,
       goal: this.goalView(t),
@@ -1480,6 +1521,7 @@ export class ThreadManager {
     data: any,
     turnId?: string,
     itemId?: string,
+    publishedAt?: string,
   ) {
     data = this.redactor.clean(data);
     const event: DomainEvent = {
@@ -1487,13 +1529,14 @@ export class ThreadManager {
       threadId: t.id,
       seq: ++t.seq,
       cursor: `${this.generation}:${t.seq}`,
-      at: new Date().toISOString(),
+      at: publishedAt ?? new Date().toISOString(),
       data,
       turnId,
       itemId,
     };
     let durable = [
       "message.final",
+      "visual.published",
       "turn.completed",
       "approval.resolved",
       "goal.cleared",
@@ -1834,13 +1877,52 @@ export class ThreadManager {
       this.runtime instanceof BusinessRuntime &&
       method === "item/tool/call"
     ) {
+      // Tool authority comes from the active root turn, never caller-supplied
+      // workspace or helper identities. Reject malformed/stale invocations.
+      const t =
+        typeof origin === "string" ? this.threads.get(origin) : undefined;
+      if (
+        !t ||
+        !this.roots.has(t.id) ||
+        !t.loaded ||
+        typeof msg.params.turnId !== "string" ||
+        this.activeTurn(t) !== msg.params.turnId ||
+        typeof msg.params.callId !== "string" ||
+        !msg.params.callId ||
+        msg.params.callId.length > 200 ||
+        (["html_render", "html_preview"].includes(msg.params.tool) &&
+          (t.state.kind !== "running" || this.draining))
+      ) {
+        this.runtime.respond(msg.id, {
+          success: false,
+          contentItems: [
+            {
+              type: "inputText",
+              text: "Tool calls require the active main conversation turn.",
+            },
+          ],
+        });
+        return;
+      }
       const generation = this.generation;
       void this.runtime
         .executeTool(msg.params)
         .then((result) => {
+          const { visual, ...output } = result;
+          // A source may commit while the runtime disconnects. Preserve its
+          // publication even when the old tool response can no longer arrive.
+          if (visual && !this.publishVisual(t, visual)) {
+            output.success = false;
+            output.contentItems = [
+              {
+                type: "inputText",
+                text: "The visual source was saved, but publication could not be recorded because conversation storage is unavailable. Do not claim it was published or retry as a new visual. Refresh this conversation after storage is restored.",
+              },
+            ];
+          }
           if (generation === this.generation) {
             try {
-              this.runtime.respond(msg.id, result);
+              this.runtime.respond(msg.id, output);
             } catch (e) {
               log("debug", "tool result not delivered; runtime disconnected", {
                 threadId: msg.params?.threadId,
@@ -2217,6 +2299,7 @@ export class ThreadManager {
         fork.loaded = true;
         // A fork is built from its source's loaded profile.
         fork.mcpFingerprint = t.mcpFingerprint;
+        await this.recoverVisuals(fork);
       }
       // Keep snapshots current even if the runtime sends no notification.
       if (method === "thread/goal/get" || method === "thread/goal/set") {

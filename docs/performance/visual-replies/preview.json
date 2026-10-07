@@ -1,0 +1,125 @@
+{
+  "recordedAt": "2026-10-07",
+  "scope": "Local Docker Desktop Linux ARM64 worker on macOS ARM64; deterministic fixtures only. This is not an AWS EC2 production-host or live-model-provider measurement.",
+  "environment": {
+    "dockerDesktop": "4.91.0",
+    "dockerEngine": "29.8.0",
+    "workerArchitecture": "arm64",
+    "workerImage": "truex-html-preview:local",
+    "workerImageDigest": "sha256:753596a071c587cec440ad5e532a3af4e433fc5c4b6b799231f7da6cb19f707b",
+    "nodeBase": "node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392",
+    "chromiumPackage": "154.0.8037.92-1~deb12u1",
+    "playwrightCore": "1.58.2",
+    "limits": {
+      "running": 1,
+      "waiting": 4,
+      "perConversationAdmitted": 2,
+      "memoryMiB": 512,
+      "cpu": 1,
+      "pids": 128,
+      "hostDeadlineMs": 20000,
+      "workerWatchdogMs": 19000,
+      "network": "none",
+      "mounts": "No host or runtime volume mounts; temporary profile uses bounded tmpfs",
+      "user": "65534:65534",
+      "filesystem": "read-only",
+      "capabilities": "ALL dropped",
+      "privilegeEscalation": "no-new-privileges"
+    }
+  },
+  "commandsFromRepositoryRoot": [
+    "docker build -t truex-html-preview:local html-preview-worker",
+    "HTML_PREVIEW_DOCKER_TEST=1 LOG_LEVEL=error agent-core/node_modules/.bin/tsx --test agent-core/test/html-preview-docker.test.ts",
+    "LOG_LEVEL=error agent-core/node_modules/.bin/tsx --test agent-core/test/html-preview.test.ts",
+    "cd model-gateway && node_modules/.bin/tsx --test test/*.test.ts"
+  ],
+  "integrationSummary": {
+    "tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "elapsedMs": 45938.368291
+  },
+  "normalPreview": {
+    "width": 390,
+    "durationMs": 1588,
+    "pngBytes": 3351,
+    "contentHeight": 324,
+    "testElapsedMs": 3064.654875,
+    "assertions": [
+      "Real PNG renders the shared prepared document",
+      "Dark mobile and light desktop appearances render",
+      "Remote HTTPS, link-local metadata and file URL fetches are denied",
+      "JavaScript errors appear in diagnostics",
+      "Console output stops at 20 entries and 500 characters per entry"
+    ]
+  },
+  "deadlineAndCancellation": {
+    "testElapsedMs": 2838.857333,
+    "hostileFixture": "Infinite page JavaScript",
+    "testDeadlineMs": 2000,
+    "cancelAfterMs": 500,
+    "assertions": [
+      "Owned container is force-removed on deadline",
+      "Active cancellation kills the owned job",
+      "No preview containers remain after completion"
+    ]
+  },
+  "queue": {
+    "accepted": 5,
+    "rejected": 1,
+    "elapsedMs": 15866,
+    "jobDurationsMs": [3180, 3452, 3112, 3023, 2969],
+    "fixture": "Each page runs a two-second CPU loop before capture",
+    "resourceSample": {
+      "memoryMiB": 205.5,
+      "memoryLimitMiB": 512,
+      "cpuPercent": 98.83,
+      "method": "docker stats --no-stream during the first admitted job",
+      "note": "One sample, not peak memory or a production throughput result"
+    },
+    "assertions": [
+      "Exactly one running job and four waiting jobs are admitted",
+      "Sixth job rejects promptly",
+      "Queue drains and containers are removed"
+    ]
+  },
+  "privateHttpDeploymentPath": {
+    "testElapsedMs": 4072.400083,
+    "assertions": [
+      "Authenticated supervisor returns a real Chromium PNG",
+      "Caller abort disconnects HTTP and cancels the Docker job",
+      "A following admitted job fences asynchronous cleanup",
+      "No preview containers remain"
+    ],
+    "transport": "Loopback HTTP fixture; production requires authenticated TLS/private networking"
+  },
+  "supervisorLoss": {
+    "testElapsedMs": 19911.305208,
+    "fixture": "Font-ready settlement never resolves; supervising Docker client receives SIGKILL",
+    "containerExitCode": 124,
+    "assertions": [
+      "Independent worker watchdog exits without a live supervisor",
+      "Container --rm reclaims the job",
+      "Only the captured, uniquely named fixture job is affected"
+    ]
+  },
+  "browserSandboxProbe": {
+    "chromiumSandboxEnabled": "Launch fails: No usable sandbox",
+    "unprivilegedNamespaceProbe": "unshare --user true fails: Operation not permitted under the same container restrictions",
+    "boundary": "Explicit Chromium sandbox opt-out inside the isolated container only; no unsandboxed host execution mode"
+  },
+  "otherVerification": {
+    "runnerUnitAndPrivateHttpTestsPassed": 6,
+    "modelGatewayTestsPassed": 61,
+    "agentCoreBuild": "passed",
+    "modelGatewayBuild": "passed",
+    "formatting": "passed for touched preview/gateway files",
+    "diffWhitespace": "passed"
+  },
+  "remainingValidation": [
+    "Production renderer host, TLS/private-network routing and Docker permissions",
+    "Live provider acceptance and visual interpretation of screenshot messages",
+    "Sustained production load, rather than five fixture jobs and one resource sample"
+  ]
+}

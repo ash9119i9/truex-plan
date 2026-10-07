@@ -1,4 +1,5 @@
 import type { DomainEvent } from "../../shared/contracts";
+import { isVisualAttachment } from "../../shared/visualizations.ts";
 import { api, base } from "./api.ts";
 import { createOrderedBatch } from "./ordered-batch.ts";
 import { readSyncMarker } from "./source-sync.ts";
@@ -96,6 +97,14 @@ function readEvent(raw: string): DomainEvent {
   )
     throw new TypeError("Invalid stream event envelope");
   const data = event.data;
+  if (event.type === "visual.published" && !isVisualAttachment(data.visual))
+    throw new TypeError("Invalid visual publication");
+  if (
+    event.type === "snapshot" &&
+    data.visuals !== undefined &&
+    (!Array.isArray(data.visuals) || !data.visuals.every(isVisualAttachment))
+  )
+    throw new TypeError("Invalid snapshot visuals");
   if (event.type === "sync.completed" && !readSyncMarker(event))
     throw new TypeError("Invalid synchronization marker");
   if (

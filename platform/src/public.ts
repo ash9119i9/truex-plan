@@ -3,6 +3,10 @@ import { runtimeError } from "../../shared/errors";
 import { errorFields, log } from "../../shared/logging";
 import { ALLOW_FOR_CHAT, AUTO_MODE_REASON } from "../../shared/contracts";
 import { effectiveMode } from "./features";
+import {
+  isVisualAttachment,
+  type VisualAttachment,
+} from "../../shared/visualizations";
 import type {
   ApprovalModesConfig,
   Goal,
@@ -19,6 +23,17 @@ import type {
   PrivacyFinding,
 } from "../../shared/contracts";
 export const POLICY_VERSION = 1;
+export function publicVisualAttachment(value: any): VisualAttachment | null {
+  if (!isVisualAttachment(value)) return null;
+  return {
+    id: value.id,
+    title: value.title,
+    description: value.description,
+    turnId: value.turnId,
+    callId: value.callId,
+    height: value.height,
+  };
+}
 
 export function publicSession(s: Session, approvalModes?: ApprovalModesConfig) {
   return {
@@ -380,6 +395,9 @@ export function publicSnapshot(s: any) {
     cursor: s.cursor,
     state: { kind: s.state?.kind || "idle", turnId: s.state?.turnId },
     messages: (s.messages || []).map(message),
+    visuals: (Array.isArray(s.visuals) ? s.visuals : [])
+      .map(publicVisualAttachment)
+      .filter(Boolean),
     pending: (s.pending || []).map(request).filter(Boolean),
     plan: publicPlan(s.plan),
     goal: publicGoal(s.goal),
@@ -704,6 +722,12 @@ export function publicEvent(e: any): any | null {
       };
     case "message.final":
       return { ...base, data: { text: d.text, messageIndex: d.messageIndex } };
+    case "visual.published": {
+      const visual = publicVisualAttachment(d.visual);
+      return visual && visual.turnId === e.turnId
+        ? { ...base, data: { visual } }
+        : null;
+    }
     case "turn.started":
       return { ...base, data: {} };
     case "turn.completed":
@@ -782,13 +806,24 @@ export function publicEvent(e: any): any | null {
         };
         if (
           d.item.type === "dynamicToolCall" &&
-          d.item.tool === "create_visualization"
+          ["create_visualization", "html_render", "html_preview"].includes(
+            d.item.tool,
+          )
         )
           labels.dynamicToolCall = complete
             ? d.item.success === false
               ? "Visualization could not be created"
               : "Visualization created"
             : "Creating an interactive visual";
+        if (
+          d.item?.type === "dynamicToolCall" &&
+          d.item.tool === "html_preview"
+        )
+          labels.dynamicToolCall = complete
+            ? d.item.success === false
+              ? "Visual preview unavailable"
+              : "Visual preview checked"
+            : "Checking the visual";
         return {
           ...base,
           type: "activity.updated",

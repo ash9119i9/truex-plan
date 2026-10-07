@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, rename, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument } from "pdf-lib";
@@ -63,6 +63,119 @@ async function fixture(t: any) {
   t.after(() => rm(root, { recursive: true, force: true }));
   return new ConversationFiles((id) => join(root, id));
 }
+test("HTML publication is scoped, replay-safe, crash-recoverable and immutable", async (t) => {
+  const root = await mkdtemp(join(tmpdir(), "truex-publication-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const files = new ConversationFiles((id) => join(root, id));
+  const args = {
+    title: "Sales",
+    html: "<!doctype html><html><head><title>Sales</title></head><body><button>Compare</button></body></html>",
+    height: 420,
+  };
+  const invocation = { turnId: "turn-1", callId: "call-1" };
+  await assert.rejects(
+    files.execute("a", "html_render", args),
+    /requires a main/,
+  );
+  await assert.rejects(
+    files.execute("a", "html_render", args, { turnId: "", callId: "call" }),
+    /requires a main/,
+  );
+  for (const invalid of [
+    { ...args, height: 0 },
+    { ...args, height: 901 },
+    { ...args, height: 420.5 },
+    { ...args, title: " " },
+    { ...args, html: "<div>Fragment</div>" },
+    { ...args, html: "<!-- <html><head></head><body></body></html> -->" },
+    { ...args, html: "x".repeat(180001) },
+    { ...args, path: "/etc/passwd" },
+  ])
+    await assert.rejects(
+      files.execute("a", "html_render", invalid, invocation),
+    );
+  const [first, duplicate] = (await Promise.all([
+    files.execute("a", "html_render", args, invocation),
+    files.execute("a", "html_render", args, invocation),
+  ])) as any[];
+  assert.equal(first.id, duplicate.id);
+  assert.equal((await files.list("a")).length, 1);
+  assert.deepEqual(first.visual, {
+    id: first.id,
+    title: "Sales",
+    description: "Sales",
+    height: 420,
+    ...invocation,
+  });
+  assert.equal(
+    (await files.visualization("a", first.id)).sourceFormat,
+    "document",
+  );
+  assert.equal((await files.visualization("a", first.id)).html, args.html);
+  assert.ok(!(await files.list("a")).some((file) => "publication" in file));
+  await assert.rejects(
+    files.execute("a", "html_render", { ...args, height: 421 }, invocation),
+    /different content/,
+  );
+  const separate = (await files.execute("a", "html_render", args, {
+    ...invocation,
+    callId: "call-2",
+  })) as any;
+  assert.notEqual(first.id, separate.id);
+  const revision = (await files.execute(
+    "a",
+    "html_render",
+    { ...args, sourceId: first.id },
+    { ...invocation, callId: "call-3" },
+  )) as any;
+  assert.equal((await files.get("a", revision.id)).sourceId, first.id);
+  await assert.rejects(
+    files.execute(
+      "b",
+      "html_render",
+      { ...args, sourceId: first.id },
+      invocation,
+    ),
+    /not found/,
+  );
+  // A fresh process has no in-memory event/queue state: associations survive
+  // source commit followed immediately by a crash before publication/spooling.
+  const restarted = new ConversationFiles((id) => join(root, id));
+  assert.equal((await restarted.publications("a")).length, 3);
+  assert.equal(
+    ((await restarted.execute("a", "html_render", args, invocation)) as any).id,
+    first.id,
+  );
+  await restarted.copy("a", "fork");
+  assert.deepEqual(
+    await restarted.publications("fork"),
+    await restarted.publications("a"),
+  );
+  // An uncommitted metadata file is never projected as a published artifact.
+  await rename(
+    join(root, "a", "files", separate.id + ".json"),
+    join(root, "a", "files", separate.id + ".pending"),
+  );
+  assert.equal((await restarted.publications("a")).length, 2);
+  const corruptId = "3bab68a9-ced4-4bdc-94fd-70ef6a5fb4e0";
+  await writeFile(join(root, "a", "files", corruptId + ".json"), "{broken");
+  assert.equal((await restarted.publications("a")).length, 2);
+  await writeFile(
+    join(root, "a", "files", corruptId + ".json"),
+    JSON.stringify({
+      id: corruptId,
+      kind: "visualization",
+      sourceFormat: "document",
+      size: 10,
+      title: { private: "invalid" },
+      description: "Corrupt fixture",
+      height: "420",
+      createdAt: new Date().toISOString(),
+      publication: { ...invocation, inputHash: "a".repeat(64) },
+    }),
+  );
+  assert.equal((await restarted.publications("a")).length, 2);
+});
 test("uploads are isolated, persistent, validated, and readable in chunks", async (t) => {
   const files = await fixture(t);
   const content = "A".repeat(25000);

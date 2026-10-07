@@ -148,6 +148,7 @@ function thinkingConfig(model: string, effort: unknown, enabled?: boolean) {
 interface Turn {
   calls: { id: string; name: string }[];
   outputs: Map<string, string>;
+  images: Map<string, Part[]>;
 }
 
 function toContents(input: any, tools: ToolNames) {
@@ -170,13 +171,21 @@ function toContents(input: any, tools: ToolNames) {
     if (!turn) return;
     contents.push({
       role: "user",
-      parts: turn.calls.map((call) => ({
-        functionResponse: {
-          ...(GENERATED_ID.test(call.id) ? {} : { id: call.id }),
-          name: call.name,
-          response: { output: turn!.outputs.get(call.id) ?? INTERRUPTED },
-        },
-      })),
+      parts: [
+        ...turn.calls.map((call) => ({
+          functionResponse: {
+            ...(GENERATED_ID.test(call.id) ? {} : { id: call.id }),
+            name: call.name,
+            response: { output: turn!.outputs.get(call.id) ?? INTERRUPTED },
+          },
+        })),
+        ...turn.calls.flatMap((call) => {
+          const images = turn!.images.get(call.id) ?? [];
+          return images.length
+            ? [{ text: `Images from tool call ${call.id}:` }, ...images]
+            : [];
+        }),
+      ],
     });
     turn = null;
   };
@@ -217,7 +226,7 @@ function toContents(input: any, tools: ToolNames) {
       const sig = signatures.get(item.call_id);
       if (sig) part.thoughtSignature = sig;
       if (!turn) {
-        turn = { calls: [], outputs: new Map() };
+        turn = { calls: [], outputs: new Map(), images: new Map() };
         contents.push({ role: "model", parts: [] });
       }
       contents.at(-1)!.parts.push(part);
@@ -227,8 +236,10 @@ function toContents(input: any, tools: ToolNames) {
       type === "custom_tool_call_output"
     ) {
       // Outputs without a pending call (compaction, interrupted turns) are dropped.
-      if (turn && (turn as Turn).calls.some((c) => c.id === item.call_id))
+      if (turn && (turn as Turn).calls.some((c) => c.id === item.call_id)) {
         (turn as Turn).outputs.set(item.call_id, outputText(item.output));
+        (turn as Turn).images.set(item.call_id, outputImages(item.output));
+      }
     } else if (type === "reasoning") {
       // A text signature belongs to the model text just before this item.
       const sig = decodeSignatures(item.encrypted_content)?.textSignature;
@@ -300,12 +311,30 @@ function outputText(output: any): string {
         typeof part?.text === "string"
           ? part.text
           : part?.type === "input_image"
-            ? "[image omitted]"
+            ? outputImages([part]).length
+              ? "[Image supplied with these tool results.]"
+              : "[Image not sent: unsupported or invalid inline image.]"
             : "",
       )
       .filter(Boolean)
       .join("\n");
   return output == null ? "" : JSON.stringify(output);
+}
+
+function outputImages(output: any): Part[] {
+  return Array.isArray(output)
+    ? output.flatMap((part: any) => {
+        if (part?.type !== "input_image" || typeof part.image_url !== "string")
+          return [];
+        const data =
+          /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$/.exec(
+            part.image_url,
+          );
+        return data
+          ? [{ inlineData: { mimeType: data[1], data: data[2] } }]
+          : [];
+      })
+    : [];
 }
 
 const NORMAL_FINISH = new Set(["STOP", "MAX_TOKENS"]);

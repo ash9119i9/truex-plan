@@ -6,7 +6,7 @@ import {
   idCandidates,
 } from "./documents";
 import { MongoClient, Db } from "mongodb";
-import { publicPlan, type PlanStep } from "./public";
+import { publicPlan, publicVisualAttachment, type PlanStep } from "./public";
 import { ApiError } from "./errors";
 import { errorFields, log } from "../../shared/logging";
 import {
@@ -175,6 +175,13 @@ export class Store {
       const db = this.client.db(dbName);
       done = Promise.all([
         db.collection("messages").createIndex({ sessionId: 1, at: 1 }),
+        db.collection("messages").createIndex(
+          { sessionId: 1 },
+          {
+            name: "visual_publications",
+            partialFilterExpression: { visuals: { $exists: true } },
+          },
+        ),
         db.collection("sessions").createIndex({ status: 1 }),
         db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
         db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
@@ -398,6 +405,25 @@ export class Store {
     return false;
   }
   async persist(sessionId: string, event: DomainEvent) {
+    if (event.type === "visual.published") {
+      const visual = publicVisualAttachment(event.data.visual);
+      if (!visual || visual.turnId !== event.turnId) return;
+      await this.messages.updateOne(
+        { _id: `${sessionId}:visual:${visual.id}` },
+        {
+          $setOnInsert: {
+            sessionId,
+            role: "assistant",
+            text: "",
+            at: event.at,
+            turnId: visual.turnId,
+            itemId: visual.callId,
+            visuals: [visual],
+          },
+        },
+        { upsert: true },
+      );
+    }
     if (event.type === "plan.updated")
       await this.savePlan(sessionId, {
         plan: event.data.plan,

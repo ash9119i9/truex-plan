@@ -1,5 +1,6 @@
 import type { AskForApproval } from "./protocol/v2/AskForApproval";
 import type { SandboxMode } from "./protocol/v2/SandboxMode";
+import type { VisualAttachment } from "./visualizations";
 export interface Agent {
   _id: string;
   name: string;
@@ -192,6 +193,7 @@ export interface CommandRecord {
   error?: string;
 }
 export interface Message {
+  visuals?: VisualAttachment[];
   command?: CommandRecord;
   _id: string;
   sessionId: string;
@@ -280,6 +282,7 @@ export type DomainType =
   | "turn.completed"
   | "message.delta"
   | "message.final"
+  | "visual.published"
   | "reasoning.delta"
   | "item.started"
   | "item.completed"
@@ -312,6 +315,7 @@ export interface DomainEvent {
   data: Record<string, any>;
 }
 export interface Snapshot {
+  visuals?: VisualAttachment[];
   thinking?: {
     id: string;
     turnId?: string;

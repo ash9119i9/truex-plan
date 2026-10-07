@@ -1,5 +1,7 @@
 # Repository-root context, limited to the platform and shared build inputs.
 **
+!package.json
+!package-lock.json
 !platform/
 !platform/Dockerfile
 !platform/Dockerfile.dockerignore

@@ -4,6 +4,8 @@ import type {
   Message,
 } from "../../shared/contracts";
 
+import type { VisualAttachment } from "../../shared/visualizations";
+
 export type Entry =
   | {
       kind: "message";
@@ -30,6 +32,7 @@ export type Entry =
       raw?: string;
       done?: boolean;
     }
+  | { kind: "visual"; id: string; turnId: string; visual: VisualAttachment }
   | { kind: "item"; id: string; turnId?: string; item: any }
   // The helper agents a turn started, shown as one live block.
   | { kind: "agents"; id: string; turnId?: string; threadIds: string[] }
@@ -242,8 +245,20 @@ export function historyEntries(messages: Message[]): Entry[] {
   const list: Entry[] = [];
   const ids = new Set<string>();
   const answers = createAnswerIndex();
+  const visualIds = new Set<string>();
   for (const m of messages) {
     if (m.role === "assistant") {
+      for (const visual of m.visuals ?? []) {
+        if (visualIds.has(visual.id)) continue;
+        visualIds.add(visual.id);
+        list.push({
+          kind: "visual",
+          id: `visual:${visual.id}`,
+          turnId: visual.turnId,
+          visual,
+        });
+      }
+      if (m.visuals?.length && !m.text) continue;
       const value: AnswerUpdate = {
         turnId: m.turnId,
         itemId: m.runtimeItemId || m.itemId,
@@ -280,7 +295,35 @@ export function historyEntries(messages: Message[]): Entry[] {
       list.push(entry);
     }
   }
-  return list;
+  // Persistence/reconciliation can place an attachment after its final prose.
+  // Move only those visuals; preserve ordinary transcript and request ordering.
+  const firstAnswer = new Map<string, number>();
+  list.forEach((entry, index) => {
+    if (
+      entry.kind === "message" &&
+      entry.role === "assistant" &&
+      entry.turnId &&
+      !firstAnswer.has(entry.turnId)
+    )
+      firstAnswer.set(entry.turnId, index);
+  });
+  const moved = new Set<Entry>();
+  const before = new Map<number, Entry[]>();
+  list.forEach((entry, index) => {
+    if (entry.kind !== "visual") return;
+    const answer = firstAnswer.get(entry.turnId);
+    if (answer === undefined || answer > index) return;
+    moved.add(entry);
+    const bucket = before.get(answer) ?? [];
+    bucket.push(entry);
+    before.set(answer, bucket);
+  });
+  return moved.size
+    ? list.flatMap((entry, index) => [
+        ...(before.get(index) ?? []),
+        ...(moved.has(entry) ? [] : [entry]),
+      ])
+    : list;
 }
 
 function sameEntry(previous: Entry, next: Entry): boolean {
@@ -309,11 +352,12 @@ export function mergeHistoryWindow(
   }: { older?: boolean; preserveLive?: boolean } = {},
 ): Entry[] {
   if (messages.length === 0) return live;
-  const saved = historyEntries(messages) as Answer[];
+  const saved = historyEntries(messages);
   if (live.length === 0) return saved;
   const next = [...live];
   const answers = createAnswerIndex();
   const requests = new Map<string, number>();
+  const visuals = new Map<string, number>();
   const turnAppend = new Map<string, number>();
   const nextUserAfter: number[] = [];
   let nextUser = live.length;
@@ -336,6 +380,7 @@ export function mergeHistoryWindow(
     lastRequest > lastCompletedAnswer ? lastRequest : live.length;
   let previousUser = -1;
   live.forEach((entry, position) => {
+    if (entry.kind === "visual") visuals.set(entry.visual.id, position);
     if (entry.kind === "message") {
       if (entry.role === "assistant") answers.update(entry, position);
       else if (!requests.has(entry.id)) requests.set(entry.id, position);
@@ -361,6 +406,20 @@ export function mergeHistoryWindow(
       activeBoundary = previousUser >= 0 ? previousUser : position;
   });
   const matches = saved.map((entry) => {
+    if (entry.kind === "visual") {
+      const position = visuals.get(entry.visual.id);
+      if (position !== undefined) {
+        const previous = next[position];
+        if (
+          previous.kind === "visual" &&
+          sameVisual(previous.visual, entry.visual)
+        )
+          return position;
+        next[position] = entry;
+      }
+      return position;
+    }
+    if (entry.kind !== "message") return undefined;
     const value: AnswerUpdate = {
       turnId: entry.turnId,
       itemId: entry.itemId,
@@ -417,7 +476,7 @@ export function mergeHistoryWindow(
     followingMatch = matches[i] ?? followingMatch;
     nextMatches[i] = followingMatch;
   }
-  const insertions = new Map<number, Answer[]>();
+  const insertions = new Map<number, Entry[]>();
   let precedingMatch: number | undefined;
   saved.forEach((entry, i) => {
     if (matches[i] !== undefined) {
@@ -425,10 +484,23 @@ export function mergeHistoryWindow(
       return;
     }
     const turnPosition =
-      !older && entry.role === "assistant" && entry.turnId
+      !older &&
+      (entry.kind === "visual" ||
+        (entry.kind === "message" && entry.role === "assistant")) &&
+      entry.turnId
         ? turnAppend.get(entry.turnId)
         : undefined;
+    const beforeAnswer =
+      entry.kind === "visual"
+        ? next.findIndex(
+            (other) =>
+              other.kind === "message" &&
+              other.role === "assistant" &&
+              other.turnId === entry.turnId,
+          )
+        : -1;
     const position =
+      (beforeAnswer >= 0 ? beforeAnswer : undefined) ??
       nextMatches[i] ??
       turnPosition ??
       (precedingMatch !== undefined
@@ -461,6 +533,10 @@ export function mergeHistoryEntries(
 ): Entry[] {
   let next = historyEntries(messages);
   for (const entry of live) {
+    if (entry.kind === "visual") {
+      next = addVisuals(next, [entry.visual]);
+      continue;
+    }
     if (entry.kind === "approval") {
       next = addApprovals(next, [entry.record]);
       continue;
@@ -553,8 +629,57 @@ export function addHelpers(
   return [...list, { kind: "agents", id, turnId, threadIds: fresh }];
 }
 
+function sameVisual(a: VisualAttachment, b: VisualAttachment) {
+  return (
+    a.id === b.id &&
+    a.title === b.title &&
+    a.description === b.description &&
+    a.turnId === b.turnId &&
+    a.callId === b.callId &&
+    a.height === b.height
+  );
+}
+
+// Publications have an identity independent of prose, including interrupted turns.
+export function addVisuals(
+  list: Entry[],
+  visuals: VisualAttachment[],
+): Entry[] {
+  for (const visual of visuals) {
+    const previous = list.find(
+      (entry) => entry.kind === "visual" && entry.visual.id === visual.id,
+    );
+    if (previous?.kind === "visual") {
+      if (!sameVisual(previous.visual, visual))
+        list = list.map((entry) =>
+          entry === previous ? { ...previous, visual } : entry,
+        );
+      continue;
+    }
+    const next = [...list];
+    const answer = next.findIndex(
+      (entry) =>
+        entry.kind === "message" &&
+        entry.role === "assistant" &&
+        entry.turnId === visual.turnId,
+    );
+    next.splice(answer >= 0 ? answer : next.length, 0, {
+      kind: "visual",
+      id: `visual:${visual.id}`,
+      turnId: visual.turnId,
+      visual,
+    });
+    list = next;
+  }
+  return list;
+}
+
 export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
   const { data: d, turnId, itemId, type } = event;
+  if (type === "visual.published")
+    return d?.visual ? addVisuals(list, [d.visual]) : list;
+  if (type === "sync.completed")
+    return addVisuals(list, d.snapshot?.visuals ?? []);
   if (type === "approval.resolved")
     return d?.audit ? addApprovals(list, [d.audit]) : list;
   if (
@@ -566,6 +691,7 @@ export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
       ? addHelpers(list, turnId, [d.agent.threadId])
       : list;
   if (type === "snapshot") {
+    list = addVisuals(list, d.visuals ?? []);
     // Snapshots don't say which turn started a helper; place any the chat
     // hasn't shown yet with the latest turn.
     const ids = (Array.isArray(d.subAgents) ? d.subAgents : [])

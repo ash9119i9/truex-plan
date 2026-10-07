@@ -4,6 +4,7 @@ import {
   historyWindow,
   historyAnchor,
 } from "../../../platform/src/history-window.ts";
+const port = Number(process.env.VISUAL_REPLIES_FIXTURE_PORT || 4400);
 const sessions = ["a", "b", "long"].map((name, i) => ({
   _id: `fixture-${name}`,
   agentId: "fixture-agent",
@@ -350,6 +351,6 @@ createServer(async (req, res) => {
     });
   }
   return json({ error: "Unsupported fixture operation" }, 404);
-}).listen(4400, "127.0.0.1", () =>
-  console.log("Isolated synthetic API fixture http://127.0.0.1:4400"),
+}).listen(port, "127.0.0.1", () =>
+  console.log(`Isolated synthetic API fixture http://127.0.0.1:${port}`),
 );

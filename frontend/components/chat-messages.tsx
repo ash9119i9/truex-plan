@@ -23,7 +23,8 @@ import {
 import { CommandResult, commandLabel } from "./command-result";
 import { ThinkingBlock } from "./thinking-block";
 import { ApprovalRecordView } from "./approval-record";
-import { Visualization } from "./visualization";
+import dynamic from "next/dynamic";
+
 import { splitVisualizations } from "@/lib/visualization";
 import { splitSuggestions } from "@/lib/suggestions";
 import { SuggestedQuestions } from "./suggested-questions";
@@ -37,6 +38,13 @@ import type {
   TurnTrace,
   TurnUsage,
 } from "../../shared/contracts";
+
+const Visualization = dynamic(
+  () => import("./visualization").then((module) => module.Visualization),
+  {
+    loading: () => <p role="status">Loading visual…</p>,
+  },
+);
 
 const emptyTraces: TurnTrace[] = [];
 const emptyUsage: Record<string, TurnUsage> = {};
@@ -532,10 +540,25 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
               sessionId={sessionId}
               onOpenAgent={onOpenAgent}
             />
+          ) : e.kind === "visual" ? (
+            sessionId ? (
+              <Visualization
+                key={e.id}
+                sessionId={sessionId}
+                id={e.visual.id}
+                initialHeight={e.visual.height}
+                onPrompt={onPrompt}
+              />
+            ) : (
+              <p key={e.id}>
+                Open this conversation to view the visualization.
+              </p>
+            )
           ) : e.kind === "message" && e.text ? (
             <AnswerBody
               key={e.id}
               entry={e}
+              publishedVisualIds={group.visualIds}
               active={active}
               sessionId={sessionId}
               onPrompt={onPrompt}
@@ -558,10 +581,12 @@ const AssistantMessageRow = memo(function AssistantMessageRow({
 // Receipts, helper status, and composer changes must not reparse saved Markdown.
 const AnswerBody = memo(function AnswerBody({
   entry,
+  publishedVisualIds,
   active,
   sessionId,
   onPrompt,
 }: {
+  publishedVisualIds?: readonly string[];
   entry: Extract<Entry, { kind: "message" }>;
   active: boolean;
 } & Pick<ChatMessagesProps, "sessionId" | "onPrompt">) {
@@ -569,21 +594,22 @@ const AnswerBody = memo(function AnswerBody({
   const body = splitSuggestions(entry.text, streaming).body;
   return (
     <div className="answer markdown">
-      {splitVisualizations(body, streaming).map((part, i) =>
-        part.type === "visualization" ? (
-          sessionId ? (
-            <Visualization
-              key={part.id + ":" + i}
-              sessionId={sessionId}
-              id={part.id}
-              onPrompt={onPrompt}
-            />
+      {splitVisualizations(body, streaming, publishedVisualIds).map(
+        (part, i) =>
+          part.type === "visualization" ? (
+            sessionId ? (
+              <Visualization
+                key={part.id + ":" + i}
+                sessionId={sessionId}
+                id={part.id}
+                onPrompt={onPrompt}
+              />
+            ) : (
+              <p key={i}>Open this conversation to view the visualization.</p>
+            )
           ) : (
-            <p key={i}>Open this conversation to view the visualization.</p>
-          )
-        ) : (
-          <StreamingMarkdown key={i} text={part.text} streaming={streaming} />
-        ),
+            <StreamingMarkdown key={i} text={part.text} streaming={streaming} />
+          ),
       )}
       {active && streaming && <span className="caret" aria-hidden="true" />}
       {!streaming && <CopyTextButton text={body} label="Copy answer" />}

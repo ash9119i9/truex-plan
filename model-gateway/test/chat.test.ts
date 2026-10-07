@@ -99,7 +99,11 @@ test("toChatRequest: instructions, developer text, tools and tool history", () =
       ],
     },
     { role: "tool", tool_call_id: "c1", content: "apps" },
-    { role: "tool", tool_call_id: "c2", content: "answer\n[image omitted]" },
+    {
+      role: "tool",
+      tool_call_id: "c2",
+      content: "answer\n[Image not sent: unsupported or invalid inline image.]",
+    },
     { role: "assistant", content: "Done" },
   ]);
 });

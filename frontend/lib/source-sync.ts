@@ -1,4 +1,5 @@
 import type { DomainEvent, Snapshot } from "../../shared/contracts";
+import { isVisualAttachment } from "../../shared/visualizations.ts";
 import { applyChatEvent, type Entry } from "./chat.ts";
 import { coalesceChatEvents } from "./chat-batch.ts";
 
@@ -57,6 +58,9 @@ function sourceSnapshot(value: any): value is Snapshot {
         typeof request.detail === "object" &&
         !Array.isArray(request.detail),
     ) &&
+    (value.visuals === undefined ||
+      (Array.isArray(value.visuals) &&
+        value.visuals.every(isVisualAttachment))) &&
     Array.isArray(value.messages) &&
     value.messages.every(
       (message: any) =>

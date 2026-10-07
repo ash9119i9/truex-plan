@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, type Usage } from "../responses";
 import { ToolNames } from "../tool-names";
+import { UpstreamTimeoutError } from "../upstream";
 import { isContextError } from "./chat";
 
 // Anthropic Messages API via the official SDK. Like the Chat adapter, every
@@ -583,7 +584,9 @@ export async function proxyAnthropic(ctx: AdapterContext) {
     log(`upstream stream failed: ${(error as Error).message}`);
     out.fail(
       "server_error",
-      "The connection to the model provider was interrupted.",
+      error instanceof UpstreamTimeoutError
+        ? `The model provider timed out: ${error.message}. Please retry.`
+        : "The connection to the model provider was interrupted.",
     );
   }
 }
@@ -594,6 +597,15 @@ export async function proxyAnthropic(ctx: AdapterContext) {
 function relayRequestError(error: unknown, ctx: AdapterContext) {
   if (ctx.signal.aborted || error instanceof Anthropic.APIUserAbortError)
     return;
+  if (error instanceof Anthropic.APIConnectionTimeoutError) {
+    ctx.log(`upstream timed out: ${error.message}`);
+    return sendError(
+      ctx.res,
+      504,
+      "The model provider did not respond in time. Please retry.",
+      "server_error",
+    );
+  }
   if (error instanceof Anthropic.APIConnectionError) {
     ctx.log(`upstream unreachable: ${error.message}`);
     return sendError(

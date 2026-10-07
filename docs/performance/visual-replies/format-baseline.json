@@ -1,0 +1,225 @@
+{
+  "scope": "Each current repository formatter warning checked against original HEAD via Prettier stdin, without changing unrelated files",
+  "warnings": [
+    {
+      "file": "agent-core/src/agentcore-services.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/access.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/admin.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/agents.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/auth.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/google.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/invites.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/service.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/src/store.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/admin.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/agents.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/auth.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/goal-replay.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/goals.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/google.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/mcp-scopes-http.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/mcp-scopes.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/mcp.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/migrate-mcp-scopes.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/ownership.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "platform/test/projects.test.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/app/auth/[...path]/route.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/app/chat.css",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/app/invite/[token]/page.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/agents-panel.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/invite/capabilities-board.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/invite/join-page.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/observability/charts.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/observability/insights-panel.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/observability/token-bar.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/observability/trace-card.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/plan-steps.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/agent-badge.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/agent-menu.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/agents-view.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/icon.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/popover.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/search-palette.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/shell.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/topbar.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/components/v2/user-menu.tsx",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/agent-board.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/agent-look.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/agents.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/auto-tab.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/goal-errors.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/goal.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/invite-aura.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/invite-form.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/mock.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/observability.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/use-follow-activity.ts",
+      "preexisting": true
+    },
+    {
+      "file": "frontend/lib/use-hotkeys.ts",
+      "preexisting": true
+    },
+    {
+      "file": "scripts/migrate-mcp-scopes.mjs",
+      "preexisting": true
+    },
+    {
+      "file": "scripts/tenant.mjs",
+      "preexisting": true
+    }
+  ]
+}

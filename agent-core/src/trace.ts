@@ -140,7 +140,13 @@ function sourcesOf(
         [
           "toolOutput",
           `${name(item.tool) ?? "Tool"} result`,
-          texts(item.contentItems),
+          // Dynamic images belong to the provider conversation, not the text
+          // context/debug view or PII scanner. Never stringify screenshot data.
+          texts(
+            (Array.isArray(item.contentItems) ? item.contentItems : []).filter(
+              (content: any) => content?.type === "inputText",
+            ),
+          ),
           "toolOutput",
         ],
       ];

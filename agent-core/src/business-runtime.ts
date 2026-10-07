@@ -17,7 +17,23 @@ import {
   scriptTools,
   type ScriptRunner,
 } from "./script-runner";
-import { visualizationInstructions } from "../../shared/visualizations";
+import {
+  visualizationInstructions,
+  visualReplyInstructions,
+} from "../../shared/visualizations";
+import type { VisualAttachment } from "../../shared/visualizations";
+import type { DynamicToolCallOutputContentItem } from "../../shared/protocol/v2/DynamicToolCallOutputContentItem";
+import {
+  prepareVisualizationDocument,
+  validateVisualizationDocument,
+} from "../../shared/visualization-document";
+import {
+  htmlPreviewTool,
+  htmlPreviewRunnerFromEnv,
+  htmlPreviewContentItems,
+  validateHtmlPreviewArguments,
+  type HtmlPreviewRunner,
+} from "./html-preview";
 import { suggestionInstructions } from "../../shared/suggestions";
 import {
   DEFAULT_TENANT,
@@ -90,6 +106,8 @@ export function subAgentOptions(value: any): SubAgentOptions {
 // This adapter is the only runtime used by the service. No browser-controlled
 // config, history import, path, environment or arbitrary RPC can reach the engine.
 export class BusinessRuntime extends CodexClient {
+  readonly visualRepliesEnabled =
+    process.env.VISUAL_REPLIES_ENABLED !== "false";
   // Helper agent threads spawned by conversations. They have no workspace of
   // their own and may only be interrupted.
   readonly helpers = new Set<string>();
@@ -99,11 +117,21 @@ export class BusinessRuntime extends CodexClient {
     (id, name, data) => this.files.publish(id, name, data),
   );
   readonly scripts: ScriptTools;
+  private previews = new Map<
+    string,
+    {
+      threadId: string;
+      turnId: string;
+      tenantId: string;
+      controller: AbortController;
+    }
+  >();
   constructor(
     binary: string,
     home: string,
     timeoutMs?: number,
     readonly scriptRunner: ScriptRunner = scriptRunnerFromEnv(),
+    readonly htmlPreviewRunner: HtmlPreviewRunner = htmlPreviewRunnerFromEnv(),
   ) {
     super(binary, home, timeoutMs);
     this.scripts = new ScriptTools(
@@ -114,20 +142,48 @@ export class BusinessRuntime extends CodexClient {
     this.on("notification", (msg: any) => {
       const id = msg?.params?.threadId;
       if (msg?.method !== "turn/completed" || typeof id !== "string") return;
+      this.cancelPreviews(id, msg.params?.turn?.id);
       if (this.helpers.has(id) || !/^[\w-]+$/.test(id)) return;
       if (existsSync(this.marker(id)))
         this.workspaceFiles.clearTemp(id).catch(() => {});
     });
+    this.on("exit", () => this.cancelPreviews());
+  }
+  private cancelPreviews(threadId?: string, turnId?: string) {
+    for (const entry of this.previews.values())
+      if (
+        (!threadId || entry.threadId === threadId) &&
+        (!turnId || entry.turnId === turnId)
+      )
+        entry.controller.abort();
+  }
+  override stop() {
+    this.cancelPreviews();
+    super.stop();
   }
   get scriptsEnabled() {
     return !(this.scriptRunner instanceof DisabledScriptRunner);
   }
   private dynamicTools() {
     return [
-      ...fileTools,
+      ...fileTools.filter(
+        (tool) =>
+          tool.type !== "function" ||
+          tool.name !== "html_render" ||
+          this.visualRepliesEnabled,
+      ),
       ...workspaceTools,
       ...(this.scriptsEnabled ? scriptTools : []),
+      ...(this.visualRepliesEnabled && this.htmlPreviewRunner.enabled
+        ? [htmlPreviewTool]
+        : []),
     ];
+  }
+  visualRepliesAvailable(id: string) {
+    return this.record(id).visualReplies === 1;
+  }
+  htmlPreviewAvailable(id: string) {
+    return this.record(id).htmlPreview === 1;
   }
   visualizationToolsAvailable(id: string) {
     try {
@@ -148,9 +204,22 @@ export class BusinessRuntime extends CodexClient {
       return false;
     }
   }
-  async executeTool(params: any) {
+  async executeTool(params: any): Promise<{
+    success: boolean;
+    contentItems: DynamicToolCallOutputContentItem[];
+    visual?: VisualAttachment;
+  }> {
     try {
-      if (params.namespace) throw new HttpError(400, "Unknown tool namespace");
+      if (params.namespace !== undefined && params.namespace !== null)
+        throw new HttpError(400, "Unknown tool namespace");
+      if (
+        params.tool === "html_render" &&
+        !this.visualRepliesAvailable(params.threadId)
+      )
+        throw new HttpError(
+          409,
+          "Start a new conversation to use visual replies",
+        );
       if (
         params.tool === "create_visualization" &&
         !this.visualizationToolsAvailable(params.threadId)
@@ -161,6 +230,62 @@ export class BusinessRuntime extends CodexClient {
           409,
           "Use document tools in the main conversation. Older conversations need a new conversation for document tools.",
         );
+      if (params.tool === "html_preview") {
+        if (!this.htmlPreviewAvailable(params.threadId))
+          throw new HttpError(
+            409,
+            "HTML preview is unavailable in this conversation. Start a new conversation after preview is enabled.",
+          );
+        const input = validateHtmlPreviewArguments(params.arguments);
+        if (!validateVisualizationDocument(input.html))
+          throw new HttpError(
+            400,
+            "Supply a complete HTML document with html, head and body elements",
+          );
+        const key = `${params.threadId}:${params.turnId}:${params.callId}`;
+        if (this.previews.has(key))
+          throw new HttpError(409, "This preview call is already running");
+        const tenant = this.tenant(params.threadId);
+        if (
+          [...this.previews.values()].filter(
+            (entry) => entry.tenantId === tenant,
+          ).length >= 2
+        )
+          throw new HttpError(
+            429,
+            "This tenant already has two visual previews in progress. Publish without preview or retry later.",
+          );
+        const controller = new AbortController();
+        this.previews.set(key, {
+          threadId: params.threadId,
+          turnId: params.turnId,
+          tenantId: tenant,
+          controller,
+        });
+        try {
+          const html = prepareVisualizationDocument(
+            {
+              title: "Visual preview",
+              html: input.html,
+              sourceFormat: "document",
+            },
+            null,
+            { appearance: input.appearance },
+          );
+          const result = await this.htmlPreviewRunner.run({
+            ...input,
+            html,
+            signal: controller.signal,
+            scope: params.threadId,
+          });
+          return {
+            success: true,
+            contentItems: htmlPreviewContentItems(result),
+          };
+        } finally {
+          this.previews.delete(key);
+        }
+      }
       const result = workspaceToolNames.has(params.tool)
         ? await this.workspaceFiles.execute(
             params.threadId,
@@ -177,10 +302,13 @@ export class BusinessRuntime extends CodexClient {
               params.threadId,
               params.tool,
               params.arguments,
+              { turnId: params.turnId, callId: params.callId },
             );
+      const { visual, ...output } = result as any;
       return {
         success: true,
-        contentItems: [{ type: "inputText", text: JSON.stringify(result) }],
+        contentItems: [{ type: "inputText", text: JSON.stringify(output) }],
+        ...(visual ? { visual } : {}),
       };
     } catch (error) {
       if (!(error instanceof HttpError))
@@ -253,7 +381,12 @@ export class BusinessRuntime extends CodexClient {
       return subAgentOptions(undefined);
     }
   }
-  private configuration(params: any, cwd: string) {
+  private configuration(
+    params: any,
+    cwd: string,
+    visualReplies = this.visualRepliesEnabled,
+    preview = this.htmlPreviewRunner.enabled,
+  ) {
     const helpers = subAgentOptions(params.subAgents);
     const { persona, scope } = personaOptions(params);
     const skills = skillSet(params.skills);
@@ -330,7 +463,9 @@ export class BusinessRuntime extends CodexClient {
       approvalPolicy: "on-request",
       baseInstructions:
         instructions +
-        visualizationInstructions +
+        (visualReplies
+          ? visualReplyInstructions(preview)
+          : visualizationInstructions) +
         suggestionInstructions +
         "\n\nAgent role:\n" +
         (params.baseInstructions || defaultRoles[scope]) +
@@ -341,6 +476,8 @@ export class BusinessRuntime extends CodexClient {
     };
   }
   override async request(method: string, params: any = {}): Promise<any> {
+    if (method === "turn/interrupt")
+      this.cancelPreviews(params.threadId, params.turnId);
     // Helper threads have no workspace; only these narrow calls reach them.
     if (method === "turn/interrupt" && this.helpers.has(params.threadId))
       return super.request(method, {
@@ -381,6 +518,9 @@ export class BusinessRuntime extends CodexClient {
           tenantId: tenant,
           documentTools: 1,
           visualizationTools: 1,
+          visualReplies: this.visualRepliesEnabled ? 1 : 0,
+          htmlPreview:
+            this.visualRepliesEnabled && this.htmlPreviewRunner.enabled ? 1 : 0,
           subAgents: subAgentOptions(params.subAgents),
           skills,
         }),
@@ -405,6 +545,8 @@ export class BusinessRuntime extends CodexClient {
           skills: params.skills ?? this.skills(params.threadId),
         },
         cwd,
+        this.visualRepliesAvailable(params.threadId),
+        this.htmlPreviewAvailable(params.threadId),
       );
       const result = await super.request(method, {
         ...profile,
@@ -461,6 +603,8 @@ export class BusinessRuntime extends CodexClient {
             )
               ? 1
               : 0,
+            visualReplies: this.visualRepliesAvailable(params.threadId) ? 1 : 0,
+            htmlPreview: this.htmlPreviewAvailable(params.threadId) ? 1 : 0,
             subAgents: this.helperSettings(params.threadId),
             skills: this.skills(params.threadId),
           }),

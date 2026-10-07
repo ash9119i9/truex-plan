@@ -14,6 +14,36 @@ const helper = { agent: "Scout", agentThreadId: "child_1" };
 const email = "jane.doe@example.com",
   card = "4111 1111 1111 1111";
 
+test("preview screenshots never enter text context or privacy scanning", () => {
+  const builder = new TraceBuilder("preview-turn", "thread", 0);
+  const diagnostics = '{"width":390,"contentHeight":260}';
+  builder.onItem(
+    "completed",
+    {
+      type: "dynamicToolCall",
+      id: "preview",
+      tool: "html_preview",
+      success: true,
+      contentItems: [
+        { type: "inputText", text: diagnostics },
+        {
+          type: "inputImage",
+          imageUrl: "data:image/png;base64," + "4111111111111111".repeat(1000),
+        },
+      ],
+    },
+    1,
+    main,
+  );
+  const trace = builder.finish("completed", 1);
+  assert.equal(trace.privacy.scannedChars, diagnostics.length);
+  assert.deepEqual(trace.privacy.findings, []);
+  assert.deepEqual(
+    builder.context().sections.map((section) => section.text),
+    [diagnostics],
+  );
+});
+
 test("steps are labelled in plain words without arguments", () => {
   const label = (item: any) => stepOf(item)?.label;
   assert.equal(label({ type: "reasoning" }), "Thinking");

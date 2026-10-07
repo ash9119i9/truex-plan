@@ -4,7 +4,7 @@
   "scripts": {
     "protocol:gen": "node scripts/protocol.mjs",
     "dev": "node scripts/dev.mjs",
-    "install:all": "npm --prefix agent-core ci && npm --prefix platform ci && npm --prefix model-gateway ci && npm --prefix frontend ci",
+    "install:all": "npm ci && npm --prefix agent-core ci && npm --prefix platform ci && npm --prefix model-gateway ci && npm --prefix frontend ci",
     "build": "npm --prefix agent-core run build && npm --prefix platform run build && npm --prefix model-gateway run build && npm --prefix frontend run build",
     "test": "npm --prefix agent-core test && npm --prefix platform test && npm --prefix model-gateway test",
     "codex:setup": "node scripts/codex.mjs --build",
@@ -23,5 +23,8 @@
   },
   "devDependencies": {
     "prettier": "^3.9.8"
+  },
+  "dependencies": {
+    "parse5": "7.3.0"
   }
 }

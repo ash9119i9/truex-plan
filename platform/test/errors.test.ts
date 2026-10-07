@@ -139,3 +139,90 @@ test("unsupported commands are validation failures before database access", asyn
     { status: 403, code: "CAPABILITY_DENIED" },
   );
 });
+
+test("gateway-owned stream failures classify safely when Codex reports other", () => {
+  for (const [suffix, code] of [
+    [
+      "The model provider timed out: no response from the model provider within 60000ms. Please retry.",
+      "PROVIDER_TIMEOUT",
+    ],
+    [
+      "The model provider timed out: no data from the model provider within 120000ms. Please retry.",
+      "PROVIDER_TIMEOUT",
+    ],
+    [
+      "The connection to the model provider was interrupted.",
+      "PROVIDER_CONNECTION_FAILED",
+    ],
+  ]) {
+    for (const nested of [true, false]) {
+      const error = {
+        codexErrorInfo: "other",
+        message: `stream disconnected before completion: ${suffix}`,
+        additionalDetails:
+          "apiKey=private-secret https://private-host/internal",
+      };
+      const data = nested ? { error } : error;
+      const mapped = runtimeError(data);
+      assert.equal(mapped.code, code);
+      assert.equal(mapped.reason, "providerDown");
+      assert.doesNotMatch(
+        JSON.stringify(mapped),
+        /60000|120000|private-secret|private-host|internal|additionalDetails/,
+      );
+      const event = publicEvent({
+        type: "turn.completed",
+        data: { turn: { status: "failed", error } },
+      });
+      assert.equal(event.data.turn.error.code, code);
+      assert.doesNotMatch(
+        JSON.stringify(event),
+        /60000|120000|private-secret|private-host|additionalDetails/,
+      );
+    }
+  }
+});
+
+test("foreign stream failures and near-matches stay private runtime failures", () => {
+  const timeout =
+    "stream disconnected before completion: The model provider timed out: no data from the model provider within 120000ms. Please retry.";
+  for (const message of [
+    "provider timeout apiKey=private-secret https://private-host",
+    timeout.replace("stream disconnected before completion: ", ""),
+    `${timeout} apiKey=private-secret`,
+    `${timeout}\n`,
+    timeout.replace("120000", "https://private-host?apiKey=private-secret"),
+    timeout.replace("no data", "private diagnostics"),
+    timeout.toUpperCase(),
+    "stream disconnected before completion: The connection to the model provider was interrupted. private-secret",
+  ]) {
+    const mapped = runtimeError({
+      error: {
+        codexErrorInfo: "other",
+        message,
+        additionalDetails: "private-secret",
+      },
+    });
+    assert.equal(mapped.code, "RUNTIME_FAILED");
+    assert.equal(mapped.reason, "other");
+    assert.doesNotMatch(
+      JSON.stringify(mapped),
+      /private-secret|private-host|120000/,
+    );
+  }
+  for (const codexErrorInfo of [undefined, "unknown", "sandboxError"]) {
+    assert.notEqual(
+      runtimeError({ error: { codexErrorInfo, message: timeout } }).code,
+      "PROVIDER_TIMEOUT",
+    );
+  }
+  assert.equal(
+    runtimeError({
+      error: {
+        codexErrorInfo: { other: { httpStatusCode: 403 } },
+        message: timeout,
+      },
+    }).code,
+    "PROVIDER_AUTH_FAILED",
+  );
+});

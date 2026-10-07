@@ -55,6 +55,9 @@ FROM node:24-bookworm-slim AS services-build
 ARG TARGETARCH
 RUN test "$TARGETARCH" = arm64
 WORKDIR /app
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,id=truex-shared-npm,target=/root/.npm \
+    npm ci --omit=dev
 COPY shared ./shared
 COPY agent-core/package.json agent-core/package-lock.json agent-core/tsconfig.json ./agent-core/
 RUN --mount=type=cache,id=truex-agentcore-npm,target=/root/.npm \
@@ -69,6 +72,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git ripgrep libssl3t64 libcap2 liblzma5 tini \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/agent-core
+COPY --from=services-build /app/node_modules /app/node_modules
 COPY --from=services-build /app/agent-core/dist ./dist
 COPY --from=services-build /app/agent-core/node_modules ./node_modules
 COPY shared/schema /app/shared/schema

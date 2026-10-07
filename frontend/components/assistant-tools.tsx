@@ -10,7 +10,13 @@ import { documentKind, uploadAccept } from "@/lib/document-kind";
 import { DocumentIcon } from "./document-icon";
 import { Button } from "./ui/button";
 import { QuickTools } from "./quick-tools";
-import { Visualization } from "./visualization";
+import dynamic from "next/dynamic";
+const Visualization = dynamic(
+  () => import("./visualization").then((module) => module.Visualization),
+  {
+    loading: () => <p role="status">Loading visual…</p>,
+  },
+);
 
 export function AssistantTools({
   sessionId,

@@ -565,3 +565,45 @@ test("unknown future event types keep envelope compatibility", (t) => {
   assert.equal(stream.store.get("cursor:a b/c"), "c1");
   stream.stop();
 });
+
+test("malformed visual publications and snapshot attachments recover without acknowledging", (t) => {
+  t.mock.method(console, "error", () => {});
+  const visual = {
+    id: "12345678-1234-1234-1234-123456789abc",
+    title: "Sales",
+    description: "Monthly sales",
+    turnId: "turn",
+    callId: "call",
+    height: 400,
+  };
+  for (const [type, data] of [
+    ["visual.published", { visual: null }],
+    ["visual.published", { visual: { ...visual, id: "../../secrets" } }],
+    ["visual.published", { visual: { ...visual, height: Infinity } }],
+    [
+      "snapshot",
+      { state: { kind: "idle" }, pending: [], messages: [], visuals: {} },
+    ],
+    [
+      "snapshot",
+      {
+        state: { kind: "idle" },
+        pending: [],
+        messages: [],
+        visuals: [{ ...visual, callId: null }],
+      },
+    ],
+  ] as [string, unknown][]) {
+    const stream = setup(t);
+    frame(stream.source, type, 1, data);
+    assert.equal(stream.events.length, 0);
+    assert.equal(stream.store.size, 0);
+    assert.equal(stream.resyncs(), 1);
+    assert.equal(stream.source.closed, true);
+  }
+  const valid = setup(t);
+  frame(valid.source, "visual.published", 1, { visual });
+  assert.equal(valid.events.length, 1);
+  assert.equal(valid.store.get("cursor:a b/c"), "c1");
+  valid.stop();
+});

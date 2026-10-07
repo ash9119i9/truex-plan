@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdir,
   readFile,
@@ -6,6 +6,7 @@ import {
   readdir,
   rename,
   cp,
+  stat,
 } from "node:fs/promises";
 import Ajv from "ajv";
 import { join, extname } from "node:path";
@@ -17,7 +18,16 @@ import { unzipSync, strFromU8 } from "fflate";
 import type { DynamicToolSpec } from "../../shared/protocol/v2/DynamicToolSpec";
 import type { ConversationFile } from "../../shared/assistant-capabilities";
 import { HttpError } from "./errors";
-import type { Visualization } from "../../shared/visualizations";
+import type {
+  Visualization,
+  VisualAttachment,
+} from "../../shared/visualizations";
+import { validateVisualizationDocument } from "../../shared/visualization-document";
+import {
+  isVisualAttachment,
+  visualizationIdPattern,
+} from "../../shared/visualizations";
+import { log } from "../../shared/logging";
 
 const MAX_FILE = 1_048_576;
 const MAX_TEXT = 100_000;
@@ -63,6 +73,18 @@ const tool = (
   },
 });
 export const fileTools: DynamicToolSpec[] = [
+  tool(
+    "html_render",
+    "Publish a complete self-contained HTML document directly in this conversation above your text reply. Use inline CSS, JavaScript and data; no remote resources or local files. Supply a title and frame height. Publication does not require a browser. Supply sourceId for an immutable revision. Do not output HTML or a display marker in the answer.",
+    {
+      title: { type: "string", minLength: 1, maxLength: 120 },
+      html: { type: "string", minLength: 1, maxLength: 180000 },
+      height: { type: "integer", minimum: 160, maximum: 900 },
+      description: { type: "string", minLength: 1, maxLength: 1000 },
+      sourceId: string,
+    },
+    ["title", "html", "height"],
+  ),
   tool(
     "create_visualization",
     "Create an interactive visual inside the conversation. Provide self-contained HTML/CSS/JavaScript with inline data, accessible controls, no external resources or document wrapper. Return the reference in the answer on its own line. Supply sourceId to create a revised version.",
@@ -193,13 +215,25 @@ function xmlText(xml: string): string {
     .join("\n");
 }
 
+interface PublicationRecord {
+  turnId: string;
+  callId: string;
+  inputHash: string;
+}
+interface StoredConversationFile extends ConversationFile {
+  publication?: PublicationRecord;
+}
+export interface VisualInvocation {
+  turnId: string;
+  callId: string;
+}
 export class ConversationFiles {
   private queues = new Map<string, Promise<unknown>>();
   constructor(private readonly workspace: (threadId: string) => string) {}
   private directory(threadId: string) {
     return join(this.workspace(threadId), "files");
   }
-  async list(threadId: string): Promise<ConversationFile[]> {
+  private async records(threadId: string): Promise<StoredConversationFile[]> {
     const dir = this.directory(threadId);
     await mkdir(dir, { recursive: true, mode: 0o700 });
     const names = await readdir(dir);
@@ -210,16 +244,79 @@ export class ConversationFiles {
           async (n) =>
             JSON.parse(
               await readFile(join(dir, n), "utf8"),
-            ) as ConversationFile,
+            ) as StoredConversationFile,
         ),
     );
     return records.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+  async list(threadId: string): Promise<ConversationFile[]> {
+    return (await this.records(threadId)).map(
+      ({ publication, ...file }) => file,
+    );
+  }
+  async publications(threadId: string): Promise<VisualAttachment[]> {
+    return (await this.publicationRecords(threadId)).map(
+      (record) => record.visual,
+    );
+  }
+  async publicationRecords(
+    threadId: string,
+  ): Promise<{ visual: VisualAttachment; at: string }[]> {
+    const directory = this.directory(threadId);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const result: { visual: VisualAttachment; at: string }[] = [];
+    for (const name of await readdir(directory)) {
+      const id = name.replace(/\.json$/, "");
+      if (!name.endsWith(".json") || !visualizationIdPattern.test(id)) continue;
+      try {
+        if ((await stat(join(directory, name))).size > 16384)
+          throw new Error("metadata-size");
+        const file: StoredConversationFile = JSON.parse(
+          await readFile(join(directory, name), "utf8"),
+        );
+        if (!file.publication) continue;
+        const visual = this.attachment(file);
+        if (
+          file.id !== id ||
+          file.kind !== "visualization" ||
+          file.sourceFormat !== "document" ||
+          !isVisualAttachment(visual) ||
+          !/^[a-f0-9]{64}$/.test(file.publication.inputHash) ||
+          typeof file.createdAt !== "string" ||
+          Number.isNaN(Date.parse(file.createdAt)) ||
+          !Number.isInteger(file.size) ||
+          file.size < 1 ||
+          file.size > MAX_FILE ||
+          (await stat(join(directory, id + ".bin"))).size !== file.size
+        )
+          throw new Error("invalid-publication");
+        result.push({ visual, at: file.createdAt });
+      } catch {
+        // Corrupt artifacts cannot authorize a public association or block
+        // unrelated chat recovery. Keep the source for operator repair.
+        log("warn", "visual publication recovery skipped invalid record", {
+          threadId,
+          fileId: id,
+        });
+      }
+    }
+    return result.sort((a, b) => a.at.localeCompare(b.at));
+  }
+  private attachment(file: StoredConversationFile): VisualAttachment {
+    return {
+      id: file.id,
+      title: file.title!,
+      description: file.description!,
+      height: file.height!,
+      turnId: file.publication!.turnId,
+      callId: file.publication!.callId,
+    };
   }
   async get(threadId: string, id: string) {
     const dir = this.directory(threadId),
       key = fileId(id);
     try {
-      const metadata: ConversationFile = JSON.parse(
+      const { publication, ...metadata }: StoredConversationFile = JSON.parse(
         await readFile(join(dir, key + ".json"), "utf8"),
       );
       return { ...metadata, data: await readFile(join(dir, key + ".bin")) };
@@ -261,8 +358,9 @@ export class ConversationFiles {
     sourceId?: string,
     visualization?: Pick<
       ConversationFile,
-      "kind" | "title" | "description" | "mode"
+      "kind" | "title" | "description" | "mode" | "sourceFormat" | "height"
     >,
+    publication?: PublicationRecord,
   ): Promise<ConversationFile> {
     filename(name);
     if (!data.length || data.length > MAX_FILE)
@@ -272,7 +370,23 @@ export class ConversationFiles {
     const operation = previous
       .catch(() => {})
       .then(async () => {
-        const files = await this.list(threadId);
+        const files = await this.records(threadId);
+        if (publication) {
+          const prior = files.find(
+            (file) =>
+              file.publication?.turnId === publication.turnId &&
+              file.publication.callId === publication.callId,
+          );
+          if (prior) {
+            if (prior.publication!.inputHash !== publication.inputHash)
+              throw new HttpError(
+                409,
+                "This visual call was already published with different content",
+              );
+            const { publication: ignored, ...record } = prior;
+            return record;
+          }
+        }
         if (
           files.length >= 50 ||
           files.reduce((sum, f) => sum + f.size, 0) + data.length >
@@ -284,7 +398,7 @@ export class ConversationFiles {
           );
         const id = randomUUID(),
           dir = this.directory(threadId);
-        const record: ConversationFile = {
+        const record: StoredConversationFile = {
           id,
           name,
           size: data.length,
@@ -294,6 +408,7 @@ export class ConversationFiles {
             "application/octet-stream",
           ...(sourceId ? { sourceId } : {}),
           ...visualization,
+          ...(publication ? { publication } : {}),
         };
         await writeFile(join(dir, id + ".bin"), data, { mode: 0o600 });
         if (source)
@@ -304,7 +419,8 @@ export class ConversationFiles {
           mode: 0o600,
         });
         await rename(join(dir, id + ".pending"), join(dir, id + ".json"));
-        return record;
+        const { publication: ignored, ...file } = record;
+        return file;
       });
     this.queues.set(threadId, operation);
     try {
@@ -398,9 +514,16 @@ export class ConversationFiles {
       description: file.description!,
       mode: file.mode || "inline",
       html: file.data.toString("utf8"),
+      ...(file.sourceFormat ? { sourceFormat: file.sourceFormat } : {}),
+      ...(file.height !== undefined ? { height: file.height } : {}),
     };
   }
-  async execute(threadId: string, name: string, args: any) {
+  async execute(
+    threadId: string,
+    name: string,
+    args: any,
+    invocation?: VisualInvocation,
+  ) {
     const validate = validators.get(name);
     if (!validate || !validate(args) || JSON.stringify(args).length > 200000)
       throw new HttpError(400, "Invalid document tool arguments");
@@ -408,6 +531,63 @@ export class ConversationFiles {
       return { files: await this.list(threadId) };
     if (name === "read_conversation_file")
       return this.read(threadId, args.id, args.offset);
+    if (name === "html_render") {
+      if (
+        !invocation ||
+        typeof invocation.turnId !== "string" ||
+        !invocation.turnId ||
+        invocation.turnId.length > 200 ||
+        typeof invocation.callId !== "string" ||
+        !invocation.callId ||
+        invocation.callId.length > 200
+      )
+        throw new HttpError(
+          400,
+          "Visual publication requires a main conversation turn and tool call",
+        );
+      if (!args.title.trim() || !validateVisualizationDocument(args.html))
+        throw new HttpError(
+          400,
+          "Supply a title and complete HTML document with html, head and body elements",
+        );
+      if (args.sourceId) await this.visualization(threadId, args.sourceId);
+      const publication: PublicationRecord = {
+        ...invocation,
+        inputHash: createHash("sha256")
+          .update(
+            JSON.stringify({
+              title: args.title.trim(),
+              html: args.html,
+              height: args.height,
+              description: args.description?.trim() || args.title.trim(),
+              sourceId: args.sourceId || null,
+            }),
+          )
+          .digest("hex"),
+      };
+      const file = await this.save(
+        threadId,
+        "visualization.html",
+        Buffer.from(args.html),
+        undefined,
+        args.sourceId,
+        {
+          kind: "visualization",
+          title: args.title.trim(),
+          description: args.description?.trim() || args.title.trim(),
+          mode: "inline",
+          sourceFormat: "document",
+          height: args.height,
+        },
+        publication,
+      );
+      return {
+        id: file.id,
+        title: file.title,
+        published: true,
+        visual: this.attachment({ ...file, publication }),
+      };
+    }
     if (name === "create_visualization") {
       if (!args.title.trim() || !args.description.trim() || !args.html.trim())
         throw new HttpError(
