@@ -11,6 +11,8 @@ import type {
 import { mcpNetwork } from "../src/mcp";
 import { encryptSecret } from "../src/secrets";
 import "./fixtures";
+import { tenantContext } from "../src/tenant";
+import { userContext } from "../src/user";
 
 const model: ModelDocument = {
   _id: "model",
@@ -131,6 +133,25 @@ test("missing agent starts no configuration reads", async () => {
     code: "AGENT_NOT_FOUND",
   });
   assert.deepEqual(reads, ["agent"]);
+});
+
+test("private agent authorization runs before parallel configuration reads", async () => {
+  for (const role of ["user", "admin"] as const) {
+    const { service, reads } = fixture({
+      agent: { ...agent, createdBy: "someone-else" },
+    });
+    await tenantContext.run(
+      { id: "private", dbName: "truex_t_private", chatVisibility: "own" },
+      () =>
+        userContext.run({ id: "owner", email: "owner@example.com", role }, () =>
+          assert.rejects(
+            service.configuration("agent", { ownerId: "owner", use: true }),
+            { code: role === "admin" ? "NOT_AGENT_OWNER" : "AGENT_NOT_FOUND" },
+          ),
+        ),
+    );
+    assert.deepEqual(reads, ["agent"]);
+  }
 });
 
 test("missing model fails before slow reads finish and later failures are observed", async () => {

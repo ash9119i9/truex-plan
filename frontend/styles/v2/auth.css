@@ -1,0 +1,87 @@
+/* Sign-in, workspace chooser and session-state screens. Every rule sits under
+   .au-page and uses au- class names, like the invite page's jp-, so base.css's
+   global classes never apply here. Colors come from tokens.css; the only
+   literal colors are Google's own button palette and logo, which Google's
+   branding rules fix (light: white / #747775 / #1F1F1F, dark: #131314 /
+   #8E918F / #E3E3E3). */
+
+.au-page {
+  --g-bg: #ffffff; --g-line: #747775; --g-ink: #1f1f1f; --g-hover: #f2f2f2;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .au-page { --g-bg: #131314; --g-line: #8e918f; --g-ink: #e3e3e3; --g-hover: #1d1d1e; }
+}
+:root[data-theme="dark"] .au-page { --g-bg: #131314; --g-line: #8e918f; --g-ink: #e3e3e3; --g-hover: #1d1d1e; }
+
+.au-page *, .au-page *::before, .au-page *::after { box-sizing: border-box; }
+.au-page button, .au-page a { font: inherit; }
+.au-page :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; border-radius: 8px; }
+
+.au-wrap { width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 14px; }
+
+.au-brand { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.au-mark { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--ink); color: var(--bg); font-weight: 800; font-size: 14px; }
+.au-word { font-weight: 700; font-size: 18px; letter-spacing: -.03em; }
+
+.au-card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow-md); padding: 28px 24px 24px; display: flex; flex-direction: column; gap: 18px; }
+
+.au-page h1 { margin: 0; font-size: clamp(26px, 6vw, 34px); line-height: 1.1; font-weight: 600; letter-spacing: -.035em; text-wrap: balance; }
+.au-page h1 em { font-family: var(--font-accent); font-style: italic; font-weight: 400; font-size: 1.04em; letter-spacing: -.01em; color: var(--accent-fg); padding-right: .04em; }
+.au-lead { margin: 0; color: var(--ink-2); font-size: 15px; }
+
+/* Google's button: fixed palette, 44px, logo then label, label never wraps. */
+.au-google {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: 44px; padding: 0 16px;
+  border: 1px solid var(--g-line); border-radius: 10px;
+  background: var(--g-bg); color: var(--g-ink);
+  font: 500 14px/20px Roboto, var(--font-sans); letter-spacing: .01em;
+  text-decoration: none; cursor: pointer; white-space: nowrap;
+  transition: background .15s;
+}
+.au-google:hover { background: var(--g-hover); }
+.au-google[aria-disabled="true"] { opacity: .65; cursor: progress; pointer-events: none; }
+.au-google svg { width: 18px; height: 18px; flex: none; }
+
+.au-banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.45; }
+.au-banner.warn { background: var(--error-bg); color: var(--error-text); }
+.au-banner.info { background: var(--info-bg); color: var(--info-text); }
+.au-banner svg { flex: none; margin-top: 2px; }
+.au-banner b { font-weight: 600; }
+.au-banner-body { min-width: 0; overflow-wrap: anywhere; }
+
+.au-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.au-btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--border-control); background: var(--surface); color: var(--ink); font-weight: 500; cursor: pointer; }
+.au-btn:hover { background: var(--surface-3); }
+.au-btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.au-btn.primary:hover { background: var(--accent-hover); }
+.au-btn[disabled] { opacity: .6; cursor: progress; }
+
+.au-fine { margin: 0; font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+.au-fine.center { text-align: center; padding: 0 8px; }
+
+.au-status { display: flex; align-items: center; gap: 10px; color: var(--ink-2); font-size: 14px; }
+.au-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: au-pulse 1.2s ease-in-out infinite; }
+@keyframes au-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .au-dot { animation: none; } .au-google { transition: none; } }
+
+/* workspace chooser */
+.au-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.au-ws { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.au-ws:hover:not([disabled]) { border-color: var(--accent-soft-2); background: var(--accent-soft); }
+.au-ws[disabled] { opacity: .6; cursor: progress; }
+.au-ws[aria-current="true"] { border-color: var(--accent-soft-2); }
+.au-ws-logo { width: 34px; height: 34px; border-radius: 10px; background: var(--ink); color: var(--bg); display: grid; place-items: center; font-weight: 800; font-size: 14px; flex: none; }
+.au-ws-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.au-ws-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.au-ws-sub { font-size: 12.5px; color: var(--ink-3); }
+.au-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-fg); font-size: 12px; font-weight: 600; flex: none; }

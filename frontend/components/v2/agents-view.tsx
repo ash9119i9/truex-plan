@@ -121,13 +121,14 @@ export function AgentsView({ agents, currentId, onEdit, onChat, onNew }: {
                     <div className="tb-info">
                       <div className="tb-handle">
                         @{a.handle || a.id}
+                        {a.creatorName && <span className="tb-by"> · by {a.creatorName}</span>}
                         {live && <span className="tb-live"><span className="tb-pulse" aria-hidden="true" />in chat</span>}
                         {a.builtin && <span className="sr-only"> · built-in</span>}
                       </div>
                       <p className="tb-desc">{a.description}</p>
                       <div className="tb-foot">
                         <span className="tb-meta">{boardMeta(a.model, a.reasoning)}</span>
-                        <button className="tb-btn" onClick={() => onChat(a)} disabled={live}>{live ? "Chatting" : "Chat"}</button>
+                        <button className="tb-btn" onClick={() => onChat(a)} disabled={live || a.canUse === false} title={a.canUse === false ? "Only its creator can chat with this agent" : undefined}>{live ? "Chatting" : a.canUse === false ? "Read-only" : "Chat"}</button>
                       </div>
                     </div>
                   </li>

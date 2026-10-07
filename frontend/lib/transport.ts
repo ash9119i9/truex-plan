@@ -2,6 +2,7 @@ import type { DomainEvent } from "../../shared/contracts";
 import { api, base } from "./api.ts";
 import { createOrderedBatch } from "./ordered-batch.ts";
 import { readSyncMarker } from "./source-sync.ts";
+import { identityScope } from "./identity.ts";
 
 // Connection states shown in the conversation header.
 export type StreamStatus = "Connected" | "Reconnecting" | "Disconnected";
@@ -119,7 +120,7 @@ function readEvent(raw: string): DomainEvent {
 
 export const transport: Transport = {
   subscribe(sessionId, onEvent, onStatus, handlers = {}) {
-    const key = `cursor:${sessionId}`,
+    const key = `cursor:${identityScope()}:${sessionId}`,
       cursor =
         handlers.sync === "v1"
           ? (handlers.cursor ?? "")

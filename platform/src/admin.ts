@@ -7,12 +7,16 @@ import type { Store } from "./store";
 import type { PlatformService } from "./service";
 import {
   DEFAULT_TENANT_ID,
+  admissionPolicyOf,
   chatVisibilityOf,
+  effectivePrivacy,
   tenantDbName,
   tenantId,
   type TenantDocument,
   type TenantRef,
 } from "./tenant";
+import type { DemoGate } from "./demo";
+import { auditAfter } from "./audit";
 import { userId } from "./user";
 import {
   createSession,
@@ -194,10 +198,32 @@ export async function findTenant(store: Store, id: unknown) {
 }
 
 /**
+ * A database that holds data but belongs to no tenant must never be adopted:
+ * the new tenant would silently inherit someone's content. Empty collections
+ * (left by an interrupted earlier run) are fine.
+ */
+export async function assertFreshDatabase(store: Store, dbName: string) {
+  const db = store.client.db(dbName);
+  const collections = await db
+    .listCollections({}, { nameOnly: true })
+    .toArray();
+  for (const { name } of collections) {
+    if (name.startsWith("system.")) continue;
+    if (await db.collection(name).findOne({}, { projection: { _id: 1 } }))
+      throw new ApiError(
+        409,
+        "That workspace's database already contains data and is not registered. Nothing was changed.",
+        "TENANT_DB_NOT_EMPTY",
+      );
+  }
+}
+
+/**
  * Same id rules as `npm run tenant -- create` (TENANT_ID, tenantDbName, the
- * catalog-collision and dbName-ownership checks). Indexes come from the
- * store's tenantIndexes(), which also builds the unique truex_agents.handle
- * index. Adds no members.
+ * catalog-collision and dbName-ownership checks, and a fresh database).
+ * Indexes come from the store's tenantIndexes(). A new workspace is invite-only
+ * and private: members see only their own conversations and agents, so agent
+ * handles are unique per creator. Adds no members.
  */
 export async function createTenant(store: Store, input: { id: unknown; name: unknown }) {
   const id = tenantId(input.id);
@@ -211,11 +237,16 @@ export async function createTenant(store: Store, input: { id: unknown; name: unk
     throw new ApiError(409, "Tenant database would collide with the catalog", "TENANT_EXISTS");
   if (await store.tenantRegistry.findOne({ dbName }))
     throw new ApiError(409, "Tenant database is already in use", "TENANT_EXISTS");
+  if (id !== DEFAULT_TENANT_ID) await assertFreshDatabase(store, dbName);
   const doc: TenantDocument = {
     _id: id,
     name,
     dbName,
     status: "active",
+    admissionPolicy: "inviteOnly",
+    isUserSpecific: true,
+    // Old readers know only this spelling; keep it in step.
+    chatVisibility: "own",
     createdAt: now(),
     updatedAt: now(),
   };
@@ -226,23 +257,36 @@ export async function createTenant(store: Store, input: { id: unknown; name: unk
       throw new ApiError(409, `Tenant "${id}" already exists`, "TENANT_EXISTS");
     throw error;
   }
-  await store.ensureTenantIndexes(dbName);
+  await store.ensureTenantIndexes(dbName, true);
   return doc;
 }
 
 const tenantView = (
   doc: TenantDocument,
   counts: { members: number; admins: number; pendingInvites: number },
-) => ({
-  id: doc._id,
-  name: doc.name,
-  status: doc.status,
-  ...(doc.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
-  ...(doc.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
-  chatVisibility: doc.chatVisibility ?? "all",
-  createdAt: doc.createdAt,
-  ...counts,
-});
+) => {
+  const privacy = effectivePrivacy(doc);
+  return {
+    id: doc._id,
+    name: doc.name,
+    status: doc.status,
+    ...(doc.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
+    ...(doc.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
+    // Legacy spelling, derived. "invalid" means the stored fields disagree and
+    // the workspace refuses requests until an admin corrects it.
+    chatVisibility: privacy.invalid
+      ? ("invalid" as const)
+      : privacy.isUserSpecific === undefined
+        ? ("all" as const)
+        : privacy.isUserSpecific
+          ? ("own" as const)
+          : ("all" as const),
+    isUserSpecific: privacy.invalid ? null : (privacy.isUserSpecific ?? null),
+    admissionPolicy: admissionPolicyOf(doc.admissionPolicy) ?? "inviteOnly",
+    createdAt: doc.createdAt,
+    ...counts,
+  };
+};
 
 async function tenantCounts(store: Store) {
   const members = await store.memberships
@@ -290,6 +334,39 @@ async function allowList(store: Store, collection: string, value: unknown) {
   return ids;
 }
 
+// Removing a member or disabling a workspace blocks every later request, but a
+// turn already handed to the runtime keeps going. This asks the runtime to stop
+// the recent ones, in the background, and records what happened: stop
+// requested, nothing running, or failed. It does not undo anything a tool
+// already did elsewhere.
+function stopRunningTurns(
+  store: Store,
+  service: PlatformService,
+  ref: TenantRef,
+  scope: { userId?: string },
+  requestId?: string,
+) {
+  void store
+    .withTenant(ref, () => service.interruptRecent(scope))
+    .then((outcome) =>
+      auditAfter(store, {
+        actor: "platform-admin",
+        actorRole: "platform-admin",
+        action: "turns.stop",
+        tenantId: ref.id,
+        ...(scope.userId ? { target: { type: "user", id: scope.userId } } : {}),
+        requestId,
+        detail: outcome,
+      }),
+    )
+    .catch((error) =>
+      log("error", "stopping running turns failed", {
+        tenantId: ref.id,
+        ...errorFields(error),
+      }),
+    );
+}
+
 // ---- Members ----
 
 async function membersOf(store: Store, tid: string) {
@@ -327,8 +404,21 @@ export function adminApiRoutes(
   store: Store,
   service: PlatformService,
   mailer: InviteMailer,
+  demo?: DemoGate,
 ) {
   const router = Router();
+  // Why the public demo is, or is not, ready to admit people. Codes only.
+  router.get(
+    "/demo",
+    route(async (_req, res) => {
+      const readiness = await demo?.readiness();
+      res.json(
+        readiness
+          ? { enabled: true, tenantId: demo!.config!.tenantId, ...readiness }
+          : { enabled: false },
+      );
+    }),
+  );
   router.get(
     "/tenants",
     route(async (_req, res) => {
@@ -369,11 +459,72 @@ export function adminApiRoutes(
           if (ids) $set[field] = ids;
           else $unset[field] = "";
         }
+      const current = effectivePrivacy(doc);
+      let nextPrivate = current.isUserSpecific;
+      if ("isUserSpecific" in body) {
+        if (typeof body.isUserSpecific !== "boolean")
+          throw new ApiError(400, "isUserSpecific must be true or false", "INVALID_INPUT");
+        nextPrivate = body.isUserSpecific;
+      }
       if ("chatVisibility" in body) {
         const value = chatVisibilityOf(body.chatVisibility);
         if (!value)
           throw new ApiError(400, 'chatVisibility must be "own" or "all"', "INVALID_INPUT");
-        $set.chatVisibility = value;
+        // Two spellings of one setting must agree; neither wins by order.
+        if (
+          "isUserSpecific" in body &&
+          (value === "own") !== body.isUserSpecific
+        )
+          throw new ApiError(
+            400,
+            "chatVisibility and isUserSpecific disagree",
+            "INVALID_INPUT",
+          );
+        nextPrivate = value === "own";
+      }
+      if ("isUserSpecific" in body || "chatVisibility" in body) {
+        // Making a private workspace shared would expose its history to every
+        // member. That is not a live toggle in this release. A record whose
+        // fields disagree can only be repaired towards private.
+        if (nextPrivate === false && (current.invalid || current.isUserSpecific === true))
+          throw new ApiError(
+            409,
+            "A private workspace cannot be made shared. This needs a separate reviewed change.",
+            "PRIVACY_LOCKED",
+          );
+        $set.isUserSpecific = nextPrivate;
+        $set.chatVisibility = nextPrivate ? "own" : "all";
+      }
+      if ("admissionPolicy" in body) {
+        const value = admissionPolicyOf(body.admissionPolicy);
+        if (!value)
+          throw new ApiError(
+            400,
+            'admissionPolicy must be "open" or "inviteOnly"',
+            "INVALID_INPUT",
+          );
+        if (value === "open") {
+          // Open admission is for the one configured demo tenant only, and
+          // only once it is fully ready; closing it is always allowed.
+          if (!demo?.config || demo.config.tenantId !== doc._id)
+            throw new ApiError(
+              409,
+              "Open admission is only available for the configured demo workspace (DEMO_TENANT_ID).",
+              "ADMISSION_NOT_ALLOWED",
+            );
+          const readiness = await demo.readiness(false);
+          // Privacy set in this same request counts as set.
+          const problems = (readiness?.problems ?? []).filter(
+            (p) => !(p === "PRIVACY_NOT_USER_SPECIFIC" && $set.isUserSpecific === true),
+          );
+          if (problems.length)
+            throw new ApiError(
+              409,
+              `The demo workspace is not ready to open: ${[...new Set(problems)].join(", ")}`,
+              "DEMO_NOT_READY",
+            );
+        }
+        $set.admissionPolicy = value;
       }
       if (!Object.keys($set).length && !Object.keys($unset).length)
         throw new ApiError(400, "Nothing to change", "INVALID_INPUT");
@@ -387,6 +538,33 @@ export function adminApiRoutes(
         },
         { returnDocument: "after" },
       );
+      store.invalidateTenant(doc._id);
+      // Disabling is the incident control for a whole workspace: everyone
+      // signed in to it is signed out, not only refused on the next request.
+      let sessionsRevoked = 0;
+      if ($set.status === "disabled")
+        sessionsRevoked = (
+          await store.authSessions.deleteMany({ tenantId: doc._id, app: "main" })
+        ).deletedCount;
+      if ($set.status === "disabled")
+        stopRunningTurns(
+          store,
+          service,
+          { id: doc._id, dbName: doc.dbName },
+          {},
+          res.locals.requestId,
+        );
+      await auditAfter(store, {
+        actor: "platform-admin",
+        actorRole: "platform-admin",
+        action: "tenant.update",
+        tenantId: doc._id,
+        requestId: res.locals.requestId,
+        detail: {
+          fields: Object.keys({ ...$set, ...$unset }).sort().join(","),
+          ...(sessionsRevoked ? { sessionsRevoked } : {}),
+        },
+      });
       const counts = await tenantCounts(store);
       res.json({ tenant: tenantView(updated!, counts(doc._id)) });
     }),
@@ -407,6 +585,15 @@ export function adminApiRoutes(
         tenant: doc,
         email: req.body?.email,
         role: req.body?.role,
+      });
+      await auditAfter(store, {
+        actor: "platform-admin",
+        actorRole: "platform-admin",
+        action: "invite.create",
+        tenantId: doc._id,
+        target: { type: "invite", id: invite.id },
+        requestId: res.locals.requestId,
+        detail: { role: invite.role },
       });
       res.status(201).json({ invite });
     }),
@@ -449,6 +636,15 @@ export function adminApiRoutes(
       );
       if (!matchedCount)
         throw new ApiError(404, "Member not found", "MEMBER_NOT_FOUND");
+      await auditAfter(store, {
+        actor: "platform-admin",
+        actorRole: "platform-admin",
+        action: "member.role",
+        tenantId: doc._id,
+        target: { type: "user", id: uid },
+        requestId: res.locals.requestId,
+        detail: { role },
+      });
       res.json({ userId: uid, role });
     }),
   );
@@ -483,6 +679,16 @@ export function adminApiRoutes(
         });
         throw error;
       }
+      await auditAfter(store, {
+        actor: "platform-admin",
+        actorRole: "platform-admin",
+        action: "member.remove",
+        tenantId: doc._id,
+        target: { type: "user", id: uid },
+        requestId: res.locals.requestId,
+        detail: { sessionsRevoked, mcpsDeleted },
+      });
+      stopRunningTurns(store, service, ref, { userId: uid }, res.locals.requestId);
       res.json({ userId: uid, status: "removed", sessionsRevoked, mcpsDeleted });
     }),
   );

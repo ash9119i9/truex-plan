@@ -8,6 +8,8 @@ import { orderConversation } from "../../shared/command-history";
 import { historyAnchor, historyWindow } from "../src/history-window";
 import { readHistoryWindow, SMALL_HISTORY_LIMIT } from "../src/history-read";
 import type { Message } from "../../shared/contracts";
+import { tenantContext } from "../src/tenant";
+import { userContext } from "../src/user";
 
 test("recent history bounds payload reads and preserves complete authoritative pages", async (t) => {
   const mongo = await MongoMemoryServer.create();
@@ -167,6 +169,57 @@ test("recent history bounds payload reads and preserves complete authoritative p
   );
   const full = await service.history("s", { persistedOnly: true });
   assert.deepEqual(full.messages, orderConversation(messages));
+
+  await t.test(
+    "private admin pages are audited and never recover the owner's runtime",
+    async () => {
+      await store.sessions.updateOne(
+        { _id: "s" },
+        { $set: { userId: "owner" } },
+      );
+      const calls = t.mock.method(service, "call", async () => {
+        throw new Error("A passive read must not call the runtime");
+      });
+      const read = (options: Parameters<typeof service.history>[1] = {}) =>
+        tenantContext.run(
+          { id: "private", dbName: "history-read", chatVisibility: "own" },
+          () =>
+            userContext.run(
+              { id: "admin", email: "admin@example.com", role: "admin" },
+              () => service.history("s", options),
+            ),
+        );
+      const phases: string[] = [];
+      const recent = await read({
+        window: true,
+        onTiming: (phase) => phases.push(phase),
+      });
+      assert.equal(recent.access, "readOnly");
+      assert.equal(recent.snapshot, null);
+      assert.equal(recent.recoveryError, null);
+      assert.deepEqual(recent.messages, expected.messages);
+      assert.deepEqual(recent.historyWindow, expected.historyWindow);
+      assert.deepEqual(phases, ["authorization", "persisted"]);
+      const olderPage = await read({
+        window: true,
+        before: recent.historyWindow!.beforeCursor,
+      });
+      assert.deepEqual(olderPage.messages, older.messages);
+      assert.equal(olderPage.access, "readOnly");
+      assert.deepEqual((await read()).messages, full.messages);
+      assert.equal(calls.mock.callCount(), 0);
+      assert.ok(
+        await store.audit.findOne({
+          actor: "admin",
+          action: "session.read",
+          "target.id": "s",
+        }),
+      );
+      await assert.rejects(read({ window: true, before: "invalid" }), {
+        code: "INVALID_HISTORY_CURSOR",
+      });
+    },
+  );
 
   // Short chats retain one query; empty and huge request groups are not cut.
   await store.messages.insertMany(

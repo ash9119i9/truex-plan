@@ -21,6 +21,8 @@ export type Access = "read" | "write";
 
 export const chatVisibility = (): ChatVisibility =>
   currentTenant()?.chatVisibility ?? "all";
+/** The workspace is user-specific: members see only their own content. */
+export const isPrivateWorkspace = () => chatVisibility() === "own";
 
 type Decision = "allow" | "hidden" | "readOnly";
 export function decide(
@@ -87,4 +89,74 @@ export function ownerFilter(field: "userId" | "ownerId") {
   if (chatVisibility() === "own") return { [field]: user.id };
   // Ownerless records are admin-only in every mode.
   return { [field]: { $exists: true } };
+}
+
+// Agents in a private (user-specific) workspace belong to their creator.
+//
+// | Caller            | read           | use / change   |
+// | Creator           | allow          | allow          |
+// | Admin (not creator)| allow          | 403            |
+// | Other user        | 404            | 404            |
+//
+// "use" means starting a conversation with the agent; "change" means its
+// attachments. An agent with no creator (it predates ownership) is
+// admin-readable only until a trusted operation assigns an owner; nobody
+// uses or changes it, and ordinary users do not see it. In a shared workspace
+// agents stay visible to the whole workspace, as before. Hidden agents answer
+// 404, like missing ones.
+export type AgentAccess = "read" | "use" | "write";
+
+export function decideAgent(
+  createdBy: string | undefined,
+  mode: AgentAccess,
+  user: UserRef | undefined,
+  privateWorkspace: boolean,
+): Decision {
+  if (!user || !privateWorkspace) return "allow";
+  if (createdBy && createdBy === user.id) return "allow";
+  if (user.role !== "admin") return "hidden";
+  return mode === "read" ? "allow" : "readOnly";
+}
+
+export function checkAgent<T extends { createdBy?: string }>(
+  agent: T,
+  mode: AgentAccess,
+): T {
+  const decision = decideAgent(
+    agent.createdBy,
+    mode,
+    currentUser(),
+    isPrivateWorkspace(),
+  );
+  if (decision === "hidden")
+    throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+  if (decision === "readOnly")
+    throw new ApiError(
+      403,
+      "Only the person who created this agent can use or change it",
+      "NOT_AGENT_OWNER",
+    );
+  return agent;
+}
+
+// Mongo filter for agent lists, applied inside the query.
+export function agentFilter() {
+  const user = currentUser();
+  if (!user || user.role === "admin" || !isPrivateWorkspace()) return {};
+  return { createdBy: user.id };
+}
+
+/**
+ * True when the caller is reading content that is not theirs in a private
+ * workspace: an admin looking at someone else's conversation or agent. Such
+ * reads are audited, and never start the owner's runtime.
+ */
+export function readsOthersPrivate(ownerId: string | undefined) {
+  const user = currentUser();
+  return (
+    !!user &&
+    isPrivateWorkspace() &&
+    user.role === "admin" &&
+    ownerId !== user.id
+  );
 }

@@ -145,8 +145,12 @@ export type Notice = { tone: "warn" | "ok"; lead: string; rest?: string };
 export function errorNotice(code: string | null): Notice | null {
   if (!code || code in ERROR_KIND || code === "invalid_name" || code === "wrong_account") return null;
   switch (code) {
-    case "gmail_only":
-      return { tone: "warn", lead: "Use a personal Gmail account.", rest: "Sign in with the Gmail address this invite was sent to. Work and school Google accounts can't join yet." };
+    case "email_unverified":
+      return { tone: "warn", lead: "Google couldn't confirm your email address.", rest: "Sign in with the Google account this invite was sent to, and make sure its email is verified." };
+    case "tenant_disabled":
+      return { tone: "warn", lead: "This workspace is currently disabled.", rest: "Contact the person who invited you." };
+    case "account_disabled":
+      return { tone: "warn", lead: "This account has been disabled.", rest: "Contact the person who invited you." };
     case "account_conflict":
       return { tone: "warn", lead: "This email is linked to a different Google account.", rest: "Sign in with the Google account you used before, or ask the person who invited you for help." };
     default:

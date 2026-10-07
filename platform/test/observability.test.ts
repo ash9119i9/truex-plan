@@ -24,6 +24,13 @@ async function serve(app: express.Express) {
 test("errors carry a request id in the body and header, reusing an inbound id", async (t) => {
   const app = express();
   app.use(requestIdMiddleware);
+  // Every /api request has its user and tenant by the time it reaches a
+  // route; route() refuses to run without them.
+  app.use((_req, res, next) => {
+    res.locals.user = { id: "u1", email: "u1@dev.local", role: "user" };
+    res.locals.tenant = { id: "t1", dbName: "truex_t_t1" };
+    next();
+  });
   app.get(
     "/api/sessions/:id",
     route(() => {
@@ -72,6 +79,13 @@ test("the inbound request id is forwarded to agent-core", async (t) => {
   });
   const app = express();
   app.use(requestIdMiddleware);
+  // Every /api request has its user and tenant by the time it reaches a
+  // route; route() refuses to run without them.
+  app.use((_req, res, next) => {
+    res.locals.user = { id: "u1", email: "u1@dev.local", role: "user" };
+    res.locals.tenant = { id: "t1", dbName: "truex_t_t1" };
+    next();
+  });
   app.use(express.json());
   app.post(
     "/api/ping",

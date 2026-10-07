@@ -16,7 +16,9 @@ import {
   parseCookies,
   rateLimit,
   revokeSessions,
+  validEmail,
 } from "../src/auth";
+import { BAD_EMAILS, EMAIL_VECTORS } from "./email-vectors";
 
 const root = resolve("..");
 const FRONTEND = "http://localhost:3000";
@@ -62,6 +64,21 @@ function launch(extra: Record<string, string>) {
   child.stderr?.on("data", (x) => (logs += x));
   return { child, logs: () => logs };
 }
+
+test("emailKey and validEmail: Gmail aliases collapse, other domains do not", () => {
+  for (const [typed, key] of EMAIL_VECTORS) {
+    assert.equal(validEmail(typed), typed.trim(), typed);
+    assert.equal(emailKey(typed), key, typed);
+  }
+  for (const bad of BAD_EMAILS) assert.equal(validEmail(bad), undefined, JSON.stringify(bad));
+  assert.equal(validEmail(undefined), undefined);
+  assert.equal(validEmail(42 as unknown), undefined);
+  // Surrounding whitespace is trimmed, not part of the address.
+  assert.equal(validEmail("  person@example.com\n"), "person@example.com");
+  // Two different Workspace people are never one account.
+  assert.notEqual(emailKey("jane.doe@acme.example"), emailKey("janedoe@acme.example"));
+  assert.notEqual(emailKey("jane@acme.example"), emailKey("jane+x@acme.example"));
+});
 
 test("emailKey, isGmail and tokens", () => {
   assert.equal(emailKey("A.Shok+x@gmail.com"), "ashok@gmail.com");
@@ -276,6 +293,8 @@ test(
       tenant: { id: "acme", name: "ACME" },
       role: "admin",
       tenants: [{ id: "acme", name: "ACME", role: "admin" }],
+      // Lets the app know whether there is a session to end.
+      auth: "google",
     });
 
     // Missing, tampered, expired and idle-expired cookies are 401.

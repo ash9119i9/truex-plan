@@ -154,7 +154,9 @@ launch("platform", {
 });
 launch("frontend", {
   PORT: frontendPort,
-  NEXT_PUBLIC_PLATFORM_URL: `http://localhost:${platformPort}`,
+  // The browser only talks to its own origin; the frontend forwards /api and
+  // /auth to the platform at this address.
+  PLATFORM_INTERNAL_URL: `http://localhost:${platformPort}`,
 });
 console.log(
   `Local demo: http://localhost:${frontendPort} — simulated provider, real project-local runtime. Data is discarded on exit.`,

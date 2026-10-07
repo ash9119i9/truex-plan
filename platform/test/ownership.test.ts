@@ -189,8 +189,13 @@ test("tenant CLI: chat-visibility, including the implicit default tenant", { tim
   const def = await store.tenantRegistry.findOne({ _id: "default" });
   assert.equal(def?.chatVisibility, "own");
   assert.equal(def?.dbName, "cli_test");
-  await run("chat-visibility", "default", "all");
-  assert.equal((await store.tenantRegistry.findOne({ _id: "default" }))?.chatVisibility, "all");
+  // The change writes the canonical field and its legacy alias together.
+  assert.equal(def?.isUserSpecific, true);
+  // A private workspace cannot be made shared: that would expose its history.
+  await assert.rejects(run("chat-visibility", "default", "all"), /is private/);
+  const kept = await store.tenantRegistry.findOne({ _id: "default" });
+  assert.equal(kept?.chatVisibility, "own");
+  assert.equal(kept?.isUserSpecific, true);
   await assert.rejects(run("chat-visibility", "t1", "everyone"), /usage: chat-visibility/);
   await assert.rejects(run("chat-visibility", "nobody", "own"), /not registered/);
   assert.match((await run("list")).stdout, /t1\tactive.*chats=own/);
@@ -198,7 +203,8 @@ test("tenant CLI: chat-visibility, including the implicit default tenant", { tim
   const fresh = await new Store(mongo.getUri(), "cli_test", "cli_catalog").connect();
   t.after(() => fresh.client.close());
   assert.equal((await fresh.resolveTenant("t1")).chatVisibility, "own");
-  assert.equal((await fresh.resolveTenant("default")).chatVisibility, "all");
+  assert.equal((await fresh.resolveTenant("default")).chatVisibility, "own");
+  assert.equal((await fresh.resolveTenant("default")).isUserSpecific, true);
   assert.equal((await fresh.activeTenants()).find((x) => x.id === "t1")?.chatVisibility, "own");
 });
 

@@ -22,6 +22,11 @@ export interface Agent {
   tint?: AgentTint;
   /** Seeded by the Truex team; never set through the API. */
   builtin?: boolean;
+  /**
+   * Internal id of the person who created the agent; set by the server on
+   * create and never changed. Missing on agents created before ownership.
+   */
+  createdBy?: string;
 }
 export const AGENT_TINTS = ["ice", "mint", "butter", "peach", "lilac"] as const;
 export type AgentTint = (typeof AGENT_TINTS)[number];
@@ -77,6 +82,14 @@ export interface AgentSummary {
   look: number;
   tint: AgentTint;
   builtin: boolean;
+  /** Creator's internal id, when known. Lets an admin tell apart agents that
+   * share a handle in a private workspace. */
+  createdBy?: string;
+  /** Creator's name or email; sent only to an admin viewing others' agents. */
+  creatorName?: string;
+  /** Whether the caller may start a conversation with it / change it. */
+  canUse?: boolean;
+  canWrite?: boolean;
 }
 export interface Session {
   runtimePolicyVersion?: number;
