@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { transport, type SubscribeHandlers } from "../lib/transport.ts";
 import { coalesceChatEvents } from "../lib/chat-batch.ts";
 import type { DomainEvent } from "../../shared/contracts.ts";
+import { setIdentityScope } from "../lib/identity.ts";
 
 // A minimal EventSource stand-in that lets tests drive the stream by hand.
 class FakeEventSource {
@@ -36,6 +37,7 @@ function setup(
   onEvent?: (event: DomainEvent) => unknown,
   options: SubscribeHandlers = {},
 ) {
+  setIdentityScope("u1", "t1");
   FakeEventSource.instances = [];
   const store = new Map<string, string>();
   let cursorWrites = 0;
@@ -238,7 +240,7 @@ test("same-cursor synchronization marker flushes queued text before authority an
     batches.map((batch) => batch.map((event) => event.type)),
     [["message.delta"], ["sync.completed"]],
   );
-  assert.equal(stream.store.get("cursor:a b/c"), "generation:11");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "generation:11");
   stream.stop();
 });
 
@@ -293,15 +295,62 @@ test("an unreadable frame resyncs without advancing the cursor", (t) => {
   });
   source.onmessage!({ data: "{not json", lastEventId: "c2" });
   assert.equal(events.length, 1);
-  assert.equal(store.get("cursor:a b/c"), "c1");
+  // The cursor is kept under the person and workspace it belongs to.
+  assert.equal(store.get("cursor:u1.t1:a b/c"), "c1");
+  assert.equal(store.get("cursor:a b/c"), undefined);
   assert.equal(resyncs(), 1);
   assert.equal(source.closed, true);
   frame(source, "turn.completed", 3);
-  assert.equal(store.get("cursor:a b/c"), "c1");
+  assert.equal(store.get("cursor:u1.t1:a b/c"), "c1");
   assert.equal(logged.mock.callCount(), 1);
   assert.deepEqual(
     { ...logged.mock.calls[0].arguments[1], error: undefined },
     { sessionId: "a b/c", lastEventId: "c2", error: undefined },
+  );
+});
+
+test("a replay cursor is never carried to another person or workspace", (t) => {
+  const first = setup(t);
+  first.source.onmessage!({
+    data: '{"type":"turn.started","data":{}}',
+    lastEventId: "c9",
+  });
+  first.stop();
+  // Same browser, same conversation id, but another person (or workspace).
+  setIdentityScope("u2", "t1");
+  const other = transport.subscribe(
+    "a b/c",
+    () => {},
+    () => {},
+  );
+  const source = FakeEventSource.instances.at(-1)!;
+  assert.doesNotMatch(
+    source.url,
+    /cursor=/,
+    "no cursor from the previous person",
+  );
+  other();
+  setIdentityScope("u1", "t2");
+  transport.subscribe(
+    "a b/c",
+    () => {},
+    () => {},
+  )();
+  assert.doesNotMatch(
+    FakeEventSource.instances.at(-1)!.url,
+    /cursor=/,
+    "none from another workspace either",
+  );
+  setIdentityScope("u1", "t1");
+  transport.subscribe(
+    "a b/c",
+    () => {},
+    () => {},
+  )();
+  assert.match(
+    FakeEventSource.instances.at(-1)!.url,
+    /cursor=c9/,
+    "the owner's own cursor still resumes",
   );
 });
 
@@ -346,7 +395,7 @@ test("1000 ordered deltas publish once per frame and checkpoint after publicatio
   const paint = animationFrames(t);
   const batches: DomainEvent[][] = [];
   const stream = setup(t, (events) => {
-    assert.equal(stream.store.has("cursor:a b/c"), false);
+    assert.equal(stream.store.has("cursor:u1.t1:a b/c"), false);
     batches.push(events);
   });
   for (let i = 1; i <= 1000; i++)
@@ -360,7 +409,7 @@ test("1000 ordered deltas publish once per frame and checkpoint after publicatio
     batches[0].map((event) => event.data.delta).join(""),
     Array.from({ length: 1000 }, (_, i) => `${i + 1},`).join(""),
   );
-  assert.equal(stream.store.get("cursor:a b/c"), "c1000");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "c1000");
   assert.equal(stream.cursorWrites(), 1);
   assert.equal(stream.events.length, 0);
   stream.stop();
@@ -406,7 +455,7 @@ test("snapshots, finals, approvals and completion flush prior text in order", (t
       "resync.required",
     ].flatMap((barrier) => [["message.delta", "reasoning.delta"], [barrier]]),
   );
-  assert.equal(stream.store.get("cursor:a b/c"), `c${seq}`);
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), `c${seq}`);
   stream.stop();
 });
 
@@ -427,7 +476,7 @@ test("navigation flush and unsubscribe preserve queued deltas exactly once", (t)
     batches.flat().map((event) => event.seq),
     [1, 2],
   );
-  assert.equal(stream.store.get("cursor:a b/c"), "c2");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "c2");
 });
 
 test("delivery failure leaves cursor behind and prevents later checkpoint leap", (t) => {
@@ -470,13 +519,13 @@ test("malformed frame flushes accepted text then closes without checkpoint leap"
     batches.flat().map((event) => event.seq),
     [1],
   );
-  assert.equal(stream.store.get("cursor:a b/c"), "c1");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "c1");
   frame(stream.source, "reasoning.delta", 3);
   assert.deepEqual(
     batches.flat().map((event) => event.seq),
     [1],
   );
-  assert.equal(stream.store.get("cursor:a b/c"), "c1");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "c1");
   assert.equal(stream.source.closed, true);
   assert.deepEqual(stream.statuses, ["Disconnected"]);
   stream.stop();
@@ -495,12 +544,12 @@ test("fatal connection error flushes accepted text before reporting failure", (t
     batches.flat().map((event) => event.seq),
     [1],
   );
-  assert.equal(stream.store.get("cursor:a b/c"), "c1");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "c1");
   assert.equal(stream.source.closed, true);
   assert.equal(stream.failures.length, 1);
   frame(stream.source, "turn.completed", 2);
   stream.source.onopen!();
-  assert.equal(stream.store.get("cursor:a b/c"), "c1");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "c1");
   assert.deepEqual(stream.statuses, ["Disconnected"]);
   stream.stop();
 });
@@ -562,6 +611,6 @@ test("unknown future event types keep envelope compatibility", (t) => {
   const stream = setup(t);
   frame(stream.source, "future.event", 1, { feature: true });
   assert.equal(stream.events.length, 1);
-  assert.equal(stream.store.get("cursor:a b/c"), "c1");
+  assert.equal(stream.store.get("cursor:u1.t1:a b/c"), "c1");
   stream.stop();
 });

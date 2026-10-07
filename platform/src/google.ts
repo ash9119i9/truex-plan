@@ -1,5 +1,6 @@
-import { randomUUID } from "node:crypto";
-import { Router, type Request, type Response, type NextFunction } from "express";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { Router, type Request, type Response } from "express";
+import type { ClientSession } from "mongodb";
 import * as client from "openid-client";
 import { errorFields, log } from "../../shared/logging";
 import {
@@ -7,21 +8,27 @@ import {
   createSession,
   emailKey,
   hashToken,
-  isGmail,
   newToken,
   parseCookies,
   userTenants,
+  validEmail,
   type InviteDocument,
+  type MembershipDocument,
   type UserDocument,
 } from "./auth";
 import type { Store } from "./store";
 import { DEFAULT_TENANT_ID } from "./tenant";
+import type { DemoAdmission, DemoGate } from "./demo";
+import { ApiError } from "./errors";
 
 // Google sign-in (AUTH_MODE=google): authorization code flow with PKCE,
-// state and nonce. Accounts are created only by accepting an invite; /login
-// only signs existing users in. Tokens and claims never go into a URL or a
-// log; the one exception is the wrong-account redirect, which carries the
-// signed-in email so the invite page can say who the user signed in as.
+// state and nonce, for personal Gmail and Google Workspace accounts alike.
+// A person who already belongs to a workspace signs in to it. A person who
+// belongs to none is enrolled as a regular user in the one configured demo
+// tenant when, and only when, its admission is open; otherwise accounts are
+// created only by accepting an invite. Tokens and claims never go into a URL
+// or a log; the one exception is the wrong-account redirect, which carries
+// the signed-in email so the invite page can say who the user signed in as.
 
 export interface GoogleSettings {
   clientId: string;
@@ -47,6 +54,34 @@ export function googleSettings(env: NodeJS.ProcessEnv = process.env): GoogleSett
   };
 }
 
+const GOOGLE_ISSUER = "https://accounts.google.com";
+
+/**
+ * Refuses an unsafe production setup at startup. The issuer override exists
+ * for tests that point at a fake issuer; a production process must talk to
+ * Google over https and be reached on an https origin, whatever the env says.
+ */
+export function assertGoogleConfig(
+  settings: GoogleSettings,
+  env: NodeJS.ProcessEnv = process.env,
+) {
+  let origin: URL;
+  try {
+    origin = new URL(settings.appUrl);
+  } catch {
+    throw new Error("APP_PUBLIC_URL / FRONTEND_ORIGIN is not a valid URL.");
+  }
+  if (origin.pathname !== "/" || origin.search || origin.hash || origin.username)
+    throw new Error(
+      "APP_PUBLIC_URL / FRONTEND_ORIGIN must be an origin with no path, query or credentials.",
+    );
+  if (env.NODE_ENV !== "production") return;
+  if (origin.protocol !== "https:")
+    throw new Error("Production Google sign-in needs an https APP_PUBLIC_URL / FRONTEND_ORIGIN.");
+  if (settings.issuer !== GOOGLE_ISSUER)
+    throw new Error("GOOGLE_ISSUER_URL may only be changed outside production.");
+}
+
 // Same public-origin rule as the session cookie: __Host- and Secure on https,
 // the plain name without Secure on http dev origins.
 export function flowCookieSpec(env: NodeJS.ProcessEnv = process.env) {
@@ -70,7 +105,7 @@ function setFlowCookie(res: Response, value: string, maxAgeMs: number) {
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 
 type ErrorCode =
-  | "gmail_only"
+  | "email_unverified"
   | "wrong_account"
   | "invite_expired"
   | "invite_used"
@@ -78,15 +113,19 @@ type ErrorCode =
   | "not_invited"
   | "account_conflict"
   | "account_disabled"
+  | "access_removed"
   | "no_tenant"
   | "tenant_disabled"
+  | "demo_unavailable"
+  | "unavailable"
+  | "signup_limit"
   | "session_expired"
   | "google_failed"
   | "invalid_name";
 // Codes the plan shows on the invite page; the rest go to /login.
 const INVITE_PAGE = new Set<ErrorCode>([
   "invalid_name",
-  "gmail_only",
+  "email_unverified",
   "wrong_account",
   "invite_expired",
   "invite_used",
@@ -103,6 +142,10 @@ class SignInError extends Error {
   }
 }
 
+// Visible characters only: no control, zero-width or bidirectional-override
+// characters, which could make a name read differently from what it is.
+const INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
+
 /**
  * The name typed on the invite page: trimmed, inner whitespace collapsed,
  * 2 to 60 characters with at least one letter. undefined when invalid.
@@ -113,6 +156,31 @@ export function cleanDisplayName(value: string): string | undefined {
   if (length < 2 || length > 60 || !/\p{L}/u.test(name)) return undefined;
   return name;
 }
+/** Google's name claim, made safe to store and show; undefined if nothing is left. */
+export function profileName(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const name = value.replace(INVISIBLE, " ").trim().replace(/\s+/gu, " ");
+  return name ? [...name].slice(0, 100).join("") : undefined;
+}
+/** Google serves avatars from googleusercontent.com over https; anything else is dropped. */
+export function profilePicture(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.length > 512) return undefined;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.port ||
+      !(host === "googleusercontent.com" || host.endsWith(".googleusercontent.com"))
+    )
+      return undefined;
+    return url.href;
+  } catch {
+    return undefined;
+  }
+}
 
 function inviteState(invite: InviteDocument, now = Date.now()): ErrorCode | undefined {
   if (invite.status === "accepted") return "invite_used";
@@ -121,10 +189,22 @@ function inviteState(invite: InviteDocument, now = Date.now()): ErrorCode | unde
   return undefined;
 }
 
-export function googleRoutes(store: Store, settings = googleSettings()) {
+const sameText = (a: string, b: string) => {
+  const x = Buffer.from(a),
+    y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+
+export function googleRoutes(
+  store: Store,
+  settings = googleSettings(),
+  demo?: DemoGate,
+) {
   const router = Router();
 
-  // Discovered once per process; a failed discovery is retried next time.
+  // Discovered once per process; a failed discovery is retried next time. The
+  // same timeout bounds every later request to Google, so a stalled provider
+  // fails the sign-in instead of holding it open.
   let config: Promise<client.Configuration> | undefined;
   const discover = () => {
     config ??= client
@@ -133,10 +213,23 @@ export function googleRoutes(store: Store, settings = googleSettings()) {
         settings.clientId,
         settings.clientSecret,
         undefined,
-        new URL(settings.issuer).protocol === "http:"
-          ? { execute: [client.allowInsecureRequests] }
-          : undefined,
+        {
+          timeout: 10,
+          ...(new URL(settings.issuer).protocol === "http:"
+            ? { execute: [client.allowInsecureRequests] }
+            : {}),
+        },
       )
+      .then((discovered) => {
+        // The ID token comes straight from Google's token endpoint over TLS,
+        // which the OIDC spec accepts without a signature check. The signature
+        // is checked as well, against Google's published keys (cached), so a
+        // token that did not come from Google's keys is refused even if that
+        // channel were ever compromised. Failing to fetch the keys fails the
+        // sign-in; nothing is let through.
+        client.enableNonRepudiationChecks(discovered);
+        return discovered;
+      })
       .catch((error) => {
         config = undefined;
         throw error;
@@ -162,7 +255,7 @@ export function googleRoutes(store: Store, settings = googleSettings()) {
     return new SignInError("google_failed");
   };
 
-  router.get("/google/start", (req: Request, res: Response, next: NextFunction) => {
+  router.get("/google/start", (req: Request, res: Response) => {
     const raw = typeof req.query.invite === "string" ? req.query.invite : undefined;
     const run = async () => {
       let invite: InviteDocument | null = null;
@@ -217,30 +310,52 @@ export function googleRoutes(store: Store, settings = googleSettings()) {
         ...(invite ? { login_hint: invite.email } : {}),
         prompt: "select_account",
       });
+      log("info", "google sign-in started", { flow: invite ? "invite" : "login" });
+      res.setHeader("Cache-Control", "no-store");
       res.redirect(302, url.href);
     };
     run().catch((error) => {
       if (error instanceof SignInError) return redirectError(res, error, raw);
-      next(error);
+      log("error", "google sign-in could not start", errorFields(error));
+      redirectError(res, new SignInError("unavailable"));
     });
   });
 
-  router.get("/google/callback", (req: Request, res: Response, next: NextFunction) => {
+  router.get("/google/callback", (req: Request, res: Response) => {
     let inviteToken: string | undefined;
     const run = async () => {
-      // Single use: the flow is deleted as it is read, and the cookie cleared.
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Referrer-Policy", "no-referrer");
       const flowId = parseCookies(req.get("cookie")).get(flowCookieSpec().name);
-      setFlowCookie(res, "", 0);
-      const flow =
-        flowId && TOKEN.test(flowId)
-          ? await store.authFlows.findOneAndDelete({ _id: hashToken(flowId) })
-          : null;
+      const state = req.query.state;
+      const fail = (code: ErrorCode, clearCookie: boolean) => {
+        if (clearCookie) setFlowCookie(res, "", 0);
+        throw new SignInError(code);
+      };
+      if (!flowId || !TOKEN.test(flowId)) return fail("session_expired", true);
+      const stored = await store.authFlows.findOne({ _id: hashToken(flowId) });
       // The TTL monitor runs about once a minute, so check the age here too.
-      if (!flow || Date.now() - flow.createdAt.getTime() > FLOW_MS)
-        throw new SignInError("session_expired");
+      if (!stored || Date.now() - stored.createdAt.getTime() > FLOW_MS)
+        return fail("session_expired", true);
+      // A callback that belongs to another flow (an older tab started a second
+      // sign-in, which replaced this cookie) is refused WITHOUT consuming the
+      // newer flow or clearing its cookie, so the newer tab can still finish.
+      if (typeof state !== "string" || !sameText(state, stored.state))
+        return fail("session_expired", false);
+      // Single use: only one callback can take the flow; a replay finds none.
+      const flow = await store.authFlows.findOneAndDelete({
+        _id: stored._id,
+        state: stored.state,
+      });
+      setFlowCookie(res, "", 0);
+      if (!flow) throw new SignInError("session_expired");
       inviteToken = flow.inviteToken;
       if (req.query.error !== undefined) throw googleFailed("provider_error");
+      // Repeated parameters arrive as arrays; the grant needs exactly one each.
+      if (typeof req.query.code !== "string") throw googleFailed("missing_code");
 
+      // From here the authorization code is spent. A failure or timeout ends
+      // the flow; nothing replays the code.
       let claims: client.IDToken | undefined;
       try {
         const current = new URL(settings.redirectUri);
@@ -255,20 +370,11 @@ export function googleRoutes(store: Store, settings = googleSettings()) {
         throw googleFailed("exchange", error);
       }
       if (!claims) throw googleFailed("no_id_token");
-      const email = typeof claims.email === "string" ? claims.email.trim() : "";
-      if (claims.email_verified !== true || !isGmail(email) || claims.hd !== undefined)
-        throw new SignInError("gmail_only");
-      const identity = {
-        sub: claims.sub,
-        email,
-        key: emailKey(email),
-        name: typeof claims.name === "string" ? claims.name : undefined,
-        picture: typeof claims.picture === "string" ? claims.picture : undefined,
-      };
+      const identity = identityFrom(claims);
 
       const { user, tenantId, picker } = flow.inviteId
         ? await acceptInvite(store, flow.inviteId, identity, flow.displayName)
-        : await signIn(store, identity.sub);
+        : await signIn(store, identity, demo);
 
       await store.users.updateOne(
         { _id: user._id },
@@ -284,6 +390,11 @@ export function googleRoutes(store: Store, settings = googleSettings()) {
         app: "main",
         userAgent: req.get("user-agent"),
       });
+      log("info", "google sign-in completed", {
+        userId: user._id,
+        tenantId,
+        flow: flow.inviteId ? "invite" : "login",
+      });
       // An invite sign-in lands back on the invite page, which shows the
       // joined state; the token is already in that URL, nothing else is.
       const next = flow.inviteToken
@@ -294,9 +405,18 @@ export function googleRoutes(store: Store, settings = googleSettings()) {
       res.redirect(302, `${settings.appUrl}${next}`);
     };
     run().catch((error) => {
-      if (error instanceof SignInError)
+      if (error instanceof SignInError) {
+        log("info", "google sign-in refused", { code: error.code });
         return redirectError(res, error, inviteToken);
-      next(error);
+      }
+      // This is a browser navigation: a JSON error page would strand the
+      // person. Storage or server trouble is logged and reported as a
+      // temporary outage they can retry from the sign-in page.
+      log("error", "google sign-in unavailable", {
+        ...errorFields(error),
+        ...(error instanceof ApiError ? { code: error.code } : {}),
+      });
+      redirectError(res, new SignInError("unavailable"));
     });
   });
 
@@ -311,141 +431,291 @@ interface Identity {
   picture?: string;
 }
 
+// Library-verified claims are still untrusted values: a usable subject, a
+// valid address Google confirmed, and bounded display fields.
+function identityFrom(claims: client.IDToken): Identity {
+  const sub = typeof claims.sub === "string" ? claims.sub : "";
+  if (!/^[\x21-\x7e]{1,255}$/.test(sub)) throw new SignInError("google_failed");
+  const email = validEmail(claims.email);
+  if (claims.email_verified !== true || !email)
+    throw new SignInError("email_unverified");
+  return {
+    sub,
+    email,
+    key: emailKey(email),
+    name: profileName(claims.name),
+    picture: profilePicture(claims.picture),
+  };
+}
+
+// Duplicate-key races and the driver's transient or unknown-commit outcomes
+// are resolved by running the whole step again against the committed state.
+function retryable(error: unknown) {
+  const e = error as { code?: number; hasErrorLabel?: (l: string) => boolean };
+  return (
+    e?.code === 11000 ||
+    !!e?.hasErrorLabel?.("TransientTransactionError") ||
+    !!e?.hasErrorLabel?.("UnknownTransactionCommitResult")
+  );
+}
+async function settle<T>(step: () => Promise<T>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await step();
+    } catch (error) {
+      if (attempt >= 3 || !retryable(error)) throw error;
+    }
+  }
+}
+
+const newUser = (identity: Identity, now: Date, id = `u_${randomUUID()}`): UserDocument => ({
+  _id: id,
+  googleSub: identity.sub,
+  email: identity.email,
+  emailKey: identity.key,
+  ...(identity.name ? { name: identity.name } : {}),
+  ...(identity.picture ? { picture: identity.picture } : {}),
+  status: "active",
+  createdAt: now.toISOString(),
+});
+
 async function acceptInvite(
   store: Store,
   inviteId: string,
   identity: Identity,
   displayName?: string,
 ) {
+  // Checked before the claim, so a wrong account leaves the invite pending.
   const invite = await store.invites.findOne({ _id: inviteId });
   if (!invite) throw new SignInError("not_invited");
-  // Checked before the claim, so a wrong account leaves the invite pending.
   if (invite.emailKey !== identity.key)
     throw new SignInError("wrong_account", { email: identity.email });
   const early = inviteState(invite);
   if (early) throw new SignInError(early);
 
-  // A tenant without a registry entry (other than the default) counts as
-  // disabled, the simplest safe reading.
-  const tenant = await store.tenantRegistry.findOne({ _id: invite.tenantId });
-  if (
-    tenant?.status === "disabled" ||
-    (!tenant && invite.tenantId !== DEFAULT_TENANT_ID)
-  )
-    throw new SignInError("tenant_disabled");
-
-  let user = await store.users.findOne({ googleSub: identity.sub });
-  if (!user) {
-    // Compare subs: a parallel accept by the same Google account may have
-    // created the user between the two lookups, and that isn't a conflict.
-    const byEmail = await store.users.findOne({ emailKey: identity.key });
-    if (byEmail && byEmail.googleSub !== identity.sub)
-      throw new SignInError("account_conflict");
-    user = byEmail;
-  }
-  if (user?.status === "disabled") throw new SignInError("account_disabled");
-  const userId = user?._id ?? `u_${randomUUID()}`;
-
-  // The atomic claim: only one of two parallel accepts matches.
-  const now = new Date();
-  const claimed = await store.invites.findOneAndUpdate(
-    { _id: invite._id, status: "pending", expiresAt: { $gt: now } },
-    {
-      $set: {
-        status: "accepted",
-        acceptedAt: now.toISOString(),
-        acceptedBy: userId,
-      },
-    },
-  );
-  if (!claimed) {
-    const latest = await store.invites.findOne({ _id: invite._id });
-    throw new SignInError((latest && inviteState(latest)) || "invite_used");
-  }
-
-  try {
-    user = await finishAccept(store, invite, identity, user, userId, now);
-    // The name typed on the invite page replaces Google's, new user or not.
-    if (displayName) {
-      await store.users.updateOne({ _id: user._id }, { $set: { name: displayName } });
-      user = { ...user, name: displayName };
-    }
-  } catch (error) {
-    // Anything failing after the claim hands the invite back, so the person
-    // isn't locked out with a spent link. Matching acceptedBy keeps a
-    // parallel winner's claim intact.
-    await store.invites
-      .updateOne(
-        { _id: invite._id, status: "accepted", acceptedBy: userId },
-        { $set: { status: "pending" }, $unset: { acceptedAt: "", acceptedBy: "" } },
-      )
-      .catch((revertError) =>
-        log("error", "Could not release a claimed invite", {
-          inviteId: invite._id,
-          ...errorFields(revertError),
-        }),
+  // One short catalog transaction: the claim, the account and the membership
+  // commit together or not at all. A revoke, an expiry or a parallel accept
+  // that gets there first makes the claim match nothing, and nothing else is
+  // written. Google, mail and cookies stay outside.
+  const accepted = await settle(() =>
+    store.withCatalogTransaction(async (session) => {
+      const now = new Date();
+      const current = await store.invites.findOne({ _id: inviteId }, { session });
+      if (!current) throw new SignInError("not_invited");
+      if (current.emailKey !== identity.key)
+        throw new SignInError("wrong_account", { email: identity.email });
+      const state = inviteState(current, now.getTime());
+      if (state) throw new SignInError(state);
+      // A tenant without a registry entry (other than the default) counts as
+      // disabled, the simplest safe reading.
+      const tenant = await store.tenantRegistry.findOne(
+        { _id: current.tenantId },
+        { session },
       );
-    throw error;
-  }
-  return { user, tenantId: invite.tenantId, picker: false };
+      if (
+        tenant?.status === "disabled" ||
+        (!tenant && current.tenantId !== DEFAULT_TENANT_ID)
+      )
+        throw new SignInError("tenant_disabled");
+
+      let user = await store.users.findOne({ googleSub: identity.sub }, { session });
+      if (!user) {
+        // A different Google account already owns this address.
+        if (await store.users.findOne({ emailKey: identity.key }, { session }))
+          throw new SignInError("account_conflict");
+      } else if (user.status === "disabled") throw new SignInError("account_disabled");
+      const userId = user?._id ?? `u_${randomUUID()}`;
+
+      const claimed = await store.invites.findOneAndUpdate(
+        { _id: current._id, status: "pending", expiresAt: { $gt: now } },
+        {
+          $set: {
+            status: "accepted",
+            acceptedAt: now.toISOString(),
+            acceptedBy: userId,
+          },
+        },
+        { session },
+      );
+      if (!claimed) {
+        const latest = await store.invites.findOne({ _id: current._id }, { session });
+        throw new SignInError((latest && inviteState(latest)) || "invite_used");
+      }
+      if (!user) {
+        user = newUser(identity, now, userId);
+        await store.users.insertOne(user, { session });
+      }
+      await grantMembership(store, session, user, current, now);
+      if (displayName) {
+        await store.users.updateOne(
+          { _id: user._id },
+          { $set: { name: displayName } },
+          { session },
+        );
+        user = { ...user, name: displayName };
+      }
+      return { user, tenantId: current.tenantId };
+    }),
+  );
+  return { ...accepted, picker: false };
 }
 
-async function finishAccept(
+// A new member gets the invited role. A removed member is restored by this new,
+// authorized invite and keeps their user id (and so their content). An active
+// member keeps the role they have: an invite never changes it, up or down.
+async function grantMembership(
   store: Store,
+  session: ClientSession,
+  user: UserDocument,
   invite: InviteDocument,
-  identity: Identity,
-  existing: UserDocument | null,
-  userId: string,
   now: Date,
 ) {
-  let user = existing;
-  if (!user) {
-    const created: UserDocument = {
-      _id: userId,
-      googleSub: identity.sub,
-      email: identity.email,
-      emailKey: identity.key,
-      ...(identity.name ? { name: identity.name } : {}),
-      ...(identity.picture ? { picture: identity.picture } : {}),
-      status: "active",
-      createdAt: now.toISOString(),
-    };
-    try {
-      await store.users.insertOne(created);
-      user = created;
-    } catch (error: any) {
-      if (error?.code !== 11000) throw error;
-      // Lost a race to the same Google account (two different invites).
-      user = await store.users.findOne({ googleSub: identity.sub });
-      if (!user) throw new SignInError("account_conflict");
-    }
-  }
-
-  // Reactivates a removed membership with the invite's role.
-  await store.memberships.updateOne(
+  const existing = await store.memberships.findOne(
     { userId: user._id, tenantId: invite.tenantId },
-    {
-      $set: { role: invite.role, status: "active", inviteId: invite._id },
-      $setOnInsert: { _id: randomUUID(), createdAt: now.toISOString() },
-    },
-    { upsert: true },
+    { session },
   );
-  return user;
+  if (!existing) {
+    await store.memberships.insertOne(
+      {
+        _id: randomUUID(),
+        userId: user._id,
+        tenantId: invite.tenantId,
+        role: invite.role,
+        status: "active",
+        inviteId: invite._id,
+        createdAt: now.toISOString(),
+      } satisfies MembershipDocument,
+      { session },
+    );
+  } else if (existing.status === "removed") {
+    await store.memberships.updateOne(
+      { _id: existing._id, status: "removed" },
+      { $set: { role: invite.role, status: "active", inviteId: invite._id } },
+      { session },
+    );
+  }
 }
 
-async function signIn(store: Store, sub: string) {
+async function signIn(store: Store, identity: Identity, demo?: DemoGate) {
   // Never accepts pending invites; only the invite link does.
-  const user = await store.users.findOne({ googleSub: sub });
-  if (!user) throw new SignInError("not_invited");
-  if (user.status === "disabled") throw new SignInError("account_disabled");
-  const tenants = await userTenants(store, user._id);
-  if (!tenants.length) {
-    const active = await store.memberships.countDocuments({
-      userId: user._id,
-      status: "active",
-    });
-    throw new SignInError(active ? "tenant_disabled" : "no_tenant");
+  return settle(async () => {
+    let user = await store.users.findOne({ googleSub: identity.sub });
+    if (user) {
+      if (user.status === "disabled") throw new SignInError("account_disabled");
+      user = await refreshProfile(store, user, identity);
+      const tenants = await userTenants(store, user._id);
+      // Several tenants: bind the first and let the picker switch. Signing in
+      // never adds another workspace.
+      if (tenants.length)
+        return { user, tenantId: tenants[0].id, picker: tenants.length > 1 };
+      // A membership in a disabled workspace is still a membership: say so
+      // rather than quietly enrolling the person somewhere else.
+      const active = await store.memberships.countDocuments({
+        userId: user._id,
+        status: "active",
+      });
+      if (active) throw new SignInError("tenant_disabled");
+    } else if (await store.users.findOne({ emailKey: identity.key })) {
+      // A different Google account holds this address: no linking, no merging.
+      throw new SignInError("account_conflict");
+    }
+
+    const admission = await (demo?.admission() ?? Promise.resolve<DemoAdmission>({ state: "off" }));
+    if (admission.state === "unavailable") throw new SignInError("demo_unavailable");
+    if (admission.state !== "open")
+      throw new SignInError(user ? "no_tenant" : "not_invited");
+    const enrolled = await enrollInDemo(store, identity, admission);
+    // The enrolment is committed; confirm it still gives access before a
+    // session is issued (the per-request check stays authoritative after).
+    const tenants = await userTenants(store, enrolled._id);
+    const usable = tenants.find((t) => t.id === admission.tenant._id);
+    if (!usable) throw new SignInError("tenant_disabled");
+    return { user: enrolled, tenantId: usable.id, picker: tenants.length > 1 };
+  });
+}
+
+// Keeps what Google says about an existing subject current: the picture, a
+// missing name, and a changed address when no other account holds the new one.
+async function refreshProfile(store: Store, user: UserDocument, identity: Identity) {
+  const set: Partial<UserDocument> = {};
+  if (identity.picture && identity.picture !== user.picture) set.picture = identity.picture;
+  if (!user.name && identity.name) set.name = identity.name;
+  if (identity.key !== user.emailKey) {
+    const holder = await store.users.findOne({ emailKey: identity.key });
+    if (!holder) {
+      set.email = identity.email;
+      set.emailKey = identity.key;
+    } else
+      log("warn", "google address change not applied: held by another account", {
+        userId: user._id,
+      });
   }
-  // Several tenants: bind the first and let the picker switch.
-  return { user, tenantId: tenants[0].id, picker: tenants.length > 1 };
+  if (!Object.keys(set).length) return user;
+  try {
+    await store.users.updateOne({ _id: user._id }, { $set: set });
+    return { ...user, ...set };
+  } catch (error) {
+    // Losing the race for the address is the same collision; keep the old one.
+    if ((error as { code?: number }).code !== 11000) throw error;
+    delete set.email;
+    delete set.emailKey;
+    if (Object.keys(set).length)
+      await store.users.updateOne({ _id: user._id }, { $set: set });
+    return { ...user, ...set };
+  }
+}
+
+const utcDay = (now: Date) => now.toISOString().slice(0, 10);
+
+// Idempotent: the user and the membership are inserted when missing and never
+// changed when present. A removed membership stays removed, and an admin
+// membership is never overwritten with "user".
+async function enrollInDemo(
+  store: Store,
+  identity: Identity,
+  admission: Extract<DemoAdmission, { state: "open" }>,
+) {
+  const tenantId = admission.tenant._id;
+  return store.withCatalogTransaction(async (session) => {
+    const now = new Date();
+    let user = await store.users.findOne({ googleSub: identity.sub }, { session });
+    if (user) {
+      if (user.status === "disabled") throw new SignInError("account_disabled");
+    } else {
+      if (await store.users.findOne({ emailKey: identity.key }, { session }))
+        throw new SignInError("account_conflict");
+      // Daily new-account budget, counted in the same transaction as the
+      // account so an aborted attempt spends nothing.
+      const budget = admission.config.signupsPerDay!;
+      const used = await store.demoUsage.findOneAndUpdate(
+        { _id: `${utcDay(now)}:${tenantId}:signups` },
+        {
+          $inc: { count: 1 },
+          $setOnInsert: { expiresAt: new Date(now.getTime() + 3 * 86_400_000) },
+        },
+        { upsert: true, returnDocument: "after", session },
+      );
+      if (!used || used.count > budget) throw new SignInError("signup_limit");
+      user = newUser(identity, now);
+      await store.users.insertOne(user, { session });
+    }
+    const existing = await store.memberships.findOne(
+      { userId: user._id, tenantId },
+      { session },
+    );
+    if (existing?.status === "removed") throw new SignInError("access_removed");
+    if (!existing)
+      await store.memberships.insertOne(
+        {
+          _id: randomUUID(),
+          userId: user._id,
+          tenantId,
+          role: "user",
+          status: "active",
+          createdAt: now.toISOString(),
+        } satisfies MembershipDocument,
+        { session },
+      );
+    return user;
+  });
 }

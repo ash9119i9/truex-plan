@@ -59,6 +59,15 @@ export function authMode(env: NodeJS.ProcessEnv = process.env): AuthMode {
   const missing = GOOGLE_KEYS.filter((key) => !env[key]?.trim());
   if (missing.length)
     throw new Error(`AUTH_MODE=google requires ${missing.join(", ")}.`);
+  // A value left as "<from Google Cloud Console>" is not set. It would pass the
+  // check above and only fail inside Google's sign-in page.
+  const placeholders = GOOGLE_KEYS.filter((key) =>
+    /^<.*>$/.test(env[key]!.trim()),
+  );
+  if (placeholders.length)
+    throw new Error(
+      `AUTH_MODE=google needs real values for ${placeholders.join(", ")}; found placeholder text such as <...>.`,
+    );
   return mode;
 }
 

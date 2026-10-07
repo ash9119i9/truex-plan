@@ -3,10 +3,20 @@ import type { Request } from "express";
 import { ApiError } from "./errors";
 
 // Who may see a tenant's conversations: "own" shows each user only their
-// chats (admins still read all); "all" lets everyone read every chat.
+// chats (admins still read all); "all" lets everyone read every chat. This is
+// the legacy spelling of isUserSpecific and is kept as a derived alias.
 export type ChatVisibility = "own" | "all";
 export const chatVisibilityOf = (value: unknown): ChatVisibility | undefined =>
   value === "own" || value === "all" ? value : undefined;
+
+// How people join a tenant. "open" lets anyone with a Google account in, and
+// is allowed for the one configured demo tenant only; everything else joins
+// by invitation. A missing value means "inviteOnly", never "open".
+export type AdmissionPolicy = "open" | "inviteOnly";
+export const admissionPolicyOf = (
+  value: unknown,
+): AdmissionPolicy | undefined =>
+  value === "open" || value === "inviteOnly" ? value : undefined;
 
 // A tenant owns its agents, MCP profiles and conversations, all in its own
 // database. Models and skills are shared and live in the catalog database.
@@ -19,8 +29,13 @@ export interface TenantDocument {
   /** When set, agents of this tenant may only use these catalog entries. */
   allowedModelIds?: string[];
   allowedSkillIds?: string[];
-  /** Missing means "all". */
+  /** Legacy alias of isUserSpecific; see effectivePrivacy. */
   chatVisibility?: ChatVisibility;
+  /** Canonical privacy: true means ordinary members see only their own
+   * conversations and agents. Missing on legacy records. */
+  isUserSpecific?: boolean;
+  /** Missing means "inviteOnly". */
+  admissionPolicy?: AdmissionPolicy;
   createdAt: string;
   updatedAt: string;
 }
@@ -29,8 +44,66 @@ export interface TenantRef {
   dbName: string;
   allowedModelIds?: string[];
   allowedSkillIds?: string[];
-  /** Missing means "all". */
+  /** Derived from isUserSpecific; missing means "all" (legacy shared). */
   chatVisibility?: ChatVisibility;
+  /** The one effective privacy policy; missing only on unconfigured legacy
+   * records, which keep their legacy behaviour. */
+  isUserSpecific?: boolean;
+  admissionPolicy?: AdmissionPolicy;
+}
+
+/**
+ * The single effective privacy policy of a tenant record. The canonical
+ * isUserSpecific wins over nothing: when both it and the legacy chatVisibility
+ * are present they must agree, and any present-but-unrecognised value is
+ * invalid. Callers treat `invalid` as a closed door, never as a default.
+ */
+export function effectivePrivacy(
+  doc?: {
+    isUserSpecific?: unknown;
+    chatVisibility?: unknown;
+  } | null,
+): { isUserSpecific?: boolean; invalid: boolean } {
+  const canonicalPresent = doc?.isUserSpecific !== undefined;
+  const legacyPresent = doc?.chatVisibility !== undefined;
+  const canonical =
+    typeof doc?.isUserSpecific === "boolean" ? doc.isUserSpecific : undefined;
+  const legacyValue = chatVisibilityOf(doc?.chatVisibility);
+  const legacy = legacyValue === undefined ? undefined : legacyValue === "own";
+  if (canonicalPresent && canonical === undefined) return { invalid: true };
+  if (legacyPresent && legacy === undefined) return { invalid: true };
+  if (canonical !== undefined && legacy !== undefined && canonical !== legacy)
+    return { invalid: true };
+  const value = canonical ?? legacy;
+  return value === undefined
+    ? { invalid: false }
+    : { isUserSpecific: value, invalid: false };
+}
+/** The tenant-context fields that follow from a registry record. */
+export function policyOf(
+  doc?: {
+    isUserSpecific?: unknown;
+    chatVisibility?: unknown;
+    admissionPolicy?: unknown;
+  } | null,
+) {
+  const { isUserSpecific, invalid } = effectivePrivacy(doc);
+  if (invalid)
+    throw new ApiError(
+      503,
+      "This workspace's privacy settings are inconsistent. Ask your administrator to correct them.",
+      "TENANT_POLICY_INVALID",
+    );
+  const admissionPolicy = admissionPolicyOf(doc?.admissionPolicy);
+  return {
+    ...(isUserSpecific === undefined
+      ? {}
+      : {
+          isUserSpecific,
+          chatVisibility: (isUserSpecific ? "own" : "all") as ChatVisibility,
+        }),
+    ...(admissionPolicy ? { admissionPolicy } : {}),
+  };
 }
 
 export const DEFAULT_TENANT_ID = "default";

@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, userMessage } from "@/lib/api";
+import { identityScope } from "@/lib/identity";
 import {
   validWidgetState,
   visualizationDocument,
@@ -34,7 +35,7 @@ export function Visualization({
   const iframe = useRef<HTMLIFrameElement>(null),
     dialog = useRef<HTMLDialogElement>(null);
   const state = useRef<VisualizationState | null>(null);
-  const stateKey = `truex-visualization:${sessionId}:${id}`;
+  const stateKey = `truex-visualization:${identityScope()}:${sessionId}:${id}`;
   useEffect(() => {
     let cancelled = false;
     setVisual(null);

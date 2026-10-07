@@ -76,17 +76,45 @@ export interface AuthFlowDocument {
   createdAt: Date;
 }
 
-// Canonical Gmail address: Gmail delivers every dotted or +tagged spelling
-// of a local part to the same inbox.
+// Addresses are matched by emailKey, never compared as typed.
+//
+// Matching rules (the CLI in scripts/tenant.mjs implements the same ones):
+// - The whole address is lower-cased. Google treats Gmail and Workspace
+//   addresses case-insensitively.
+// - Gmail (gmail.com and googlemail.com, one inbox) delivers every dotted or
+//   +tagged spelling of a local part to the same mailbox, so dots and the
+//   +tag are dropped and googlemail.com becomes gmail.com.
+// - Any other domain keeps its dots and +tags: on Google Workspace and
+//   elsewhere "a.b" and "ab" are different people.
+// Only plain ASCII addresses are accepted; see validEmail.
+export const GMAIL_DOMAINS = new Set(["gmail.com", "googlemail.com"]);
+const EMAIL =
+  /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+/** The trimmed address, or undefined when it is malformed, oversized or has
+ * control or non-ASCII characters. */
+export function validEmail(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const email = value.trim();
+  const lower = email.toLowerCase();
+  if (email.length > 254 || !EMAIL.test(lower)) return undefined;
+  const local = lower.slice(0, lower.lastIndexOf("@"));
+  if (local.startsWith(".") || local.endsWith(".") || local.includes(".."))
+    return undefined;
+  // A Gmail address whose key would have no local part cannot exist.
+  if (emailKey(lower).startsWith("@")) return undefined;
+  return email;
+}
 export function emailKey(email: string) {
   const value = email.trim().toLowerCase();
   const at = value.lastIndexOf("@");
   if (at < 1) return value;
+  const domain = value.slice(at + 1);
+  if (!GMAIL_DOMAINS.has(domain)) return value;
   const local = value.slice(0, at).split("+")[0].replace(/\./g, "");
-  return `${local}${value.slice(at)}`;
+  return `${local}@gmail.com`;
 }
 export const isGmail = (email: string) =>
-  /^[^@\s]+@gmail\.com$/i.test(email.trim());
+  /^[^@\s]+@(?:gmail|googlemail)\.com$/i.test(email.trim());
 export const newToken = () => randomBytes(32).toString("base64url");
 export const hashToken = (token: string) =>
   createHash("sha256").update(token).digest("hex");
@@ -201,11 +229,17 @@ const cookieToken = (req: Request, app: AuthApp) => {
   return token && TOKEN.test(token) ? token : undefined;
 };
 
-/** The request's valid session for app, or undefined. */
+/**
+ * The request's valid session for app, or undefined. Expiry is checked from
+ * the stored dates, not left to the TTL index. `touch: false` is for checks
+ * made on behalf of a long-lived connection, which must never extend the
+ * idle lifetime.
+ */
 export async function readSession(
   store: Store,
   req: Request,
   app: AuthApp,
+  options: { touch?: boolean } = {},
 ): Promise<AuthSessionDocument | undefined> {
   const token = cookieToken(req, app);
   if (!token) return undefined;
@@ -221,7 +255,7 @@ export async function readSession(
     return undefined;
   }
   // Written at most once a minute; admin sessions never slide.
-  if (now - session.lastSeenAt.getTime() >= TOUCH_MS) {
+  if (options.touch !== false && now - session.lastSeenAt.getTime() >= TOUCH_MS) {
     const lastSeenAt = new Date(now);
     const idleExpiresAt =
       app === "main"
@@ -232,10 +266,14 @@ export async function readSession(
             ),
           )
         : session.idleExpiresAt;
-    await store.authSessions.updateOne(
-      { _id: id },
+    // Never an upsert, and only while the session still exists unexpired: a
+    // logout that lands between the read and this write wins, and the
+    // request that lost the race is refused too.
+    const { matchedCount } = await store.authSessions.updateOne(
+      { _id: id, absoluteExpiresAt: { $gt: new Date(now) } },
       { $set: { lastSeenAt, idleExpiresAt } },
     );
+    if (!matchedCount) return undefined;
     Object.assign(session, { lastSeenAt, idleExpiresAt });
   }
   return session;
@@ -252,6 +290,31 @@ export async function deleteSession(
   clearCookie(res, app);
 }
 
+/**
+ * Replaces the request's session with a new one for the same user. The old
+ * token is deleted first and must have existed: two requests rotating the
+ * same cookie at once cannot both succeed, so no orphaned session is left
+ * valid behind the cookie the browser finally keeps.
+ */
+export async function rotateSession(
+  store: Store,
+  req: Request,
+  res: Response,
+  next: { userId: string; tenantId: string },
+) {
+  const token = cookieToken(req, "main");
+  const deleted = token
+    ? await store.authSessions.findOneAndDelete({ _id: hashToken(token) })
+    : null;
+  if (!deleted) throw unauthenticated();
+  return createSession(store, res, {
+    userId: next.userId,
+    tenantId: next.tenantId,
+    app: "main",
+    userAgent: req.get("user-agent"),
+  });
+}
+
 /** Ends every session of a user in a tenant, e.g. on member removal. */
 export async function revokeSessions(
   store: Store,
@@ -265,21 +328,27 @@ export async function revokeSessions(
   return deletedCount;
 }
 
-const unauthenticated = () =>
-  new ApiError(401, "Sign in to continue", "UNAUTHENTICATED");
-const wrongApp = () =>
-  new ApiError(
+function unauthenticated() {
+  return new ApiError(401, "Sign in to continue", "UNAUTHENTICATED");
+}
+function wrongApp() {
+  return new ApiError(
     403,
     "This session belongs to a different app",
     "WRONG_APP",
   );
+}
 
 // A main session whose user is still active. Missing or invalid is 401; a
 // request carrying only an admin session is 403 WRONG_APP.
-async function mainSession(store: Store, req: Request) {
-  const session = await readSession(store, req, "main");
+async function mainSession(
+  store: Store,
+  req: Request,
+  options: { touch?: boolean } = {},
+) {
+  const session = await readSession(store, req, "main", options);
   if (!session?.userId || !session.tenantId) {
-    if (await readSession(store, req, "admin")) throw wrongApp();
+    if (await readSession(store, req, "admin", options)) throw wrongApp();
     throw unauthenticated();
   }
   const user = await store.users.findOne({
@@ -316,6 +385,41 @@ export async function userTenants(store: Store, userId: string) {
 }
 
 /**
+ * Everything a main-app request needs to be allowed: a live session, an
+ * active user, an active membership and a tenant that resolves. Used for
+ * every request and, with `passive`, to re-check a long-lived connection:
+ * that reads the tenant registry fresh and never extends the session.
+ */
+export async function authorizeRequest(
+  store: Store,
+  req: Request,
+  options: { passive?: boolean } = {},
+) {
+  const { session, user } = await mainSession(store, req, {
+    touch: !options.passive,
+  });
+  const membership = await store.memberships.findOne({
+    userId: user._id,
+    tenantId: session.tenantId!,
+    status: "active",
+  });
+  if (!membership) {
+    await store.authSessions.deleteOne({ _id: session._id });
+    throw unauthenticated();
+  }
+  // Throws TENANT_DISABLED (403) for a disabled tenant.
+  const tenant = await store.resolveTenant(membership.tenantId, {
+    fresh: options.passive,
+  });
+  const ref: UserRef = {
+    id: user._id,
+    email: user.email,
+    role: membership.role,
+  };
+  return { session, user, membership, tenant, ref };
+}
+
+/**
  * Google mode's replacement for the dev tenant and user resolvers on /api.
  * /api/admin/* needs an admin session; everything else a main session with an
  * active user, an active membership and a tenant resolveTenant() accepts.
@@ -332,23 +436,8 @@ export function authMiddleware(store: Store) {
       res.locals.admin = true;
       return;
     }
-    const { session, user } = await mainSession(store, req);
-    const membership = await store.memberships.findOne({
-      userId: user._id,
-      tenantId: session.tenantId!,
-      status: "active",
-    });
-    if (!membership) {
-      await store.authSessions.deleteOne({ _id: session._id });
-      throw unauthenticated();
-    }
-    // Throws TENANT_DISABLED (403) for a disabled tenant, within its cache.
-    res.locals.tenant = await store.resolveTenant(membership.tenantId);
-    const ref: UserRef = {
-      id: user._id,
-      email: user.email,
-      role: membership.role,
-    };
+    const { user, tenant, ref } = await authorizeRequest(store, req);
+    res.locals.tenant = tenant;
     res.locals.user = ref;
     res.locals.profile = {
       ...(user.name ? { name: user.name } : {}),
@@ -465,14 +554,13 @@ export function authRoutes(store: Store) {
           "You are not a member of this workspace",
           "NOT_A_MEMBER",
         );
-      await store.resolveTenant(target);
+      // Read fresh: a switch is rare, and must not land in a workspace that
+      // was disabled moments ago.
+      await store.resolveTenant(target, { fresh: true });
       // A new token on every switch; the old one stops working.
-      await deleteSession(store, req, res, "main");
-      await createSession(store, res, {
+      await rotateSession(store, req, res, {
         userId: user._id,
         tenantId: target,
-        app: "main",
-        userAgent: req.get("user-agent"),
       });
       res.json({ tenant: { id: target }, role: membership.role });
     }),

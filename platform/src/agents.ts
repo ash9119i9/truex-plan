@@ -35,8 +35,12 @@ function text(value: unknown, field: string, max: number): string {
   return trimmed;
 }
 
-/** Validates a create-agent request; the model is checked by the caller. */
-export function newAgent(body: unknown): AgentDocument {
+/**
+ * Validates a create-agent request; the model is checked by the caller.
+ * `createdBy` is the signed-in user's id, set here and never taken from the
+ * body (an unknown field in the body is rejected above).
+ */
+export function newAgent(body: unknown, createdBy?: string): AgentDocument {
   if (!body || typeof body !== "object" || Array.isArray(body))
     invalid("Agent details are required");
   const input = body as Record<string, unknown>;
@@ -76,5 +80,6 @@ export function newAgent(body: unknown): AgentDocument {
     skillIds: [],
     builtin: false,
     enabled: true,
+    ...(createdBy ? { createdBy } : {}),
   };
 }

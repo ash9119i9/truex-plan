@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MongoMemoryServer } from "mongodb-memory-server";
+import { MongoMemoryReplSet } from "mongodb-memory-server";
 import { spawn, ChildProcess } from "node:child_process";
 import { createServer as createNetServer } from "node:net";
 import { createServer, type Server } from "node:http";
@@ -169,7 +169,9 @@ async function fakeIssuer() {
 
 test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, async (t) => {
   const idp = await fakeIssuer();
-  const mongo = await MongoMemoryServer.create();
+  // Sign-in writes (account, membership, invite) run in catalog transactions,
+  // which need a replica set.
+  const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const store = await new Store(mongo.getUri(), "google_test", "google_test").connect();
   const platformPort = await port();
   const { child, logs } = launch({
@@ -422,18 +424,44 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
     assert.equal(await store.authFlows.countDocuments(), 0);
   });
 
-  await t.test("only verified @gmail.com without hd is accepted", async () => {
+  await t.test("only a verified, valid email is accepted; Workspace accounts are", async () => {
     const inv = await invite("beta", "ws@gmail.com");
+    // Not verified, missing, or malformed: no account and no session.
     for (const claims of [
-      { sub: "sub-ws", email: "ws@example.com", email_verified: true },
-      { sub: "sub-ws", email: "ws@gmail.com", email_verified: true, hd: "example.com" },
       { sub: "sub-ws", email: "ws@gmail.com", email_verified: false },
+      { sub: "sub-ws", email: "ws@gmail.com", email_verified: undefined },
+      { sub: "sub-ws", email: "not-an-email", email_verified: true },
+      { sub: "sub-ws", email: "ws@@gmail.com", email_verified: true },
     ]) {
-      expectError((await signIn(claims)).location, "gmail_only");
-      expectError((await signIn(claims, inv.token)).location, "gmail_only", `/invite/${inv.token}`);
+      expectError((await signIn(claims)).location, "email_unverified");
+      expectError(
+        (await signIn(claims, inv.token)).location,
+        "email_unverified",
+        `/invite/${inv.token}`,
+      );
     }
+    // A missing subject is a failed Google response, not an account.
+    expectError((await signIn({ sub: "", email: "ws@gmail.com", email_verified: true })).location, "google_failed");
     assert.equal((await store.invites.findOne({ _id: inv.id }))?.status, "pending");
     assert.equal(await store.users.countDocuments({ googleSub: "sub-ws" }), 0);
+
+    // A hosted-domain (Workspace) claim on a Gmail address, and a non-Gmail
+    // address, are both ordinary accounts now.
+    const hosted = await signIn(
+      { sub: "sub-ws", email: "ws@gmail.com", email_verified: true, hd: "example.com" },
+      inv.token,
+    );
+    assert.equal(hosted.location.href, joined(inv.token));
+    const corp = await invite("beta", "Jane.Doe+Sales@Acme.Example");
+    const worker = await signIn(
+      { sub: "sub-corp", email: "jane.doe+sales@acme.example", email_verified: true, hd: "acme.example" },
+      corp.token,
+    );
+    assert.equal(worker.location.href, joined(corp.token));
+    const user = await store.users.findOne({ googleSub: "sub-corp" });
+    // Dots and plus tags are kept off Gmail.
+    assert.equal(user?.emailKey, "jane.doe+sales@acme.example");
+    assert.equal((await store.invites.findOne({ _id: corp.id }))?.status, "accepted");
   });
 
   await t.test("/login needs an account and never accepts pending invites", async () => {
@@ -520,17 +548,47 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
   });
 
   await t.test("Google errors and failed exchanges end with google_failed", async () => {
+    // Cancelling at Google comes back with the real state and an error.
     const denied = await begin(ashok);
-    const res = await callback(denied.flow, "?error=access_denied&state=x");
+    const deniedQuery = new URLSearchParams(denied.search);
+    deniedQuery.delete("code");
+    deniedQuery.set("error", "access_denied");
+    const res = await callback(denied.flow, `?${deniedQuery}`);
     expectError(target(res), "google_failed");
     assert.equal(cookieOf(res, "truex_session"), undefined);
+    // The flow is spent: the same cancellation cannot be replayed.
+    expectError(target(await callback(denied.flow, `?${deniedQuery}`)), "session_expired");
 
-    // A tampered state fails the exchange.
-    const tampered = await begin(ashok);
-    const search = new URLSearchParams(tampered.search);
-    search.set("state", "wrong");
-    expectError(target(await callback(tampered.flow, `?${search}`)), "google_failed");
+    // A callback whose code Google refuses ends the flow, and never retries it.
+    const refused = await begin(ashok);
+    const refusedQuery = new URLSearchParams(refused.search);
+    refusedQuery.set("code", "not-a-code-google-issued");
+    expectError(target(await callback(refused.flow, `?${refusedQuery}`)), "google_failed");
+    expectError(target(await callback(refused.flow, refused.search)), "session_expired");
+
+    // Repeated parameters are not one code and one state.
+    const repeated = await begin(ashok);
+    expectError(
+      target(await callback(repeated.flow, `${repeated.search}&code=again`)),
+      "google_failed",
+    );
     assert.doesNotMatch(logs(), /id_token|eyJ/);
+  });
+
+  await t.test("a callback for another flow is refused and does not spend the newer one", async () => {
+    // Two tabs start sign-in; the second start replaces the flow cookie.
+    const first = await begin(ashok);
+    const second = await begin(ashok);
+    const olderQuery = new URLSearchParams(first.search);
+    // The older tab's callback arrives carrying the newer flow's cookie.
+    const stale = await callback(second.flow, `?${olderQuery}`, first.from);
+    expectError(target(stale), "session_expired");
+    assert.equal(cookieOf(stale, "truex_session"), undefined);
+    // The newer flow was not consumed, so the newer tab still completes.
+    const done = await callback(second.flow, second.search, second.from);
+    assert.ok(cookieOf(done, "truex_session"), "the newer sign-in still succeeds");
+    // And only once.
+    expectError(target(await callback(second.flow, second.search)), "session_expired");
   });
 
   await t.test("two parallel accepts of one invite create one membership", async () => {
@@ -554,6 +612,40 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
       await store.memberships.countDocuments({ userId: users[0]._id, tenantId: "beta" }),
       1,
     );
+  });
+
+  await t.test("accepting races revoking and expiry: one committed result, never an orphan grant", async () => {
+    const outcomes = { accepted: 0, closed: 0 };
+    for (let i = 0; i < 8; i++) {
+      const email = `racer${i}@gmail.com`;
+      const inv = await invite("beta", email);
+      const claimsFor = { sub: `sub-race-${i}`, email, email_verified: true };
+      const { flow, search, from } = await begin(claimsFor, inv.token);
+      const others = [
+        // Revoke (as the admin API does), or let it expire, at the same moment.
+        i % 2
+          ? store.invites.updateOne({ _id: inv.id, status: "pending" }, { $set: { status: "revoked", revokedAt: now } })
+          : store.invites.updateOne({ _id: inv.id, status: "pending" }, { $set: { expiresAt: new Date(Date.now() - 1) } }),
+      ];
+      const [res] = await Promise.all([callback(flow, search, from), ...others]);
+      const invite_ = (await store.invites.findOne({ _id: inv.id }))!;
+      const user = await store.users.findOne({ googleSub: claimsFor.sub });
+      const members = user
+        ? await store.memberships.countDocuments({ userId: user._id, tenantId: "beta", status: "active" })
+        : 0;
+      if (invite_.status === "accepted") {
+        outcomes.accepted++;
+        assert.ok(cookieOf(res, "truex_session"), "the winner signs in");
+        assert.equal(members, 1);
+        assert.equal(invite_.acceptedBy, user?._id);
+      } else {
+        outcomes.closed++;
+        assert.equal(cookieOf(res, "truex_session"), undefined, "the loser gets no session");
+        assert.equal(members, 0, "a lost race leaves no membership");
+        assert.equal(user, null, "and no account");
+      }
+    }
+    assert.equal(outcomes.accepted + outcomes.closed, 8);
   });
 
   await t.test("an email tied to another Google account is account_conflict", async () => {
@@ -589,7 +681,9 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
         inv.token,
       );
       const res = await callback(flow, search, from);
-      assert.equal(res.status, 500);
+      // The claim, user and membership share one transaction: a failure rolls
+      // all of it back, and the person is told to try again.
+      expectError(target(res), "unavailable");
       assert.equal(cookieOf(res, "truex_session"), undefined);
     } finally {
       await store.catalog.command({ collMod: "users", validator: {} });

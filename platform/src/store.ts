@@ -5,7 +5,7 @@ import {
   DatabaseId,
   idCandidates,
 } from "./documents";
-import { MongoClient, Db } from "mongodb";
+import { MongoClient, Db, type ClientSession } from "mongodb";
 import { publicPlan, type PlanStep } from "./public";
 import { ApiError } from "./errors";
 import { errorFields, log } from "../../shared/logging";
@@ -13,7 +13,7 @@ import {
   currentTenant,
   DEFAULT_TENANT_ID,
   tenantContext,
-  chatVisibilityOf,
+  policyOf,
   type TenantDocument,
   type TenantRef,
 } from "./tenant";
@@ -75,6 +75,40 @@ export function newerPlan(saved: StoredPlan | undefined, next: PlanUpdate) {
   if (Number.isNaN(savedAt) || Number.isNaN(nextAt)) return true;
   return nextAt >= savedAt;
 }
+// Security audit trail (catalog, security_audit). Rows never hold message
+// text, cookies, invite links or credentials; only who touched what and when.
+export interface AuditDocument {
+  _id: string;
+  at: Date;
+  expiresAt: Date;
+  actor: string;
+  actorRole: string;
+  action: string;
+  tenantId: string;
+  target?: { type: string; id: string; ownerId?: string };
+  outcome: string;
+  requestId?: string;
+  /** Repeated identical reads inside one window are counted, not duplicated. */
+  count: number;
+  detail?: Record<string, string | number | boolean>;
+}
+export interface DemoUsageDocument {
+  /** `${utcDay}:${tenantId}:${userId | "*" | "signups"}` */
+  _id: string;
+  count: number;
+  expiresAt: Date;
+}
+export interface DemoTurnDocument {
+  _id: string;
+  userId: string;
+  tenantId: string;
+  conversationId: string;
+  clientId: string;
+  day: string;
+  state: "reserved" | "released";
+  at: Date;
+  expiresAt: Date;
+}
 export interface SkillDocument {
   _id: DatabaseId;
   /** Folder name Codex sees; [a-z0-9-], unique in the catalog. */
@@ -111,10 +145,32 @@ export function mcpIndexes(db: Db) {
     mcp.createIndex({ agentIds: 1, scope: 1 }),
   ];
 }
-// Carried only when set; a missing value means "all".
-function visibility(doc?: TenantDocument | null) {
-  const chatVisibility = chatVisibilityOf(doc?.chatVisibility);
-  return chatVisibility ? { chatVisibility } : {};
+// Agent handles: one pair of index definitions per tenant mode. A private
+// tenant (isUserSpecific) keys handles by creator, so one person's handle never
+// blocks, or reveals, another's. A shared or unconfigured tenant keeps the
+// workspace-wide unique handle it has always had. The legacy index is never
+// created for a private tenant and never dropped by the application.
+export function agentIndexes(db: Db, creatorHandles: boolean) {
+  const agents = db.collection("truex_agents");
+  return creatorHandles
+    ? [
+        agents.createIndex(
+          { createdBy: 1, handle: 1 },
+          {
+            name: "agent_creator_handle",
+            unique: true,
+            partialFilterExpression: {
+              createdBy: { $type: "string" },
+              handle: { $type: "string" },
+            },
+          },
+        ),
+        agents.createIndex({ createdBy: 1, enabled: 1 }),
+      ]
+    : [
+        // Sparse: agents seeded before handles existed have none.
+        agents.createIndex({ handle: 1 }, { unique: true, sparse: true }),
+      ];
 }
 export class Store {
   readonly client: MongoClient;
@@ -153,10 +209,11 @@ export class Store {
   // Database of the tenant in context; the default tenant outside any.
   get db(): Db {
     if (!this.connected) return undefined as unknown as Db;
-    const dbName = currentTenant()?.dbName ?? this.database;
+    const tenant = currentTenant();
+    const dbName = tenant?.dbName ?? this.database;
     // Background: a failure (or shutdown mid-build) is logged and retried on
     // the next use, never left as an unhandled rejection.
-    this.tenantIndexes(dbName).catch((error) =>
+    this.tenantIndexes(dbName, tenant?.isUserSpecific === true).catch((error) =>
       log("warn", "tenant index creation failed", {
         op: "indexes",
         dbName,
@@ -166,10 +223,22 @@ export class Store {
     return this.client.db(dbName);
   }
   /** Builds a tenant database's indexes now, e.g. right after creating it. */
-  ensureTenantIndexes(dbName: string) {
-    return this.tenantIndexes(dbName);
+  ensureTenantIndexes(dbName: string, creatorHandles = false) {
+    return this.tenantIndexes(dbName, creatorHandles);
   }
-  private tenantIndexes(dbName: string) {
+  /**
+   * Resolves once the current tenant's indexes exist. Writes that rely on a
+   * unique index (agent handles) wait for this, so a duplicate can never be
+   * written before the index that would have rejected it.
+   */
+  indexesReady() {
+    const tenant = currentTenant();
+    return this.tenantIndexes(
+      tenant?.dbName ?? this.database,
+      tenant?.isUserSpecific === true,
+    );
+  }
+  private tenantIndexes(dbName: string, creatorHandles = false) {
     let done = this.indexed.get(dbName);
     if (!done) {
       const db = this.client.db(dbName);
@@ -179,10 +248,8 @@ export class Store {
         db.collection("traces").createIndex({ sessionId: 1, startedAt: 1 }),
         db.collection("sessions").createIndex({ projectId: 1, createdAt: -1 }),
         db.collection("sessions").createIndex({ userId: 1, createdAt: -1 }),
-        // Sparse: agents seeded before handles existed have none.
-        db
-          .collection("truex_agents")
-          .createIndex({ handle: 1 }, { unique: true, sparse: true }),
+        db.collection("projects").createIndex({ ownerId: 1, updatedAt: -1 }),
+        ...agentIndexes(db, creatorHandles),
         ...mcpIndexes(db),
       ]).catch((error) => {
         this.indexed.delete(dbName);
@@ -229,6 +296,18 @@ export class Store {
         { expireAfterSeconds: 0 },
       ),
       this.authFlows.createIndex({ createdAt: 1 }, { expireAfterSeconds: 600 }),
+      // Revoking by user and workspace, e.g. on removal or a disabled tenant.
+      this.authSessions.createIndex({ userId: 1, tenantId: 1 }),
+      this.authSessions.createIndex({ tenantId: 1 }),
+      // Security audit trail and public-demo usage live in the catalog too.
+      this.audit.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+      this.audit.createIndex({ tenantId: 1, at: -1 }),
+      this.demoUsage.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+      this.demoTurns.createIndex(
+        { userId: 1, tenantId: 1, conversationId: 1, clientId: 1 },
+        { unique: true },
+      ),
+      this.demoTurns.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     ];
   }
   get users() {
@@ -249,13 +328,22 @@ export class Store {
   get tenantRegistry() {
     return this.catalog.collection<TenantDocument>("tenants");
   }
+  get audit() {
+    return this.catalog.collection<AuditDocument>("security_audit");
+  }
+  get demoUsage() {
+    return this.catalog.collection<DemoUsageDocument>("demo_usage");
+  }
+  get demoTurns() {
+    return this.catalog.collection<DemoTurnDocument>("demo_turn_reservations");
+  }
   private defaultRef(doc?: TenantDocument | null): TenantRef {
     return {
       id: DEFAULT_TENANT_ID,
       dbName: this.database,
       ...(doc?.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
       ...(doc?.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
-      ...visibility(doc),
+      ...policyOf(doc),
     };
   }
   private toRef(doc: TenantDocument): TenantRef {
@@ -264,14 +352,23 @@ export class Store {
       dbName: doc.dbName,
       ...(doc.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
       ...(doc.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
-      ...visibility(doc),
+      ...policyOf(doc),
     };
+  }
+  /** Drops the cached ref, e.g. right after a policy or status change. */
+  invalidateTenant(id: string) {
+    this.tenants.delete(id);
   }
   // The default tenant always exists (its database is MONGO_DB); others must
   // be registered and active. Briefly cached: every request resolves one.
-  async resolveTenant(id: string): Promise<TenantRef> {
+  // fresh reads the registry now, for checks that must not trust the cache
+  // (e.g. whether a long-lived stream may keep going).
+  async resolveTenant(
+    id: string,
+    options: { fresh?: boolean } = {},
+  ): Promise<TenantRef> {
     const hit = this.tenants.get(id);
-    if (hit && hit.expires > Date.now()) return hit.ref;
+    if (!options.fresh && hit && hit.expires > Date.now()) return hit.ref;
     const doc = await this.tenantRegistry.findOne({ _id: id });
     if (doc?.status === "disabled")
       throw new ApiError(403, "This workspace is disabled", "TENANT_DISABLED");
@@ -290,12 +387,68 @@ export class Store {
       _id: DEFAULT_TENANT_ID,
       status: "disabled",
     });
-    return [
-      ...(disabledDefault ? [] : [this.defaultRef(def)]),
-      ...docs
-        .filter((d) => d._id !== DEFAULT_TENANT_ID)
-        .map((d) => this.toRef(d)),
-    ];
+    // A tenant with an invalid policy is skipped (and logged) rather than
+    // stopping ingestion for every other tenant.
+    const refs: TenantRef[] = [];
+    for (const d of [
+      ...(disabledDefault ? [] : [def ?? null]),
+      ...docs.filter((d) => d._id !== DEFAULT_TENANT_ID),
+    ])
+      try {
+        refs.push(d && d._id !== DEFAULT_TENANT_ID ? this.toRef(d) : this.defaultRef(d));
+      } catch (error) {
+        log("error", "tenant skipped by ingestion", {
+          tenantId: d?._id ?? DEFAULT_TENANT_ID,
+          ...errorFields(error),
+        });
+      }
+    return refs;
+  }
+  /**
+   * Runs fn in a catalog transaction: account, membership and invite writes
+   * that must commit together. The driver retries transient failures and an
+   * unknown commit result; fn must therefore be safe to run again and keep
+   * external effects (Google, email, cookies) outside. A server without
+   * transactions (no replica set) is a deployment fault, reported as 503 and
+   * never worked around.
+   */
+  async withCatalogTransaction<T>(
+    fn: (session: ClientSession) => Promise<T>,
+  ): Promise<T> {
+    const session = this.client.startSession();
+    try {
+      let result!: T;
+      await session.withTransaction(
+        async () => {
+          result = await fn(session);
+        },
+        {
+          readConcern: { level: "snapshot" },
+          writeConcern: { w: "majority" },
+          maxCommitTimeMS: 10_000,
+        },
+      );
+      return result;
+    } catch (error) {
+      if (
+        (error as { code?: number })?.code === 20 &&
+        /replica set|mongos/i.test(String((error as Error)?.message))
+      )
+        throw new ApiError(
+          503,
+          "Sign-in storage does not support transactions. The database must run as a replica set.",
+          "TRANSACTIONS_UNAVAILABLE",
+          { cause: error },
+        );
+      throw error;
+    } finally {
+      await session.endSession();
+    }
+  }
+  /** Whether the catalog server can run transactions (a replica set or mongos). */
+  async supportsTransactions(): Promise<boolean> {
+    const hello = await this.client.db("admin").command({ hello: 1 });
+    return typeof hello.setName === "string" || hello.msg === "isdbgrid";
   }
   /** Runs fn with the given tenant as context. */
   withTenant<T>(tenant: TenantRef, fn: () => T): T {

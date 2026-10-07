@@ -8,10 +8,10 @@ import type { UserRole } from "./user";
 import {
   emailKey,
   hashToken,
-  isGmail,
   newToken,
   rateLimit,
   readSession,
+  validEmail,
   type InviteDocument,
 } from "./auth";
 import { errorFields, log } from "../../shared/logging";
@@ -73,21 +73,32 @@ export function inviteMessage(email: InviteEmail) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Resend over plain fetch, or a logger when RESEND_API_KEY is unset. Throws at
- * startup when NODE_ENV=production has no key: invites would never arrive.
+ * Resend over plain fetch. With no RESEND_API_KEY there is no email: outside
+ * production the link is logged, which is only for development; in
+ * production nothing is sent and nothing secret is logged, so each invite
+ * records a visible, retryable "not sent" status. Invitations then go out
+ * through the operator command (`npm run tenant -- invite`). This is not a
+ * startup failure: public demo signup needs no email at all.
  */
 export function inviteMailer(env: NodeJS.ProcessEnv = process.env): InviteMailer {
   const key = env.RESEND_API_KEY?.trim();
   if (!key) {
-    if (env.NODE_ENV === "production")
-      throw new Error(
-        "RESEND_API_KEY is required in production; invite emails cannot be sent without it.",
+    if (env.NODE_ENV === "production") {
+      log(
+        "warn",
+        "RESEND_API_KEY is not set; invitation email is unavailable. Use `npm run tenant -- invite` to issue links.",
       );
+      return {
+        async send() {
+          throw new Error("Invitation email is not configured");
+        },
+      };
+    }
     log("warn", "RESEND_API_KEY is not set; invite links are logged, not emailed");
     return {
       async send(email) {
         // Dev only: the raw link is the credential, so it never goes to logs
-        // in production (startup refuses that combination above).
+        // in production (handled above).
         log("info", "invite link (not emailed)", {
           inviteId: email.inviteId,
           to: email.to,
@@ -216,19 +227,19 @@ async function deliver(
 }
 
 /**
- * Creates a pending invite and returns its raw token (the only copy). Gmail
- * only; 409 when the address is already an active member or has a pending
- * invite in this tenant.
+ * Creates a pending invite and returns its raw token (the only copy). Any
+ * Google account address (Gmail or Workspace); 409 when the address is
+ * already an active member or has a pending invite in this tenant.
  */
 export async function issueInvite(
   store: Store,
   input: { tenant: TenantDocument; email: unknown; role: unknown },
 ) {
-  const email = typeof input.email === "string" ? input.email.trim() : "";
-  if (!isGmail(email) || email.length > 254)
+  const email = validEmail(input.email);
+  if (!email)
     throw new ApiError(
       400,
-      "Only @gmail.com addresses can be invited",
+      "Enter a valid email address for a Google account",
       "INVALID_EMAIL",
     );
   const role = roleOf(input.role);

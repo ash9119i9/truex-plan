@@ -4,6 +4,7 @@ import { coalesceChatEvents } from "../lib/chat-batch.ts";
 import { applyChatEvent, type Entry } from "../lib/chat.ts";
 import type { DomainEvent } from "../../shared/contracts.ts";
 import { transport } from "../lib/transport.ts";
+import { setIdentityScope } from "../lib/identity.ts";
 import { advanceSourceSync, type SourceSync } from "../lib/source-sync.ts";
 
 let seq = 0;
@@ -568,6 +569,7 @@ function streamFixture(
   t: TestContext,
   consume: (events: DomainEvent[]) => boolean | void,
 ) {
+  setIdentityScope("user", "workspace");
   const frames = new Map<number, () => void>();
   const timers = new Map<number, () => void>();
   const store = new Map<string, string>();
@@ -680,7 +682,10 @@ for (const type of ["message.delta", "reasoning.delta"] as const)
         input.every((frame) => frame.threadId === "thread"),
         "wire fixtures remain unchanged by trusted subscription scope stamping",
       );
-      assert.equal(stream.store.get("cursor:test"), input.at(-1)?.cursor);
+      assert.equal(
+        stream.store.get("cursor:user.workspace:test"),
+        input.at(-1)?.cursor,
+      );
     });
 
 test("rejected navigation ownership publishes and acknowledges no coalesced state", (t) => {
@@ -716,6 +721,9 @@ test("malformed transport frame flushes coalesced accepted text without acknowle
   stream.paint();
   stream.emit(event());
   assert.deepEqual(entries, input.reduce(applyChatEvent, []));
-  assert.equal(stream.store.get("cursor:test"), input.at(-1)?.cursor);
+  assert.equal(
+    stream.store.get("cursor:user.workspace:test"),
+    input.at(-1)?.cursor,
+  );
   assert.equal(stream.source.closed, true);
 });
