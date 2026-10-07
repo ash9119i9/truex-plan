@@ -17,6 +17,11 @@ import { AgentDialog } from "@/components/v2/agent-dialog";
 import { AgentsView } from "@/components/v2/agents-view";
 import { tintOf } from "@/lib/agent-look";
 import { UserMenu } from "@/components/v2/user-menu";
+import {
+  SessionGate,
+  type SessionActions,
+} from "@/components/auth/session-gate";
+import { meKey, type Me } from "@/lib/session";
 import { fitPanel, PANEL_W, CHAT_MIN, type PanelSize } from "@/lib/fit-panel";
 import { useFollowActivity } from "@/lib/use-follow-activity";
 import { useHotkeys } from "@/lib/use-hotkeys";
@@ -104,7 +109,21 @@ import type {
 import { agentHandle } from "../../shared/contracts";
 // The public payload includes the alpha approval mode when it is enabled.
 type Session = PublicSession;
+// Nothing below runs until the platform has said who is signed in. The
+// workspace is keyed by person and workspace, so a different identity gets a
+// fresh tree: no state, stream or in-flight request carries over.
 export default function Home() {
+  return (
+    <SessionGate>
+      {(me, actions) => (
+        // A new role remounts too: what an admin was reading may not be
+        // readable once demoted, and nothing already loaded should linger.
+        <Workspace key={`${meKey(me)}:${me.role}`} me={me} actions={actions} />
+      )}
+    </SessionGate>
+  );
+}
+function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
   const [agents, setAgents] = useState<AgentSummary[]>([]),
     [agentId, setAgentId] = useState(""),
     [sessions, setSessions] = useState<Session[]>([]),
@@ -388,7 +407,13 @@ export default function Home() {
         // Restoring a saved chat owns its selection, regardless of which GET
         // finishes first. Never select a default agent alongside that restore.
         if (!openingSession.current && !sessionRef.current)
-          setAgentId((current) => current || data[0]?.id || "");
+          setAgentId(
+            (current) =>
+              current ||
+              // Only an agent this person may start a conversation with.
+              data.find((a: AgentSummary) => a.canUse !== false)?.id ||
+              "",
+          );
       })
       .catch(reportError)
       .finally(() => setLoading(false));
@@ -539,11 +564,21 @@ export default function Home() {
       setStatus,
       {
         onResync: resync,
-        onFailure: (f) =>
-          setError(f.message, { code: f.code, requestId: f.requestId }),
+        onFailure: (f) => {
+          setError(f.message, { code: f.code, requestId: f.requestId });
+          // Access ended or could not be confirmed: ask the platform whether
+          // this tab is still signed in rather than guessing.
+          if (f.code === "ACCESS_REVOKED" || f.code === "AUTH_UNAVAILABLE")
+            actions.recheck();
+        },
       },
     );
   }, [session?._id, streamKey]);
+  // A stream that closed for good may be a lost connection or a lost session;
+  // only the platform can tell which.
+  useEffect(() => {
+    if (session && status === "Disconnected") actions.recheck();
+  }, [status]);
   // A stream stuck reconnecting for a while gets a hint in the header.
   useEffect(() => {
     setSlowReconnect(false);
@@ -1030,6 +1065,11 @@ export default function Home() {
     }
   }
   const agent = agents.find((a) => a.id === agentId);
+  const usableAgents = agents.filter((a) => a.canUse !== false);
+  // A conversation that is not yours is for reading: only its owner can write
+  // to it, and an admin looking at one never starts the owner's assistant.
+  const readOnly =
+    !!session && !!session.userId && session.userId !== me.user.id;
   // Fill the composer from a panel or starter; focus after the sheet closes.
   function startGoal(template = "") {
     setPanel(null);
@@ -1359,14 +1399,17 @@ export default function Home() {
           busy={busy}
           loadError={sessionsFailed ? "Couldn’t refresh" : null}
           onRetry={() => void refreshSessions()}
-          renderRowMenu={(s) => (
-            <SessionMenu
-              session={s}
-              state={projects}
-              disabled={busy}
-              onUpdated={updateCurrentProject}
-            />
-          )}
+          renderRowMenu={(s) =>
+            // Moving a conversation into a folder is the owner's to do.
+            s.userId && s.userId !== me.user.id ? null : (
+              <SessionMenu
+                session={s}
+                state={projects}
+                disabled={busy}
+                onUpdated={updateCurrentProject}
+              />
+            )
+          }
         />
       </Panel>
       <main className="stage">
@@ -1422,10 +1465,22 @@ export default function Home() {
           ) : empty ? (
             <Hero>
               {composerForm}
-              {!loading && !agents.length && (
-                <p className="muted sm">
-                  No agents are available. Contact your Truex administrator.
-                </p>
+              {!loading && !usableAgents.length && (
+                <div className="first-agent" role="status">
+                  <p className="muted sm">
+                    {agents.length
+                      ? "You haven’t made an agent of your own yet."
+                      : "You don’t have an agent yet."}{" "}
+                    An agent is what you talk to.
+                  </p>
+                  <button
+                    type="button"
+                    className="fa-btn"
+                    onClick={() => setAgentDialogOpen(true)}
+                  >
+                    Create your first agent
+                  </button>
+                </div>
               )}
             </Hero>
           ) : (
@@ -1459,6 +1514,7 @@ export default function Home() {
                 onRefresh={() => session && void open(session._id)}
               />
               {session &&
+                !readOnly &&
                 pending.map((p) => (
                   <RequestCard
                     key={p.requestId}
@@ -1490,7 +1546,7 @@ export default function Home() {
               {notice}
             </div>
           )}
-          {view === "chat" && session && goal && (
+          {view === "chat" && session && goal && !readOnly && (
             <GoalBar
               key={session._id}
               sessionId={session._id}
@@ -1526,7 +1582,28 @@ export default function Home() {
           {view === "chat" && !empty && (
             <HelperChip state={subAgents} onView={viewHelpers} />
           )}
-          {view === "chat" && !empty && composerForm}
+          {view === "chat" && !empty && readOnly && (
+            <div className="readonly-banner" role="status">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <rect x="5" y="11" width="14" height="10" rx="2" />
+                <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+              </svg>
+              <span>
+                <b>Read-only.</b> This is another member’s conversation. Only
+                its owner can reply, stop it or change it.
+              </span>
+            </div>
+          )}
+          {view === "chat" && !empty && !readOnly && composerForm}
           <div className="dock-wrap">
             <Popover
               open={pop === "agent"}
@@ -1536,7 +1613,7 @@ export default function Home() {
               aria-label="Choose agent"
             >
               <AgentMenu
-                agents={agents.map((a) => ({
+                agents={usableAgents.map((a) => ({
                   id: a.id,
                   name: a.name,
                   description: a.description,
@@ -1566,10 +1643,23 @@ export default function Home() {
               aria-label="Account"
             >
               <UserMenu
+                name={me.user.name}
+                email={me.user.email}
+                workspace={me.tenants.length > 1 ? me.tenant.name : undefined}
+                role={me.role}
                 onSettings={() => {
                   setPop(null);
                   setPanel("mcp");
                 }}
+                onSwitchWorkspace={
+                  me.tenants.length > 1
+                    ? () => {
+                        setPop(null);
+                        location.assign("/select-tenant");
+                      }
+                    : undefined
+                }
+                onSignOut={me.auth === "google" ? actions.signOut : undefined}
               />
             </Popover>
             <FloatingDock
@@ -1691,7 +1781,10 @@ export default function Home() {
       />
       <AgentDialog
         open={agentDialogOpen}
-        agents={agents}
+        // Handles are unique per creator in a private workspace, so only the
+        // agents this person can change count toward a clash. An admin's
+        // list also holds everyone else's.
+        agents={agents.filter((a) => a.canWrite !== false)}
         onClose={() => setAgentDialogOpen(false)}
         onCreated={(a) => setAgents((list) => [...list, a])}
         // Source: close, start a new chat with the agent, pre-fill "@handle hi, ".

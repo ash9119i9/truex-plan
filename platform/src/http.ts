@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Request, Response, NextFunction } from "express";
 import { httpError } from "../../shared/errors";
+import { ApiError } from "./errors";
 import { tenantContext, type TenantRef, type TenantResolver } from "./tenant";
 import { userContext, type UserRef, type UserResolver } from "./user";
 import {
@@ -59,9 +60,31 @@ export function userMiddleware(resolver: UserResolver) {
 
 // Runs a handler inside its request context. Set per handler because async
 // context does not survive the body parser's stream events.
+//
+// No user in context means an internal caller (ingestion, scripts), which is
+// allowed everything. A request on /api must therefore never reach a handler
+// without its user and tenant: that would turn a missing middleware into an
+// internal-caller bypass. It fails closed here, whatever mounted the route.
+// /api/admin is the separate control plane, gated by its own session.
 export const route =
   (fn: (req: Request, res: Response) => Promise<any> | any) =>
   (req: Request, res: Response, next: NextFunction) => {
+    const user: UserRef | undefined = res.locals.user;
+    const tenant: TenantRef | undefined = res.locals.tenant;
+    if (
+      /^\/api(\/|\?|$)/.test(req.originalUrl) &&
+      res.locals.admin !== true &&
+      (!user || !tenant)
+    ) {
+      log("error", "api request without user or tenant context", {
+        requestId: res.locals.requestId,
+        method: req.method,
+        path: loggablePath(req),
+      });
+      return next(
+        new ApiError(500, "Request context is missing", "CONTEXT_MISSING"),
+      );
+    }
     if (req.path.startsWith("/api/sessions/"))
       res.locals.sessionId = req.params.id;
     const run = () =>
@@ -70,11 +93,20 @@ export const route =
           .then(() => fn(req, res))
           .catch(next),
       );
-    const user: UserRef | undefined = res.locals.user;
     const withUser = () => (user ? userContext.run(user, run) : run());
-    const tenant: TenantRef | undefined = res.locals.tenant;
     return tenant ? tenantContext.run(tenant, withUser) : withUser();
   };
+
+// Invite and session tokens travel in URL paths. A path is logged with any
+// token-shaped segment replaced, never as received.
+const TOKEN_SEGMENT = /^[A-Za-z0-9_-]{43}$/;
+export function loggablePath(req: Pick<Request, "originalUrl">) {
+  return req.originalUrl
+    .split("?")[0]
+    .split("/")
+    .map((segment) => (TOKEN_SEGMENT.test(segment) ? ":token" : segment))
+    .join("/");
+}
 
 export function errorHandler(
   error: unknown,
@@ -87,7 +119,7 @@ export function errorHandler(
     ...errorFields(error),
     requestId: res.locals.requestId,
     method: req.method,
-    path: req.path,
+    path: loggablePath(req),
     sessionId: res.locals.sessionId,
     tenantId: res.locals.tenant?.id,
     userId: res.locals.user?.id,
@@ -98,6 +130,10 @@ export function errorHandler(
   else log("debug", "request rejected", fields);
   // A partly written response cannot carry an error body.
   if (res.headersSent) return next(error);
+  const retryAfter = (error as { retryAfterSeconds?: number })
+    ?.retryAfterSeconds;
+  if (status === 429 && Number.isFinite(retryAfter))
+    res.setHeader("Retry-After", String(retryAfter));
   res.status(status).json({ ...body, requestId: res.locals.requestId });
 }
 
@@ -106,6 +142,10 @@ const streamEnds = {
     "Live updates stopped unexpectedly. Reopen the conversation to reconnect.",
   STREAM_ENDED:
     "The assistant service stopped live updates, usually for a restart. Reconnect in a moment.",
+  ACCESS_REVOKED:
+    "Your access to this conversation has ended. Sign in again, or ask your administrator.",
+  AUTH_UNAVAILABLE:
+    "Live updates stopped because your access could not be confirmed. Reopen the conversation in a moment.",
 };
 type StreamEnd = keyof typeof streamEnds;
 

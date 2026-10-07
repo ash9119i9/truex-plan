@@ -1,5 +1,10 @@
-export const base =
-  process.env.NEXT_PUBLIC_PLATFORM_URL || "http://localhost:4000";
+import { identityGeneration, notifyUnauthenticated } from "./identity.ts";
+
+// The browser talks only to its own origin. app/api and app/auth carry each
+// request on to the platform, so the session cookie is sent with every call,
+// including EventSource and downloads. There is no platform address in the
+// browser bundle to point at the wrong place.
+export const base = "";
 
 export class ApiRequestError extends Error {
   status: number;
@@ -107,12 +112,17 @@ export async function api(path: string, body?: unknown) {
     logFailure(method, path, error);
     throw error;
   };
+  // A reply that arrives after the person or workspace changed belongs to
+  // someone else's view; it is dropped rather than applied.
+  const generation = identityGeneration();
   let res: Response;
   try {
     res = await fetch(base + path, {
       method,
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "same-origin",
+      cache: "no-store",
       signal: AbortSignal.timeout(runtimeRequest ? 180_000 : 45_000),
     });
   } catch (error) {
@@ -128,6 +138,13 @@ export async function api(path: string, body?: unknown) {
       ),
     );
   }
+  if (generation !== identityGeneration())
+    return fail(
+      new ApiRequestError("This view is out of date.", 0, "STALE_IDENTITY"),
+    );
+  // Only a 401 means the session ended. The session gate asks the platform
+  // before it acts; 403 and 5xx are never read as a sign-out.
+  if (res.status === 401) notifyUnauthenticated();
   const headerId = res.headers.get("x-request-id") || undefined;
   if (res.status === 204) return undefined;
   let data: any;

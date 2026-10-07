@@ -1,5 +1,6 @@
 import type { DomainEvent } from "../../shared/contracts";
 import { api, base } from "./api.ts";
+import { identityScope } from "./identity.ts";
 
 // Connection states shown in the conversation header.
 export type StreamStatus = "Connected" | "Reconnecting" | "Disconnected";
@@ -72,7 +73,9 @@ function streamFailure(raw: string): StreamFailure {
 
 export const transport: Transport = {
   subscribe(sessionId, onEvent, onStatus, handlers = {}) {
-    const key = `cursor:${sessionId}`,
+    // Scoped to the person and workspace, so a replay cursor is never carried
+    // from one identity to another.
+    const key = `cursor:${identityScope()}:${sessionId}`,
       cursor = readCursor(key);
     const source = new EventSource(
       `${base}${sessionPath(sessionId)}/events${cursor ? "?cursor=" + encodeURIComponent(cursor) : ""}`,

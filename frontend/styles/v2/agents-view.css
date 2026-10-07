@@ -114,3 +114,16 @@
   .tb-root, .tb-card, .tb-pulse { animation: none; }
   .tb-robot { transition: none; }
 }
+
+/* Whose agent it is, when the board lists other people's (an admin's view). */
+.tb-by { font-family: var(--font-sans); color: var(--ink-2); }
+/* The no-agent-yet prompt in the empty conversation. */
+.first-agent { margin-top: 14px; padding: 14px 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; border: 1px dashed var(--accent-soft-2); border-radius: 14px; background: var(--accent-soft); }
+.first-agent p { margin: 0; font-size: 14px; color: var(--ink-2); }
+.fa-btn { min-height: 40px; padding: 0 18px; border: 0; border-radius: 10px; background: var(--accent); color: var(--on-accent); font: 600 14px var(--font-sans); cursor: pointer; }
+.fa-btn:hover { background: var(--accent-hover); }
+.fa-btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+/* Someone else's conversation, opened for reading. */
+.readonly-banner { display: flex; align-items: flex-start; gap: 9px; margin: 0 18px 10px; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--accent-fg); font-size: 13px; line-height: 1.45; }
+.readonly-banner svg { flex: none; margin-top: 2px; }
+.readonly-banner b { font-weight: 600; }

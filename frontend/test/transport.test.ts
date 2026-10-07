@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { transport } from "../lib/transport.ts";
+import { setIdentityScope } from "../lib/identity.ts";
 
 // A minimal EventSource stand-in that lets tests drive the stream by hand.
 class FakeEventSource {
@@ -29,6 +30,7 @@ class FakeEventSource {
 }
 
 function setup(t: any) {
+  setIdentityScope("u1", "t1");
   FakeEventSource.instances = [];
   const store = new Map<string, string>();
   (globalThis as any).EventSource = FakeEventSource;
@@ -75,13 +77,33 @@ test("an unreadable frame resyncs without advancing the cursor", (t) => {
   });
   source.onmessage!({ data: "{not json", lastEventId: "c2" });
   assert.equal(events.length, 1);
-  assert.equal(store.get("cursor:a b/c"), "c1");
+  // The cursor is kept under the person and workspace it belongs to.
+  assert.equal(store.get("cursor:u1.t1:a b/c"), "c1");
+  assert.equal(store.get("cursor:a b/c"), undefined);
   assert.equal(resyncs(), 1);
   assert.equal(logged.mock.callCount(), 1);
   assert.deepEqual(
     { ...logged.mock.calls[0].arguments[1], error: undefined },
     { sessionId: "a b/c", lastEventId: "c2", error: undefined },
   );
+});
+
+test("a replay cursor is never carried to another person or workspace", (t) => {
+  const first = setup(t);
+  first.source.onmessage!({ data: '{"type":"turn.started","data":{}}', lastEventId: "c9" });
+  first.stop();
+  // Same browser, same conversation id, but another person (or workspace).
+  setIdentityScope("u2", "t1");
+  const other = transport.subscribe("a b/c", () => {}, () => {});
+  const source = FakeEventSource.instances.at(-1)!;
+  assert.doesNotMatch(source.url, /cursor=/, "no cursor from the previous person");
+  other();
+  setIdentityScope("u1", "t2");
+  transport.subscribe("a b/c", () => {}, () => {})();
+  assert.doesNotMatch(FakeEventSource.instances.at(-1)!.url, /cursor=/, "none from another workspace either");
+  setIdentityScope("u1", "t1");
+  transport.subscribe("a b/c", () => {}, () => {})();
+  assert.match(FakeEventSource.instances.at(-1)!.url, /cursor=c9/, "the owner's own cursor still resumes");
 });
 
 test("errors report Reconnecting while retrying and Disconnected once closed", (t) => {

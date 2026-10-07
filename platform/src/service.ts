@@ -98,12 +98,25 @@ import {
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
 import { currentTenant, currentTenantId } from "./tenant";
 import { currentUser, userId } from "./user";
+import { requireAudit } from "./audit";
+import type { DemoQuota, TurnKey } from "./quota";
 import {
   RuntimeTransport,
   isAgentCoreRuntime,
   runtimeHosts,
 } from "./runtime-transport";
-import { checkProject, checkSession, ownerFilter, type Access } from "./access";
+import {
+  agentFilter,
+  checkAgent,
+  checkProject,
+  checkSession,
+  decideAgent,
+  isPrivateWorkspace,
+  ownerFilter,
+  readsOthersPrivate,
+  type Access,
+  type AgentAccess,
+} from "./access";
 // Codex edits an objective in place, so the creation time identifies a goal.
 function sameGoal(saved: SessionGoal | undefined, goal: Goal) {
   return !!saved && (saved.createdAt ?? null) === (goal.createdAt ?? null);
@@ -251,6 +264,33 @@ export function mcpFingerprint(config: Record<string, unknown>) {
     .map((key) => [key, canonical(config[key])]);
   return createHash("sha256").update(JSON.stringify(servers)).digest("hex");
 }
+// Agents one person may create in a private workspace (AGENTS_PER_USER_MAX).
+function agentLimit(env: NodeJS.ProcessEnv = process.env) {
+  const n = Number(env.AGENTS_PER_USER_MAX);
+  return Number.isInteger(n) && n >= 1 && n <= 1000 ? n : 25;
+}
+// Connected tools one person may keep (MCP_PER_USER_MAX).
+function mcpLimit(env: NodeJS.ProcessEnv = process.env) {
+  const n = Number(env.MCP_PER_USER_MAX);
+  return Number.isInteger(n) && n >= 1 && n <= 1000 ? n : 20;
+}
+// The saved goal summary, shaped like a live goal, for views that must not
+// ask the runtime.
+function storedGoal(goal?: SessionGoal): Goal | null {
+  if (!goal) return null;
+  return {
+    objective: goal.objective,
+    status: goal.status,
+    tokenBudget: goal.tokenBudget ?? null,
+    tokensUsed: goal.tokensObserved ?? 0,
+    timeUsedSeconds: 0,
+    createdAt: goal.createdAt ?? null,
+    updatedAt: goal.goalUpdatedAt ?? null,
+    ...(goal.tokensObserved !== undefined
+      ? { tokensObserved: goal.tokensObserved }
+      : {}),
+  };
+}
 function validAgentId(agentId: string) {
   if (typeof agentId !== "string" || !SUB_AGENT_ID.test(agentId))
     throw new ApiError(400, "Invalid helper agent id", "INVALID_INPUT");
@@ -277,6 +317,15 @@ export class PlatformService {
   private polling = false;
   private timer?: NodeJS.Timeout;
   private nextHost = 0;
+  /** Set when the public demo is enabled; limits new turns in its tenant. */
+  quota?: DemoQuota;
+  /**
+   * Re-confirms, just before work is handed to the runtime, that the caller is
+   * still allowed (account active, membership active, workspace enabled). A
+   * request authorised at its start can wait on a runtime resume; this stops
+   * it from launching a turn after access was withdrawn. Set in Google mode.
+   */
+  dispatchGuard?: () => Promise<void>;
   constructor(
     readonly store: Store,
     hosts = runtimeHosts(),
@@ -360,6 +409,10 @@ export class PlatformService {
       throw new ApiError(404, "Session not found", "SESSION_NOT_FOUND");
     // Before the legacy check, so a hidden chat never answers 409.
     if (mode) checkSession(session, mode);
+    // An admin reading someone else's private conversation leaves a record,
+    // and is refused if the record cannot be written.
+    if (mode === "read" && readsOthersPrivate(session.userId))
+      await this.auditRead("session", session._id, session.userId);
     if (session.runtimePolicyVersion !== POLICY_VERSION)
       throw new ApiError(
         409,
@@ -367,6 +420,31 @@ export class PlatformService {
         "LEGACY_SESSION",
       );
     return session;
+  }
+  private async auditRead(
+    type: string,
+    id: string,
+    ownerId?: string,
+    action: "read" | "list" = "read",
+  ) {
+    const user = currentUser()!;
+    await requireAudit(this.store, {
+      actor: user.id,
+      actorRole: user.role,
+      action: `${type}.${action}`,
+      tenantId: currentTenantId(),
+      target: { type, id, ...(ownerId ? { ownerId } : {}) },
+      requestId: currentRequestId(),
+    });
+  }
+  /**
+   * True when the caller is looking at someone else's private conversation.
+   * That view is served from what is already stored: it never resumes the
+   * owner's runtime, reconciles, ingests or otherwise writes the
+   * conversation, and it never uses the owner's credentials.
+   */
+  isPassiveView(session: Pick<Session, "userId">) {
+    return readsOthersPrivate(session.userId);
   }
   // Loads a session for a request and applies the ownership rules (see
   // access.ts). Every /api/sessions/:id route goes through this, directly or
@@ -380,10 +458,17 @@ export class PlatformService {
   // Without an owner only tenant MCPs load.
   async configuration(
     agentId: string,
-    { cwd, ownerId }: { cwd?: string; ownerId?: string } = {},
+    {
+      cwd,
+      ownerId,
+      use,
+    }: { cwd?: string; ownerId?: string; use?: boolean } = {},
   ) {
     const agent = await this.store.findAgent(agentId);
     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+    // Starting a conversation with an agent needs permission to use it; a
+    // resume of an existing conversation carries on with its stored agent.
+    if (use) checkAgent(agent, "use");
     const profile = await this.store.findModel(agent.modelProfileId);
     const apiKey = profile?.apiKey || profile?.apikey;
     if (!profile || !apiKey)
@@ -578,7 +663,10 @@ export class PlatformService {
   }
   async agents(): Promise<AgentSummary[]> {
     const [agents, profiles] = await Promise.all([
-      this.store.agents.find({ enabled: { $ne: false } }).toArray(),
+      this.store.agents
+        .find({ enabled: { $ne: false }, ...agentFilter() })
+        .limit(1000)
+        .toArray(),
       this.store.profiles
         .find(
           { enabled: { $ne: false } },
@@ -586,6 +674,21 @@ export class PlatformService {
         )
         .toArray(),
     ]);
+    const user = currentUser();
+    const priv = isPrivateWorkspace();
+    // An admin listing agents that are not theirs is reading private content,
+    // and sees who made each one: handles repeat across creators, so the
+    // name (one batched lookup, never one per agent) tells them apart.
+    const others = agents.filter((a) => readsOthersPrivate(a.createdBy));
+    const names = new Map<string, string>();
+    if (others.length) {
+      await this.auditRead("agent", "list", undefined, "list");
+      const creators = [...new Set(others.map((a) => a.createdBy).filter((id): id is string => !!id))];
+      for (const u of await this.store.users
+        .find({ _id: { $in: creators } }, { projection: { name: 1, email: 1 } })
+        .toArray())
+        names.set(u._id, u.name || u.email);
+    }
     return agents.map((a) => {
       const p = profiles.find(
         (p) => String(p._id) === String(a.modelProfileId),
@@ -604,6 +707,12 @@ export class PlatformService {
             : DEFAULT_AGENT_LOOK,
         tint: AGENT_TINTS.includes(a.tint!) ? a.tint! : DEFAULT_AGENT_TINT,
         builtin: a.builtin === true,
+        ...(a.createdBy ? { createdBy: a.createdBy } : {}),
+        ...(a.createdBy && names.has(a.createdBy)
+          ? { creatorName: names.get(a.createdBy) }
+          : {}),
+        canUse: decideAgent(a.createdBy, "use", user, priv) === "allow",
+        canWrite: decideAgent(a.createdBy, "write", user, priv) === "allow",
       };
     });
   }
@@ -633,7 +742,9 @@ export class PlatformService {
       }));
   }
   async createAgent(body: unknown): Promise<AgentSummary> {
-    const agent = newAgent(body);
+    const user = currentUser();
+    // The creator is the signed-in person, set here; the body cannot name one.
+    const agent = newAgent(body, user?.id);
     const profile = await this.store.findModel(agent.modelProfileId);
     if (!profile || !(profile.apiKey || profile.apikey))
       throw new ApiError(
@@ -648,7 +759,28 @@ export class PlatformService {
         `@${agent.handle} is taken. Choose a different name.`,
         "AGENT_HANDLE_TAKEN",
       );
-    if (await this.store.agents.findOne({ handle: agent.handle }, { projection: { _id: 1 } }))
+    // The unique handle index must exist before the first write relies on it.
+    await this.store.indexesReady();
+    // In a private workspace a handle is unique per creator, so one person's
+    // choice never blocks (or reveals) another's.
+    const perCreator = !!user && isPrivateWorkspace();
+    if (perCreator) {
+      const limit = agentLimit();
+      if (
+        (await this.store.agents.countDocuments({ createdBy: user!.id })) >= limit
+      )
+        throw new ApiError(
+          409,
+          `You can have up to ${limit} agents. Remove one to create another.`,
+          "AGENT_LIMIT",
+        );
+    }
+    if (
+      await this.store.agents.findOne(
+        perCreator ? { handle: agent.handle, createdBy: user!.id } : { handle: agent.handle },
+        { projection: { _id: 1 } },
+      )
+    )
       throw taken();
     try {
       await this.store.agents.insertOne(agent);
@@ -668,6 +800,9 @@ export class PlatformService {
       look: agent.look!,
       tint: agent.tint!,
       builtin: false,
+      ...(agent.createdBy ? { createdBy: agent.createdBy } : {}),
+      canUse: true,
+      canWrite: true,
     };
   }
   // --- MCP profiles: tenant scope (admins) and user scope (the owner). ---
@@ -689,9 +824,16 @@ export class PlatformService {
       );
     return user;
   }
-  private async mcpAgentKey(agentId: string) {
+  // The agent an MCP request is about, checked against the caller: reading a
+  // private agent's attachments needs read access, changing them needs the
+  // creator. Content access for an admin is not permission to change another
+  // person's agent.
+  private async mcpAgentKey(agentId: string, mode: AgentAccess) {
     const agent = await this.store.findAgent(agentId);
     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+    checkAgent(agent, mode);
+    if (mode === "read" && readsOthersPrivate(agent.createdBy))
+      await this.auditRead("agent", String(agent._id), agent.createdBy);
     // agentIds holds String(agent._id), whatever the _id's BSON type.
     return String(agent._id);
   }
@@ -843,6 +985,21 @@ export class PlatformService {
     createdBy: string,
   ) {
     const profile = newMcpProfile(body);
+    // Open sign-up means anyone can add connectors, so a person's own are capped.
+    if (scope.scope === "user") {
+      const limit = mcpLimit();
+      if (
+        (await this.store.mcp.countDocuments({
+          scope: "user",
+          ownerId: scope.ownerId,
+        })) >= limit
+      )
+        throw new ApiError(
+          409,
+          `You can have up to ${limit} connected tools. Remove one to add another.`,
+          "MCP_LIMIT",
+        );
+    }
     if (scope.scope === "user") await this.reservedName(profile.name);
     const warnings = await checkMcpUrl(profile.url!);
     const now = new Date().toISOString();
@@ -934,7 +1091,7 @@ export class PlatformService {
   // agent are listed read-only in tenantProfiles.
   async agentMcp(agentId: string) {
     const user = this.mcpCaller();
-    const agentKey = await this.mcpAgentKey(agentId);
+    const agentKey = await this.mcpAgentKey(agentId, "read");
     const [own, tenant] = await Promise.all([
       this.store.mcp
         .find({ scope: "user", ownerId: user.id })
@@ -973,7 +1130,7 @@ export class PlatformService {
   // A tenant MCP id is 404 for a user.
   async setAgentMcp(agentId: string, ids: unknown) {
     const user = this.mcpCaller();
-    const agentKey = await this.mcpAgentKey(agentId);
+    const agentKey = await this.mcpAgentKey(agentId, "write");
     const own = { scope: "user", ownerId: user.id };
     const wanted = this.mcpIds(ids);
     if (user.role !== "admin") {
@@ -1062,7 +1219,7 @@ export class PlatformService {
   // Same shape as agentMcp, for the tenant's servers.
   async agentTenantMcp(agentId: string) {
     this.tenantAdmin();
-    const agentKey = await this.mcpAgentKey(agentId);
+    const agentKey = await this.mcpAgentKey(agentId, "read");
     const tenant = await this.store.mcp
       .find({ scope: "tenant" })
       .sort({ name: 1 })
@@ -1078,7 +1235,7 @@ export class PlatformService {
   }
   async setAgentTenantMcp(agentId: string, ids: unknown) {
     this.tenantAdmin();
-    const agentKey = await this.mcpAgentKey(agentId);
+    const agentKey = await this.mcpAgentKey(agentId, "write");
     const scope = { scope: "tenant" };
     await this.attach(
       agentKey,
@@ -1104,7 +1261,10 @@ export class PlatformService {
       await this.project(projectId, "write");
     const owner = currentUser()?.id;
     // A new chat belongs to its creator, so their user MCPs load.
-    const config: any = await this.configuration(agentId, { ownerId: owner });
+    const config: any = await this.configuration(agentId, {
+      ownerId: owner,
+      use: true,
+    });
     if (delegation) config.subAgents = delegation;
     Object.assign(config, this.modeOptions());
     let host = "",
@@ -1179,6 +1339,8 @@ export class PlatformService {
       .sort({ createdAt: -1 })
       .limit(100)
       .toArray();
+    if (sessions.some((s) => readsOthersPrivate(s.userId)))
+      await this.auditRead("session", "list", undefined, "list");
     const untitled = sessions.filter((s) => !s.title).map((s) => s._id);
     if (untitled.length) {
       const firsts = await this.store.messages
@@ -1202,10 +1364,14 @@ export class PlatformService {
   // Ownership: the creator renames, deletes and files chats into a project.
   // Others may see it only where they may see chats (access.ts).
   async projects(): Promise<Project[]> {
-    return this.store.projects
+    const projects = await this.store.projects
       .find(ownerFilter("ownerId"))
       .sort({ updatedAt: -1 })
+      .limit(500)
       .toArray();
+    if (projects.some((p) => readsOthersPrivate(p.ownerId)))
+      await this.auditRead("project", "list", undefined, "list");
+    return projects;
   }
   async project(id: unknown, mode: Access = "read") {
     const project = await this.store.projects.findOne({ _id: projectIdOf(id) });
@@ -1279,6 +1445,9 @@ export class PlatformService {
   async owned(session: Session, path: string, method = "GET", body?: any) {
     if (session.status === "dead")
       throw new ApiError(410, "Session is unrecoverable", "THREAD_LOST");
+    // A passive viewer reads; whether the owner's thread is reachable is not
+    // theirs to record.
+    const passive = this.isPassiveView(session);
     try {
       return await this.call(
         session.agentCoreHost,
@@ -1289,6 +1458,7 @@ export class PlatformService {
       );
     } catch (e) {
       if (
+        !passive &&
         e instanceof ApiError &&
         ["OWNER_UNAVAILABLE", "RUNTIME_UNAVAILABLE", "THREAD_LOST"].includes(
           e.code,
@@ -1429,7 +1599,25 @@ export class PlatformService {
         "INVALID_INPUT",
       );
     const s = await this.sessionFor(id, "write");
-    await this.resume(s);
+    // Demo turns are counted before anything is dispatched.
+    const reserved = await this.reserveTurn(id, clientId);
+    const giveBack = () =>
+      reserved
+        ? this.quota!.release(reserved).catch((error) =>
+            log("error", "demo turn release failed", {
+              sessionId: id,
+              ...errorFields(error),
+            }),
+          )
+        : undefined;
+    try {
+      await this.resume(s);
+      await this.dispatchGuard?.();
+    } catch (e) {
+      // Nothing was dispatched: the person keeps the turn.
+      await giveBack();
+      throw e;
+    }
     const key = `${id}:user:${clientId}`;
     try {
       await this.store.messages.insertOne({
@@ -1442,7 +1630,10 @@ export class PlatformService {
         at: new Date().toISOString(),
       });
     } catch (e) {
-      if ((e as { code?: number }).code !== 11000) throw e;
+      if ((e as { code?: number }).code !== 11000) {
+        await giveBack();
+        throw e;
+      }
       const existing = await this.store.messages.findOne({ _id: key });
       if (existing?.delivery === "accepted")
         return {
@@ -1472,17 +1663,39 @@ export class PlatformService {
       );
       return { ...result, platformRoundTripMs: performance.now() - begin };
     } catch (e) {
+      const definite = e instanceof ApiError && e.status < 500;
       await this.store.messages.updateOne(
         { _id: key },
-        {
-          $set: {
-            delivery:
-              e instanceof ApiError && e.status < 500 ? "failed" : "unknown",
-          },
-        },
+        { $set: { delivery: definite ? "failed" : "unknown" } },
       );
+      // Only a refusal proves the turn never ran. A timeout or a server error
+      // may have been accepted, so its count stands.
+      if (definite) await giveBack();
       throw e;
     }
+  }
+  // Reserves a demo turn: undefined outside the demo, for a submission already
+  // on record (the normal duplicate handling follows), and for a retry of a
+  // turn already reserved. Otherwise the key to release if the turn never runs.
+  private async reserveTurn(
+    conversationId: string,
+    clientId: string,
+  ): Promise<TurnKey | undefined> {
+    const user = currentUser();
+    const tenantId = currentTenantId();
+    if (!user || !this.quota?.applies(tenantId)) return undefined;
+    // The stored message is the durable record of an already-seen turn, long
+    // after a reservation has expired or a UTC day has rolled over.
+    if (
+      await this.store.messages.findOne(
+        { _id: `${conversationId}:user:${clientId}` },
+        { projection: { _id: 1 } },
+      )
+    )
+      return undefined;
+    const key = { userId: user.id, tenantId, conversationId, clientId };
+    const { duplicate } = await this.quota.reserve(key);
+    return duplicate ? undefined : key;
   }
   async reconcile(s: Session) {
     let cursor: string | null = null,
@@ -1573,6 +1786,7 @@ export class PlatformService {
   }
   async history(id: string) {
     const s = await this.sessionFor(id, "read");
+    if (this.isPassiveView(s)) return this.storedHistory(s);
     let snapshot = null,
       recoveryError = null,
       recoveryErrorRef: { code: string; requestId?: string } | null = null;
@@ -1617,6 +1831,28 @@ export class PlatformService {
         ? `Conversation recovery: ${recoveryError}`
         : null,
       recoveryErrorRef,
+      access: "owner" as const,
+    };
+  }
+  // What is already saved, with no call to the runtime and no write: the view
+  // an admin gets of someone else's private conversation. Replies that are
+  // still streaming appear once the owner's session or the background sync
+  // has stored them.
+  private async storedHistory(s: Session) {
+    const fresh = await this.session(s._id);
+    return {
+      session: publicSession(fresh, this.approvalModes),
+      messages: orderConversation(
+        await this.store.messages.find({ sessionId: s._id }).toArray(),
+      ),
+      snapshot: null,
+      plan: publicStoredPlan(fresh.plan),
+      approvals: (fresh.approvals || []).map(publicApproval).filter(Boolean),
+      goalReview: fresh.goalReview || null,
+      goalHistory: fresh.goalHistory || [],
+      recoveryError: null,
+      recoveryErrorRef: null,
+      access: "readOnly" as const,
     };
   }
   async ingest(s: Session) {
@@ -1685,6 +1921,39 @@ export class PlatformService {
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.transport.close();
+  }
+  /**
+   * After a member is removed or a workspace disabled: asks the runtime to
+   * stop the turns of the most recent conversations (the removed person's, or
+   * the workspace's). Best effort and honest about it: the outcome is counted
+   * as stop requested, nothing running, or failed, and a remote tool call that
+   * already happened is not undone. Runs in the tenant's context.
+   */
+  async interruptRecent(scope: { userId?: string }, limit = 25) {
+    const sessions = await this.store.sessions
+      .find({
+        status: { $ne: "dead" },
+        runtimePolicyVersion: POLICY_VERSION,
+        ...(scope.userId ? { userId: scope.userId } : {}),
+      })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+    const outcome = { attempted: sessions.length, stopped: 0, idle: 0, failed: 0 };
+    const queue = [...sessions];
+    const worker = async () => {
+      for (let s = queue.shift(); s; s = queue.shift())
+        try {
+          await this.owned(s, "/interrupt", "POST", {});
+          outcome.stopped++;
+        } catch (error) {
+          // "No running turn" (409) is a thread with nothing to stop.
+          if (error instanceof ApiError && error.status === 409) outcome.idle++;
+          else outcome.failed++;
+        }
+    };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    return outcome;
   }
   async command(
     id: string,
@@ -1823,11 +2092,43 @@ export class PlatformService {
         id,
         method === "thread/goal/get" ? "read" : "write",
       ));
-    await this.resume(s);
-    const result = await this.owned(s, "/capabilities", "POST", {
-      method,
-      params,
-    });
+    // Someone else's private conversation: report the saved goal; never wake
+    // the owner's runtime to ask.
+    if (this.isPassiveView(s)) return { goal: storedGoal(s.goal) };
+    // Starting or resuming a goal sets the assistant working on its own, so in
+    // the demo it costs a turn like a message does. (Its follow-on turns are
+    // not counted one by one; a goal's tokenBudget and the provider-side
+    // spending cap are what bound those.)
+    const startsWork =
+      method === "thread/goal/set" &&
+      !!params &&
+      typeof params === "object" &&
+      ((params as { objective?: unknown }).objective !== undefined ||
+        (params as { status?: unknown }).status === "active");
+    const reserved = startsWork
+      ? await this.reserveTurn(s._id, `goal-${randomUUID()}`)
+      : undefined;
+    const giveBack = () =>
+      reserved
+        ? this.quota!.release(reserved).catch((error) =>
+            log("error", "demo turn release failed", {
+              sessionId: s._id,
+              ...errorFields(error),
+            }),
+          )
+        : undefined;
+    let result: any;
+    try {
+      await this.resume(s);
+      if (method !== "thread/goal/get") await this.dispatchGuard?.();
+      result = await this.owned(s, "/capabilities", "POST", {
+        method,
+        params,
+      });
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.status < 500) await giveBack();
+      throw e;
+    }
     if (method === "thread/fork") {
       const fork: Session = {
         ...s,

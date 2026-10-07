@@ -176,7 +176,7 @@ export function JoinPage({ token }: { token: string }) {
           return {
             tone: "warn",
             lead: `This invite is for ${lookup.email ?? "a different account"}.`,
-            rest: `You signed in as ${params.email ?? "another Google account"}. Switch account, then join with the invited Gmail.`,
+            rest: `You signed in as ${params.email ?? "another Google account"}. Switch account, then join with the Google account this invite was sent to.`,
           };
         return otherError;
     }

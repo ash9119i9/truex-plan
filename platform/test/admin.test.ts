@@ -9,8 +9,9 @@ import { Store } from "../src/store";
 import { tenantDbName } from "../src/tenant";
 import { emailKey, hashToken, newToken } from "../src/auth";
 import { parsePasswordHash, verifyPassword } from "../src/admin";
-import { lookupInvite } from "../src/invites";
+import { inviteMailer, lookupInvite } from "../src/invites";
 import { insertFixtures } from "./fixtures";
+import { BAD_EMAILS, EMAIL_VECTORS } from "./email-vectors";
 
 const root = resolve("..");
 const FRONTEND = "http://localhost:3000";
@@ -227,15 +228,33 @@ test("tenant CLI: invite and members match the platform's rules", { timeout: 600
     expiresAt: doc.expiresAt.toISOString(),
   });
 
-  const other = await tenant("invite", "p1", "ashok@example.com", "--role", "user");
+  const other = await tenant("invite", "p1", "ashok@example", "--role", "user");
   assert.equal(other.code, 1);
-  assert.match(other.stderr, /only @gmail\.com/);
+  assert.match(other.stderr, /valid email address/);
+  // The CLI's emailKey agrees with the server's on every shared vector, and
+  // rejects the same bad addresses.
+  assert.equal((await tenant("create", "p2", "Vectors")).code, 0);
+  const seen = new Set<string>();
+  for (const [typed, key] of EMAIL_VECTORS) {
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const made = await tenant("invite", "p2", typed, "--role", "user");
+    assert.equal(made.code, 0, `${typed}: ${made.stderr}`);
+    const stored = await store.invites.findOne({ tenantId: "p2", email: typed });
+    assert.equal(stored?.emailKey, key, typed);
+    assert.equal(stored?.emailKey, emailKey(typed), typed);
+  }
+  for (const bad of BAD_EMAILS.filter((b) => b && !b.includes("\u0000"))) {
+    const refused = await tenant("invite", "p2", bad, "--role", "user");
+    assert.equal(refused.code, 1, JSON.stringify(bad));
+  }
+  assert.equal(await store.invites.countDocuments({ tenantId: "p2" }), seen.size);
   const twice = await tenant("invite", "p1", "ashok@gmail.com", "--role", "admin");
   assert.equal(twice.code, 1);
   assert.match(twice.stderr, /already has a pending invite/);
   assert.equal((await tenant("invite", "p1", "b@gmail.com", "--role", "owner")).code, 1);
   assert.equal((await tenant("invite", "nope", "b@gmail.com", "--role", "user")).code, 1);
-  assert.equal(await store.invites.countDocuments(), 1);
+  assert.equal(await store.invites.countDocuments({ tenantId: "p1" }), 1);
 
   await store.users.insertOne({
     _id: "u_ashok",
@@ -263,15 +282,42 @@ test("tenant CLI: invite and members match the platform's rules", { timeout: 600
   assert.match(member.stderr, /already a member/);
 });
 
-test("NODE_ENV=production refuses to start without RESEND_API_KEY", { timeout: 30000 }, async () => {
-  const { child, logs } = launch(
-    await platformEnv("mongodb://127.0.0.1:1", "admin_prod", {
-      NODE_ENV: "production",
+test("production without RESEND_API_KEY starts: invitations record 'not sent' and log no link", async (t) => {
+  // Public demo signup needs no email, so a missing key is no longer a startup
+  // failure. It must not fall back to logging the invite link, which is the
+  // credential: the mailer refuses, and the invite shows as not sent.
+  const lines: string[] = [];
+  const write = t.mock.method(process.stderr, "write", (chunk: unknown) => {
+    lines.push(String(chunk));
+    return true;
+  });
+  const mailer = inviteMailer({ NODE_ENV: "production" });
+  await assert.rejects(
+    mailer.send({
+      inviteId: "inv_1",
+      tokenHash: "h",
+      to: "a@example.com",
+      tenantName: "Acme",
+      role: "user",
+      link: "https://app.test/invite/SECRET-TOKEN",
+      expiresAt: new Date(),
     }),
+    /Invitation email is not configured/,
   );
-  const code = await new Promise<number | null>((r) => child.once("exit", r));
-  assert.equal(code, 1);
-  assert.match(logs(), /RESEND_API_KEY is required in production/);
+  write.mock.restore();
+  assert.ok(!lines.join("").includes("SECRET-TOKEN"));
+  assert.match(lines.join(""), /invitation email is unavailable/);
+  // Outside production the developer-friendly logger remains.
+  const dev = inviteMailer({ NODE_ENV: "development" });
+  await dev.send({
+    inviteId: "inv_2",
+    tokenHash: "h",
+    to: "a@example.com",
+    tenantName: "Acme",
+    role: "user",
+    link: "http://localhost:3000/invite/x",
+    expiresAt: new Date(),
+  });
 });
 
 test(
@@ -588,7 +634,15 @@ test("dev mode: admin login, admin API, invites and members", { timeout: 120000 
     // Same index setup as the platform's own, including the handle index.
     const db = store.client.db(tenantDbName("t1"));
     const agents = await db.collection("truex_agents").indexes();
-    assert.ok(agents.some((i) => i.key.handle === 1 && i.unique));
+    // A new workspace is private: handles are unique per creator, and the
+    // workspace-wide handle index is never created for it.
+    assert.ok(agents.some((i) => i.name === "agent_creator_handle" && i.unique));
+    assert.ok(!agents.some((i) => i.name === "handle_1"));
+    assert.equal(doc?.isUserSpecific, true);
+    assert.equal(doc?.chatVisibility, "own");
+    assert.equal(doc?.admissionPolicy, "inviteOnly");
+    assert.equal(created.tenant.isUserSpecific, true);
+    assert.equal(created.tenant.admissionPolicy, "inviteOnly");
     const mcp = (await db.collection("truex_mcp").indexes()).map((i) => i.name);
     assert.ok(mcp.includes("tenant_mcp_name") && mcp.includes("user_mcp_name"));
     assert.equal(
@@ -637,9 +691,20 @@ test("dev mode: admin login, admin API, invites and members", { timeout: 120000 
 
   let firstId = "";
   let firstToken = "";
-  await t.test("invites: gmail only, 409s, one Resend call with the link", async () => {
-    assert.equal((await json(await invite("person@example.com"), 400)).code, "INVALID_EMAIL");
-    assert.equal((await json(await invite("person@gmail.com.evil.io"), 400)).code, "INVALID_EMAIL");
+  await t.test("invites: google accounts, 409s, one Resend call with the link", async () => {
+    for (const bad of [
+      "person@",
+      "person",
+      "a@b",
+      "per son@example.com",
+      "person@exa mple.com",
+      "pers\u0000on@example.com",
+      "bödy@example.com",
+      "x".repeat(250) + "@example.com",
+      ".person@example.com",
+      "pe..rson@example.com",
+    ])
+      assert.equal((await json(await invite(bad), 400)).code, "INVALID_EMAIL", bad);
     await json(await invite("person@gmail.com", "owner"), 400);
     // Ashok is an active member under any Gmail spelling.
     assert.equal((await json(await invite("A.Shok+x@gmail.com"), 409)).code, "ALREADY_MEMBER");

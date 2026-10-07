@@ -25,26 +25,46 @@ import {
   failStream,
   requestIdMiddleware,
   route,
+  streamErrorFrame,
   tenantMiddleware,
   userMiddleware,
 } from "./http";
-import { currentTenant, devTenantResolver, pocTenantResolver } from "./tenant";
+import {
+  currentTenant,
+  devTenantResolver,
+  pocTenantResolver,
+  tenantContext,
+} from "./tenant";
 import {
   authMode,
   currentUser,
   devUserResolver,
   pocUserResolver,
+  userContext,
 } from "./user";
-import { googleRoutes } from "./google";
+import { assertGoogleConfig, googleRoutes, googleSettings } from "./google";
 import { adminApiRoutes, adminAuthRoutes, adminGate } from "./admin";
 import { inviteLookupRoutes, inviteMailer } from "./invites";
 import {
   authMiddleware,
   authRoutes,
+  authorizeRequest,
   csrfMiddleware,
   rateLimit,
   userTenants,
 } from "./auth";
+import { checkSession } from "./access";
+import { auditAfter } from "./audit";
+import { DemoGate, demoConfig } from "./demo";
+import { DemoQuota } from "./quota";
+import {
+  StreamLimiter,
+  logStreamEnd,
+  revalidateMs,
+  streamLimit,
+  watchAccess,
+  type GuardVerdict,
+} from "./streams";
 @Module({})
 class AppModule {}
 async function main() {
@@ -57,7 +77,25 @@ async function main() {
   // Refuses an unknown mode, or google without its keys, before anything
   // else is built.
   const mode = authMode();
+  // The public demo exists only with Google sign-in. Refused here rather than
+  // quietly running a demo that cannot identify anyone.
+  const demoSettings = demoConfig();
+  if (demoSettings && mode !== "google")
+    throw new Error("DEMO_TENANT_ID requires AUTH_MODE=google.");
+  if (mode === "google") {
+    assertGoogleConfig(googleSettings());
+    if (
+      process.env.NODE_ENV === "production" &&
+      !process.env.TRUST_PROXY?.trim()
+    )
+      log(
+        "warn",
+        "TRUST_PROXY is not set: every sign-in request shares the rate limit of the forwarder's address",
+      );
+  }
   // POC mode does not register invitation routes or initialize email delivery.
+  // Without a mail key outside development, invitations are issued with the
+  // operator command and the demo needs no mail at all.
   const mailer = mode === "poc" ? undefined : inviteMailer();
   const origins = [
     process.env.FRONTEND_ORIGIN || "http://localhost:3000",
@@ -93,7 +131,47 @@ async function main() {
     }
   };
   await connect();
+  // Google sign-in writes account, membership and invitation changes in catalog
+  // transactions, which need a replica set. Reported loudly and never worked
+  // around: without it sign-in fails (and says so), while sessions that exist
+  // keep working.
+  let transactions = true;
+  if (mode === "google" && connected) {
+    transactions = await store.supportsTransactions().catch(() => false);
+    if (!transactions)
+      log(
+        "error",
+        "the database does not support transactions; Google sign-in and invitations will fail until MongoDB runs as a replica set",
+      );
+  }
   const service = new PlatformService(store);
+  const demo = new DemoGate(store, demoSettings, mode);
+  if (demoSettings) service.quota = new DemoQuota(store, demoSettings);
+  const streams = new StreamLimiter(streamLimit());
+  if (mode === "google")
+    service.dispatchGuard = async () => {
+      const user = currentUser();
+      const tenant = currentTenant();
+      if (!user || !tenant) return;
+      const [account, membership] = await Promise.all([
+        store.users.findOne(
+          { _id: user.id, status: "active" },
+          { projection: { _id: 1 } },
+        ),
+        store.memberships.findOne(
+          { userId: user.id, tenantId: tenant.id, status: "active" },
+          { projection: { _id: 1 } },
+        ),
+      ]);
+      if (!account || !membership)
+        throw new ApiError(
+          403,
+          "Your access to this workspace has ended",
+          "ACCESS_REVOKED",
+        );
+      // Throws TENANT_DISABLED for a workspace disabled since the request began.
+      await store.resolveTenant(tenant.id, { fresh: true });
+    };
   service.startIngestion();
   http.get("/livez", (_req: Request, res: Response) => res.json({ ok: true }));
   http.get(
@@ -128,8 +206,38 @@ async function main() {
         });
       }
       const ok = mongo && agentCore.ok;
-      res.status(ok ? 200 : 503).json({ ok, mongo, agentCore });
+      // Reported (as a flag only; the reasons are for operators, at
+      // GET /api/admin/demo), but never part of ok: a demo that is not ready
+      // keeps people out of the demo only, and must not take the service out of
+      // rotation for customers.
+      let demoStatus: { enabled: true; ready: boolean } | undefined;
+      if (mongo && demo.enabled)
+        try {
+          demoStatus = {
+            enabled: true,
+            ready: !!(await demo.readiness())?.ready,
+          };
+        } catch {
+          demoStatus = { enabled: true, ready: false };
+        }
+      res.status(ok ? 200 : 503).json({
+        ok,
+        mongo,
+        agentCore,
+        ...(mode === "google" ? { transactions } : {}),
+        ...(demoStatus ? { demo: demoStatus } : {}),
+      });
     }),
+  );
+  // Nothing under /api or /auth is cached, by the browser or a shared cache:
+  // responses are per person and per cookie.
+  http.use(
+    ["/api", "/auth"],
+    (_req: Request, res: Response, next: NextFunction) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Vary", "Cookie");
+      next();
+    },
   );
   http.use(
     ["/api", "/auth"],
@@ -170,7 +278,7 @@ async function main() {
     http.use(
       "/api/admin",
       adminGate(store),
-      adminApiRoutes(store, service, mailer!),
+      adminApiRoutes(store, service, mailer!, demo),
     );
   }
   if (mode === "google") {
@@ -178,7 +286,7 @@ async function main() {
     // cookie. The dev resolvers are never built in this mode.
     http.use("/api", authMiddleware(store));
     http.use("/auth", authRoutes(store));
-    http.use("/auth", googleRoutes(store));
+    http.use("/auth", googleRoutes(store, googleSettings(), demo));
   } else {
     // Every API request works on exactly one tenant's database.
     http.use(
@@ -210,9 +318,17 @@ async function main() {
           email: user.email,
           ...(mode === "google" ? res.locals.profile : {}),
         },
-        tenant: { id: tenant.id, name: current?.name ?? tenant.id },
+        tenant: {
+          id: tenant.id,
+          name: current?.name ?? tenant.id,
+          ...(tenant.isUserSpecific === undefined
+            ? {}
+            : { isUserSpecific: tenant.isUserSpecific }),
+        },
         role: user.role,
         tenants,
+        // Lets the app know whether there is a session to end.
+        auth: mode,
       });
     }),
   );
@@ -580,7 +696,8 @@ async function main() {
     "/api/sessions/:id/timings",
     route(async (req, res) => {
       const s = await service.sessionFor(String(req.params.id), "read");
-      await service.ingest(s);
+      // Someone else's private conversation is read as stored.
+      if (!service.isPassiveView(s)) await service.ingest(s);
       const rows = ((await service.session(s._id)).timings || []).map(
         publicTiming,
       );
@@ -611,13 +728,14 @@ async function main() {
     route(async (req, res) => {
       const s = await service.sessionFor(String(req.params.id), "read");
       // Stored traces stay readable while the assistant service is down.
-      await service.ingest(s).catch((error) =>
-        log("warn", "trace ingestion failed", {
-          sessionId: s._id,
-          op: "ingest",
-          ...errorFields(error),
-        }),
-      );
+      if (!service.isPassiveView(s))
+        await service.ingest(s).catch((error) =>
+          log("warn", "trace ingestion failed", {
+            sessionId: s._id,
+            op: "ingest",
+            ...errorFields(error),
+          }),
+        );
       res.json(
         sessionTraces(
           (await store.sessionTraces(s._id))
@@ -645,12 +763,26 @@ async function main() {
     "/api/sessions/:id/events",
     route(async (req, res) => {
       const s = await service.sessionFor(String(req.params.id), "read");
-      if (!service.hosts.includes(s.agentCoreHost))
+      // Someone else's private conversation (an admin's view) is relayed as it
+      // happens and nothing is stored from it: the owner's own stream and the
+      // background sync do the saving.
+      const passive = service.isPassiveView(s);
+      const me = currentUser();
+      const release = me ? streams.acquire(me.id) : () => {};
+      if (!release)
+        throw new ApiError(
+          429,
+          "You have too many conversations open at once. Close one and try again.",
+          "STREAM_LIMIT",
+        );
+      if (!service.hosts.includes(s.agentCoreHost)) {
+        release();
         throw new ApiError(
           503,
           "Session owner is not configured",
           "OWNER_UNCONFIGURED",
         );
+      }
       const requestId: string = res.locals.requestId;
       const abort = new AbortController();
       res.on("close", () => abort.abort());
@@ -663,6 +795,7 @@ async function main() {
           requestId,
         );
       } catch (error) {
+        release();
         if (error instanceof ApiError) throw error;
         throw new ApiError(
           503,
@@ -671,7 +804,8 @@ async function main() {
           { cause: error },
         );
       }
-      if (!upstream.ok)
+      if (!upstream.ok) {
+        release();
         throw upstreamError(
           upstream.status,
           await upstream.json().catch(() => null),
@@ -679,12 +813,15 @@ async function main() {
           "STREAM_UNAVAILABLE",
           "/events",
         );
-      if (!upstream.body)
+      }
+      if (!upstream.body) {
+        release();
         throw new ApiError(
           502,
           "The assistant service returned an empty live-update stream. Reopen the conversation to reconnect.",
           "STREAM_UNAVAILABLE",
         );
+      }
       res.set({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
@@ -692,6 +829,68 @@ async function main() {
         "X-Accel-Buffering": "no",
       });
       res.flushHeaders();
+      const openedAt = Date.now();
+      // Google mode: keep checking that this person may still read this
+      // conversation, and end the stream the moment they may not. Runs with
+      // the request's own identity, never extending the session.
+      let ended: Exclude<GuardVerdict, { ok: true }> | undefined;
+      const stopGuard =
+        mode === "google"
+          ? watchAccess({
+              intervalMs: revalidateMs(),
+              check: async () => {
+                try {
+                  const auth = await authorizeRequest(store, req, {
+                    passive: true,
+                  });
+                  // The same tenant the stream was opened in.
+                  if (auth.tenant.id !== currentTenant()?.id)
+                    return { ok: false, reason: "revoked" };
+                  await tenantContext.run(auth.tenant, () =>
+                    userContext.run(auth.ref, async () => {
+                      const fresh = await store.sessions.findOne({
+                        _id: s._id,
+                      });
+                      if (!fresh)
+                        throw new ApiError(
+                          404,
+                          "Session not found",
+                          "SESSION_NOT_FOUND",
+                        );
+                      checkSession(fresh, "read");
+                    }),
+                  );
+                  return { ok: true };
+                } catch (error) {
+                  // A refusal from the authority is a revocation; anything
+                  // else (storage down) means access cannot be confirmed.
+                  return error instanceof ApiError &&
+                    [401, 403, 404].includes(error.status)
+                    ? { ok: false, reason: "revoked" }
+                    : { ok: false, reason: "unavailable" };
+                }
+              },
+              onEnd: (verdict) => {
+                ended = verdict;
+                logStreamEnd({
+                  requestId,
+                  sessionId: s._id,
+                  userId: me?.id,
+                  reason: verdict.reason,
+                });
+                if (!res.destroyed && !res.writableEnded)
+                  res.write(
+                    streamErrorFrame(
+                      requestId,
+                      verdict.reason === "revoked"
+                        ? "ACCESS_REVOKED"
+                        : "AUTH_UNAVAILABLE",
+                    ),
+                  );
+                abort.abort();
+              },
+            })
+          : () => {};
       try {
         // Highest token count seen for the current goal on this stream, so a
         // restarted assistant service never shows a smaller count.
@@ -710,6 +909,7 @@ async function main() {
             );
           }
           counted = goal;
+          if (passive) return;
           void service
             .rememberGoal(s._id, goal, {
               turnId: event?.turnId,
@@ -732,34 +932,36 @@ async function main() {
             remember(event.data.goal);
           if (event.type === "plan.updated") {
             planSteps = event.data.plan;
-            void store
-              .savePlan(s._id, {
-                plan: event.data.plan,
-                explanation: event.data.explanation,
-                turnId: event.turnId,
-                cursor: event.cursor,
-                at: event.at,
-              })
-              .catch((error) =>
-                log("warn", "live update persistence failed", {
-                  sessionId: s._id,
-                  op: "savePlan",
-                  ...errorFields(error),
-                }),
-              );
+            if (!passive)
+              void store
+                .savePlan(s._id, {
+                  plan: event.data.plan,
+                  explanation: event.data.explanation,
+                  turnId: event.turnId,
+                  cursor: event.cursor,
+                  at: event.at,
+                })
+                .catch((error) =>
+                  log("warn", "live update persistence failed", {
+                    sessionId: s._id,
+                    op: "savePlan",
+                    ...errorFields(error),
+                  }),
+                );
           }
           if (event.type === "snapshot") {
             if (event.data.plan?.length) {
               planSteps = event.data.plan;
-              void service
-                .rememberSnapshotPlan(s._id, event.data)
-                .catch((error) =>
-                  log("warn", "live update persistence failed", {
-                    sessionId: s._id,
-                    op: "rememberSnapshotPlan",
-                    ...errorFields(error),
-                  }),
-                );
+              if (!passive)
+                void service
+                  .rememberSnapshotPlan(s._id, event.data)
+                  .catch((error) =>
+                    log("warn", "live update persistence failed", {
+                      sessionId: s._id,
+                      op: "rememberSnapshotPlan",
+                      ...errorFields(error),
+                    }),
+                  );
             } else
               return {
                 ...event,
@@ -768,14 +970,33 @@ async function main() {
           }
         });
         await relay(upstream.body as any, res, stream);
-        if (!res.destroyed) endedStream(res, { requestId, sessionId: s._id });
+        if (!res.destroyed && !ended)
+          endedStream(res, { requestId, sessionId: s._id });
       } catch (error) {
-        // A client disconnect aborts the upstream read; that is not a failure.
-        if (!res.destroyed)
+        // A client disconnect (or the guard ending the stream) aborts the
+        // upstream read; that is not a failure.
+        if (!res.destroyed && !ended)
           failStream(res, error, { requestId, sessionId: s._id });
       } finally {
+        stopGuard();
         abort.abort();
+        release();
         if (!res.destroyed) res.end();
+        if (passive && me)
+          await auditAfter(store, {
+            actor: me.id,
+            actorRole: me.role,
+            action: "session.stream.close",
+            tenantId: currentTenant()!.id,
+            target: {
+              type: "session",
+              id: s._id,
+              ...(s.userId ? { ownerId: s.userId } : {}),
+            },
+            outcome: ended ? `ended:${ended.reason}` : "closed",
+            requestId,
+            detail: { durationMs: Date.now() - openedAt },
+          });
       }
     }),
   );

@@ -124,7 +124,7 @@ test("parseLookup keeps known fields and drops bad ones", () => {
 
 test("inviteKind for every status and param combination", () => {
   const statuses = ["valid", "expired", "used", "revoked", "not_found"] as const;
-  const errors = [null, "invite_expired", "invite_used", "invite_revoked", "wrong_account", "gmail_only", "invalid_name"];
+  const errors = [null, "invite_expired", "invite_used", "invite_revoked", "wrong_account", "email_unverified", "tenant_disabled", "invalid_name"];
   const fromError: Record<string, string> = { invite_expired: "expired", invite_used: "used", invite_revoked: "revoked" };
   for (const status of statuses) {
     for (const joined of [false, true]) {
@@ -145,7 +145,8 @@ test("inviteKind for every status and param combination", () => {
 test("errorNotice gives a banner only for codes without their own state", () => {
   for (const code of [null, "invite_expired", "invite_used", "invite_revoked", "invalid_name", "wrong_account"])
     assert.equal(errorNotice(code), null, String(code));
-  assert.equal(errorNotice("gmail_only")?.tone, "warn");
+  assert.equal(errorNotice("email_unverified")?.tone, "warn");
+  assert.equal(errorNotice("tenant_disabled")?.tone, "warn");
   assert.equal(errorNotice("account_conflict")?.tone, "warn");
   assert.equal(errorNotice("something_new")?.lead, "Sign-in didn't finish.");
 });

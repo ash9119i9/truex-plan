@@ -116,6 +116,31 @@ test("authMode: dev by default, google only with its keys", () => {
   );
 });
 
+test("authMode: google placeholders like <from Google Cloud Console> are not values", () => {
+  const ok = {
+    AUTH_MODE: "google",
+    GOOGLE_CLIENT_ID: "123-abc.apps.googleusercontent.com",
+    GOOGLE_CLIENT_SECRET: "GOCSPX-real",
+    FRONTEND_ORIGIN: "http://localhost:3000",
+  };
+  assert.equal(authMode(ok), "google");
+  assert.throws(
+    () => authMode({ ...ok, GOOGLE_CLIENT_ID: "<from Google Cloud Console>" }),
+    /real values for GOOGLE_CLIENT_ID; found placeholder/,
+  );
+  assert.throws(
+    () =>
+      authMode({
+        ...ok,
+        GOOGLE_CLIENT_ID: " <id> ",
+        GOOGLE_CLIENT_SECRET: "<secret>",
+      }),
+    /real values for GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET/,
+  );
+  // Angle brackets inside a real-looking value are not a placeholder.
+  assert.equal(authMode({ ...ok, GOOGLE_CLIENT_SECRET: "a<b>c" }), "google");
+});
+
 test("route: handlers run inside the resolved user and tenant", async () => {
   const request = req({ [USER_HEADER]: "ashok" });
   const res = { locals: { requestId: "r1" } } as unknown as Response;

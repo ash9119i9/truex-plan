@@ -6,11 +6,15 @@ import { useTheme } from "@/lib/use-theme";
 export type UserMenuProps = {
   name?: string;
   email?: string;
+  /** Shown under the email when the person belongs to several workspaces. */
+  workspace?: string;
+  role?: "user" | "admin";
   onSettings?: () => void;
+  onSwitchWorkspace?: () => void;
   onSignOut?: () => void;
 };
 
-export function UserMenu({ name, email, onSettings, onSignOut }: UserMenuProps) {
+export function UserMenu({ name, email, workspace, role, onSettings, onSwitchWorkspace, onSignOut }: UserMenuProps) {
   const { isDark, toggle } = useTheme();
   const initial = (name || email || "").trim().charAt(0).toUpperCase();
   const hasCard = !!(name || email);
@@ -24,7 +28,12 @@ export function UserMenu({ name, email, onSettings, onSignOut }: UserMenuProps) 
         {hasCard ? (
           <span className="grow">
             {name && <span className="strong block">{name}</span>}
-            {email && <span className="muted sm">{email}</span>}
+            {email && <span className="muted sm block">{email}</span>}
+            {(workspace || role === "admin") && (
+              <span className="muted sm block">
+                {[workspace, role === "admin" ? "Admin" : ""].filter(Boolean).join(" · ")}
+              </span>
+            )}
           </span>
         ) : (
           <span className="grow strong">Account</span>
@@ -35,11 +44,17 @@ export function UserMenu({ name, email, onSettings, onSignOut }: UserMenuProps) 
         <Icon name={isDark ? "sun" : "moon"} size={15} />
         {isDark ? "Light mode" : "Dark mode"}
       </button>
-      {(onSettings || onSignOut) && <div className="menu-sep" />}
+      {(onSettings || onSwitchWorkspace || onSignOut) && <div className="menu-sep" />}
       {onSettings && (
         <button type="button" className="menu-item" onClick={onSettings}>
           <Icon name="gear" size={15} />
           Settings
+        </button>
+      )}
+      {onSwitchWorkspace && (
+        <button type="button" className="menu-item" onClick={onSwitchWorkspace}>
+          <Icon name="grid" size={15} />
+          Switch workspace
         </button>
       )}
       {onSignOut && (
