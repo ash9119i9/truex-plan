@@ -58,3 +58,9 @@ Connector raw receipts retain original verifier failures: harmless built-in disc
 - Remote CI/reviewer/merge/release evidence unverified. No push, PR, merge or production deployment was requested/performed.
 
 Runbook: [deployment/automations/RUNBOOK.md](../deployment/automations/RUNBOOK.md). Local read-only pilot services/credential directories were cleaned; test schedules paused/archived, browser rig terminated. Original source connector records/data were not mutated. Feature defaults off via `AUTOMATIONS_ENABLED`; enabling API and standalone worker requires operator configuration.
+
+## Local app visibility follow-up
+
+9 October 2026: the user's running `localhost:3000` app hid Automations because private `platform/.env` omitted `AUTOMATIONS_ENABLED`; `GET /api/automations` correctly returned `available: false`. Enabled that private local flag, configured the default local Temporal namespace/queue, started pinned CLI 1.9.1 with `.runtime/automations/temporal.sqlite` on loopback7233/UI8233, and started the standalone worker. Reloaded the existing watched API; direct and same-origin list endpoints now return `available: true`. Current configured Mongo supports transactions. Existing enabled automation count was zero before startup, and worker reconciliation reports zero failures/no existing starts. No recipe was created/enabled or model/business action run for this follow-up.
+
+The T3 browser DOM confirmed the Automations button and successful opening of the Automations screen/New automation action. Snapshot/click tools intermittently timed out; bounded DOM inspection/interaction through the same T3 preview verified the page. Local services remain running for the user; restart commands are in the runbook. No source behavior changed, so prior final regression evidence remains applicable.

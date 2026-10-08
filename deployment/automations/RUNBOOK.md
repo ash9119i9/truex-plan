@@ -1,12 +1,35 @@
 # Scheduled automation operations
 
-This packages a local PostgreSQL-backed Temporal service and a separate worker. No service or business schedule was deployed by implementation. Production operation requires explicit rollout authorization and the pending checks below. The separately authorized [real agent pilot](../../docs/architecture/automations/PILOT_EVIDENCE.md) passed in an isolated stack; a scoped connector recipe is still pending.
+This packages a local PostgreSQL-backed Temporal service and a separate worker. No service or business schedule was deployed by implementation. Production operation requires explicit rollout authorization and the pending checks below. The separately authorized [real agent pilot](../../docs/architecture/automations/PILOT_EVIDENCE.md) passed in an isolated stack, including a scoped Qlik read-only connector recipe.
 
 ## Reviewed components
 
 Temporal server/admin tools **1.32.0**, PostgreSQL **16.13**, Node **24.21.0**, and the worker TypeScript SDK **1.24.0** are pinned; container images include registry-confirmed manifest digests with amd64/arm64 entries. The former `temporalio/auto-setup` image is deprecated, so schema setup uses the supported server/admin-tools split. [Official Temporal Compose samples](https://github.com/temporalio/samples-server/tree/main/compose), [auto-setup notice](https://hub.docker.com/r/temporalio/auto-setup).
 
 `compose.yml` is a local development stack: only Temporal gRPC is published, on **127.0.0.1:7233**. PostgreSQL stays inside the Compose network. The transient root schema bootstrap writes only its private marker volume; the application worker image runs as the unprivileged Node user. Development dynamic configuration is explicitly local; review a production configuration separately.
+
+## Showing Automations in the local app
+
+Automations is hidden when the platform returns `available: false`. The default is disabled. For local development add these settings to private `platform/.env`:
+
+```dotenv
+AUTOMATIONS_ENABLED=on
+TEMPORAL_ADDRESS=127.0.0.1:7233
+TEMPORAL_NAMESPACE=default
+TEMPORAL_TASK_QUEUE=truex-automations
+```
+
+Start the pinned Temporal CLI 1.9.1 with persistent development storage, then restart the platform API so it rereads the flag. Keep Temporal and the worker running in separate terminals alongside `npm run dev`:
+
+```sh
+mkdir -p .runtime/automations
+# Use Temporal CLI 1.9.1; the verified local copy is .runtime/automations/temporal.
+.runtime/automations/temporal server start-dev --ip 127.0.0.1 --port 7233 --ui-ip 127.0.0.1 --ui-port 8233 --db-filename .runtime/automations/temporal.sqlite
+# In another terminal:
+npm --prefix platform run worker:automations
+```
+
+The private configuration and development SQLite database are ignored by Git. This local CLI is installed separately from source; provision the pinned binary before using the command on a new machine. The root `npm run dev` command starts the existing API/runtime/frontend services; it does not start Temporal or the automation worker. Refresh `http://localhost:3000` after the API restarts. Mongo must support replica-set transactions. Saving a draft does not enable a schedule; users still explicitly review and enable their recipes.
 
 ## Local validation and startup
 
