@@ -103,6 +103,7 @@ interface Thread {
   automationPolicy?: AutomationRuntimePolicy;
   automationBlocked?: string;
   automationAuditIncomplete?: boolean;
+  automationStopped?: boolean;
   id: string;
   state: TurnState;
   seq: number;
@@ -470,6 +471,7 @@ export class ThreadManager {
         threadStartMs: 0,
       };
       this.threads.set(id, t);
+      this.setAutomationPolicy(t);
     }
     return t;
   }
@@ -520,6 +522,12 @@ export class ThreadManager {
       try {
         t.automationAuditIncomplete =
           JSON.parse(readFileSync(file + ".incomplete", "utf8")) === true;
+      } catch (e: any) {
+        if (e.code !== "ENOENT") throw e;
+      }
+      try {
+        t.automationStopped =
+          JSON.parse(readFileSync(file + ".stopped", "utf8")) === true;
       } catch (e: any) {
         if (e.code !== "ENOENT") throw e;
       }
@@ -828,6 +836,12 @@ export class ThreadManager {
         "THREAD_UNLOADED",
       );
     return this.serial(id, async () => {
+      if (t.automationPolicy && t.automationStopped)
+        throw new HttpError(
+          409,
+          "Automation execution has been stopped",
+          "AUTOMATION_STOPPED",
+        );
       if (
         t.automationPolicy &&
         (this.automationAdmissionBlocked || t.automationAuditIncomplete)
@@ -906,6 +920,45 @@ export class ThreadManager {
   async interrupt(id: string) {
     return this.serial(id, async () => {
       const t = this.thread(id);
+      let stopError: unknown;
+      if (t.automationPolicy) {
+        t.automationStopped = true;
+        try {
+          writeAutomationRecord(
+            join(this.home, "automation-policies", t.id + ".json.stopped"),
+            true,
+          );
+        } catch (error) {
+          stopError = error;
+          this.draining = true;
+          t.automationAuditIncomplete = true;
+          this.automationAdmissionBlocked = true;
+        }
+        this.emit(
+          t,
+          "automation.stop_requested",
+          {
+            reason: "stop_requested",
+            method: "turn/interrupt",
+            actor: "execution-controller",
+            termination: "requested",
+          },
+          this.activeTurn(t),
+        );
+        if (t.state.kind === "idle") {
+          if (stopError) throw stopError;
+          return {
+            ok: true,
+            ...(t.loaded && t.turnOrder.length === 0
+              ? {
+                  automationPolicyVersion: 1 as const,
+                  automationPolicy: t.automationPolicy,
+                  terminationEvidence: "not_started" as const,
+                }
+              : {}),
+          };
+        }
+      }
       if (t.state.kind === "interrupting") return { ok: true };
       if (t.state.kind !== "running")
         throw new HttpError(409, "No running turn");
@@ -932,6 +985,7 @@ export class ThreadManager {
             }),
           ),
       );
+      if (stopError) throw stopError;
       return { ok: true };
     });
   }
@@ -1682,6 +1736,7 @@ export class ThreadManager {
       "approval.resolved",
       "automation.blocked",
       "automation.tool",
+      "automation.stop_requested",
       "goal.cleared",
       // Lets platform keep the plan when no browser is subscribed.
       "plan.updated",
@@ -2054,6 +2109,26 @@ export class ThreadManager {
     }
     const unattended =
       typeof origin === "string" ? this.threads.get(origin) : undefined;
+    if (unattended?.automationPolicy && unattended.automationStopped) {
+      if (method === "item/tool/call")
+        this.runtime.respond(msg.id, {
+          success: false,
+          contentItems: [
+            {
+              type: "inputText",
+              text: "Automation execution has been stopped",
+            },
+          ],
+        });
+      else if (Object.hasOwn(defaults, method) && defaults[method] !== null)
+        this.runtime.respond(msg.id, defaults[method]);
+      else
+        this.runtime.respond(msg.id, undefined, {
+          code: -32601,
+          message: "Automation execution has been stopped",
+        });
+      return;
+    }
     if (
       unattended?.automationPolicy &&
       (method === "item/tool/requestUserInput" ||

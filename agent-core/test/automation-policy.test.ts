@@ -302,3 +302,84 @@ test("restricted automation records use private permissions and write failure st
     /audit is incomplete/,
   );
 });
+test("automation cancellation before late submission is durable across resume and denies subsequent tools", async (t) => {
+  const { runtime, manager, home } = fixture(t);
+  await manager.create({ automationPolicy: policy });
+  assert.deepEqual(await manager.interrupt("root_1"), {
+    ok: true,
+    automationPolicyVersion: 1,
+    automationPolicy: policy,
+    terminationEvidence: "not_started",
+  });
+  await assert.rejects(
+    manager.message("root_1", "late recipe dispatch"),
+    /stopped/,
+  );
+  assert.equal(
+    runtime.calls.some((call) => call.method === "turn/start"),
+    false,
+  );
+  manager.close();
+  const recoveredRuntime = new Fake();
+  const recovered = new ThreadManager(recoveredRuntime, home);
+  t.after(() => recovered.close());
+  assert.equal(
+    ((await recovered.interrupt("root_1")) as any).terminationEvidence,
+    undefined,
+  );
+  await recovered.resume("root_1");
+  assert.equal(
+    ((await recovered.interrupt("root_1")) as any).terminationEvidence,
+    "not_started",
+  );
+  await assert.rejects(
+    recovered.message("root_1", "late dispatch after restart"),
+    /stopped/,
+  );
+  recoveredRuntime.emit("serverRequest", {
+    id: 17,
+    method: "item/tool/call",
+    params: {
+      threadId: "root_1",
+      turnId: "root",
+      tool: "write_file",
+      arguments: { path: "effect.txt", content: "mutation" },
+    },
+  });
+  assert.equal(recoveredRuntime.replies.at(-1).result.success, false);
+  assert.equal(
+    manager
+      .records("root_1")
+      .some((record) => record.event.type === "automation.stop_requested"),
+    true,
+  );
+});
+test("idle interactive interruption still rejects and does not block later messages", async (t) => {
+  const { manager } = fixture(t);
+  await manager.create({});
+  await assert.rejects(manager.interrupt("root_1"), /No running turn/);
+  assert.equal(
+    (await manager.message("root_1", "interactive message")).turnId,
+    "turn_1",
+  );
+});
+test("running or previously accepted automation roots cannot be declared never started", async (t) => {
+  const { runtime, manager } = fixture(t);
+  await manager.create({ automationPolicy: policy });
+  await manager.message("root_1", "recipe");
+  assert.equal(
+    ((await manager.interrupt("root_1")) as any).terminationEvidence,
+    undefined,
+  );
+  runtime.emit("notification", {
+    method: "turn/completed",
+    params: {
+      threadId: "root_1",
+      turn: { id: "turn_1", status: "interrupted" },
+    },
+  });
+  assert.equal(
+    ((await manager.interrupt("root_1")) as any).terminationEvidence,
+    undefined,
+  );
+});

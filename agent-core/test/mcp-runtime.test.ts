@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { once } from "node:events";
 import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -116,11 +117,17 @@ for (const scenario of ["read-only", "approve", "deny"] as const)
       const client = new BusinessRuntime(binary, home, 15000);
       const manager = new ThreadManager(client, home);
       t.after(async () => {
+        const exited = client.identity
+          ? once(client, "exit", { signal: AbortSignal.timeout(5000) })
+          : undefined;
         manager.close();
         client.stop();
+        if (exited) {
+          const [error] = await exited;
+          assert.match(error.cause?.message ?? "", /Codex runtime exited/);
+        }
         server.closeAllConnections();
         await new Promise<void>((r) => server.close(() => r()));
-        await new Promise((r) => setTimeout(r, 300));
         rmSync(home, { recursive: true, force: true });
       });
       await client.start();

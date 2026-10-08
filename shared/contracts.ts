@@ -310,6 +310,7 @@ export type DomainType =
   | "approval.resolved"
   | "automation.blocked"
   | "automation.tool"
+  | "automation.stop_requested"
   | "plan.updated"
   | "goal.updated"
   | "goal.cleared"
