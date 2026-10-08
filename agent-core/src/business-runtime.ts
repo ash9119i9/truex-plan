@@ -19,6 +19,7 @@ import {
 } from "./script-runner";
 import { visualizationInstructions } from "../../shared/visualizations";
 import { suggestionInstructions } from "../../shared/suggestions";
+import { automationPolicy, unattendedInstructions } from "./automation-policy";
 import {
   DEFAULT_TENANT,
   skillInstructions,
@@ -254,13 +255,22 @@ export class BusinessRuntime extends CodexClient {
     }
   }
   private configuration(params: any, cwd: string) {
+    const automation = automationPolicy(params.automationPolicy);
     const helpers = subAgentOptions(params.subAgents);
     const { persona, scope } = personaOptions(params);
     const skills = skillSet(params.skills);
     const instructions =
       persona +
       "\n\n" +
-      businessInstructions.replace(
+      (automation
+        ? businessInstructions
+            .replace(
+              /Answer questions clearly[\s\S]*?For current information/,
+              unattendedInstructions + "\nFor current information",
+            )
+            .replace(proactiveHelpers, "Do not delegate to helper agents.")
+        : businessInstructions
+      ).replace(
         proactiveHelpers,
         helpers.mode === "proactive" ? proactiveHelpers : explicitHelpers,
       ) +
@@ -296,11 +306,11 @@ export class BusinessRuntime extends CodexClient {
       "features.tool_call_mcp_elicitation": false,
       // Pin the V1 helper backend; V2 ignores max_depth. Helpers inherit this
       // profile, so they get the same restricted tools as the main agent.
-      "features.multi_agent": true,
+      "features.multi_agent": !automation,
       "features.multi_agent_v2": false,
-      "agents.max_depth": 1,
+      "agents.max_depth": automation ? 0 : 1,
       "agents.max_concurrent_threads_per_session": helpers.maxConcurrent,
-      "features.goals": true,
+      "features.goals": !automation,
       "tools.experimental_request_user_input.enabled": true,
       "features.shell_tool": false,
       "features.unified_exec": false,
@@ -383,6 +393,7 @@ export class BusinessRuntime extends CodexClient {
           visualizationTools: 1,
           subAgents: subAgentOptions(params.subAgents),
           skills,
+          automationPolicy: automationPolicy(params.automationPolicy),
         }),
         {
           mode: 0o600,
@@ -401,6 +412,9 @@ export class BusinessRuntime extends CodexClient {
       const profile = this.configuration(
         {
           ...params,
+          automationPolicy:
+            this.record(params.threadId).automationPolicy ??
+            params.automationPolicy,
           subAgents: params.subAgents ?? this.helperSettings(params.threadId),
           skills: params.skills ?? this.skills(params.threadId),
         },

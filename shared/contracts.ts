@@ -91,7 +91,15 @@ export interface AgentSummary {
   canUse?: boolean;
   canWrite?: boolean;
 }
+/** Internal trusted execution context; never accepted from ordinary chat clients. */
+export interface AutomationRuntimePolicy {
+  automationId: string;
+  runId: string;
+  revision: number;
+  promptRef: string;
+}
 export interface Session {
+  automationPolicy?: AutomationRuntimePolicy;
   runtimePolicyVersion?: number;
   /** Alpha approval mode; absent means the configured default. */
   approvalMode?: ApprovalMode;
@@ -300,6 +308,8 @@ export type DomainType =
   | "error"
   | "approval.requested"
   | "approval.resolved"
+  | "automation.blocked"
+  | "automation.tool"
   | "plan.updated"
   | "goal.updated"
   | "goal.cleared"
@@ -325,6 +335,8 @@ export interface DomainEvent {
   data: Record<string, any>;
 }
 export interface Snapshot {
+  automationPolicy?: AutomationRuntimePolicy;
+  automationPolicyVersion?: 1;
   thinking?: {
     id: string;
     turnId?: string;

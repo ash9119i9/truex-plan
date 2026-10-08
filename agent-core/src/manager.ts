@@ -29,6 +29,7 @@ import type {
   TurnState,
   TurnTiming,
   TurnTrace,
+  AutomationRuntimePolicy,
 } from "../../shared/contracts";
 import {
   ALLOW_FOR_CHAT,
@@ -55,6 +56,12 @@ import type { RuntimeReadOptions } from "../../shared/runtime-read-options";
 import { runtimeResumeResponse } from "../../shared/runtime-resume-options";
 import type { RuntimeResumeOptions } from "../../shared/runtime-resume-options";
 import { inventory, validateRequest } from "./schema";
+import {
+  automationPolicy as parseAutomationPolicy,
+  safeToolName,
+  unattendedInstructions,
+  writeAutomationRecord,
+} from "./automation-policy";
 import {
   autoAnswer,
   defaults,
@@ -93,6 +100,9 @@ interface Clock {
   turnId?: string;
 }
 interface Thread {
+  automationPolicy?: AutomationRuntimePolicy;
+  automationBlocked?: string;
+  automationAuditIncomplete?: boolean;
   id: string;
   state: TurnState;
   seq: number;
@@ -250,6 +260,7 @@ export class ThreadManager {
   readonly threads = new Map<string, Thread>();
   // Helper agent thread id -> its record under the root conversation.
   private children = new Map<string, Child>();
+  private automationHelpers = new Set<string>();
   // Events from threads not yet identified as helpers, replayed on spawn.
   private early = new Map<string, { method: string; p: any }[]>();
   // Helpers of deleted or archived conversations. Codex reports each one
@@ -268,6 +279,7 @@ export class ThreadManager {
   rateLimits: RateLimitView | null = null;
   unknownMethods = 0;
   draining = false;
+  private automationAdmissionBlocked = false;
   constructor(
     readonly runtime: Runtime,
     readonly home: string,
@@ -277,6 +289,13 @@ export class ThreadManager {
     readonly stallMs = Number(process.env.TURN_STALL_MS) || defaultStallMs,
   ) {
     mkdirSync(join(home, "adapter-records"), { recursive: true });
+    mkdirSync(join(home, "automation-policies"), {
+      recursive: true,
+      mode: 0o700,
+    });
+    this.automationAdmissionBlocked = readdirSync(
+      join(home, "automation-policies"),
+    ).some((file) => file.endsWith(".incomplete"));
     runtime.on("notification", (msg) =>
       this.notification(msg.method, msg.params || {}),
     );
@@ -347,6 +366,7 @@ export class ThreadManager {
         method: "turn/completed",
         threadId: t.id,
         turn: { id: turnId, status: "failed", code: error.code, error },
+        ...(t.automationPolicy ? { terminationEvidence: "unconfirmed" } : {}),
         ...done,
       },
       turnId,
@@ -474,6 +494,75 @@ export class ThreadManager {
       throw new HttpError(503, "Thread capacity reached", "CAPACITY");
     this.reservations++;
   }
+  private setAutomationPolicy(t: Thread, policy?: AutomationRuntimePolicy) {
+    const file = join(this.home, "automation-policies", t.id + ".json");
+    const saved =
+      t.automationPolicy ??
+      (() => {
+        try {
+          return parseAutomationPolicy(JSON.parse(readFileSync(file, "utf8")));
+        } catch (e: any) {
+          if (e.code === "ENOENT") return undefined;
+          throw e;
+        }
+      })();
+    if (saved && policy && JSON.stringify(saved) !== JSON.stringify(policy))
+      throw new HttpError(
+        409,
+        "Automation execution policy is immutable",
+        "AUTOMATION_POLICY",
+      );
+    if (policy && !saved) {
+      writeAutomationRecord(file, policy);
+    }
+    t.automationPolicy = saved ?? policy;
+    if (t.automationPolicy) {
+      try {
+        t.automationAuditIncomplete =
+          JSON.parse(readFileSync(file + ".incomplete", "utf8")) === true;
+      } catch (e: any) {
+        if (e.code !== "ENOENT") throw e;
+      }
+    }
+  }
+  private automationBlock(
+    t: Thread,
+    reason: string,
+    method: string,
+    turnId?: string,
+    itemId?: string,
+  ) {
+    const rootTurn = turnId ?? this.activeTurn(t);
+    this.emit(
+      t,
+      "automation.blocked",
+      {
+        reason,
+        method,
+        decision: "denied",
+        actor: "unattended-policy",
+        termination: "requested",
+      },
+      rootTurn,
+      itemId,
+    );
+    t.automationBlocked = rootTurn ?? "blocked";
+    if (rootTurn) {
+      if (t.state.kind === "starting" || this.activeTurn(t) === rootTurn)
+        t.state = { kind: "interrupting", turnId: rootTurn };
+      void this.runtime
+        .request("turn/interrupt", { threadId: t.id, turnId: rootTurn })
+        .catch(() => {
+          this.emit(
+            t,
+            "automation.blocked",
+            { reason, method, termination: "unconfirmed" },
+            rootTurn,
+            itemId,
+          );
+        });
+    }
+  }
   async create(params: any = {}) {
     // Truex's helper and persona settings are not runtime parameters; the
     // business runtime turns them into enforced config and instructions.
@@ -483,12 +572,20 @@ export class ThreadManager {
       scope,
       approvalMode,
       approvalNameHeuristic,
+      automationPolicy,
       tenantId,
       skills,
       mcpFingerprint,
       ...start
     } = params || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
+    const unattended = parseAutomationPolicy(automationPolicy);
+    if (unattended && this.automationAdmissionBlocked)
+      throw new HttpError(
+        503,
+        "Automation audit is incomplete; repair before dispatch",
+        "AUDIT_INCOMPLETE",
+      );
     parseFingerprint(mcpFingerprint);
     const tenant = parseTenant(tenantId);
     skillSet(skills);
@@ -499,14 +596,30 @@ export class ThreadManager {
     try {
       const result = await this.runtime.request("thread/start", {
         ...start,
+        ...(unattended
+          ? {
+              config: {
+                ...start.config,
+                "features.multi_agent": false,
+                "features.multi_agent_v2": false,
+                "agents.max_depth": 0,
+                "features.goals": false,
+              },
+              baseInstructions: [start.baseInstructions, unattendedInstructions]
+                .filter(Boolean)
+                .join("\n"),
+            }
+          : {}),
         ...(subAgents === undefined ? {} : { subAgents }),
         ...(persona === undefined ? {} : { persona }),
         ...(scope === undefined ? {} : { scope }),
+        ...(unattended === undefined ? {} : { automationPolicy: unattended }),
         ...(tenantId === undefined ? {} : { tenantId: tenant }),
         ...(skills === undefined ? {} : { skills }),
       });
       const t = this.thread(result.thread.id);
       t.tenantId = tenant;
+      this.setAutomationPolicy(t, unattended);
       this.roots.add(t.id);
       this.setMode(t.id, approvalMode, approvalNameHeuristic);
       t.loaded = true;
@@ -516,6 +629,12 @@ export class ThreadManager {
       return {
         threadId: t.id,
         threadStartMs: t.threadStartMs,
+        ...(t.automationPolicy
+          ? {
+              automationPolicy: t.automationPolicy,
+              automationPolicyVersion: 1 as const,
+            }
+          : {}),
         ...(approvalMode === undefined
           ? {}
           : { approvalMode: parseMode(approvalMode) }),
@@ -529,6 +648,7 @@ export class ThreadManager {
     const {
       approvalMode,
       approvalNameHeuristic,
+      automationPolicy,
       mcpFingerprint,
       response: requestedResponse,
       ...params
@@ -546,6 +666,7 @@ export class ThreadManager {
     return this.serial(id, async () => {
       const t = this.thread(id);
       this.ownedBy(t, params.tenantId);
+      this.setAutomationPolicy(t, parseAutomationPolicy(automationPolicy));
       const moded = this.modes.has(id) || approvalMode !== undefined;
       this.setMode(id, approvalMode, approvalNameHeuristic);
       const confirmed = (snapshot: Snapshot) => ({
@@ -614,6 +735,24 @@ export class ThreadManager {
       this.redactor.remember(params);
       const result = await this.runtime.request("thread/resume", {
         ...params,
+        ...(t.automationPolicy
+          ? {
+              automationPolicy: t.automationPolicy,
+              config: {
+                ...params.config,
+                "features.multi_agent": false,
+                "features.multi_agent_v2": false,
+                "agents.max_depth": 0,
+                "features.goals": false,
+              },
+              baseInstructions: [
+                params.baseInstructions,
+                unattendedInstructions,
+              ]
+                .filter(Boolean)
+                .join("\n"),
+            }
+          : {}),
         threadId: id,
       });
       t.loaded = true;
@@ -689,8 +828,23 @@ export class ThreadManager {
         "THREAD_UNLOADED",
       );
     return this.serial(id, async () => {
+      if (
+        t.automationPolicy &&
+        (this.automationAdmissionBlocked || t.automationAuditIncomplete)
+      )
+        throw new HttpError(
+          503,
+          "Automation audit is incomplete; repair before dispatch",
+          "AUDIT_INCOMPLETE",
+        );
       if (this.draining && t.state.kind === "idle")
         throw new HttpError(503, "Agent core is draining", "DRAINING");
+      if (t.automationPolicy && t.automationBlocked)
+        throw new HttpError(
+          409,
+          "Automation requires human action",
+          "AUTOMATION_BLOCKED",
+        );
       if (t.state.kind === "interrupting")
         throw new HttpError(
           409,
@@ -835,6 +989,12 @@ export class ThreadManager {
   // event was missed, without reading or encoding the retained transcript.
   private operationalSnapshot(t: Thread): Snapshot {
     return {
+      ...(t.automationPolicy
+        ? {
+            automationPolicy: t.automationPolicy,
+            automationPolicyVersion: 1 as const,
+          }
+        : {}),
       cursor: `${this.generation}:${t.seq}`,
       state: t.state,
       pending: [...t.pending.values()]
@@ -919,6 +1079,22 @@ export class ThreadManager {
     const rootId = this.children.get(parentId)?.rootId ?? parentId;
     const root = this.threads.get(rootId);
     if (!root || rootId === childId) return null;
+    if (root.automationPolicy) {
+      this.automationBlock(
+        root,
+        "delegation_prohibited",
+        "thread/spawn",
+        this.activeTurn(root),
+      );
+      this.dropped.add(childId);
+      this.automationHelpers.add(childId);
+      if (this.runtime instanceof BusinessRuntime)
+        this.runtime.helpers.add(childId);
+      void this.runtime
+        .request("thread/archive", { threadId: childId })
+        .catch(() => {});
+      return null;
+    }
     // An early helper event may have created a record no client observes.
     const stray = this.threads.get(childId);
     if (stray && stray.subscribers.size === 0) this.threads.delete(childId);
@@ -1481,7 +1657,15 @@ export class ThreadManager {
     turnId?: string,
     itemId?: string,
   ) {
-    data = this.redactor.clean(data);
+    data = this.redactor.clean(
+      t.automationPolicy
+        ? {
+            ...data,
+            automationPolicy: t.automationPolicy,
+            ...(t.automationAuditIncomplete ? { auditIncomplete: true } : {}),
+          }
+        : data,
+    );
     const event: DomainEvent = {
       type,
       threadId: t.id,
@@ -1496,10 +1680,20 @@ export class ThreadManager {
       "message.final",
       "turn.completed",
       "approval.resolved",
+      "automation.blocked",
+      "automation.tool",
       "goal.cleared",
       // Lets platform keep the plan when no browser is subscribed.
       "plan.updated",
     ].includes(type);
+    if (
+      t.automationPolicy &&
+      ["approval.requested", "turn.started", "error"].includes(type)
+    )
+      durable = true;
+    // A failed spool cannot store its own error; avoid recursion.
+    if (type === "error" && data?.code === "STORAGE_UNAVAILABLE")
+      durable = false;
     if (type === "goal.cleared") this.goalRecords.set(t.id, "cleared");
     // Goal changes are durable; token-only updates are not.
     if (type === "goal.updated") {
@@ -1521,10 +1715,26 @@ export class ThreadManager {
       );
       try {
         mkdirSync(dir, { recursive: true });
-        writeFileSync(file + ".tmp", JSON.stringify(event));
-        renameSync(file + ".tmp", file);
+        if (t.automationPolicy) writeAutomationRecord(file, event);
+        else {
+          writeFileSync(file + ".tmp", JSON.stringify(event));
+          renameSync(file + ".tmp", file);
+        }
       } catch (e) {
         lost = true;
+        if (t.automationPolicy) {
+          t.automationAuditIncomplete = true;
+          this.automationAdmissionBlocked = true;
+          // A surviving control marker prevents a restart from claiming a complete audit.
+          try {
+            writeAutomationRecord(
+              join(this.home, "automation-policies", t.id + ".json.incomplete"),
+              true,
+            );
+          } catch {
+            /* Total storage failure remains unknown to the platform, which must retain its fence. */
+          }
+        }
         this.draining = true;
         log("error", "durable record write failed; stopping admission", {
           threadId: t.id,
@@ -1606,6 +1816,7 @@ export class ThreadManager {
         })
       )
         return;
+      if (this.dropped.has(id)) return;
       // A helper can speak before the root's spawn call names it. Hold its
       // events instead of creating a thread record no client observes.
       if (!spawn && this.holdEarly(id, method, p)) return;
@@ -1750,6 +1961,33 @@ export class ThreadManager {
         this.settle(t, request, undefined, "runtime-resolved", false);
     }
     if (method === "item/started" || method === "item/completed") {
+      if (
+        t.automationPolicy &&
+        [
+          "mcpToolCall",
+          "dynamicToolCall",
+          "commandExecution",
+          "fileChange",
+          "collabAgentToolCall",
+        ].includes(p.item?.type)
+      ) {
+        this.emit(
+          t,
+          "automation.tool",
+          {
+            phase: method === "item/started" ? "started" : "completed",
+            tool: safeToolName(p.item.tool ?? p.item.type),
+            server: safeToolName(p.item.server),
+            status: safeToolName(p.item.status),
+            success:
+              typeof p.item.success === "boolean" ? p.item.success : undefined,
+            errorCode: safeToolName(p.item.error?.code),
+            effects: method === "item/started" ? "unknown" : "unverified",
+          },
+          turnId,
+          itemId,
+        );
+      }
       this.collab(t.id, p.item);
       this.builder(t, turnId)?.onItem(
         method === "item/started" ? "started" : "completed",
@@ -1762,6 +2000,8 @@ export class ThreadManager {
     if (method === "turn/completed") {
       for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
       data = { ...data, ...this.finishTurn(t, turnId, p.turn?.status, begin) };
+      if (t.automationPolicy)
+        data = { ...data, terminationEvidence: "runtime" };
       if (
         (t.state.kind === "running" || t.state.kind === "interrupting") &&
         t.state.turnId === turnId
@@ -1802,6 +2042,57 @@ export class ThreadManager {
     // Helpers never wait on the user; the main agent handles clarifications
     // and documents, so their requests are declined at once.
     const origin = msg.params?.threadId || msg.params?.conversationId;
+    if (typeof origin === "string" && this.automationHelpers.has(origin)) {
+      if (Object.hasOwn(defaults, method) && defaults[method] !== null)
+        this.runtime.respond(msg.id, defaults[method]);
+      else
+        this.runtime.respond(msg.id, undefined, {
+          code: -32601,
+          message: "Automation helpers are prohibited",
+        });
+      return;
+    }
+    const unattended =
+      typeof origin === "string" ? this.threads.get(origin) : undefined;
+    if (
+      unattended?.automationPolicy &&
+      (method === "item/tool/requestUserInput" ||
+        method === "mcpServer/elicitation/request" ||
+        method.endsWith("requestApproval") ||
+        method === "applyPatchApproval" ||
+        method === "execCommandApproval")
+    ) {
+      const reason =
+        method === "item/tool/requestUserInput" ||
+        method === "mcpServer/elicitation/request"
+          ? "human_action_required"
+          : "approval_required";
+      this.automationBlock(
+        unattended,
+        reason,
+        method,
+        msg.params?.turnId,
+        msg.params?.itemId,
+      );
+      this.runtime.respond(msg.id, defaults[method]);
+      return;
+    }
+    if (
+      unattended?.automationPolicy &&
+      unattended.automationBlocked &&
+      method === "item/tool/call"
+    ) {
+      this.runtime.respond(msg.id, {
+        success: false,
+        contentItems: [
+          {
+            type: "inputText",
+            text: "Automation stopped: human action required",
+          },
+        ],
+      });
+      return;
+    }
     // A thread that was never started, resumed or forked here is a helper
     // that has not been identified yet.
     if (
@@ -2166,6 +2457,21 @@ export class ThreadManager {
     }
   }
   async capability(id: string, method: string, params: any) {
+    if (
+      this.thread(id).automationPolicy &&
+      ![
+        "thread/read",
+        "thread/goal/get",
+        "thread/archive",
+        "thread/delete",
+        "thread/unsubscribe",
+      ].includes(method)
+    )
+      throw new HttpError(
+        403,
+        "Runtime controls are unavailable for automations",
+        "AUTOMATION_POLICY",
+      );
     if (
       this.runtime instanceof BusinessRuntime &&
       method !== "thread/delete" &&
