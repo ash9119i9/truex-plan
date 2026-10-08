@@ -1,0 +1,65 @@
+# Local isolated persistence stack. Production needs reviewed TLS/auth, HA and backups.
+services:
+  postgresql:
+    image: postgres:16.13@sha256:5d143123fdf80462d1778cd4f24b9f7ca13c87174bca19141fb194c5a1ebca59
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:?Set a private local database password}
+    volumes:
+      - temporal-postgresql:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U temporal"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  schema:
+    # Local one-shot bootstrap owns its private schema marker volume.
+    user: "0:0"
+    image: temporalio/admin-tools:1.32.0@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: temporal
+      SQL_PASSWORD: ${TEMPORAL_POSTGRES_PASSWORD:?Set a private local database password}
+    volumes:
+      - ./setup-schema.sh:/scripts/setup-schema.sh:ro
+      - temporal-schema:/state
+    entrypoint: [/bin/sh, /scripts/setup-schema.sh]
+  temporal:
+    image: temporalio/server:1.32.0@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae
+    depends_on:
+      schema:
+        condition: service_completed_successfully
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: ${TEMPORAL_POSTGRES_PASSWORD:?Set a private local database password}
+      POSTGRES_SEEDS: postgresql
+      BIND_ON_IP: 0.0.0.0
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/automations.yaml
+    ports:
+      - "127.0.0.1:7233:7233"
+    volumes:
+      - ./dynamicconfig.yaml:/etc/temporal/config/dynamicconfig/automations.yaml:ro
+    healthcheck:
+      test: [CMD, nc, -z, localhost, "7233"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 60
+  namespace:
+    image: temporalio/admin-tools:1.32.0@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_NAMESPACE: default
+    volumes:
+      - ./setup-namespace.sh:/scripts/setup-namespace.sh:ro
+    entrypoint: [/bin/sh, /scripts/setup-namespace.sh]
+volumes:
+  temporal-postgresql:
+  temporal-schema:

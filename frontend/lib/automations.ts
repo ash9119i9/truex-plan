@@ -9,7 +9,10 @@ import type {
 import { validateAutomationRecipe } from "../../shared/automations.ts";
 import { api } from "./api.ts";
 
-export type AutomationRunView = AutomationRun & { unread?: boolean };
+export type AutomationRunView = AutomationRun & {
+  unread?: boolean;
+  cancellationRequestedAt?: string;
+};
 export type AutomationView = AutomationDefinition & {
   recipe: AutomationRecipe;
   activeRunId?: string;
@@ -151,9 +154,16 @@ export function canRetryAutomationRun(
   );
 }
 export function canRequestAutomationCancellation(
-  run: Pick<AutomationRun, "status" | "stopState">,
+  run: Pick<
+    AutomationRunView,
+    "status" | "stopState" | "cancellationRequestedAt"
+  >,
 ): boolean {
-  if (run.status === "cancellation_requested" || run.stopState === "stopped")
+  if (
+    run.cancellationRequestedAt ||
+    run.status === "cancellation_requested" ||
+    run.stopState === "stopped"
+  )
     return false;
   return (
     ["accepted", "preparing", "running"].includes(run.status) ||

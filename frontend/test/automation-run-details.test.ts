@@ -22,6 +22,11 @@ test("cancellation remains available for fenced outcomes until already requested
     { status: "cancelled", stopState: "stopped" },
     { status: "cancellation_requested", stopState: "unknown" },
     { status: "cancellation_requested", stopState: "stop_requested" },
+    {
+      status: "failed",
+      stopState: "unknown",
+      cancellationRequestedAt: "2026-10-09T00:00:00.000Z",
+    },
   ] as const)
     assert.equal(automations.canRequestAutomationCancellation(run), false);
 });

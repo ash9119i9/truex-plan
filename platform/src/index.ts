@@ -1,3 +1,8 @@
+import { temporalSettings } from "./automation/connection";
+import { Connection, Client } from "@temporalio/client";
+import { AutomationService } from "./automation/service";
+import { AutomationTemporalClient } from "./automation/temporal";
+import { automationRoutes } from "./automation/routes";
 import "reflect-metadata";
 import "dotenv/config";
 import { Module } from "@nestjs/common";
@@ -345,6 +350,29 @@ async function main() {
       );
     next();
   });
+  const automationsEnabled = process.env.AUTOMATIONS_ENABLED === "on";
+  let automations: Promise<AutomationService> | undefined;
+  const getAutomations = () => {
+    if (!automations)
+      automations = temporalSettings()
+        .then(async (settings) => {
+          const connection = await Connection.connect(settings.connection);
+          return new AutomationService(
+            store,
+            service,
+            new AutomationTemporalClient(
+              new Client({ connection, namespace: settings.namespace }),
+              settings.taskQueue,
+            ),
+          );
+        })
+        .catch((error) => {
+          automations = undefined;
+          throw error;
+        });
+    return automations;
+  };
+  automationRoutes(http, getAutomations, automationsEnabled);
   http.get(
     "/api/agents",
     route(async (_req, res) => res.json(await service.agents())),

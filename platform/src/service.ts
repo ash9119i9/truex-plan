@@ -1,3 +1,9 @@
+import { AutomationStore } from "./automation/store";
+import {
+  ingestAutomationEvidence,
+  markAutomationAuditFailure,
+  repairAutomationAudit,
+} from "./automation/evidence";
 import { httpError } from "../../shared/errors";
 import { businessCapabilityParams } from "../../shared/business-capabilities";
 import {
@@ -1419,6 +1425,10 @@ export class PlatformService {
       archived: { $ne: true },
       runtimePolicyVersion: POLICY_VERSION,
       ...ownerFilter("userId"),
+      $or: [
+        { automationPolicy: { $exists: false } },
+        { userId: currentUser()?.id ?? "" },
+      ],
     };
     if (projectId !== undefined) filter.projectId = projectIdOf(projectId);
     const sessions = await this.store.sessions
@@ -1650,11 +1660,25 @@ export class PlatformService {
       ownerId: session.userId,
     });
     Object.assign(config, this.modeOptions(session.approvalMode));
+    if (session.automationPolicy)
+      config.automationPolicy = session.automationPolicy;
     if (session.settings?.model) config.model = session.settings.model;
     if (session.settings?.effort)
       config.config.model_reasoning_effort = session.settings.effort;
     if (options.response) config.response = options.response;
     const snapshot = await this.owned(session, "/resume", "POST", config);
+    if (
+      session.automationPolicy &&
+      (snapshot.automationPolicyVersion !== 1 ||
+        !Object.entries(session.automationPolicy).every(
+          ([key, value]) => snapshot.automationPolicy?.[key] === value,
+        ))
+    )
+      throw new ApiError(
+        422,
+        "Runtime does not confirm unattended policy",
+        "AUTOMATION_POLICY_UNSUPPORTED",
+      );
     await confirmRuntimeApproval(snapshot, config, (mode) =>
       this.owned(session, "/approval-mode", "POST", { mode }),
     );
@@ -2094,8 +2118,22 @@ export class PlatformService {
                 : null,
           });
       }
-      await this.store.persist(s._id, event);
+      const automations = s.automationPolicy
+        ? new AutomationStore(this.store)
+        : undefined;
+      try {
+        await this.store.persist(s._id, event);
+        if (automations) await ingestAutomationEvidence(automations, s, event);
+      } catch (error) {
+        if (automations && s.automationPolicy)
+          await markAutomationAuditFailure(automations, s).catch(
+            () => undefined,
+          );
+        throw error;
+      }
     }
+    if (s.automationPolicy && records.length)
+      await repairAutomationAudit(new AutomationStore(this.store), s);
     if (records.length)
       await this.owned(s, "/records/ack", "POST", {
         keys: records.map((r: any) => r.key),

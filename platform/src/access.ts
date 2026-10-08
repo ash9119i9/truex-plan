@@ -33,16 +33,24 @@ export function decide(
 ): Decision {
   if (!user) return "allow";
   if (ownerId && ownerId === user.id) return "allow";
-  const readable =
-    user.role === "admin" || (!!ownerId && visibility === "all");
+  const readable = user.role === "admin" || (!!ownerId && visibility === "all");
   if (!readable) return "hidden";
   return mode === "read" ? "allow" : "readOnly";
 }
 
-export function checkSession<T extends { userId?: string }>(
-  session: T,
-  mode: Access,
-): T {
+export function checkSession<
+  T extends { userId?: string; automationPolicy?: unknown },
+>(session: T, mode: Access): T {
+  if (session.automationPolicy && currentUser()) {
+    if (currentUser()!.id !== session.userId)
+      throw new ApiError(404, "Session not found", "SESSION_NOT_FOUND");
+    if (mode === "write")
+      throw new ApiError(
+        409,
+        "Automation conversations are managed by their saved recipe",
+        "AUTOMATION_SESSION_READ_ONLY",
+      );
+  }
   const decision = decide(
     session.userId,
     mode,

@@ -6,7 +6,11 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/platform/src/index.js",
     "build": "tsc",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "test:automation:temporal": "tsx --test test/automation-temporal.integration.ts",
+    "worker:automations": "tsx src/automation/main.ts",
+    "worker:automations:start": "node dist/platform/src/automation/main.js",
+    "test:automation:http": "tsx --test test/automation-http.integration.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-agentcore": "^3.1146.0",
@@ -14,13 +18,21 @@
     "@nestjs/core": "^11.1.0",
     "@nestjs/platform-express": "^11.1.0",
     "@smithy/node-http-handler": "^4.12.1",
+    "@temporalio/activity": "1.24.0",
+    "@temporalio/client": "1.24.0",
+    "@temporalio/common": "1.24.0",
+    "@temporalio/proto": "1.24.0",
+    "@temporalio/worker": "1.24.0",
+    "@temporalio/workflow": "1.24.0",
     "dotenv": "^17.2.0",
+    "long": "5.3.2",
     "mongodb": "^6.19.0",
     "openid-client": "6.8.8",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.0"
   },
   "devDependencies": {
+    "@temporalio/testing": "1.24.0",
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "mongodb-memory-server": "^10.2.0",

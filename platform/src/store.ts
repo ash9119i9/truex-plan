@@ -280,7 +280,10 @@ export class Store {
     return [
       this.users.createIndex({ googleSub: 1 }, { unique: true }),
       this.users.createIndex({ emailKey: 1 }, { unique: true }),
-      this.memberships.createIndex({ userId: 1, tenantId: 1 }, { unique: true }),
+      this.memberships.createIndex(
+        { userId: 1, tenantId: 1 },
+        { unique: true },
+      ),
       this.memberships.createIndex({ tenantId: 1, role: 1 }),
       this.invites.createIndex({ tokenHash: 1 }, { unique: true }),
       // One pending invite per address and tenant. Partial filters cannot
@@ -395,7 +398,9 @@ export class Store {
       ...docs.filter((d) => d._id !== DEFAULT_TENANT_ID),
     ])
       try {
-        refs.push(d && d._id !== DEFAULT_TENANT_ID ? this.toRef(d) : this.defaultRef(d));
+        refs.push(
+          d && d._id !== DEFAULT_TENANT_ID ? this.toRef(d) : this.defaultRef(d),
+        );
       } catch (error) {
         log("error", "tenant skipped by ingestion", {
           tenantId: d?._id ?? DEFAULT_TENANT_ID,
@@ -559,24 +564,28 @@ export class Store {
         cursor: event.cursor,
         at: event.at,
       });
-    if (event.type === "message.final")
+    if (event.type === "message.final") {
+      const automation = await this.sessions.findOne(
+        { _id: sessionId, automationPolicy: { $exists: true } },
+        { projection: { _id: 1 } },
+      );
+      const message = {
+        sessionId,
+        role: "assistant" as const,
+        text: event.data.text,
+        at: event.at,
+        turnId: event.turnId,
+        itemId: event.itemId,
+        messageIndex: event.data.messageIndex,
+      };
       await this.messages.updateOne(
         {
           _id: `${sessionId}:assistant:${event.turnId}:${event.data.messageIndex ?? event.itemId}`,
         },
-        {
-          $set: {
-            sessionId,
-            role: "assistant",
-            text: event.data.text,
-            at: event.at,
-            turnId: event.turnId,
-            itemId: event.itemId,
-            messageIndex: event.data.messageIndex,
-          },
-        },
+        automation ? { $setOnInsert: message } : { $set: message },
         { upsert: true },
       );
+    }
     if (event.type === "approval.resolved")
       await this.sessions.updateOne(
         {

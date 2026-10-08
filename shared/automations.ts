@@ -248,6 +248,8 @@ export interface AutomationRun {
   turnId?: string;
   resultRef?: AutomationContentReference;
   auditComplete: boolean;
+  model?: string;
+  configurationFingerprint?: string;
   retryOfRunId?: string;
 }
 

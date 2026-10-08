@@ -1,0 +1,4 @@
+# PostgreSQL visibility, matching the official Temporal SQL development sample.
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true
+    constraints: {}
