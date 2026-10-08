@@ -34,6 +34,9 @@ function SidebarView<S extends SidebarSession>({
   onSearch,
   agentsActive = false,
   onAgents,
+  automationsActive = false,
+  onAutomations,
+  automationAttention = false,
   onSettings,
   renderRowMenu,
   loadError,
@@ -49,6 +52,9 @@ function SidebarView<S extends SidebarSession>({
   /** Agents nav link is the active view. */
   agentsActive?: boolean;
   onAgents?: () => void;
+  automationsActive?: boolean;
+  onAutomations?: () => void;
+  automationAttention?: boolean;
   onSettings?: () => void;
   /** Hover/focus-revealed affordance at the row's right (e.g. SessionMenu). */
   renderRowMenu?: (session: S) => ReactNode;
@@ -126,6 +132,20 @@ function SidebarView<S extends SidebarSession>({
           <Icon name="bot" size={16} />
           Agents
         </button>
+        {onAutomations && (
+          <button
+            type="button"
+            className={automationsActive ? "side-link is-active" : "side-link"}
+            aria-current={automationsActive ? "page" : undefined}
+            onClick={onAutomations}
+          >
+            <Icon name="play" size={16} />
+            Automations
+            {automationAttention && (
+              <span className="automation-attention">Needs attention</span>
+            )}
+          </button>
+        )}
       </nav>
 
       <div className="side-scroll">

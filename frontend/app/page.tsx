@@ -15,6 +15,8 @@ import { Popover } from "@/components/v2/popover";
 import { AgentMenu } from "@/components/v2/agent-menu";
 import { AgentDialog } from "@/components/v2/agent-dialog";
 import { AgentsView } from "@/components/v2/agents-view";
+import { AutomationsView } from "@/components/automations/view";
+import { automationAttentionCount, listAutomations } from "@/lib/automations";
 import { tintOf } from "@/lib/agent-look";
 import { UserMenu } from "@/components/v2/user-menu";
 import {
@@ -270,9 +272,11 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
     [pop, setPop] = useState<null | "agent" | "user">(null),
     [agentDialogOpen, setAgentDialogOpen] = useState(false),
     // The stage shows the conversation or the agents board.
-    [view, setView] = useState<"chat" | "agents">("chat"),
+    [view, setView] = useState<"chat" | "agents" | "automations">("chat"),
     [composerFocused, setComposerFocused] = useState(false),
     [shellReady, setShellReady] = useState(false);
+  const [automationsAvailable, setAutomationsAvailable] = useState(false);
+  const [automationAttention, setAutomationAttention] = useState(false);
   const agentBtn = useRef<HTMLButtonElement>(null),
     userBtn = useRef<HTMLButtonElement>(null);
   // Follow activity: a new goal, plan or helper brings its tab forward.
@@ -956,6 +960,30 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
   }, [rememberDisplayed, invalidateConversation]);
   // Browser-only preference; read after mount so server and client render match.
   useEffect(() => setDelegation(loadDelegation()), []);
+  useEffect(() => {
+    let live = true;
+    let timer: ReturnType<typeof setTimeout>;
+    async function load() {
+      try {
+        const result = await listAutomations();
+        if (live) {
+          setAutomationsAvailable(result.available);
+          setAutomationAttention(
+            result.items.some((item) => automationAttentionCount(item) > 0),
+          );
+        }
+      } catch (e) {
+        if (live) warnFailure("automation availability", e);
+      } finally {
+        if (live) timer = setTimeout(() => void load(), 30000);
+      }
+    }
+    void load();
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, []);
   useEffect(() => {
     let live = true;
     void loadApprovalModes().then((config) => live && setApprovalModes(config));
@@ -2381,6 +2409,21 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
           onSearch={showSearch}
           onAgents={showAgents}
           agentsActive={view === "agents"}
+          automationsActive={view === "automations"}
+          automationAttention={automationAttention}
+          onAutomations={
+            automationsAvailable
+              ? () => {
+                  rememberDisplayed();
+                  setView("automations");
+                  setPanels((previous) => ({
+                    ...previous,
+                    sidebar: innerWidth > 900 && previous.sidebar,
+                    activity: false,
+                  }));
+                }
+              : undefined
+          }
           onSettings={showSettings}
           busy={busy && !openingId}
           loadError={sessionsFailed ? "Couldn’t refresh" : null}
@@ -2391,7 +2434,13 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
       <main className="stage">
         <Topbar
           sidebarShown={sidebarShown}
-          title={view === "agents" ? "Agents" : crumbTitle}
+          title={
+            view === "automations"
+              ? "Automations"
+              : view === "agents"
+                ? "Agents"
+                : crumbTitle
+          }
           agentName={loading ? "Loading agents…" : agent?.name || "No agent"}
           stateText={stateText}
           busy={running}
@@ -2416,10 +2465,16 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
         <div
           className={virtualized ? "conversation-viewport" : "scroll"}
           // The board is a plain labelled region, not a live log.
-          role={view === "agents" || virtualized ? "region" : "log"}
+          role={view !== "chat" || virtualized ? "region" : "log"}
           aria-busy={openingId ? true : undefined}
-          aria-label={view === "agents" ? "Agents" : "Conversation"}
-          aria-live={view === "agents" ? undefined : "off"}
+          aria-label={
+            view === "automations"
+              ? "Automations"
+              : view === "agents"
+                ? "Agents"
+                : "Conversation"
+          }
+          aria-live={view !== "chat" ? undefined : "off"}
           ref={virtualized ? undefined : onTimelineViewport}
           onScroll={virtualized ? undefined : onTimelineScroll}
           onWheelCapture={(event) => {
@@ -2459,7 +2514,16 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
               Loading conversation…
             </p>
           )}
-          {view === "agents" ? (
+          {view === "automations" ? (
+            <AutomationsView
+              agents={agents}
+              projects={projects.projects}
+              onSession={(id) => {
+                setView("chat");
+                void open(id);
+              }}
+            />
+          ) : view === "agents" ? (
             <AgentsView
               agents={agents}
               currentId={session?.agentId || agentId}

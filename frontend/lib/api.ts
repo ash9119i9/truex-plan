@@ -100,8 +100,12 @@ function statusMessage(status: number): string {
   );
 }
 
-export async function api(path: string, body?: unknown) {
-  const method = body === undefined ? "GET" : "POST";
+export async function api(
+  path: string,
+  body?: unknown,
+  methodOverride?: "PUT",
+) {
+  const method = methodOverride ?? (body === undefined ? "GET" : "POST");
   // AgentCore can cold-start on session creation or restoration. Its backend
   // invocation deadline is 150 seconds; let that response reach the browser.
   const runtimeRequest =

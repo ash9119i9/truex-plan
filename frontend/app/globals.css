@@ -15,6 +15,7 @@
 @import "../styles/v2/session.css";
 @import "../styles/v2/agent-dialog.css";
 @import "../styles/v2/agents-view.css";
+@import "../styles/v2/automations.css";
 
 button {
   cursor: pointer;
