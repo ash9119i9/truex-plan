@@ -1,0 +1,50 @@
+{
+  "at": "2026-10-08T21:58:40.635Z",
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "model": "claude-sonnet-5",
+  "wireApi": "anthropic",
+  "sourceProfileId": "6ab96fa2077a84a32b05b738",
+  "prompt": "Return exactly AUTOMATION_PILOT_OK. Do not use any tools or external actions.",
+  "browserRequired": false,
+  "externalToolActions": false,
+  "automationId": "auto_5ed34d6b-e97d-4477-b3a3-23b2a2ff35f7",
+  "runId": "run_6cd37ab7-d44f-445e-94e7-fb9fec4c7738",
+  "workflowId": "truex-manual:23d1e33a82e64effe171a130a65cdddadf375a1b989da21deef4d06e81c35fb0",
+  "wallDurationMs": 6561,
+  "status": "succeeded",
+  "outcome": "succeeded",
+  "reason": null,
+  "stopState": "stopped",
+  "auditComplete": true,
+  "sessionId": "sess_auto_run_6cd37ab7-d44f-445e-94e7-fb9fec4c7738",
+  "rootTurnId": "01a11d86-9f23-7460-bfb5-7e488678e34f",
+  "resultRef": {
+    "id": "sess_auto_run_6cd37ab7-d44f-445e-94e7-fb9fec4c7738:assistant:01a11d86-9f23-7460-bfb5-7e488678e34f:0",
+    "kind": "result",
+    "ownerId": "pilot-owner",
+    "tenantId": "default"
+  },
+  "acceptedAt": "2026-10-08T21:58:43.864Z",
+  "startedAt": "2026-10-08T21:58:44.247Z",
+  "completedAt": "2026-10-08T21:58:50.409Z",
+  "result": "AUTOMATION_PILOT_OK",
+  "auditKinds": [
+    "run.accepted",
+    "automation.run_now",
+    "run.dependencies_checked",
+    "run.dispatch_intent",
+    "run.dispatch_claimed",
+    "run.dispatched",
+    "turn.started",
+    "message.final",
+    "turn.completed",
+    "run.outcome"
+  ],
+  "nativeSnapshot": {
+    "_id": "sess_auto_run_6cd37ab7-d44f-445e-94e7-fb9fec4c7738",
+    "threadId": "01a11d86-9ec0-7a60-a5a4-412ab7bb430a"
+  },
+  "passed": true
+}

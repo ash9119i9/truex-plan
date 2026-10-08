@@ -1,0 +1,41 @@
+{
+  "passed": true,
+  "verification": "Post-run assertions over persisted root-correlated receipt; raw live rig flags preserved separately",
+  "sourceReceipt": "PILOT_CONNECTOR_RECEIPT.json",
+  "connectorId": "6aaa7db671c8cc9e29e08d93",
+  "connectorName": "qlik",
+  "scope": "user",
+  "owner": "pilot-owner",
+  "onlyAttachedConnector": "qlik",
+  "enabledTools": ["get_apps"],
+  "rootTurnId": "01a11d93-7c42-7ed2-8f61-d7eaa6fe880d",
+  "workflowId": "truex-automation:default:auto_5d45050a-d954-4ac7-bf4e-ab6e4d1efb42:occurrence-2026-10-08T22:12:47Z",
+  "scheduledAt": "2026-10-08T22:12:47.000Z",
+  "nativeRootStartedAt": "2026-10-08T22:12:47.308Z",
+  "nativeRootStartLagMs": 308,
+  "tool": "get_apps",
+  "toolStartedCount": 1,
+  "toolCompletedCount": 1,
+  "toolCompletedStatus": "completed",
+  "toolStartedAt": "2026-10-08T22:12:54.558Z",
+  "toolCompletedAt": "2026-10-08T22:13:00.142Z",
+  "result": "AUTOMATION_CONNECTOR_PILOT_OK",
+  "resultRef": {
+    "id": "sess_auto_run_2e1dcdd3-3925-4dc8-b397-ababafafa5b9:assistant:01a11d93-7c42-7ed2-8f61-d7eaa6fe880d:0",
+    "kind": "result",
+    "ownerId": "pilot-owner",
+    "tenantId": "default"
+  },
+  "outcome": "succeeded",
+  "stopState": "stopped",
+  "auditComplete": true,
+  "sourceConnectorMutated": false,
+  "optionalDiscovery": {
+    "tool": "list_mcp_resources",
+    "status": "failed",
+    "requiredConnectorCallSubsequentlySucceeded": true
+  },
+  "rawLiveVerifierPassed": false,
+  "correctedVerifier": "Filter native MCP history by attached connector server and get_apps tool before asserting exactly one connector call. Built-in read-only discovery is recorded separately.",
+  "responseContentHashCaptured": false
+}

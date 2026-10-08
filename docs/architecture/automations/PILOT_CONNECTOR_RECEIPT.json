@@ -1,0 +1,107 @@
+{
+  "trigger": "scheduled",
+  "nativeRevision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
+  "nativeSha256": "c6db78556e768ab20def8c28ccaa5de3337ba910655790279e9af80538cf761c",
+  "at": "2026-10-08T22:12:31.784Z",
+  "node": "v24.21.0",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "model": "claude-sonnet-5",
+  "wireApi": "anthropic",
+  "sourceProfileId": "6ab96fa2077a84a32b05b738",
+  "prompt": "Call the configured qlik connector get_apps tool exactly once with limit=1, offset=0, published=\"true\". This is an authorized read-only metadata lookup. If and only if the tool succeeds, return exactly AUTOMATION_CONNECTOR_PILOT_OK. Do not return application names, IDs, data, credentials or URLs. Do not call other tools or perform mutations.",
+  "browserRequired": false,
+  "externalToolActions": true,
+  "connectorId": "6aaa7db671c8cc9e29e08d93",
+  "connectorName": "qlik",
+  "connectorScope": "user",
+  "connectorOwner": "pilot-owner",
+  "allowedConnectorTools": [
+    "get_apps"
+  ],
+  "sourceConnectorMutated": false,
+  "automationId": "auto_5d45050a-d954-4ac7-bf4e-ab6e4d1efb42",
+  "runId": "run_2e1dcdd3-3925-4dc8-b397-ababafafa5b9",
+  "workflowId": "truex-automation:default:auto_5d45050a-d954-4ac7-bf4e-ab6e4d1efb42:occurrence-2026-10-08T22:12:47Z",
+  "wallDurationMs": 23076,
+  "status": "succeeded",
+  "outcome": "succeeded",
+  "reason": null,
+  "stopState": "stopped",
+  "auditComplete": true,
+  "sessionId": "sess_auto_run_2e1dcdd3-3925-4dc8-b397-ababafafa5b9",
+  "rootTurnId": "01a11d93-7c42-7ed2-8f61-d7eaa6fe880d",
+  "resultRef": {
+    "id": "sess_auto_run_2e1dcdd3-3925-4dc8-b397-ababafafa5b9:assistant:01a11d93-7c42-7ed2-8f61-d7eaa6fe880d:0",
+    "kind": "result",
+    "ownerId": "pilot-owner",
+    "tenantId": "default"
+  },
+  "acceptedAt": "2026-10-08T22:12:47.034Z",
+  "startedAt": "2026-10-08T22:12:47.291Z",
+  "completedAt": "2026-10-08T22:13:03.625Z",
+  "result": "AUTOMATION_CONNECTOR_PILOT_OK",
+  "auditKinds": [
+    "run.accepted",
+    "run.dependencies_checked",
+    "run.dispatch_intent",
+    "run.dispatch_claimed",
+    "run.dispatched",
+    "turn.started",
+    "automation.tool",
+    "automation.tool",
+    "automation.tool",
+    "automation.tool",
+    "message.final",
+    "turn.completed",
+    "run.outcome"
+  ],
+  "connectorAudit": [
+    {
+      "at": "2026-10-08T22:12:51.075Z",
+      "turnId": "01a11d93-7c42-7ed2-8f61-d7eaa6fe880d",
+      "revision": 1,
+      "tool": "list_mcp_resources",
+      "phase": "started",
+      "status": "inProgress",
+      "effect": "unknown"
+    },
+    {
+      "at": "2026-10-08T22:12:51.318Z",
+      "turnId": "01a11d93-7c42-7ed2-8f61-d7eaa6fe880d",
+      "revision": 1,
+      "tool": "list_mcp_resources",
+      "phase": "completed",
+      "status": "failed",
+      "effect": "unverified"
+    },
+    {
+      "at": "2026-10-08T22:12:54.558Z",
+      "turnId": "01a11d93-7c42-7ed2-8f61-d7eaa6fe880d",
+      "revision": 1,
+      "tool": "get_apps",
+      "phase": "started",
+      "status": "inProgress",
+      "effect": "unknown"
+    },
+    {
+      "at": "2026-10-08T22:13:00.142Z",
+      "turnId": "01a11d93-7c42-7ed2-8f61-d7eaa6fe880d",
+      "revision": 1,
+      "tool": "get_apps",
+      "phase": "completed",
+      "status": "completed",
+      "effect": "unverified"
+    }
+  ],
+  "scheduledAt": "2026-10-08T22:12:47.000Z",
+  "nativeRootStartedAt": "2026-10-08T22:12:47.308Z",
+  "nativeRootStartLagMs": 308,
+  "nativeSnapshot": {
+    "_id": "sess_auto_run_2e1dcdd3-3925-4dc8-b397-ababafafa5b9",
+    "threadId": "01a11d93-7c1a-7571-bea1-2f03dffbad6d"
+  },
+  "passed": false,
+  "errorType": "AssertionError",
+  "errorCode": "ERR_ASSERTION"
+}
