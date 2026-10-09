@@ -1,4 +1,5 @@
 import type { AskForApproval } from "./protocol/v2/AskForApproval";
+import type { McpAppRef } from "./mcp-apps";
 import type { SandboxMode } from "./protocol/v2/SandboxMode";
 export interface Agent {
   _id: string;
@@ -290,6 +291,7 @@ export type DomainType =
   | "runtime.event"
   | "usage.updated"
   | "limits.updated"
+  | "mcp.app"
   | "snapshot"
   | "resync.required";
 export interface DomainEvent {
@@ -328,6 +330,8 @@ export interface Snapshot {
   traces?: TurnTrace[];
   rateLimits?: RateLimitView | null;
   subAgents?: SubAgent[];
+  // Connector tool calls whose page (an MCP App) the conversation can show.
+  mcpApps?: McpAppRef[];
 }
 
 // Mirrors the runtime's CollabAgentStatus.

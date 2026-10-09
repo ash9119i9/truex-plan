@@ -31,7 +31,7 @@ const hash = (text: string) => createHash("sha256").update(text).digest("hex");
 test("shared document and export match the original frontend wrapper", () => {
   assert.equal(
     hash(visualizationDocument(visual, null)),
-    "6e26b63a0efd55be984b8d0b0ad28e81eed165c775e735a277f4d86534eb449d",
+    "dcd9b25eb8b92811b61acf49c48dfcec0cb3590c7eac002c69137f101a3e536a",
   );
   const escaped = {
     ...visual,
@@ -43,12 +43,96 @@ test("shared document and export match the original frontend wrapper", () => {
   };
   assert.equal(
     hash(visualizationDocument(escaped, state)),
-    "a5e4e2df230f50dee31d367e98833666ec66740331a7b3978d4f9ba6161fd92e",
+    "17a406df243807560781eed262c0500c662332e8560ed7f28bee405d8cf4ac7a",
   );
   assert.equal(
     hash(visualizationExport(escaped, state)),
-    "952c228164c3bd2ee37579ab781c19047f412e3b394e2e7bd82e84dcdd58bd8a",
+    "61549f6cd033018a40c1653942c515f5f9065e1e55db0fe81406cd57bdd540ff",
   );
+});
+
+test("a visual follows the host's theme, light by default, and only accepts known values", () => {
+  const scheme = (doc: string) => /:root \{ color-scheme:(\w+);/.exec(doc)?.[1];
+  assert.equal(scheme(visualizationDocument(visual, null)), "light");
+  assert.equal(
+    scheme(visualizationDocument(visual, null, false, "dark")),
+    "dark",
+  );
+  // Anything but "dark" is light, so a caller's string never reaches the CSS.
+  assert.equal(
+    scheme(
+      visualizationDocument(
+        visual,
+        null,
+        false,
+        "red; } body { display:none" as any,
+      ),
+    ),
+    "light",
+  );
+  const doc = visualizationDocument(visual, null);
+  // The host can change the theme of a live frame; only its parent may.
+  assert.match(doc, /type === "theme"/);
+  assert.match(doc, /event\.source === parent/);
+  assert.match(
+    doc,
+    /data\.appearance === "light" \|\| data\.appearance === "dark"/,
+  );
+});
+
+test("the design kit gives a visual real building blocks, themed for both modes", () => {
+  const doc = visualizationDocument(visual, null);
+  for (const name of [
+    ".viz-title",
+    ".viz-chip",
+    ".viz-card",
+    ".viz-kpi",
+    ".viz-kpi-label",
+    ".viz-kpi-value",
+    ".viz-kpi-delta",
+    ".viz-up",
+    ".viz-down",
+    ".viz-legend",
+    ".viz-swatch",
+    ".viz-split",
+    ".viz-tooltip",
+  ])
+    assert.ok(doc.includes(name + " {") || doc.includes(name + ","), name);
+  // Colours come from tokens that switch with the theme.
+  for (const token of [
+    "--surface:",
+    "--surface-2:",
+    "--positive:",
+    "--negative:",
+  ])
+    assert.ok(doc.includes(token + "light-dark("), token);
+  // Motion is gentle and switched off for people who ask for less of it.
+  assert.match(doc, /@keyframes viz-in/);
+  assert.match(doc, /prefers-reduced-motion:reduce/);
+  // A legend swatch takes its colour from a variable the page sets.
+  assert.match(doc, /\.viz-swatch \{[^}]*background:var\(--c,currentColor\)/);
+});
+
+test("numbers are never broken in the middle, and long words still wrap", () => {
+  const doc = visualizationDocument(visual, null);
+  // `anywhere` let a value like $152.9k split into "$152.9" and "k".
+  assert.ok(doc.includes("overflow-wrap:break-word"));
+  assert.equal(doc.includes("overflow-wrap:anywhere"), false);
+  assert.match(doc, /\.viz-kpi-value \{ white-space:nowrap;/);
+});
+
+test("the model is told how to build something polished, and not to narrate its checks", () => {
+  const text = visualizationInstructions(true);
+  for (const phrase of [
+    ".viz-kpi",
+    ".viz-swatch",
+    ".viz-split",
+    "560px tall",
+    "tooltip with exact values",
+    "never narrate previews",
+    "write no text before or between tool calls",
+  ])
+    assert.ok(text.includes(phrase), phrase);
 });
 
 test("availability, scrubbed environment, and console caps", () => {
@@ -119,10 +203,12 @@ test("preview schema rejects out-of-bounds and unexpected arguments", async (t) 
     available: () => true,
     preview: async (_html, options) => ({
       width: options?.width ?? 728,
+      appearance: options?.appearance ?? "light",
       contentHeight: 100,
       capturedHeight: 100,
       consoleMessages: [],
       blockedRequests: [],
+      missingImages: [],
     }),
     measure: async () => [],
   };
@@ -139,6 +225,9 @@ test("preview schema rejects out-of-bounds and unexpected arguments", async (t) 
     { html: "x", width: 1601 },
     { html: "x", width: 728.5 },
     { html: "x", extra: true },
+    { html: "x", appearance: "pink" },
+    { html: "x", appearance: "" },
+    { html: "x", appearance: 1 },
   ])
     await assert.rejects(
       files.execute("a", "preview_visualization", args),
@@ -153,6 +242,15 @@ test("preview schema rejects out-of-bounds and unexpected arguments", async (t) 
     ).width,
     240,
   );
+  // The theme to check is passed through; light is the default.
+  const asked = async (args: object) =>
+    (await files.execute("a", "preview_visualization", {
+      html: "x",
+      ...args,
+    })) as any;
+  assert.equal((await asked({ appearance: "dark" })).appearance, "dark");
+  assert.equal((await asked({ appearance: "light" })).appearance, "light");
+  assert.equal((await asked({})).appearance, "light");
   assert.deepEqual(await files.list("a"), []);
 });
 
@@ -199,10 +297,12 @@ test("preview tool returns diagnostics and an image only for registered conversa
       available: () => true,
       preview: async () => ({
         width: 728,
+        appearance: "dark" as const,
         contentHeight: 200,
         capturedHeight: 200,
         consoleMessages: [],
         blockedRequests: [],
+        missingImages: ["https://example.com/chart.png"],
         imageUrl: "data:image/png;base64,aGVsbG8=",
       }),
       measure: async () => [],
@@ -218,7 +318,14 @@ test("preview tool returns diagnostics and an image only for registered conversa
     result.contentItems.map((item: any) => item.type),
     ["inputText", "inputImage"],
   );
-  assert.equal(JSON.parse(result.contentItems[0].text).contentHeight, 200);
+  const diagnostics = JSON.parse(result.contentItems[0].text);
+  assert.equal(diagnostics.contentHeight, 200);
+  // The model is told which theme it saw and which pictures did not load.
+  assert.equal(diagnostics.appearance, "dark");
+  assert.deepEqual(diagnostics.missingImages, [
+    "https://example.com/chart.png",
+  ]);
+  assert.equal("imageUrl" in diagnostics, false);
   assert.equal(
     (result.contentItems[1] as any).imageUrl,
     "data:image/png;base64,aGVsbG8=",

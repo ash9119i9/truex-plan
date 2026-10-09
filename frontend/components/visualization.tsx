@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { api, userMessage } from "@/lib/api";
+import { useAppearance } from "@/lib/use-appearance";
 import {
   validWidgetState,
   visualizationDocument,
@@ -37,6 +38,11 @@ export function Visualization({
     dialog = useRef<HTMLDialogElement>(null),
     figure = useRef<HTMLElement>(null);
   const state = useRef<VisualizationState | null>(null);
+  // The theme a new frame starts with. Later changes reach the live frame by
+  // message, so toggling the theme never rebuilds (and resets) a visual.
+  const appearance = useAppearance();
+  const appearanceNow = useRef(appearance);
+  appearanceNow.current = appearance;
   const stateKey = `truex-visualization:${sessionId}:${id}`;
   useEffect(() => {
     let cancelled = false;
@@ -62,9 +68,23 @@ export function Visualization({
     };
   }, [sessionId, id, stateKey]);
   const source = useMemo(
-    () => (visual ? visualizationDocument(visual, state.current) : ""),
+    () =>
+      visual
+        ? visualizationDocument(
+            visual,
+            state.current,
+            false,
+            appearanceNow.current,
+          )
+        : "",
     [visual, expanded, reload],
   );
+  useEffect(() => {
+    iframe.current?.contentWindow?.postMessage(
+      { channel: "truex-visualization", type: "theme", appearance },
+      "*",
+    );
+  }, [appearance]);
   useLayoutEffect(() => {
     const element = expanded ? dialog.current : figure.current;
     if (!element || !visual) return;
@@ -199,6 +219,11 @@ export function Visualization({
           Ask about this visual
         </button>
       )}
+      {!expanded && height > innerHeight * 0.6 && (
+        <span className="visualization-hint">
+          Tall visual: Expand to see it all at once
+        </span>
+      )}
     </div>
   );
   const followup = question && (
@@ -244,7 +269,7 @@ export function Visualization({
     >
       <figcaption>
         <strong>{visual.title}</strong>
-        <p>{visual.description}</p>
+        <p title={visual.description}>{visual.description}</p>
       </figcaption>
       {!expanded && (
         <>
@@ -262,11 +287,15 @@ export function Visualization({
       >
         {expanded && (
           <>
-            <h2>{visual.title}</h2>
-            {controls}
-            {status}
-            {frame}
-            {followup}
+            <div className="visualization-dialog-head">
+              <h2>{visual.title}</h2>
+              {controls}
+            </div>
+            <div className="visualization-dialog-body">
+              {status}
+              {frame}
+              {followup}
+            </div>
           </>
         )}
       </dialog>

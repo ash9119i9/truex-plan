@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  addApps,
   addApprovals,
   applyChatEvent,
   historyEntries,
@@ -367,4 +368,104 @@ test("resolved approvals stay in the chat after their turn, once", () => {
     applyChatEvent(list, event("approval.resolved", { requestId: "x" })),
     list,
   );
+});
+
+const appRef = (over: Record<string, unknown> = {}) => ({
+  id: "A".repeat(32),
+  turnId: "turn",
+  server: "sap",
+  tool: "get_order",
+  ...over,
+});
+const appIds = (list: Entry[]) =>
+  list.flatMap((e) => (e.kind === "app" ? [e.app.id] : []));
+
+test("an app appears above the turn's answer, once, however often it is reported", () => {
+  // Live: the app arrives while the answer has not started.
+  let list = applyChatEvent(
+    [],
+    event("mcp.app", { app: appRef() }, "A".repeat(32)),
+  );
+  assert.deepEqual(appIds(list), ["A".repeat(32)]);
+  list = applyChatEvent(
+    list,
+    event("message.delta", { delta: "Order 42 shipped." }, "answer"),
+  );
+  assert.deepEqual(
+    list.map((e) => e.kind),
+    ["app", "message"],
+  );
+  // The same app again (a replayed event, a snapshot) adds nothing.
+  list = applyChatEvent(
+    list,
+    event("mcp.app", { app: appRef() }, "A".repeat(32)),
+  );
+  list = applyChatEvent(list, event("snapshot", { mcpApps: [appRef()] }));
+  assert.deepEqual(appIds(list), ["A".repeat(32)]);
+  // When the answer is already shown, the app goes above it.
+  const late = applyChatEvent(
+    history(),
+    event("mcp.app", { app: appRef() }, "x"),
+  );
+  assert.deepEqual(
+    late.map((e) => e.kind),
+    ["app", "message"],
+  );
+});
+
+test("a reloaded conversation brings its apps back from the snapshot", () => {
+  const list = applyChatEvent(
+    history(),
+    event("snapshot", {
+      mcpApps: [
+        appRef(),
+        appRef({ id: "B".repeat(32), turnId: "other", tool: "t2" }),
+      ],
+      messages: [],
+    }),
+  );
+  assert.deepEqual(appIds(list).sort(), ["A".repeat(32), "B".repeat(32)]);
+  const mine = list.findIndex((e) => e.kind === "app" && e.turnId === "turn");
+  const answer = list.findIndex(
+    (e) => e.kind === "message" && e.turnId === "turn",
+  );
+  assert.ok(mine >= 0 && mine < answer, "above its own turn's answer");
+});
+
+test("app entries are ignored when they are not usable", () => {
+  for (const apps of [
+    undefined,
+    null,
+    "x",
+    5,
+    {},
+    [null],
+    [{}],
+    [{ id: 5 }],
+    [{ turnId: "t" }],
+  ])
+    assert.deepEqual(addApps([], apps), [], JSON.stringify(apps));
+  assert.deepEqual(applyChatEvent([], event("mcp.app", {})), []);
+  assert.deepEqual(applyChatEvent([], event("mcp.app", { app: null })), []);
+});
+
+test("history merged with live events keeps an app above its answer", () => {
+  const live = addApps([], [appRef()]);
+  const merged = mergeHistoryEntries(
+    [
+      {
+        _id: "saved",
+        role: "assistant",
+        text: "Done",
+        turnId: "turn",
+        messageIndex: 0,
+      } as Message,
+    ],
+    live,
+  );
+  assert.deepEqual(
+    merged.map((e) => e.kind),
+    ["app", "message"],
+  );
+  assert.deepEqual(appIds(merged), ["A".repeat(32)]);
 });

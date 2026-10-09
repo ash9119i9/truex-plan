@@ -3,7 +3,7 @@
 **Status:** engineering handoff; proposed implementation, not deployed.
 **Date:** 2026-10-03.
 **Application baseline:** `deploy`, commit `a36c820`.
-**Codex baseline:** pinned revision `4a942885c8b4745757a9f86ad2075e16c42483c5`.
+**Codex baseline:** pinned revision `c1382380de69521303b416720a52f42d51af6248`.
 **Scope:** production durability, recovery, concurrency, isolation and scale for
 Truex's self-hosted Codex app-server running inside AgentCore.
 

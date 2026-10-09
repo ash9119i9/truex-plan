@@ -313,6 +313,22 @@ async function main() {
       );
     }),
   );
+  // The page and data of a connector app of this conversation. This is the only
+  // way connector data reaches the browser; the event stream carries labels
+  // only. It goes to a sandboxed frame that cannot reach Truex.
+  http.get(
+    "/api/sessions/:id/mcp-apps/:appId",
+    route(async (req, res) => {
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.json(
+        await service.owned(
+          await service.sessionFor(String(req.params.id), "read"),
+          "/mcp-apps/" + encodeURIComponent(String(req.params.appId)),
+        ),
+      );
+    }),
+  );
   http.get(
     "/api/agents/:id/mcp",
     route(async (req, res) =>

@@ -80,8 +80,11 @@ export function AssistantTools({
         base64,
       });
       await refresh();
+      // An image has no text to summarize; it is there to be shown.
       onPrompt(
-        `Read the uploaded document "${file.name}" and summarize its key points.`,
+        documentKind(file.name).kind === "image"
+          ? `I uploaded the image "${file.name}". Use it in a visual.`
+          : `Read the uploaded document "${file.name}" and summarize its key points.`,
       );
     } catch (error) {
       setError((error as Error).message);

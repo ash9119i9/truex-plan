@@ -555,6 +555,18 @@ export class BusinessRuntime extends CodexClient {
         ...(typeof params.cursor === "string" ? { cursor: params.cursor } : {}),
       });
     }
+    // The page of a connector tool's app. Only agent-core calls this, with the
+    // call and address it recorded from the runtime itself; the request is built
+    // here from those fields alone.
+    if (method === "mcpServer/resource/read") {
+      this.workspace(params.threadId);
+      return super.request(method, {
+        threadId: params.threadId,
+        originCallId: params.originCallId,
+        server: params.server,
+        uri: params.uri,
+      });
+    }
     if (
       [
         "turn/steer",

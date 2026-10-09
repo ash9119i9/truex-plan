@@ -61,6 +61,8 @@ export {
   visualizationCsp,
 } from "../../shared/visualization-document.ts";
 
+const FRAME_SLACK = 10;
+
 export function visualizationFrameHeight(
   visual: Visualization,
   width: number,
@@ -80,8 +82,11 @@ export function visualizationFrameHeight(
   const initial = measured
     ? Math.min(measured[1], visual.height ?? Infinity)
     : 360;
+  // The frame has a 1px border on each side, and a display scaled to a
+  // fractional size rounds the content up, so a few pixels of slack keep a
+  // scrollbar from appearing for the sake of one pixel.
   const candidate = Number.isFinite(reportedHeight)
-    ? reportedHeight! + 4
+    ? reportedHeight! + FRAME_SLACK
     : initial;
   return Math.min(900, Math.max(160, Math.ceil(candidate)));
 }

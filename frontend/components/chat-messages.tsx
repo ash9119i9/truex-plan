@@ -11,6 +11,7 @@ import { splitVisualizations } from "@/lib/visualization";
 import { splitSuggestions } from "@/lib/suggestions";
 import { SuggestedQuestions } from "./suggested-questions";
 import { HelperGroup } from "./helper-group";
+import { McpAppView } from "./mcp-app";
 import { emptySubAgents, type SubAgentState } from "@/lib/subagents";
 import { LiveUsage, TurnReceipt } from "./observability/receipt";
 import { Icon } from "./v2/icon";
@@ -215,6 +216,10 @@ export function ChatMessages({
               {content.map((e) =>
                 e.kind === "approval" ? (
                   <ApprovalRecordView key={e.id} record={e.record} />
+                ) : e.kind === "app" ? (
+                  sessionId ? (
+                    <McpAppView key={e.id} sessionId={sessionId} app={e.app} />
+                  ) : null
                 ) : e.kind === "agents" ? (
                   <HelperGroup
                     key={e.id}

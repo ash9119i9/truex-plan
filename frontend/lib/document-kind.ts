@@ -1,4 +1,5 @@
-export type DocumentKind = "code" | "text" | "sheet" | "slides" | "document";
+export type DocumentKind =
+  "code" | "text" | "sheet" | "slides" | "document" | "image";
 
 const kinds: Record<string, [DocumentKind, string]> = {
   pdf: ["document", "PDF"],
@@ -23,6 +24,11 @@ const kinds: Record<string, [DocumentKind, string]> = {
   java: ["code", "Java"],
   py: ["code", "Python"],
   sh: ["code", "Shell"],
+  png: ["image", "PNG"],
+  jpg: ["image", "JPEG"],
+  jpeg: ["image", "JPEG"],
+  gif: ["image", "GIF"],
+  webp: ["image", "WebP"],
 };
 
 // Classifies a conversation file by extension for its icon and type label.
@@ -39,4 +45,4 @@ export function documentKind(name: string): {
 }
 
 export const uploadAccept =
-  ".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.tsv,.abap,.cds,.json,.xml,.yaml,.sql,.js,.ts";
+  ".pdf,.docx,.xlsx,.pptx,.txt,.md,.csv,.tsv,.abap,.cds,.json,.xml,.yaml,.sql,.js,.ts,.png,.jpg,.jpeg,.gif,.webp";

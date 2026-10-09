@@ -29,7 +29,7 @@ test("initial frame height picks nearest measured width and clamps", () => {
 });
 
 test("page resize reports take over from measured height", () => {
-  assert.equal(visualizationFrameHeight(visual, 728, 300), 304);
+  assert.equal(visualizationFrameHeight(visual, 728, 300), 310);
   assert.equal(visualizationFrameHeight(visual, 728, 50), 160);
   assert.equal(visualizationFrameHeight(visual, 728, 1000), 900);
 });

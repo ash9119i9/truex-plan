@@ -1,7 +1,15 @@
 {
   "repository": "https://github.com/openai/codex.git",
-  "revision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
+  "revision": "c1382380de69521303b416720a52f42d51af6248",
   "source": "vendor/codex",
   "binary": "vendor/codex/codex-rs/target/debug/codex",
-  "build": ["cargo", "build", "--locked", "-p", "codex-cli", "--bin", "codex"]
+  "build": ["cargo", "build", "--locked", "-p", "codex-cli", "--bin", "codex"],
+  "release": {
+    "repository": "openai/codex",
+    "tag": "rust-v0.162.0",
+    "assets": {
+      "x86_64-unknown-linux-musl": "8daf67f6261161aa5939d8d42a516032d760406216779d7ce6040f242140ff73",
+      "aarch64-unknown-linux-musl": "15162a9b59edf8e512b27414ec0b7db22e6424a1262b0eee8666643e0d295c2f"
+    }
+  }
 }

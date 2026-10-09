@@ -18,6 +18,18 @@ test("classifies SAP code, text and office files for icons and labels", () => {
     kind: "slides",
     label: "PowerPoint",
   });
+  for (const [name, label] of [
+    ["logo.png", "PNG"],
+    ["photo.JPG", "JPEG"],
+    ["photo.jpeg", "JPEG"],
+    ["anim.gif", "GIF"],
+    ["pic.webp", "WebP"],
+  ])
+    assert.deepEqual(documentKind(name), { kind: "image", label }, name);
+  for (const extension of ["png", "jpg", "jpeg", "gif", "webp"])
+    assert.ok(uploadAccept.split(",").includes("." + extension));
+  // SVG can carry script, so it is not an upload type.
+  assert.equal(uploadAccept.includes("svg"), false);
   assert.deepEqual(documentKind("archive.zip"), {
     kind: "document",
     label: "ZIP",

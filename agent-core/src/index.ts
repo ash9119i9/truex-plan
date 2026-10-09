@@ -106,6 +106,12 @@ app.post("/threads/:id/documents", async (req, res) => {
 app.get("/threads/:id/visualizations/:fileId", async (req, res) =>
   res.json(await client.files.visualization(req.params.id, req.params.fileId)),
 );
+app.get("/threads/:id/mcp-apps/:appId", async (req, res) => {
+  // Connector data goes to the browser only here, for a tool that declared a
+  // page, and never in the event stream.
+  res.set("Cache-Control", "no-store");
+  res.json(await manager.mcpApp(req.params.id, req.params.appId));
+});
 app.get("/threads/:id/documents/:fileId", async (req, res) => {
   const { data, ...file } = await client.files.get(
     req.params.id,

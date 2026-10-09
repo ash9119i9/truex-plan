@@ -168,10 +168,10 @@ test(
           type: "response.output_item.done",
           item: {
             type: "function_call",
-            name: "shell_command",
+            name: "exec_command",
             call_id: "approval_call",
             arguments: JSON.stringify({
-              command: "printf truex-approval",
+              cmd: "printf truex-approval",
               sandbox_permissions: "require_escalated",
               justification: "Exercise the approval response path.",
             }),
@@ -215,7 +215,6 @@ test(
       approvalPolicy: "on-request",
       sandbox: "read-only",
       config: {
-        "features.unified_exec": false,
         "model_providers.fixture": {
           name: "fixture",
           base_url: `http://127.0.0.1:${port}/v1`,

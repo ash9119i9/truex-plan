@@ -25,6 +25,13 @@ import { log } from "../../shared/logging";
 
 const MAX_FILE = 1_048_576;
 const MAX_TEXT = 100_000;
+// A visual refers to an uploaded image by this prefix and its file id; the
+// bytes are put in when the visual is shown, so the saved source stays small.
+const IMAGE_PREFIX = "truex-file:";
+const IMAGE_REFERENCE =
+  /truex-file:([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/g;
+const MAX_INLINE_IMAGES = 20;
+const MAX_INLINE_BYTES = 4 * 1_048_576;
 const media: Record<string, string> = {
   pdf: "application/pdf",
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -39,11 +46,30 @@ const media: Record<string, string> = {
   csv: "text/csv",
   tsv: "text/tab-separated-values",
   js: "text/javascript",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
   ...Object.fromEntries(
     ["abap", "cds", "ts", "txt", "html", "properties", "java", "py", "sh"].map(
       (e) => [e, "text/plain"],
     ),
   ),
+};
+const imageFile = (name: string) =>
+  /^image\//.test(media[extname(name).slice(1).toLowerCase()] || "");
+// The file really is the image its name says: a visual embeds these bytes as
+// a data: URL, so a mislabeled file must not get that far.
+const imageBytes = (name: string, data: Buffer) => {
+  const type = media[extname(name).slice(1).toLowerCase()];
+  const at = (offset: number, text: string) =>
+    data.subarray(offset, offset + text.length).toString("latin1") === text;
+  if (type === "image/png") return at(0, "\x89PNG\r\n\x1a\n");
+  if (type === "image/jpeg") return data[0] === 0xff && data[1] === 0xd8;
+  if (type === "image/gif") return at(0, "GIF87a") || at(0, "GIF89a");
+  if (type === "image/webp") return at(0, "RIFF") && at(8, "WEBP");
+  return false;
 };
 const textFile = (name: string) =>
   /^(text\/|application\/(json|xml|yaml|sql)$)/.test(
@@ -69,7 +95,7 @@ const tool = (
 export const fileTools: DynamicToolSpec[] = [
   tool(
     "create_visualization",
-    "Create an interactive visual inside the conversation. Provide self-contained HTML/CSS/JavaScript with inline data, accessible controls, no external resources or document wrapper. Return the reference in the answer on its own line. Supply sourceId to create a revised version.",
+    "Create an interactive visual inside the conversation. Call it silently: write no text before it. Provide self-contained HTML/CSS/JavaScript with inline data, accessible controls, no external resources or document wrapper. Return the reference in the answer on its own line. Supply sourceId to create a revised version.",
     {
       title: { type: "string", minLength: 1, maxLength: 120 },
       description: { type: "string", minLength: 1, maxLength: 1000 },
@@ -82,10 +108,11 @@ export const fileTools: DynamicToolSpec[] = [
   ),
   tool(
     "preview_visualization",
-    "Render a self-contained visualization fragment in an isolated headless browser. Returns text diagnostics and a screenshot without saving a file.",
+    "Render a self-contained visualization fragment in an isolated headless browser. Call it silently: do not comment on previews, theme checks or fixes in text. Returns text diagnostics (contentHeight, console output, blocked requests, and missingImages for pictures that did not load) and a screenshot without saving a file. Use appearance to check both themes: a published visual follows the reader's light or dark theme, so use the supplied CSS variables rather than fixed colors.",
     {
       html: { type: "string", minLength: 1, maxLength: 180000 },
       width: { type: "integer", minimum: 240, maximum: 1600 },
+      appearance: { type: "string", enum: ["light", "dark"] },
     },
     ["html"],
   ),
@@ -249,13 +276,13 @@ export class ConversationFiles {
   async upload(threadId: string, name: unknown, base64: unknown) {
     filename(name);
     if (
-      !/\.(pdf|docx|xlsx|pptx|txt|md|csv|tsv|abap|cds|json|xml|yaml|sql|js|ts)$/i.test(
+      !/\.(pdf|docx|xlsx|pptx|txt|md|csv|tsv|abap|cds|json|xml|yaml|sql|js|ts|png|jpe?g|gif|webp)$/i.test(
         name as string,
       )
     )
       throw new HttpError(
         400,
-        "Upload a PDF, Word, Excel, PowerPoint, text, or code document",
+        "Upload a PDF, Word, Excel, PowerPoint, text, code, or image (PNG, JPEG, GIF, WebP) file",
       );
     if (
       typeof base64 !== "string" ||
@@ -265,7 +292,10 @@ export class ConversationFiles {
       )
     )
       throw new HttpError(400, "Upload must be a base64 file of at most 1 MB");
-    return this.save(threadId, name as string, Buffer.from(base64, "base64"));
+    const data = Buffer.from(base64, "base64");
+    if (imageFile(name as string) && !imageBytes(name as string, data))
+      throw new HttpError(400, "This file is not a valid image of its type");
+    return this.save(threadId, name as string, data);
   }
   publish(threadId: string, name: string, data: Buffer) {
     return this.save(threadId, name, data);
@@ -339,6 +369,15 @@ export class ConversationFiles {
       throw new HttpError(400, "Offset must be a nonnegative integer");
     const file = await this.get(threadId, id),
       extension = extname(file.name).slice(1).toLowerCase();
+    if (imageFile(file.name))
+      return {
+        id,
+        name: file.name,
+        text: "",
+        nextOffset: null,
+        totalCharacters: 0,
+        note: `This is an image and has no text. To show it in a visualization, use src="${IMAGE_PREFIX}${id}" (or url(${IMAGE_PREFIX}${id}) in CSS); it is embedded when the visual is displayed.`,
+      };
     let content: string;
     try {
       content = await readFile(
@@ -405,6 +444,43 @@ export class ConversationFiles {
       note: "Document text extraction may omit images and layout. PDF extraction is limited to the first 100 pages; spreadsheets to 2000 rows per sheet. Read remaining text using nextOffset.",
     };
   }
+  // Puts the bytes of this conversation's images where a visual refers to
+  // them. A reference to anything that is not one of its images, or that would
+  // go past the size bound, is left as written, so it shows as a missing image.
+  private async withImages(threadId: string, html: string) {
+    const ids = [
+      ...new Set(Array.from(html.matchAll(IMAGE_REFERENCE), (m) => m[1])),
+    ];
+    const found = new Map<string, string>();
+    let bytes = 0;
+    for (const id of ids.slice(0, MAX_INLINE_IMAGES)) {
+      try {
+        const file = await this.get(threadId, id);
+        if (
+          !imageFile(file.name) ||
+          bytes + file.data.length > MAX_INLINE_BYTES
+        )
+          continue;
+        bytes += file.data.length;
+        found.set(
+          id,
+          `data:${file.mediaType};base64,${file.data.toString("base64")}`,
+        );
+      } catch (error) {
+        // Not in this conversation: left unresolved.
+        if (!(error instanceof HttpError)) throw error;
+      }
+    }
+    return {
+      html: html.replace(
+        IMAGE_REFERENCE,
+        (match, id) => found.get(id) ?? match,
+      ),
+      unresolved: ids
+        .filter((id) => !found.has(id))
+        .map((id) => IMAGE_PREFIX + id),
+    };
+  }
   async visualization(threadId: string, id: string): Promise<Visualization> {
     const file = await this.get(threadId, id);
     if (file.kind !== "visualization")
@@ -414,7 +490,7 @@ export class ConversationFiles {
       title: file.title!,
       description: file.description!,
       mode: file.mode || "inline",
-      html: file.data.toString("utf8"),
+      html: (await this.withImages(threadId, file.data.toString("utf8"))).html,
       ...(file.heights ? { heights: file.heights } : {}),
       ...(file.height ? { height: file.height } : {}),
     };
@@ -433,7 +509,17 @@ export class ConversationFiles {
           503,
           "Visual preview is unavailable. Enable VISUAL_RENDER with an executable CHROMIUM_PATH, then start a new conversation.",
         );
-      return this.renderer.preview(args.html, { width: args.width });
+      const images = await this.withImages(threadId, args.html);
+      const preview = await this.renderer.preview(images.html, {
+        width: args.width,
+        appearance: args.appearance,
+      });
+      if (!images.unresolved.length) return preview;
+      const note = `Not images in this conversation: ${images.unresolved.join(", ")}`;
+      return {
+        ...preview,
+        hint: preview.hint ? `${preview.hint} ${note}` : note,
+      };
     }
     if (name === "create_visualization") {
       if (!args.title.trim() || !args.description.trim() || !args.html.trim())
@@ -456,14 +542,17 @@ export class ConversationFiles {
           ...(args.height ? { height: args.height } : {}),
         },
       );
-      let warnings: string[] = [];
+      const images = await this.withImages(threadId, args.html);
+      let warnings: string[] = images.unresolved.map(
+        (reference) => `${reference} is not an image in this conversation`,
+      );
       if (this.renderer?.available()) {
         try {
           const measured = await this.renderer.measure(
-            args.html,
+            images.html,
             MEASURE_WIDTHS,
           );
-          warnings = measured.warnings || [];
+          warnings = [...warnings, ...(measured.warnings || [])];
           const heights = measured
             .filter(
               ([width, height]) =>

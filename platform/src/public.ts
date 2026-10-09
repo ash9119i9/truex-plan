@@ -2,6 +2,7 @@ import type { Writable } from "node:stream";
 import { runtimeError } from "../../shared/errors";
 import { errorFields, log } from "../../shared/logging";
 import { ALLOW_FOR_CHAT, AUTO_MODE_REASON } from "../../shared/contracts";
+import { mcpAppIdPattern, type McpAppRef } from "../../shared/mcp-apps";
 import { effectiveMode } from "./features";
 import type {
   ApprovalModesConfig,
@@ -389,6 +390,9 @@ export function publicSnapshot(s: any) {
       .map(publicTrace)
       .filter(Boolean),
     rateLimits: publicRateLimits(s.rateLimits),
+    mcpApps: (Array.isArray(s.mcpApps) ? s.mcpApps : [])
+      .map(publicMcpApp)
+      .filter((app: McpAppRef | null): app is McpAppRef => app !== null),
     subAgents: (Array.isArray(s.subAgents) ? s.subAgents : [])
       .map(publicSubAgent)
       .filter(Boolean),
@@ -503,6 +507,20 @@ function publicFinding(f: any): PrivacyFinding | null {
     sample: text(f.sample, 24) ?? "",
   };
 }
+// A connector app in the conversation: labels and a safe id, no data. The
+// provider's tool call id never leaves agent-core.
+export function publicMcpApp(a: any): McpAppRef | null {
+  if (!a || typeof a.id !== "string" || !mcpAppIdPattern.test(a.id))
+    return null;
+  return {
+    id: a.id,
+    ...(typeof a.turnId === "string" && a.turnId
+      ? { turnId: a.turnId.slice(0, 120) }
+      : {}),
+    server: typeof a.server === "string" ? a.server.slice(0, 120) : "",
+    tool: typeof a.tool === "string" ? a.tool.slice(0, 120) : "",
+  };
+}
 // Allowlist projection of an observability trace: no thread ids or raw text.
 export function publicTrace(t: any): TurnTrace | null {
   if (!t || typeof t.turnId !== "string") return null;
@@ -546,6 +564,10 @@ export function publicEvent(e: any): any | null {
   switch (e.type) {
     case "snapshot":
       return { ...base, data: publicSnapshot(d) };
+    case "mcp.app": {
+      const app = publicMcpApp(d.app);
+      return app ? { ...base, itemId: app.id, data: { app } } : null;
+    }
     case "resync.required":
       return {
         ...base,

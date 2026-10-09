@@ -8,6 +8,7 @@ const icons: Record<string, IconName> = {
   slides: "chart",
   text: "doc",
   document: "doc",
+  image: "doc",
 };
 
 // Decorative: the row's text already names the file and its type.

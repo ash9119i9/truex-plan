@@ -5,13 +5,18 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { once } from "node:events";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { log } from "../../shared/logging";
-import { visualizationDocument } from "../../shared/visualization-document";
+import {
+  isAppearance,
+  visualizationDocument,
+  type VisualizationAppearance,
+} from "../../shared/visualization-document";
 
 export const MEASURE_WIDTHS = [
   320, 375, 430, 520, 640, 728, 860, 1000, 1144,
 ] as const;
 const PAGE_URL = "http://truex-visual-preview.invalid/page.html";
 const MAX_MESSAGES = 20;
+const MAX_MISSING_IMAGES = 20;
 const MAX_TEXT = 500;
 const MAX_SCREENSHOT_HEIGHT = 4000;
 const MAX_SCREENSHOT_BYTES = 10 * 1024 * 1024;
@@ -23,10 +28,13 @@ export interface RenderConsoleMessage {
 }
 export interface Preview {
   width: number;
+  appearance: VisualizationAppearance;
   contentHeight: number;
   capturedHeight: number;
   consoleMessages: RenderConsoleMessage[];
   blockedRequests: string[];
+  // Images on the page that did not load (for example a blocked remote URL).
+  missingImages: string[];
   imageUrl?: string;
   hint?: string;
 }
@@ -35,7 +43,10 @@ export interface MeasuredHeights extends Array<[number, number]> {
 }
 export interface PageRenderer {
   available(): boolean;
-  preview(html: string, options?: { width?: number }): Promise<Preview>;
+  preview(
+    html: string,
+    options?: { width?: number; appearance?: VisualizationAppearance },
+  ): Promise<Preview>;
   measure(html: string, widths: readonly number[]): Promise<MeasuredHeights>;
 }
 
@@ -189,7 +200,10 @@ async function closeBrowser(browser: Browser | undefined, force: boolean) {
     ]);
 }
 
-function documentFor(html: string): string {
+function documentFor(
+  html: string,
+  appearance: VisualizationAppearance,
+): string {
   return visualizationDocument(
     {
       id: "preview",
@@ -199,6 +213,8 @@ function documentFor(html: string): string {
       html,
     },
     null,
+    false,
+    appearance,
   );
 }
 
@@ -214,8 +230,13 @@ async function openPage(
   html: string,
   width: number,
   stats: RenderStats,
+  appearance: VisualizationAppearance = "light",
 ): Promise<PageCapture> {
   const page = await browser.newPage();
+  // The page's own prefers-color-scheme rules should agree with the theme.
+  await page.emulateMediaFeatures([
+    { name: "prefers-color-scheme", value: appearance },
+  ]);
   await page.setViewport({
     width,
     height: VIEWPORT_HEIGHT,
@@ -272,7 +293,7 @@ async function openPage(
         .respond({
           status: 200,
           contentType: "text/html; charset=utf-8",
-          body: documentFor(html),
+          body: documentFor(html, appearance),
         })
         .catch(() => {});
     } else {
@@ -291,6 +312,20 @@ async function settle(page: Page) {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
   });
+}
+
+// Sources of images that finished loading with nothing to show, or never did.
+async function missingImages(page: Page): Promise<string[]> {
+  const sources = await page.evaluate((limit: number) => {
+    const missing: string[] = [];
+    for (const image of Array.from(document.images)) {
+      if (image.complete && image.naturalWidth > 0) continue;
+      if (missing.length >= limit) break;
+      missing.push(image.getAttribute("src") ?? "");
+    }
+    return missing;
+  }, MAX_MISSING_IMAGES);
+  return sources.map((source) => source.slice(0, MAX_TEXT));
 }
 
 async function contentHeight(page: Page): Promise<number> {
@@ -460,8 +495,11 @@ export class ChromiumPageRenderer implements PageRenderer {
   }
   async preview(
     html: string,
-    options: { width?: number } = {},
+    options: { width?: number; appearance?: VisualizationAppearance } = {},
   ): Promise<Preview> {
+    const appearance = options.appearance ?? "light";
+    if (!isAppearance(appearance))
+      throw new RenderError("Preview appearance must be light or dark.", false);
     const width = options.width ?? 728;
     if (!Number.isInteger(width) || width < 240 || width > 1600)
       throw new RenderError(
@@ -469,9 +507,10 @@ export class ChromiumPageRenderer implements PageRenderer {
         false,
       );
     return this.render("preview", 20_000, async (browser, stats) => {
-      const capture = await openPage(browser, html, width, stats);
+      const capture = await openPage(browser, html, width, stats, appearance);
       await settle(capture.page);
       const height = await contentHeight(capture.page);
+      const missing = await missingImages(capture.page);
       const capturedHeight = Math.min(height, MAX_SCREENSHOT_HEIGHT);
       const png = await capture.page.screenshot({
         type: "png",
@@ -484,10 +523,12 @@ export class ChromiumPageRenderer implements PageRenderer {
           : undefined;
       return {
         width,
+        appearance,
         contentHeight: height,
         capturedHeight,
         consoleMessages: capture.consoleMessages,
         blockedRequests: capture.blockedRequests,
+        missingImages: missing,
         ...(imageUrl
           ? { imageUrl }
           : { hint: "Screenshot omitted because it exceeded 10 MiB." }),

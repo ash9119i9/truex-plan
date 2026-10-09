@@ -2,6 +2,20 @@
 
 Date: 2026-09-19. Repository: `/Users/ashok/truex-plan`.
 
+## Codex 0.162.0 pin, Visualize upgrades and MCP Apps (2026-10-09)
+
+Moved from revision `4a942885` (`rust-v0.149.0`) to `c1382380de69521303b416720a52f42d51af6248` (`rust-v0.162.0`). The prebuilt Linux binaries are pinned by SHA-256 in `codex.lock.json`; `npm run codex:setup` verified the x86_64 archive against it and the runtime reports `codex-cli 0.162.0`. The aarch64 archive's checksum was taken from GitHub's published digest and has not been downloaded here.
+
+- Protocol regenerated and checked against a fresh generation (the generated files are byte-identical): 171 client requests (21 added; `account/rateLimits/read` and `thread/rollback` removed, neither used by Truex), 11 server requests, 86 notifications (9 added). All four services typecheck against it.
+- Tool lockdown holds on the new runtime. With Truex's configuration, a request to the model offers only `request_user_input`, `multi_agent_v1`, the three goal tools and `web_search`; no `exec_command`, `write_stdin`, `view_image` or patch tool. The suites that assert those are absent also pass.
+- The classic `shell_command` tool no longer exists (unified `exec_command` replaced it), so the real-runtime approval test now scripts `exec_command`; its purpose is unchanged.
+- Suites: agent-core 203 passed, 9 skipped; platform 152; model-gateway 58; frontend 203; no failures. The 9 skipped are the real-Chromium renderer tests, which need `CHROMIUM_PATH`. Run against a local Chrome they pass (8 or 9 of 9); one test fails intermittently (a different one on different runs), also on the revision before this change; these tests count all Chrome processes on the machine, which the Chrome already open here may disturb, but that was not isolated as the cause.
+- Not checked: a deployed AgentCore image on the new binary, the aarch64 binary, and the browser UI end to end.
+
+Visualize: visuals follow the app's light/dark theme; `preview_visualization` takes `appearance` and reports `missingImages`; uploaded PNG/JPEG/GIF/WebP images can be shown with `truex-file:<id>` (real-Chromium checks of both themes and missing-image detection; tests for byte checks, isolation between conversations and size bounds). See [VISUALIZE.md](VISUALIZE.md).
+
+MCP Apps: see [MCP_APPS.md](MCP_APPS.md) for what was verified, including the official SDK running against Truex's host in Chrome, and what was not.
+
 ## Verified
 
 - Codex source fetched from the official upstream into `vendor/codex`, checked out at `4a942885c8b4745757a9f86ad2075e16c42483c5`, and compiled **in this project** with `cargo build --locked -p codex-cli --bin codex`.

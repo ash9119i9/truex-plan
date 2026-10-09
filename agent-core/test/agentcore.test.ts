@@ -24,7 +24,9 @@ test("AgentCore invocations preserve local operations and event streams", async 
   }> = [];
   const core = createServer(async (req, res) => {
     if (req.url === "/healthz") {
-      res.writeHead(coreReady ? 200 : 503, { "content-type": "application/json" });
+      res.writeHead(coreReady ? 200 : 503, {
+        "content-type": "application/json",
+      });
       res.end(JSON.stringify({ ok: true, activeThreads }));
       return;
     }
@@ -181,4 +183,52 @@ test("cold runtime stays healthy without touching storage; invalid invocations d
   });
   state = "stopping";
   assert.equal((await fetch(`${url}/ping`)).status, 503);
+});
+
+test("AgentCore lets an app be read by id with GET and nothing nearby", async (t) => {
+  const paths: string[] = [];
+  const core = createServer(async (req, res) => {
+    if (req.url === "/healthz") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, activeThreads: 0 }));
+      return;
+    }
+    paths.push(`${req.method} ${req.url}`);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end("{}");
+  });
+  const coreUrl = await listen(core);
+  const app = createAgentCoreApp({
+    coreUrl,
+    startCore: async () => {},
+  } as never);
+  const runtime = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => runtime.once("listening", resolve));
+  const runtimeUrl = `http://127.0.0.1:${(runtime.address() as { port: number }).port}`;
+  t.after(async () => {
+    await close(runtime);
+    await close(core);
+  });
+  const invoke = async (method: string, path: string) =>
+    (
+      await fetch(`${runtimeUrl}/invocations`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ method, path }),
+      })
+    ).status;
+  const id = "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6";
+  assert.equal(await invoke("GET", `/threads/thread_1/mcp-apps/${id}`), 200);
+  assert.deepEqual(paths, [`GET /threads/thread_1/mcp-apps/${id}`]);
+  for (const [method, path] of [
+    ["POST", `/threads/thread_1/mcp-apps/${id}`],
+    ["DELETE", `/threads/thread_1/mcp-apps/${id}`],
+    ["GET", "/threads/thread_1/mcp-apps"],
+    ["GET", `/threads/thread_1/mcp-apps/${id}/extra`],
+    ["GET", `/threads/thread_1/mcp-apps/../../healthz`],
+    ["GET", `/threads/thread_1/mcp-apps/a%2Fb`],
+    ["GET", `/threads/thread_1/mcp-apps/${id}?x=1`],
+  ] as const)
+    assert.equal(await invoke(method, path), 400, `${method} ${path}`);
+  assert.equal(paths.length, 1);
 });

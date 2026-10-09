@@ -1,6 +1,6 @@
 {
-  "revision": "4a942885c8b4745757a9f86ad2075e16c42483c5",
-  "binaryVersion": "codex-cli 0.0.0",
+  "revision": "c1382380de69521303b416720a52f42d51af6248",
+  "binaryVersion": "codex-cli 0.162.0",
   "requests": [
     {
       "method": "initialize",
@@ -13,6 +13,41 @@
       "method": "server/diagnostics",
       "params": "ServerDiagnosticsParams",
       "response": "ServerDiagnosticsResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "userVerification/status",
+      "params": "UserVerificationStatusParams",
+      "response": "UserVerificationStatusResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "userVerification/enroll",
+      "params": "UserVerificationEnrollParams",
+      "response": "UserVerificationEnrollResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "userVerification/delete",
+      "params": "UserVerificationDeleteParams",
+      "response": "UserVerificationDeleteResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "userVerification/verify",
+      "params": "UserVerificationVerifyParams",
+      "response": "UserVerificationVerifyResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "userVerification/cancel",
+      "params": "UserVerificationCancelParams",
+      "response": "UserVerificationCancelResponse",
       "experimental": true,
       "basic": false
     },
@@ -77,6 +112,13 @@
       "params": "ThreadSetNameParams",
       "response": "ThreadSetNameResponse",
       "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/prediction/request",
+      "params": "ThreadPredictionRequestParams",
+      "response": "ThreadPredictionRequestResponse",
+      "experimental": true,
       "basic": false
     },
     {
@@ -150,6 +192,34 @@
       "basic": false
     },
     {
+      "method": "thread/attachment/add",
+      "params": "ThreadAttachmentAddParams",
+      "response": "ThreadAttachmentAddResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/attachment/list",
+      "params": "ThreadAttachmentListParams",
+      "response": "ThreadAttachmentListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/attachmentOwner/list",
+      "params": "ThreadAttachmentOwnerListParams",
+      "response": "ThreadAttachmentOwnerListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/attachment/remove",
+      "params": "ThreadAttachmentRemoveParams",
+      "response": "ThreadAttachmentRemoveResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
       "method": "thread/section/move",
       "params": "ThreadSectionMoveParams",
       "response": "ThreadSectionMoveResponse",
@@ -171,9 +241,23 @@
       "basic": false
     },
     {
+      "method": "memory/status",
+      "params": "MemoryStatusParams",
+      "response": "MemoryStatusResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
       "method": "memory/reset",
       "params": "undefined",
       "response": "MemoryResetResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "rollout/compress",
+      "params": "undefined",
+      "response": "RolloutCompressResponse",
       "experimental": true,
       "basic": false
     },
@@ -227,17 +311,10 @@
       "basic": false
     },
     {
-      "method": "thread/rollback",
-      "params": "ThreadRollbackParams",
-      "response": "ThreadRollbackResponse",
-      "experimental": false,
-      "basic": false
-    },
-    {
       "method": "thread/revert",
       "params": "ThreadRevertParams",
       "response": "ThreadRevertResponse",
-      "experimental": true,
+      "experimental": false,
       "basic": false
     },
     {
@@ -356,14 +433,14 @@
       "method": "thread/turns/list",
       "params": "ThreadTurnsListParams",
       "response": "ThreadTurnsListResponse",
-      "experimental": true,
+      "experimental": false,
       "basic": false
     },
     {
       "method": "thread/items/list",
       "params": "ThreadItemsListParams",
       "response": "ThreadItemsListResponse",
-      "experimental": true,
+      "experimental": false,
       "basic": false
     },
     {
@@ -433,6 +510,13 @@
       "method": "plugin/installed",
       "params": "PluginInstalledParams",
       "response": "PluginInstalledResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "plugin/reconcile",
+      "params": "PluginReconcileParams",
+      "response": "PluginReconcileResponse",
       "experimental": false,
       "basic": false
     },
@@ -598,6 +682,13 @@
       "basic": true
     },
     {
+      "method": "turn/settings/update",
+      "params": "TurnSettingsUpdateParams",
+      "response": "TurnSettingsUpdateResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
       "method": "turn/steer",
       "params": "TurnSteerParams",
       "response": "TurnSteerResponse",
@@ -647,6 +738,13 @@
       "basic": false
     },
     {
+      "method": "thread/timeline/list",
+      "params": "ThreadTimelineListParams",
+      "response": "ThreadTimelineListResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
       "method": "thread/realtime/listVoices",
       "params": "ThreadRealtimeListVoicesParams",
       "response": "ThreadRealtimeListVoicesResponse",
@@ -664,6 +762,27 @@
       "method": "model/list",
       "params": "ModelListParams",
       "response": "ModelListResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/gatewayOAuth/read",
+      "params": "undefined",
+      "response": "GatewayOAuthReadResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/gatewayOAuth/login",
+      "params": "undefined",
+      "response": "GatewayOAuthLoginResponse",
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/gatewayOAuth/cancel",
+      "params": "undefined",
+      "response": "GatewayOAuthCancelResponse",
       "experimental": false,
       "basic": false
     },
@@ -808,6 +927,20 @@
       "basic": false
     },
     {
+      "method": "mcpServer/event/stream/start",
+      "params": "McpServerEventStreamStartParams",
+      "response": "McpServerEventStreamStartResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "mcpServer/event/stream/stop",
+      "params": "McpServerEventStreamStopParams",
+      "response": "McpServerEventStreamStopResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
       "method": "mcpServer/tool/call",
       "params": "McpServerToolCallParams",
       "response": "McpServerToolCallResponse",
@@ -850,6 +983,13 @@
       "basic": false
     },
     {
+      "method": "account/bedrock/checkGovCloudRequirements",
+      "params": "BedrockCheckGovCloudRequirementsParams",
+      "response": "BedrockCheckGovCloudRequirementsResponse",
+      "experimental": true,
+      "basic": false
+    },
+    {
       "method": "account/login/cancel",
       "params": "CancelLoginAccountParams",
       "response": "CancelLoginAccountResponse",
@@ -860,13 +1000,6 @@
       "method": "account/logout",
       "params": "undefined",
       "response": "LogoutAccountResponse",
-      "experimental": false,
-      "basic": false
-    },
-    {
-      "method": "account/rateLimits/read",
-      "params": "undefined",
-      "response": "GetAccountRateLimitsResponse",
       "experimental": false,
       "basic": false
     },
@@ -1200,7 +1333,7 @@
       "method": "thread/reverted",
       "params": "ThreadRevertedNotification",
       "response": null,
-      "experimental": true,
+      "experimental": false,
       "basic": false
     },
     {
@@ -1218,10 +1351,24 @@
       "basic": false
     },
     {
+      "method": "thread/attachment/updated",
+      "params": "ThreadAttachmentUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
       "method": "thread/goal/updated",
       "params": "ThreadGoalUpdatedNotification",
       "response": null,
       "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "thread/prediction/updated",
+      "params": "ThreadPredictionUpdatedNotification",
+      "response": null,
+      "experimental": true,
       "basic": false
     },
     {
@@ -1463,8 +1610,22 @@
       "basic": false
     },
     {
+      "method": "mcpServer/event/stream/notification",
+      "params": "McpServerEventStreamNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
       "method": "account/updated",
       "params": "AccountUpdatedNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "account/gatewayOAuth/changed",
+      "params": "GatewayOAuthChangedNotification",
       "response": null,
       "experimental": false,
       "basic": false
@@ -1554,6 +1715,20 @@
       "basic": false
     },
     {
+      "method": "modelProvider/authRecoveryStarted",
+      "params": "AuthRecoveryNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
+      "method": "modelProvider/authRecoveryCompleted",
+      "params": "AuthRecoveryNotification",
+      "response": null,
+      "experimental": false,
+      "basic": false
+    },
+    {
       "method": "turn/moderationMetadata",
       "params": "TurnModerationMetadataNotification",
       "response": null,
@@ -1619,6 +1794,27 @@
     {
       "method": "thread/realtime/itemAdded",
       "params": "ThreadRealtimeItemAddedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/item/started",
+      "params": "ThreadRealtimeItemStartedNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/item/transcript/delta",
+      "params": "ThreadRealtimeItemTranscriptDeltaNotification",
+      "response": null,
+      "experimental": true,
+      "basic": false
+    },
+    {
+      "method": "thread/realtime/item/completed",
+      "params": "ThreadRealtimeItemCompletedNotification",
       "response": null,
       "experimental": true,
       "basic": false

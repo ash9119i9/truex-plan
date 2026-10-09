@@ -232,7 +232,8 @@
 .visualization-controls { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .visualization iframe { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .visualization-dialog { border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lg); }
-.visualization-dialog::backdrop { background: color-mix(in srgb, var(--ink) 35%, transparent); }
+/* A dark scrim in both themes: --ink is light in dark mode, which washed the page out. */
+.visualization-dialog::backdrop { background: rgb(12 14 10 / 0.62); backdrop-filter: blur(3px); }
 .visualization-dialog h2 { font-family: var(--font-display); font-size: 16px; font-weight: 600; }
 .visualization-question { margin-top: 10px; font-size: 13px; }
 .visualization-question p { margin: 4px 0 10px; color: var(--ink-2); }

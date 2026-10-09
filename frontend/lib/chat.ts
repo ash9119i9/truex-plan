@@ -3,6 +3,7 @@ import type {
   DomainEvent,
   Message,
 } from "../../shared/contracts";
+import type { McpAppRef } from "../../shared/mcp-apps";
 
 export type Entry =
   | {
@@ -33,6 +34,8 @@ export type Entry =
   | { kind: "item"; id: string; turnId?: string; item: any }
   // The helper agents a turn started, shown as one live block.
   | { kind: "agents"; id: string; turnId?: string; threadIds: string[] }
+  // A connector's app, shown above the answer of the turn that called it.
+  | { kind: "app"; id: string; turnId?: string; app: McpAppRef }
   | { kind: "approval"; id: string; turnId?: string; record: ApprovalRecord };
 type Answer = Extract<Entry, { kind: "message" }>;
 
@@ -169,7 +172,7 @@ export function mergeHistoryEntries(
       continue;
     }
     const answerIndex =
-      entry.kind === "thinking"
+      entry.kind === "thinking" || entry.kind === "app"
         ? next.findIndex(
             (e) =>
               e.kind === "message" &&
@@ -235,8 +238,29 @@ export function addHelpers(
   return [...list, { kind: "agents", id, turnId, threadIds: fresh }];
 }
 
+// Each app appears once, above the answer of the turn that called it (or at
+// the end while that answer has not started), so a replay adds nothing.
+export function addApps(list: Entry[], apps: unknown): Entry[] {
+  for (const app of Array.isArray(apps) ? apps : []) {
+    if (!app || typeof app.id !== "string") continue;
+    const id = `app:${app.id}`;
+    if (list.some((e) => e.id === id)) continue;
+    const entry: Entry = { kind: "app", id, turnId: app.turnId, app };
+    const answer = list.findIndex(
+      (e) =>
+        e.turnId === app.turnId &&
+        e.kind === "message" &&
+        e.role === "assistant",
+    );
+    list = [...list];
+    list.splice(answer < 0 ? list.length : answer, 0, entry);
+  }
+  return list;
+}
+
 export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
   const { data: d, turnId, itemId, type } = event;
+  if (type === "mcp.app") return d?.app ? addApps(list, [d.app]) : list;
   if (type === "approval.resolved")
     return d?.audit ? addApprovals(list, [d.audit]) : list;
   if (
@@ -259,6 +283,7 @@ export function applyChatEvent(list: Entry[], event: DomainEvent): Entry[] {
         d.state?.turnId ?? list.findLast((e) => e.turnId)?.turnId,
         ids,
       );
+    list = addApps(list, d.mcpApps);
     for (const r of d.thinking || []) {
       const id = `thinking:${r.turnId}:${r.id}`;
       const entry: Entry = {

@@ -9,8 +9,11 @@ application's private rendering runtime.
 
 ## Using a visual
 
-- Adjust its native controls to explore the data. **Expand** opens a keyboard
-  accessible dialog; Escape closes it. **Reload visual** reruns the saved source.
+- Adjust its native controls to explore the data. **Expand** opens a centered,
+  keyboard accessible dialog with its actions pinned at the top; Escape closes it. A
+  visual taller than most of the window says so beside the buttons. The frame is
+  sized to its content with a few pixels of slack, so a visual does not get a
+  scrollbar of its own inside the page. **Reload visual** reruns the saved source.
 - **Ask about this visual** prepares a message with its ID and current public
   selections. Visual-proposed questions appear outside the frame and only enter
   the composer when the user selects **Add to my message**. Neither action sends
@@ -39,13 +42,17 @@ executed. Host paths cannot serve as references.
 
 The fragment may contain CSS, JavaScript, SVG and canvas, with inline data and
 accessible native controls. A small Truex theme and control utility set is supplied.
-Remote libraries, fonts, API calls, embedded pages and CDN assets are unsupported;
+Pages are given a small design kit so they look consistent without hand-rolled styling: `.viz-title`, `.viz-chip`, `.viz-card`, `.viz-kpi` (with `.viz-kpi-label`, `.viz-kpi-value`, `.viz-kpi-delta`, and `.viz-up` / `.viz-down`), `.viz-legend` with a `.viz-swatch` per series (colour set with `style="--c: var(--viz-series-2)"`), `.viz-split` (controls beside results from 640 px up), `.viz-tooltip`, plus `--surface`, `--positive` and `--negative` tokens that switch with the theme. Buttons and fields have hover, active and focus states, and a page fades in gently (all motion is off for readers who ask for less of it). Numbers are not broken across lines. The assistant is asked to keep a visual under about 560 px tall at the chat width (using wide mode otherwise), to give charts hover values and a stated takeaway, and not to narrate its checks in the reply.
+
+Visuals follow the reader's light or dark theme: the supplied CSS variables switch with the app, and a frame that is already open changes theme without reloading. Pages should use those variables rather than fixed colors.
+
+To show an image the reader uploaded, a page uses `src="truex-file:<file id>"` (or `url(truex-file:<file id>)` in CSS, or the same text in a script string). The id comes from `conversation_files`. The saved source keeps the reference; the image bytes are put in when the visual is shown or exported, so a revision starts from the short reference and the export keeps working offline. Only PNG, JPEG, GIF and WebP files of this conversation are embedded, at most 20 of them and 4 MiB in total. Anything else, including another conversation's file id, stays as written and shows as a missing image. SVG is not an upload type. Remote libraries, fonts, API calls, embedded pages and CDN assets are unsupported;
 there are no preloaded D3, Mermaid, Lucide or Tweak helpers. Use native SVG/HTML for
 diagrams. Source is limited to 180,000 characters, with a 200,000-character bound on
 the serialized tool arguments and the existing 1 MB file limit. Documents and
 visuals share the 50-file / 25 MB conversation quota.
 
-When `VISUAL_RENDER=1` and `CHROMIUM_PATH` points to executable Chromium, new conversations also have `preview_visualization`. It accepts a self-contained HTML fragment (1–180,000 characters) and optional width (240–1600 pixels, default 728), and returns text diagnostics plus a capped PNG screenshot when possible. The preview saves nothing. The model should use it for complex, interactive or crowded visuals and revise console errors or blocked-resource reports before publishing. Simple pages can publish directly. Screenshots reach the Anthropic adapter and direct Responses providers; other gateway adapters replace images with `[image omitted]`, so diagnostics always remain in text.
+When `VISUAL_RENDER=1` and `CHROMIUM_PATH` points to executable Chromium, new conversations also have `preview_visualization`. It accepts a self-contained HTML fragment (1–180,000 characters), an optional width (240–1600 pixels, default 728) and an optional `appearance` (`light`, the default, or `dark`) to check the page in either theme, and returns text diagnostics plus a capped PNG screenshot when possible. The diagnostics include `contentHeight`, console output, blocked requests, and `missingImages`: the images on the page that did not load, such as a remote address or a `truex-file:` reference that is not an image of this conversation. The preview saves nothing. The model should use it for complex, interactive or crowded visuals and revise console errors or blocked-resource reports before publishing. Simple pages can publish directly. Screenshots reach the Anthropic adapter and direct Responses providers; other gateway adapters replace images with `[image omitted]`, so diagnostics always remain in text.
 
 Publishing measures heights at nine widths from 320 to 1144 pixels when rendering is available. Measurement has a six-second total cap; failure does not stop publication. Saved heights guide the iframe's first paint, then its own resize reports take over. Older visuals without heights use the existing 360-pixel initial height. Preview has a 20-second cap, at most two concurrent renders by default, a bounded queue, a 4000-pixel screenshot height cap and capped console/request diagnostics.
 

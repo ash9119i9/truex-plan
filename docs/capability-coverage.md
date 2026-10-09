@@ -6,6 +6,11 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 |---|---|---|---|
 | requests | initialize | Dedicated lifecycle/history handler | See VALIDATION.md; full matrix pending |
 | requests | server/diagnostics | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | userVerification/status | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | userVerification/enroll | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | userVerification/delete | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | userVerification/verify | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | userVerification/cancel | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/start | Dedicated lifecycle/history handler | See VALIDATION.md; full matrix pending |
 | requests | thread/resume | Dedicated lifecycle/history handler | See VALIDATION.md; full matrix pending |
 | requests | thread/fork | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -15,6 +20,7 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | requests | thread/increment_elicitation | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/decrement_elicitation | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/name/set | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | thread/prediction/request | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/goal/set | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/goal/get | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/goal/clear | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -25,10 +31,16 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | requests | thread/queue/reorder | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/queue/start | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/metadata/update | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | thread/attachment/add | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | thread/attachment/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | thread/attachmentOwner/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | thread/attachment/remove | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/section/move | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/settings/update | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/memoryMode/set | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | memory/status | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | memory/reset | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | rollout/compress | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/unarchive | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/compact/start | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/shellCommand | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -36,7 +48,6 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | requests | thread/backgroundTerminals/clean | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/backgroundTerminals/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/backgroundTerminals/terminate | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
-| requests | thread/rollback | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/revert | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | project/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -66,6 +77,7 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | requests | plugin/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | plugin/search | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | plugin/installed | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | plugin/reconcile | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | plugin/read | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | plugin/skill/read | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | plugin/share/save | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -89,6 +101,7 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | requests | plugin/install | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | plugin/uninstall | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | turn/start | Dedicated lifecycle/history handler | See VALIDATION.md; full matrix pending |
+| requests | turn/settings/update | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | turn/steer | Dedicated lifecycle/history handler | See VALIDATION.md; full matrix pending |
 | requests | turn/interrupt | Dedicated lifecycle/history handler | See VALIDATION.md; full matrix pending |
 | requests | thread/realtime/start | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -96,9 +109,13 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | requests | thread/realtime/appendText | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/realtime/appendSpeech | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/realtime/stop | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | thread/timeline/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | thread/realtime/listVoices | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | review/start | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | model/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | account/gatewayOAuth/read | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | account/gatewayOAuth/login | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | account/gatewayOAuth/cancel | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | modelProvider/capabilities/read | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | experimentalFeature/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | permissionProfile/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -119,15 +136,17 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | requests | config/mcpServer/reload | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | mcpServerStatus/list | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | mcpServer/resource/read | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | mcpServer/event/stream/start | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | mcpServer/event/stream/stop | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | mcpServer/tool/call | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | windowsSandbox/setupStart | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | windowsSandbox/readiness | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/login/start | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/bedrock/discover | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/bedrock/setup | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
+| requests | account/bedrock/checkGovCloudRequirements | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/login/cancel | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/logout | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
-| requests | account/rateLimits/read | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/rateLimitResetCredit/consume | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/workspaceMessages/read | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
 | requests | account/sendAddCreditsNudgeEmail | Schema-validated capability relay | See VALIDATION.md; full matrix pending |
@@ -177,7 +196,9 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | notifications | thread/reverted | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | skills/changed | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/name/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | thread/attachment/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/goal/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | thread/prediction/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/goal/cleared | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/queue/changed | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | project/changed | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
@@ -212,7 +233,9 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | notifications | item/mcpToolCall/progress | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | mcpServer/oauthLogin/completed | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | mcpServer/startupStatus/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | mcpServer/event/stream/notification | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | account/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | account/gatewayOAuth/changed | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | account/rateLimits/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | app/list/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | remoteControl/status/changed | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
@@ -225,6 +248,8 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | notifications | thread/compacted | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | model/rerouted | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | model/verification | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | modelProvider/authRecoveryStarted | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | modelProvider/authRecoveryCompleted | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | turn/moderationMetadata | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | model/safetyBuffering/updated | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | warning | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
@@ -235,6 +260,9 @@ Generated from the project pin. A generic schema-validated relay and inspector a
 | notifications | fuzzyFileSearch/sessionCompleted | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/realtime/started | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/realtime/itemAdded | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | thread/realtime/item/started | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | thread/realtime/item/transcript/delta | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
+| notifications | thread/realtime/item/completed | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/realtime/transcript/delta | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/realtime/transcript/done | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |
 | notifications | thread/realtime/outputAudio/delta | Mapped event or runtime inspector | See VALIDATION.md; full matrix pending |

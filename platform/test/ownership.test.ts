@@ -123,6 +123,7 @@ test("route coverage: every /api/sessions/:id route goes through sessionFor", ()
     "GET /api/sessions/:id/documents": "read",
     "GET /api/sessions/:id/documents/:fileId": "read",
     "GET /api/sessions/:id/visualizations/:fileId": "read",
+    "GET /api/sessions/:id/mcp-apps/:appId": "read",
     "GET /api/sessions/:id/agents": "read",
     "GET /api/sessions/:id/agents/:agentId": "read",
     "POST /api/sessions/:id/capabilities": "method",

@@ -37,7 +37,10 @@ const routes: ReadonlyArray<[Method, RegExp]> = [
   ],
   ["GET", new RegExp(`^${thread}/agents/${segment}$`)],
   ["GET", new RegExp(`^${thread}/turns/${segment}/context$`)],
-  ["GET", new RegExp(`^${thread}/(?:documents|visualizations)/${segment}$`)],
+  [
+    "GET",
+    new RegExp(`^${thread}/(?:documents|visualizations|mcp-apps)/${segment}$`),
+  ],
   ["POST", new RegExp(`^${thread}/documents$`)],
 ];
 

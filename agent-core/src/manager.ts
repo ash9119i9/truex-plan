@@ -2,7 +2,7 @@ import { businessCapabilities } from "../../shared/business-capabilities";
 import { BusinessRuntime } from "./business-runtime";
 import { Redactor } from "./redact";
 import { TraceBuilder, rateLimitView } from "./trace";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   mkdirSync,
   writeFileSync,
@@ -51,6 +51,21 @@ import {
 import { HttpError, rpcText } from "./errors";
 import { skillSet, tenantId as parseTenant } from "./tenancy";
 import { errorFields, log } from "../../shared/logging";
+import { readItems } from "./history";
+import {
+  MAX_MCP_APPS,
+  MAX_MCP_APP_BYTES,
+  MAX_MCP_APP_DATA_BYTES,
+  isMcpAppMime,
+  jsonBytes,
+  mcpAppCall,
+  mcpAppIdPattern,
+  mcpAppResourceUri,
+  mcpAppToolResult,
+  type McpApp,
+  type McpAppCall,
+  type McpAppRef,
+} from "../../shared/mcp-apps";
 import { inventory, validateRequest } from "./schema";
 import {
   autoAnswer,
@@ -98,6 +113,8 @@ interface Thread {
   pending: Map<string, Pending>;
   messages: Snapshot["messages"];
   thinking: NonNullable<Snapshot["thinking"]>;
+  // Finished connector tool calls that have a page to show, oldest first.
+  mcpApps: Array<McpAppRef & { callId: string }>;
   // Latest plan; kept across turns until a newer turn replaces it.
   plan: unknown;
   // Turn that produced the stored plan, so an older turn's update is ignored.
@@ -423,6 +440,7 @@ export class ThreadManager {
         pending: new Map(),
         messages: [],
         thinking: [],
+        mcpApps: [],
         plan: null,
         planTurnId: null,
         turnOrder: [],
@@ -505,12 +523,8 @@ export class ThreadManager {
   }
   async resume(id: string, input: any = {}) {
     // Approval mode fields are Truex settings, not runtime parameters.
-    const {
-      approvalMode,
-      approvalNameHeuristic,
-      mcpFingerprint,
-      ...params
-    } = input || {};
+    const { approvalMode, approvalNameHeuristic, mcpFingerprint, ...params } =
+      input || {};
     if (approvalMode !== undefined) parseMode(approvalMode);
     parseFingerprint(mcpFingerprint);
     if (params.tenantId !== undefined) parseTenant(params.tenantId);
@@ -577,7 +591,10 @@ export class ThreadManager {
       // Rebuild helper agents from the restored history.
       for (const turn of result.thread?.turns ?? []) {
         if (typeof turn?.id === "string") this.seeTurn(t, turn.id);
-        for (const item of turn?.items ?? []) this.collab(id, item);
+        for (const item of turn?.items ?? []) {
+          this.collab(id, item);
+          this.noteApp(t, turn?.id, item, false);
+        }
       }
       const active = result.thread?.turns?.find(
         (turn: any) => turn.status === "inProgress",
@@ -750,7 +767,108 @@ export class ThreadManager {
       traces: t.traces,
       rateLimits: this.rateLimits,
       subAgents: this.agentsOf(id).map((c) => ({ ...c.agent })),
+      mcpApps: t.mcpApps.map(({ callId, ...app }) => app),
     };
+  }
+  // Remembers a finished connector call that has a page, once. Live calls are
+  // announced; calls found in restored history are not (clients get them in the
+  // snapshot).
+  private noteApp(
+    t: Thread,
+    turnId: string | undefined,
+    item: any,
+    live: boolean,
+  ) {
+    const call: McpAppCall | null = mcpAppCall(item, turnId);
+    if (!call || t.mcpApps.some((app) => app.callId === call.callId)) return;
+    const { callId, ...rest } = call;
+    // The id the browser uses; the provider's call id stays here.
+    const ref: McpAppRef = {
+      id: createHash("sha256").update(callId).digest("base64url").slice(0, 32),
+      ...rest,
+    };
+    t.mcpApps.push({ ...ref, callId });
+    if (t.mcpApps.length > MAX_MCP_APPS) t.mcpApps.shift();
+    if (live) this.emit(t, "mcp.app", { app: ref }, turnId, ref.id);
+  }
+  // The page and data of one app of this conversation. Only a call this
+  // manager recorded can be read, and the runtime is asked for exactly the page
+  // that call declared.
+  async mcpApp(id: string, appId: string): Promise<McpApp> {
+    const t = this.thread(id);
+    const found = mcpAppIdPattern.test(appId)
+      ? t.mcpApps.find((app) => app.id === appId)
+      : undefined;
+    if (!found) throw new HttpError(404, "App not found in this conversation");
+    const { callId, ...ref } = found;
+    let item: any;
+    let cursor: string | undefined;
+    for (let page = 0; page < 50 && !item; page++) {
+      const batch = await readItems(this.runtime, id, cursor);
+      item = (batch.data ?? [])
+        .map((entry: any) => entry?.item ?? entry)
+        .find((x: any) => x?.type === "mcpToolCall" && x.id === callId);
+      cursor = batch.nextCursor ?? undefined;
+      if (!cursor) break;
+    }
+    const uri = mcpAppResourceUri(item);
+    if (
+      !item ||
+      item.status !== "completed" ||
+      !uri ||
+      item.server !== ref.server
+    )
+      throw new HttpError(404, "App not found in this conversation");
+    const read = await this.runtime.request("mcpServer/resource/read", {
+      threadId: id,
+      originCallId: callId,
+      server: item.server,
+      uri,
+    });
+    const contents = Array.isArray(read?.contents) ? read.contents : [];
+    const page =
+      contents.find((c: any) => c?.uri === uri && isMcpAppMime(c?.mimeType)) ??
+      contents.find((c: any) => isMcpAppMime(c?.mimeType));
+    if (!page)
+      throw new HttpError(
+        422,
+        "This app did not return a page Truex can show",
+        "MCP_APP_UNSUPPORTED",
+      );
+    let html: string;
+    if (typeof page.text === "string") html = page.text;
+    else if (typeof page.blob === "string")
+      html = Buffer.from(page.blob, "base64").toString("utf8");
+    else
+      throw new HttpError(
+        422,
+        "This app did not return a page Truex can show",
+        "MCP_APP_UNSUPPORTED",
+      );
+    if (!html.trim() || Buffer.byteLength(html) > MAX_MCP_APP_BYTES)
+      throw new HttpError(
+        422,
+        "This app's page is empty or too large to show",
+        "MCP_APP_UNSUPPORTED",
+      );
+    const args =
+      item.arguments &&
+      typeof item.arguments === "object" &&
+      !Array.isArray(item.arguments)
+        ? item.arguments
+        : {};
+    const result = mcpAppToolResult(item.result);
+    // A page is shown its call's data, but only as much as it can reasonably hold.
+    if (
+      jsonBytes(args) > MAX_MCP_APP_DATA_BYTES ||
+      jsonBytes(result) > MAX_MCP_APP_DATA_BYTES
+    )
+      throw new HttpError(
+        422,
+        "This app's data is too large to show",
+        "MCP_APP_UNSUPPORTED",
+      );
+    return { ...ref, html, arguments: args, result };
   }
   agents(id: string): SubAgent[] {
     this.thread(id);
@@ -1445,6 +1563,8 @@ export class ThreadManager {
       }
       if (t.thinking.length > 100) t.thinking.shift();
     }
+    if (method === "item/completed" && p.item?.type === "mcpToolCall")
+      this.noteApp(t, turnId, p.item, true);
     if (method === "item/agentMessage/delta") {
       let message = t.messages.find((x) => x.id === itemId);
       if (!message) {

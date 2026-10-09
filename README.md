@@ -15,7 +15,7 @@ See [runtime policy, migration and verification](docs/TRUEX_RUNTIME.md).
 
 ## Local Codex pin
 
-`codex.lock.json` pins OpenAI Codex revision `4a942885c8b4745757a9f86ad2075e16c42483c5`.
+`codex.lock.json` pins OpenAI Codex revision `c1382380de69521303b416720a52f42d51af6248` (release `rust-v0.162.0`).
 
 ```sh
 npm run codex:setup
@@ -189,25 +189,13 @@ The tests include protocol/schema checks, concurrency, request expiry, disk-spoo
 
 ## Bedrock AgentCore image
 
-The root `Dockerfile` builds the pinned Codex executable for Linux ARM64, then packages Codex, agent-core and the AgentCore HTTP entrypoint. The separate `model-gateway/Dockerfile` packages the gateway for EC2 or another container host. Frontend, platform and MongoDB run separately. The runtime image does not include model-gateway source or dependencies.
-
-Build the reusable binary first, then the runtime image:
+The root `Dockerfile` downloads the pinned prebuilt Codex release for Linux ARM64, then packages Codex, agent-core and the AgentCore HTTP entrypoint. The separate `model-gateway/Dockerfile` packages the gateway for EC2 or another container host. Frontend, platform and MongoDB run separately. The runtime image does not include model-gateway source or dependencies.
 
 ```sh
-npm run codex:artifact
-node scripts/codex-artifact.mjs verify .runtime/agentcore/codex .runtime/agentcore/codex.json codex.lock.json
 npm run agentcore:build
 ```
 
-The artifact target cross-compiles on the builder's native architecture and exports `.runtime/agentcore/codex` plus a manifest containing its source revision, architecture and SHA-256. It fetches the exact source in `codex.lock.json`; it does not reuse the host's x86-64 debug binary. Application image builds verify that artifact and do not rebuild Rust. Keep the artifact and rebuild it when the Codex pin changes. Cargo caches persist on the same Docker builder. Use `--build-arg CODEX_BUILD_JOBS=1` if the builder has limited memory. Image builds require an ARM64 builder or ARM64 emulation support.
-
-To reuse a binary built natively on an ARM64 Linux host with `node scripts/codex.mjs --build`, package it before building the image:
-
-```sh
-install -D -m 0755 vendor/codex/codex-rs/target/debug/codex .runtime/agentcore/codex
-node scripts/codex-artifact.mjs create .runtime/agentcore/codex .runtime/agentcore/codex.json codex.lock.json vendor/codex
-npm run agentcore:build
-```
+The `codex-download` stage runs `node scripts/codex.mjs --download --target=aarch64-unknown-linux-musl`. It fetches the release tag in `codex.lock.json` from GitHub Releases and checks the archive against the SHA-256 pinned there before extracting it. No Rust build is needed. To change Codex versions, update `release.tag` and the `release.assets` checksums in `codex.lock.json`, then rerun `npm run protocol:gen`. Image builds require an ARM64 builder or ARM64 emulation support.
 
 The runtime uses Debian Trixie with glibc 2.41 to support binaries built on Ubuntu 24.04 with glibc 2.39. Architecture and checksum verification run before packaging; the image build also executes `codex --version` to check shared-library compatibility.
 

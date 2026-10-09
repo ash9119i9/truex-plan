@@ -40,7 +40,10 @@ it is not a reduced chat-only runtime.
 - Shell commands/output, local file diffs, paths, repository structure, credential
   configuration, raw turn items and unknown runtime events are not forwarded to
   the browser. Thinking, plans and timing fields have explicit public projections;
-  this is not a blanket suppression of runtime activity.
+  this is not a blanket suppression of runtime activity. One narrow exception: a
+  connector tool that declares an app page has its page, input and result
+  delivered, through an owner-checked endpoint and to a sandboxed frame only (see
+  [MCP_APPS.md](MCP_APPS.md)).
 - The product identifies itself as Truex. Runtime identity, diagnostic payloads,
   raw schema browsing and general configuration RPCs remain internal. Assistant
   instructions prohibit volunteering implementation details; authorized business
