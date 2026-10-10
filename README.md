@@ -49,6 +49,8 @@ Set `MONGO_URI` in `platform/.env`. The database is `truex` (`MONGO_DB=truex`). 
 
 There is no production seed command and no provider API-key or model configuration in `.env`. Manage agents and model profiles in MongoDB. HTTP MCP profiles and agent attachments can also be managed through the Connected tools panel; local command connectors are blocked. The service rereads them per request; ObjectId and string IDs are supported, including string references to ObjectIds. Both `apiKey` and `apikey` credential fields are accepted (the camel-case field takes precedence if both exist). See [MongoDB document examples](docs/mongodb.md).
 
+MCP attachments require scoped profiles with `agentIds`; legacy `agent.mcpProfileIds` must be migrated. See [MCP deployment and recovery](docs/MCP_AGENTCORE_FIX.md) before rolling out AgentCore and platform changes.
+
 ```sh
 npm run dev
 ```

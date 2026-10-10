@@ -9,9 +9,6 @@
   modelProfileId: ObjectId('6ab96fa2077a84a32b05b738'),
   sandbox: 'read-only',
   approvalPolicy: 'on-request',
-  mcpProfileIds: [
-    ObjectId('6aaa7db671c8cc9e29e08d93')
-  ],
   skillIds: [],
   builtin: false,
   enabled: true

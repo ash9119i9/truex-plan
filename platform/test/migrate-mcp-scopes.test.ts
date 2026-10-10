@@ -6,7 +6,9 @@ import { MongoClient, ObjectId } from "mongodb";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { decryptSecret } from "../src/secrets";
 import { tenantDbName } from "../src/tenant";
-import { testEncryptionKey } from "./fixtures";
+import { Store } from "../src/store";
+import { PlatformService } from "../src/service";
+import { insertFixtures, testEncryptionKey } from "./fixtures";
 
 const script = resolve(__dirname, "../../scripts/migrate-mcp-scopes.mjs");
 const DEFAULT_DB = "migrate_default";
@@ -87,6 +89,14 @@ test(
         mcpProfileIds: ["btp"],
       },
     ]);
+    const store = await new Store(mongo.getUri(), DEFAULT_DB, CATALOG_DB).connect();
+    t.after(() => store.client.close());
+    await insertFixtures(store);
+    const service = new PlatformService(store, ["http://core"]);
+    await assert.rejects(service.configuration("assistant"), {
+      status: 422,
+      code: "MCP_MIGRATION_REQUIRED",
+    });
     // t1 (registered) has two ownerless profiles with one name.
     const now = new Date().toISOString();
     await client
@@ -168,6 +178,16 @@ test(
       assert.equal("apiKey" in p!, false);
       assert.equal("apikey" in p!, false);
     }
+    // Migrated ObjectId references and decrypted headers reach the runtime.
+    const configured = (await service.configuration("assistant")).config;
+    assert.deepEqual(configured["mcp_servers.qlik"].http_headers, {
+      "x-api-qlik-key": "qlik-plain-key",
+    });
+    assert.equal(configured["mcp_servers.qlik"].url, "https://example.com/qlik");
+    assert.equal(
+      configured["mcp_servers.btp"].http_headers.Authorization,
+      "Bearer btp-plain-key",
+    );
     // agent.mcpProfileIds stays, unread.
     assert.deepEqual(
       (await db.collection("truex_agents").findOne({ _id: "assistant" as any }))

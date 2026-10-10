@@ -1,9 +1,11 @@
 {
   _id: ObjectId('6aaa7db671c8cc9e29e08d93'),
   name: 'qlik',
+  scope: 'tenant',
+  agentIds: ['agent_ea6007a6-aae5-4e50-824c-1480256bfeea'],
   transport: 'http',
   url: 'https://quality.ktern.com/qlik-mcp/',
-  apiKey: 'qbepmdPxEPFvetWPRw4tS80yvPyb2YJO4kueEeNaA',
+  apiKey: '<MCP credential; set through Connected tools>',
   auth: {
     kind: 'header',
     headerName: 'x-api-qlik-key'
