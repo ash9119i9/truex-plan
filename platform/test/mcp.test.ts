@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { createCipheriv, randomBytes } from "node:crypto";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { ObjectId } from "mongodb";
 import { Store } from "../src/store";
@@ -10,7 +11,7 @@ import {
   mcpProfileUpdate,
   newMcpProfile,
 } from "../src/mcp";
-import { decryptSecret, encryptSecret } from "../src/secrets";
+import { decryptSecret } from "../src/secrets";
 import {
   admin,
   asUser,
@@ -42,21 +43,58 @@ async function withEnv(
 const noSecretFields = (value: unknown) =>
   assert.doesNotMatch(JSON.stringify(value), /apiKey|apikey|apiKeyEnc/);
 
-test("MCP keys are AES-256-GCM encrypted, chosen by kid, and never stored without a key", async () => {
-  const sealed = encryptSecret("top-secret");
-  assert.equal(sealed.v, 1);
-  assert.equal(sealed.kid, "k1");
-  assert.equal(Buffer.from(sealed.iv, "base64").length, 12);
-  assert.equal(Buffer.from(sealed.tag, "base64").length, 16);
-  assert.doesNotMatch(JSON.stringify(sealed), /top-secret/);
-  assert.notEqual(encryptSecret("top-secret").iv, sealed.iv);
-  assert.equal(decryptSecret(sealed), "top-secret");
-  // Tampering or relabelling fails authentication.
-  assert.throws(
-    () => decryptSecret({ ...sealed, data: Buffer.from("x").toString("base64") }),
-    /could not be decrypted/,
+// Reproduces an old database record; application code no longer encrypts keys.
+function legacyKey(plain: string) {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv(
+    "aes-256-gcm",
+    Buffer.from(testEncryptionKey, "base64"),
+    iv,
   );
-  // Rotation: the new key encrypts, the old one still decrypts by kid.
+  cipher.setAAD(Buffer.from("truex-mcp:v1:k1"));
+  const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
+  return {
+    v: 1 as const,
+    kid: "k1",
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    data: data.toString("base64"),
+  };
+}
+
+test("legacy encrypted MCP keys remain readable with their original key", async () => {
+  const sealed = legacyKey("top-secret");
+  await withEnv(
+    {
+      MCP_ENCRYPTION_KEY: testEncryptionKey,
+      MCP_ENCRYPTION_KID: "k1",
+      MCP_ENCRYPTION_KEYS: undefined,
+    },
+    () => {
+      assert.equal(decryptSecret(sealed), "top-secret");
+      assert.deepEqual(
+        mcpConfig({
+          _id: "legacy",
+          name: "qlik",
+          url: "https://example.com/mcp",
+          auth: { kind: "header", headerName: "x-api-qlik-key" },
+          apiKey: "stale-plain-copy",
+          apiKeyEnc: sealed,
+        }).http_headers,
+        { "x-api-qlik-key": "top-secret" },
+      );
+      // Tampering or relabelling fails authentication.
+      assert.throws(
+        () =>
+          decryptSecret({
+            ...sealed,
+            data: Buffer.from("x").toString("base64"),
+          }),
+        /could not be decrypted/,
+      );
+    },
+  );
+  // Existing rotation keys still decrypt records by kid.
   const next = Buffer.alloc(32, 9).toString("base64");
   await withEnv(
     {
@@ -66,36 +104,64 @@ test("MCP keys are AES-256-GCM encrypted, chosen by kid, and never stored withou
     },
     () => {
       assert.equal(decryptSecret(sealed), "top-secret");
-      const rotated = encryptSecret("new-secret");
-      assert.equal(rotated.kid, "k2");
-      assert.equal(decryptSecret(rotated), "new-secret");
     },
   );
   await withEnv(
-    { MCP_ENCRYPTION_KEY: next, MCP_ENCRYPTION_KID: "k2" },
-    () => assert.throws(() => decryptSecret(sealed), /k1, which is not configured/),
+    {
+      MCP_ENCRYPTION_KEY: next,
+      MCP_ENCRYPTION_KID: "k2",
+      MCP_ENCRYPTION_KEYS: undefined,
+    },
+    () =>
+      assert.throws(() => decryptSecret(sealed), /k1, which is not configured/),
   );
-  // No default or derived key: storing fails clearly.
-  await withEnv({ MCP_ENCRYPTION_KEY: undefined }, () => {
-    assert.throws(() => encryptSecret("x"), {
-      code: "MCP_ENCRYPTION_NOT_CONFIGURED",
-    });
-    assert.throws(
-      () =>
-        newMcpProfile({
-          name: "sap",
-          transport: "http",
-          url: "https://example.com/mcp",
-          auth: { kind: "bearer" },
-          apiKey: "secret",
-        }),
-      /MCP_ENCRYPTION_KEY is not configured/,
-    );
-  });
   for (const bad of ["short", Buffer.alloc(16).toString("base64"), "!!!!"])
     await withEnv({ MCP_ENCRYPTION_KEY: bad }, () =>
-      assert.throws(() => encryptSecret("x"), /exactly 32 bytes/),
+      assert.throws(() => decryptSecret(sealed), /exactly 32 bytes/),
     );
+});
+
+test("MCP keys can be created and replaced without encryption configuration", async () => {
+  await withEnv(
+    { MCP_ENCRYPTION_KEY: undefined, MCP_ENCRYPTION_KEYS: undefined },
+    () => {
+      const profile = newMcpProfile({
+        name: "sap",
+        url: "https://example.com/mcp",
+        auth: { kind: "bearer" },
+        apiKey: "plain-token",
+      });
+      assert.equal(profile.apiKey, "plain-token");
+      assert.equal(profile.apiKeyEnc, undefined);
+      assert.deepEqual(mcpConfig(profile).http_headers, {
+        Authorization: "Bearer plain-token",
+      });
+      const unchanged = mcpProfileUpdate(profile, { apiKey: "" });
+      assert.deepEqual(unchanged.set, {});
+      assert.deepEqual(unchanged.unset, {});
+      assert.equal(unchanged.profile.apiKey, "plain-token");
+
+      const encrypted = {
+        ...profile,
+        apiKey: undefined,
+        apiKeyEnc: legacyKey("old-token"),
+      };
+      assert.throws(() => mcpConfig(encrypted), {
+        code: "MCP_ENCRYPTION_NOT_CONFIGURED",
+      });
+      const replaced = mcpProfileUpdate(encrypted, { apiKey: "new-token" });
+      assert.equal(replaced.set.apiKey, "new-token");
+      assert.equal(replaced.profile.apiKeyEnc, undefined);
+      assert.equal(replaced.unset.apiKeyEnc, "");
+      assert.deepEqual(mcpConfig(replaced.profile).http_headers, {
+        Authorization: "Bearer new-token",
+      });
+
+      const cleared = mcpProfileUpdate(encrypted, { auth: { kind: "none" } });
+      assert.equal(cleared.profile.apiKeyEnc, undefined);
+      assert.equal(mcpConfig(cleared.profile).http_headers, undefined);
+    },
+  );
 });
 
 test("MCP URLs to loopback, link-local, private and CGNAT addresses are rejected", async () => {
@@ -172,7 +238,7 @@ test("MCP input keeps known fields only and enforces the name rule", () => {
   });
   assert.deepEqual(Object.keys(profile).sort(), [
     "_id",
-    "apiKeyEnc",
+    "apiKey",
     "auth",
     "capabilities",
     "enabled",
@@ -183,7 +249,7 @@ test("MCP input keeps known fields only and enforces the name rule", () => {
   assert.deepEqual(profile.auth, { kind: "header", headerName: "x-api-key" });
   assert.deepEqual(profile.capabilities, { requestTimeoutMs: 1500 });
   assert.equal(profile.url, "https://example.com/mcp");
-  assert.doesNotMatch(JSON.stringify(profile), /secret/);
+  assert.equal(profile.apiKey, "secret");
 
   const base = { transport: "http", url: "https://example.com/mcp" };
   for (const name of [
@@ -235,7 +301,7 @@ test("MCP input keeps known fields only and enforces the name rule", () => {
   assert.equal(form.apiKeyEnc, undefined);
 });
 
-test("MCP updates re-encrypt rotated keys, drop legacy plain keys and refuse script-managed profiles", () => {
+test("MCP updates replace plain keys, clear credentials and refuse script-managed profiles", () => {
   const legacy = {
     _id: "mcp_1",
     name: "qlik",
@@ -249,15 +315,20 @@ test("MCP updates re-encrypt rotated keys, drop legacy plain keys and refuse scr
   const renamed = mcpProfileUpdate(legacy, { name: "qlik-prod" });
   assert.deepEqual(renamed.set, { name: "qlik-prod" });
   assert.deepEqual(renamed.unset, {});
-  // Rotation stores only apiKeyEnc and removes the legacy plain key.
+  // Rotation stores apiKey and replaces the previous value.
   const rotated = mcpProfileUpdate(legacy, { apiKey: "rotated-secret" });
-  assert.deepEqual(Object.keys(rotated.set), ["apiKeyEnc"]);
-  assert.deepEqual(rotated.unset, { apiKey: "" });
-  assert.equal(decryptSecret(rotated.set.apiKeyEnc), "rotated-secret");
-  assert.doesNotMatch(JSON.stringify(rotated.set), /secret/);
+  assert.deepEqual(Object.keys(rotated.set), ["apiKey"]);
+  assert.deepEqual(rotated.unset, {});
+  assert.equal(rotated.set.apiKey, "rotated-secret");
+  const lowerCase = mcpProfileUpdate(
+    { ...legacy, apiKey: undefined, apikey: "old" },
+    { apikey: "new" },
+  );
+  assert.equal(lowerCase.set.apiKey, "new");
+  assert.deepEqual(lowerCase.unset, { apikey: "" });
   // Switching to no authentication drops every stored credential.
   const cleared = mcpProfileUpdate(
-    { ...legacy, apiKeyEnc: rotated.set.apiKeyEnc },
+    { ...legacy, apiKeyEnc: legacyKey("old-secret") },
     { auth: { kind: "none" } },
   );
   assert.deepEqual(cleared.unset, { apiKeyEnc: "", apiKey: "" });
@@ -265,10 +336,7 @@ test("MCP updates re-encrypt rotated keys, drop legacy plain keys and refuse scr
     () => mcpProfileUpdate(legacy, { config: { url: "https://x.example" } }),
     /config cannot be set/,
   );
-  assert.throws(
-    () => mcpProfileUpdate(legacy, { name: "a__b" }),
-    /MCP name/,
-  );
+  assert.throws(() => mcpProfileUpdate(legacy, { name: "a__b" }), /MCP name/);
   assert.throws(
     () =>
       mcpProfileUpdate(
@@ -342,15 +410,14 @@ test(
       auth: { kind: "header", headerName: "x-api-key" },
       apiKey: "secret-value",
     });
-    // Only ciphertext is stored, and no response carries a key.
+    // The token is stored directly; responses still exclude it.
     assert.equal(created.hasKey, true);
     noSecretFields(created);
     assert.doesNotMatch(JSON.stringify(created), /secret-value/);
     const stored = await store.findMcp(created.id);
-    assert.equal(stored?.apiKey, undefined);
+    assert.equal(stored?.apiKey, "secret-value");
     assert.equal(stored?.apikey, undefined);
-    assert.equal(stored?.apiKeyEnc?.v, 1);
-    assert.doesNotMatch(JSON.stringify(stored), /secret-value/);
+    assert.equal(stored?.apiKeyEnc, undefined);
     const plainHttp = await service.createTenantMcp({
       name: "plain",
       transport: "http",

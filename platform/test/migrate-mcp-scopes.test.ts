@@ -4,11 +4,10 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { MongoClient, ObjectId } from "mongodb";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { decryptSecret } from "../src/secrets";
 import { tenantDbName } from "../src/tenant";
 import { Store } from "../src/store";
 import { PlatformService } from "../src/service";
-import { insertFixtures, testEncryptionKey } from "./fixtures";
+import { insertFixtures } from "./fixtures";
 
 const script = resolve(__dirname, "../../scripts/migrate-mcp-scopes.mjs");
 const DEFAULT_DB = "migrate_default";
@@ -30,7 +29,7 @@ function run(args: string[], env: Record<string, string>) {
 }
 
 test(
-  "migrate-mcp-scopes: dry run, key check, scopes, attachments, encryption, indexes, idempotent",
+  "migrate-mcp-scopes: dry run, scopes, attachments, unchanged credentials, indexes, idempotent without encryption",
   { timeout: 120000 },
   async (t) => {
     const mongo = await MongoMemoryServer.create();
@@ -43,8 +42,9 @@ test(
       MONGO_URI: mongo.getUri(),
       MONGO_DB: DEFAULT_DB,
       CATALOG_MONGO_DB: CATALOG_DB,
+      MCP_ENCRYPTION_KEY: "",
+      MCP_ENCRYPTION_KEYS: "",
     };
-    const withKey = { ...env, MCP_ENCRYPTION_KEY: testEncryptionKey };
     const confirm = ["--confirm", "migrate-mcp-scopes"];
 
     // The pre-scope layout: qlik and btp with plain keys, attached through
@@ -89,7 +89,11 @@ test(
         mcpProfileIds: ["btp"],
       },
     ]);
-    const store = await new Store(mongo.getUri(), DEFAULT_DB, CATALOG_DB).connect();
+    const store = await new Store(
+      mongo.getUri(),
+      DEFAULT_DB,
+      CATALOG_DB,
+    ).connect();
     t.after(() => store.client.close());
     await insertFixtures(store);
     const service = new PlatformService(store, ["http://core"]);
@@ -114,8 +118,18 @@ test(
       .db(T1_DB)
       .collection("truex_mcp")
       .insertMany([
-        { _id: "d1" as any, name: "dup", transport: "http", url: "https://example.com/1" },
-        { _id: "d2" as any, name: "dup", transport: "http", url: "https://example.com/2" },
+        {
+          _id: "d1" as any,
+          name: "dup",
+          transport: "http",
+          url: "https://example.com/1",
+        },
+        {
+          _id: "d2" as any,
+          name: "dup",
+          transport: "http",
+          url: "https://example.com/2",
+        },
       ]);
 
     const snapshot = async () =>
@@ -123,39 +137,63 @@ test(
         await Promise.all(
           [DEFAULT_DB, T1_DB].flatMap((name) =>
             ["truex_mcp", "truex_agents"].map(async (c) => ({
-              docs: await client.db(name).collection(c).find({}).sort({ _id: 1 }).toArray(),
-              indexes: (await client.db(name).collection(c).listIndexes().toArray().catch(() => []))
+              docs: await client
+                .db(name)
+                .collection(c)
+                .find({})
+                .sort({ _id: 1 })
+                .toArray(),
+              indexes: (
+                await client
+                  .db(name)
+                  .collection(c)
+                  .listIndexes()
+                  .toArray()
+                  .catch(() => [])
+              )
                 .map((i) => i.name)
                 .sort(),
             })),
           ),
         ),
       );
+    const encrypted = {
+      v: 1,
+      kid: "old",
+      iv: "retained",
+      tag: "retained",
+      data: "retained",
+    };
+    await db.collection("truex_mcp").insertOne({
+      _id: "encrypted" as any,
+      name: "old-encrypted",
+      scope: "tenant",
+      agentIds: [],
+      apiKeyEnc: encrypted,
+    });
     const original = await snapshot();
 
     // Unknown arguments are refused.
-    assert.equal((await run(["--confirm", "yes"], withKey)).code, 1);
+    assert.equal((await run(["--confirm", "yes"], env)).code, 1);
 
-    // Dry run: reports, writes nothing (a missing key is only a warning).
+    // Dry run reports scope/attachment changes and never writes credentials.
     const dry = await run([], env);
     assert.match(dry.out, /\[dry run\]/);
-    assert.match(dry.out, /default: 2 profile\(s\) would be marked scope "tenant", 1 with an owner/);
+    assert.match(
+      dry.out,
+      /default: 2 profile\(s\) would be marked scope "tenant", 1 with an owner/,
+    );
     assert.match(dry.out, /3 attachment\(s\) would be moved/);
-    assert.match(dry.out, /2 plain key\(s\) would be encrypted/);
-    assert.match(dry.out, /MCP_ENCRYPTION_KEY is not set/);
+    assert.doesNotMatch(
+      dry.out,
+      /MCP_ENCRYPTION|would be encrypted|qlik-plain-key|btp-plain-key/,
+    );
     assert.match(dry.out, /several tenant MCP profiles are named dup/);
     assert.equal(await snapshot(), original);
 
-    // A real run without the key refuses before writing anything.
-    const refused = await run(confirm, env);
-    assert.equal(refused.code, 1);
-    assert.match(refused.out, /2 MCP profile\(s\) store a plain API key, and MCP_ENCRYPTION_KEY is not set/);
-    assert.match(refused.out, /Nothing was changed/);
-    assert.equal(await snapshot(), original);
-
-    // The real run. The duplicate is reported (exit 1), not a crash, and
+    // Apply without an encryption key. The duplicate is reported (exit 1), and
     // everything else is migrated.
-    const applied = await run(confirm, withKey);
+    const applied = await run(confirm, env);
     assert.equal(applied.code, 1, applied.out);
     assert.match(applied.out, /several tenant MCP profiles are named dup/);
     assert.match(applied.out, /missing MCP profile gone/);
@@ -164,26 +202,31 @@ test(
     const qlik = await mcp.findOne({ _id: qlikId });
     const btp = await mcp.findOne({ _id: "btp" as any });
     const own = await mcp.findOne({ _id: "own" as any });
+    assert.deepEqual(
+      (await mcp.findOne({ _id: "encrypted" as any }))?.apiKeyEnc,
+      encrypted,
+    );
     assert.equal(qlik?.scope, "tenant");
     assert.equal(btp?.scope, "tenant");
     assert.equal(own?.scope, "user");
     assert.deepEqual(qlik?.agentIds, ["assistant"]);
     assert.deepEqual(btp?.agentIds.sort(), ["assistant", "developer"]);
     assert.deepEqual(own?.agentIds, []);
-    // Encrypted with the platform's code, plain fields gone.
-    process.env.MCP_ENCRYPTION_KEY = testEncryptionKey;
-    assert.equal(decryptSecret(qlik?.apiKeyEnc), "qlik-plain-key");
-    assert.equal(decryptSecret(btp?.apiKeyEnc), "btp-plain-key");
-    for (const p of [qlik, btp]) {
-      assert.equal("apiKey" in p!, false);
-      assert.equal("apikey" in p!, false);
-    }
-    // Migrated ObjectId references and decrypted headers reach the runtime.
+    // Credentials retain their original field names and exact values.
+    assert.equal(qlik?.apiKey, "qlik-plain-key");
+    assert.equal(qlik?.apikey, undefined);
+    assert.equal(btp?.apikey, "btp-plain-key");
+    assert.equal(btp?.apiKey, undefined);
+    for (const p of [qlik, btp]) assert.equal(p?.apiKeyEnc, undefined);
+    // Migrated ObjectId references and plain headers reach the runtime.
     const configured = (await service.configuration("assistant")).config;
     assert.deepEqual(configured["mcp_servers.qlik"].http_headers, {
       "x-api-qlik-key": "qlik-plain-key",
     });
-    assert.equal(configured["mcp_servers.qlik"].url, "https://example.com/qlik");
+    assert.equal(
+      configured["mcp_servers.qlik"].url,
+      "https://example.com/qlik",
+    );
     assert.equal(
       configured["mcp_servers.btp"].http_headers.Authorization,
       "Bearer btp-plain-key",
@@ -195,26 +238,39 @@ test(
       [qlikId.toHexString(), "btp", "gone"],
     );
     for (const name of [DEFAULT_DB, T1_DB]) {
-      const indexes = await client.db(name).collection("truex_mcp").listIndexes().toArray();
+      const indexes = await client
+        .db(name)
+        .collection("truex_mcp")
+        .listIndexes()
+        .toArray();
       const byName = new Map(indexes.map((i) => [i.name, i]));
       assert.equal(byName.get("tenant_mcp_name")?.unique, true, name);
-      assert.deepEqual(
-        byName.get("tenant_mcp_name")?.partialFilterExpression,
-        { scope: "tenant" },
-      );
+      assert.deepEqual(byName.get("tenant_mcp_name")?.partialFilterExpression, {
+        scope: "tenant",
+      });
       assert.equal(byName.get("user_mcp_name")?.unique, true, name);
       assert.ok(byName.has("agentIds_1_scope_1"), name);
     }
     // The clashing pair is left unscoped (never loaded) until renamed.
-    const dups = await client.db(T1_DB).collection("truex_mcp").find({}).toArray();
-    assert.deepEqual(dups.map((d) => d.scope), [undefined, undefined]);
+    const dups = await client
+      .db(T1_DB)
+      .collection("truex_mcp")
+      .find({})
+      .toArray();
+    assert.deepEqual(
+      dups.map((d) => d.scope),
+      [undefined, undefined],
+    );
 
     // A second run changes nothing.
     const migrated = await snapshot();
-    const again = await run(confirm, withKey);
+    const again = await run(confirm, env);
     assert.match(again.out, /default: 0 profile\(s\) marked/);
     assert.match(again.out, /0 attachment\(s\) moved/);
-    assert.match(again.out, /0 plain key\(s\) encrypted/);
+    assert.doesNotMatch(
+      again.out,
+      /MCP_ENCRYPTION|encrypted|qlik-plain-key|btp-plain-key/,
+    );
     assert.equal(await snapshot(), migrated);
 
     // Once renamed, the next run finishes cleanly.
@@ -222,7 +278,7 @@ test(
       .db(T1_DB)
       .collection("truex_mcp")
       .updateOne({ _id: "d2" as any }, { $set: { name: "dup-2" } });
-    const clean = await run(confirm, withKey);
+    const clean = await run(confirm, env);
     assert.equal(clean.code, 0, clean.out);
     assert.match(clean.out, /t1: 2 profile\(s\) marked scope "tenant"/);
     assert.deepEqual(

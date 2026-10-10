@@ -607,7 +607,7 @@ export class PlatformService {
         );
       }
       names.add(mcp.name);
-      // The only place a stored key is decrypted.
+      // Credentials are included only in the runtime configuration.
       const server = mcpConfig(mcp);
       if (server.command)
         throw new ApiError(
@@ -884,7 +884,7 @@ export class PlatformService {
     };
   }
   // --- MCP profiles: tenant scope (admins) and user scope (the owner). ---
-  // Only apiKeyEnc is stored; responses carry hasKey, never a key. Someone
+  // Credentials stay in storage; responses carry hasKey, never a key. Someone
   // else's user MCP answers 404, like an unknown id.
   private mcpCaller() {
     const user = currentUser();

@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 import { Store } from "../src/store";
 import { tenantDbName } from "../src/tenant";
 import { ROLE_HEADER, USER_HEADER } from "../src/user";
-import { insertFixtures, testEncryptionKey } from "./fixtures";
+import { insertFixtures } from "./fixtures";
 
 const root = resolve("..");
 
@@ -95,7 +95,8 @@ test(
           AUTH_MODE: "dev",
           DEV_USER_HEADER: "on",
           DEV_TENANT_HEADER: "on",
-          MCP_ENCRYPTION_KEY: testEncryptionKey,
+          MCP_ENCRYPTION_KEY: "",
+          MCP_ENCRYPTION_KEYS: "",
           // Exempt from the private-address check, so no real DNS lookup runs.
           MCP_ALLOWED_PRIVATE_HOSTS: "example.com",
         },

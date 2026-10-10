@@ -101,7 +101,8 @@ test(
     assert.equal(github.scope, "user");
     const stored = await store.withTenant(t1, () => store.findMcp(github.id));
     assert.equal(stored?.ownerId, "ashok");
-    assert.equal(stored?.apiKeyEnc?.v, 1);
+    assert.equal(stored?.apiKey, "ashok-key-value");
+    assert.equal(stored?.apiKeyEnc, undefined);
     await as(ashok, () => service.setAgentMcp("assistant", [github.id]));
 
     // A tenant MCP loads in both users' chats; a user MCP only in its owner's.

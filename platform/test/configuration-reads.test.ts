@@ -9,7 +9,6 @@ import type {
   ModelDocument,
 } from "../src/documents";
 import { mcpNetwork } from "../src/mcp";
-import { encryptSecret } from "../src/secrets";
 import "./fixtures";
 import { tenantContext } from "../src/tenant";
 import { userContext } from "../src/user";
@@ -201,13 +200,13 @@ test("concurrent read failures retain the existing validation precedence", async
   }
 });
 
-test("tenant names win including unattached reservations; skill order and decrypted config are preserved", async () => {
+test("tenant names win including unattached reservations; skill order and credential config are preserved", async () => {
   const lookup = mcpNetwork.lookup;
   mcpNetwork.lookup = async () => ["203.0.113.12"];
   try {
     const tenant: McpDocument = connector("shared");
     tenant.auth = { kind: "header", headerName: "x-api-key" };
-    tenant.apiKeyEnc = encryptSecret("tenant-secret");
+    tenant.apiKey = "tenant-secret";
     const { service, reads } = fixture({
       tenant: [tenant],
       // Shadowed rows deliberately contain invalid URLs: they must be skipped.

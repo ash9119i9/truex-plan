@@ -57,9 +57,10 @@ export interface McpDocument {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
-  // Legacy plain keys (read until the Phase 4 migration encrypts them).
+  // Credentials are stored directly; apiKey takes precedence over apikey.
   apiKey?: string;
   apikey?: string;
+  /** Read compatibility only; replaced with apiKey when the key is updated. */
   apiKeyEnc?: EncryptedSecret;
   auth?: McpAuth;
   capabilities?: McpCapabilities;

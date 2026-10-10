@@ -1,8 +1,8 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createDecipheriv } from "node:crypto";
 import { ApiError } from "./errors";
 
-// AES-256-GCM envelope for MCP API keys. Keys live in env only; there is no
-// default or derived key, so nothing is stored when none is configured.
+// Read compatibility for existing AES-256-GCM MCP credentials. New saves use
+// plain apiKey and do not need these environment settings.
 export interface EncryptedSecret {
   v: 1;
   kid: string;
@@ -45,37 +45,18 @@ function keyring() {
   }
   const kid = process.env.MCP_ENCRYPTION_KID?.trim() || "k1";
   const value = process.env.MCP_ENCRYPTION_KEY?.trim();
-  if (!value) return { keys };
+  if (!value) return keys;
   const key = decodeKey(kid, value);
   if (keys.has(kid) && !keys.get(kid)!.equals(key))
     misconfigured(
       `MCP_ENCRYPTION_KEYS lists ${kid} with a different key than MCP_ENCRYPTION_KEY`,
     );
   keys.set(kid, key);
-  return { keys, current: { kid, key } };
+  return keys;
 }
 
 // The key id is bound into the tag, so a record cannot be relabelled.
 const aad = (kid: string) => Buffer.from(`truex-mcp:v1:${kid}`);
-
-export function encryptSecret(plain: string): EncryptedSecret {
-  const { current } = keyring();
-  if (!current)
-    misconfigured(
-      "MCP API keys cannot be stored: MCP_ENCRYPTION_KEY is not configured on the platform",
-    );
-  const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", current.key, iv);
-  cipher.setAAD(aad(current.kid));
-  const data = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
-  return {
-    v: 1,
-    kid: current.kid,
-    iv: iv.toString("base64"),
-    tag: cipher.getAuthTag().toString("base64"),
-    data: data.toString("base64"),
-  };
-}
 
 export function decryptSecret(value: unknown): string {
   const record = value as Partial<EncryptedSecret> | null;
@@ -92,7 +73,7 @@ export function decryptSecret(value: unknown): string {
       "Stored MCP API key has an unknown format",
       "MCP_DECRYPTION_FAILED",
     );
-  const key = keyring().keys.get(record.kid!);
+  const key = keyring().get(record.kid!);
   if (!key)
     misconfigured(
       `MCP API key uses encryption key ${record.kid}, which is not configured`,

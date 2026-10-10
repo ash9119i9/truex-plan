@@ -29,9 +29,8 @@ export const fakeDns: Record<string, string[]> = {
   "mcp.example": ["203.0.113.11"],
 };
 mcpNetwork.lookup = async (host) => fakeDns[host] || [];
-// A fixed test key, so MCP API keys can be stored encrypted.
+// Used only to exercise read compatibility for old encrypted records.
 export const testEncryptionKey = Buffer.alloc(32, 7).toString("base64");
-process.env.MCP_ENCRYPTION_KEY ||= testEncryptionKey;
 
 export async function insertFixtures(store: Store) {
   const profile = {
