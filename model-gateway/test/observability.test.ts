@@ -69,7 +69,15 @@ test("access log: completed stream records model, usage and timings, no secrets"
           { choices: [{ delta: {}, finish_reason: "stop" }] },
           {
             choices: [],
-            usage: { prompt_tokens: 7, completion_tokens: 2, total_tokens: 9 },
+            usage: {
+              prompt_tokens: 7,
+              completion_tokens: 2,
+              total_tokens: 9,
+              prompt_tokens_details: {
+                cached_tokens: 4,
+                cache_write_tokens: 2,
+              },
+            },
           },
         ]),
       )) as typeof fetch,
@@ -91,7 +99,11 @@ test("access log: completed stream records model, usage and timings, no secrets"
       input_tokens: 7,
       output_tokens: 2,
       total_tokens: 9,
+      cached_tokens: 4,
+      cache_write_tokens: 2,
+      uncached_input_tokens: 1,
     });
+    assert.ok(line.ttftMs >= 0 && line.ttftMs <= line.durationMs);
     assert.ok(line.durationMs >= 0 && line.ttfbMs >= 0);
     assert.ok(line.ttfbMs <= line.durationMs);
     const all = g.logs.join("\n");

@@ -1,0 +1,34 @@
+{
+  "capturedAt": "2026-10-03T10:32:23.700292+00:00",
+  "evidenceKind": "live-http-status-only",
+  "method": "HEAD",
+  "authenticated": false,
+  "modelCalls": 0,
+  "businessCalls": 0,
+  "limits": {
+    "connectTimeoutSeconds": 5,
+    "requestTimeoutSeconds": 10
+  },
+  "probes": [
+    {
+      "url": "https://quality.ktern.com/",
+      "exitCode": 0,
+      "httpCode": 200,
+      "tcpSeconds": 0.245467,
+      "tlsSeconds": 0.480783,
+      "firstByteSeconds": 0.710244,
+      "totalSeconds": 0.710513
+    },
+    {
+      "url": "https://quality.ktern.com/qlik-mcp/",
+      "exitCode": 28,
+      "httpCode": null,
+      "tcpSeconds": 0.264403,
+      "tlsSeconds": 0.51459,
+      "firstByteSeconds": null,
+      "totalSeconds": 10.012027,
+      "error": "Operation timed out with zero bytes received"
+    }
+  ],
+  "interpretation": "The shared origin responds to an unauthenticated HEAD request, while the supplied MCP path returns no HTTP headers within10s. This narrows the observable failure to that request/path; it does not identify process status, proxy behavior, authentication failure or the internal cause. Authenticated MCP initialization separately fails in the saved catalog probes."
+}

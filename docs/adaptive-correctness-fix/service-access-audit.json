@@ -1,0 +1,53 @@
+{
+  "evidenceKind": "local-read-only-service-access-audit",
+  "inspectedAt": "2026-10-03",
+  "endpoint": "https://quality.ktern.com/qlik-mcp/",
+  "latestConnectorEvidence": {
+    "source": "catalog-readiness.json",
+    "completedAt": "2026-10-03T10:08:26.068Z",
+    "attempts": 2,
+    "stage": "initialize",
+    "eachAttemptTimeoutMs": 30000,
+    "httpHeadersReceived": false,
+    "catalogReady": false,
+    "modelCalls": 0,
+    "businessCalls": 0,
+    "remoteRootCause": "unknown"
+  },
+  "accessMetadata": {
+    "sshDirectoryExists": false,
+    "sshHostAliases": [],
+    "sshAgentSocketConfigured": true,
+    "kubeConfigPresent": false,
+    "awsDefaultProfileConfigPresent": true,
+    "awsDefaultProfileRegion": "us-east-1",
+    "awsCredentialsFilePresent": true,
+    "awsAccountToQlikServiceMappingFound": false,
+    "serviceLogConnectorAvailable": false,
+    "qlikDeploymentOrRunbookFound": false,
+    "workspaceDeploymentTemplates": [
+      "deploy/compose.yaml",
+      "deploy/kubernetes.yaml",
+      "deploy/runner/Dockerfile"
+    ],
+    "workspaceDeploymentScope": "Truex application services and MongoDB; no identified Qlik MCP service"
+  },
+  "serviceAdminAccessIdentified": false,
+  "remoteAdminOrLogCallsMade": false,
+  "productionWritesOrRestartsMade": false,
+  "credentialsPrinted": false,
+  "missingAccess": [
+    "Known Qlik MCP administration host or owning cloud account/resource mapping",
+    "Authorized admin identity/access path for that exact service",
+    "Service/container/pod or process-supervisor identifier",
+    "Ingress/reverse-proxy and MCP application log locations or log-group identifiers"
+  ],
+  "requiredServerSideEvidence": [
+    "Ingress/access/error logs correlated with initialize requests at 10:07:25.957-10:08:26.066 UTC on 2026-10-03; include upstream target and connection/header/response timings",
+    "Qlik MCP process/container/pod status, readiness, uptime/restarts and resource-pressure indicators",
+    "Application initialize/auth/session logs for the same interval, with credentials and sensitive payloads redacted",
+    "A read-only initialize/tools-list check from the service host to distinguish ingress routing from the local MCP process",
+    "Read-only dependent Qlik connectivity/health evidence if initialization blocks while contacting Qlik"
+  ],
+  "interpretation": "Client-side timeout evidence establishes no HTTP response headers during initialize. It does not establish service process status, HTTP authentication outcome, remote outage, or a specific server-side fault. Existing general AWS configuration does not identify ownership of this endpoint; unrelated cloud resources were not queried."
+}

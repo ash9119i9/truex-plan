@@ -49,6 +49,8 @@ Set `MONGO_URI` in `platform/.env`. The database is `truex` (`MONGO_DB=truex`). 
 
 There is no production seed command and no provider API-key or model configuration in `.env`. Manage agents and model profiles in MongoDB. HTTP MCP profiles and agent attachments can also be managed through the Connected tools panel; local command connectors are blocked. The service rereads them per request; ObjectId and string IDs are supported, including string references to ObjectIds. Both `apiKey` and `apikey` credential fields are accepted (the camel-case field takes precedence if both exist). See [MongoDB document examples](docs/mongodb.md).
 
+MCP attachments require scoped profiles with `agentIds`; legacy `agent.mcpProfileIds` must be migrated. See [MCP deployment and recovery](docs/MCP_AGENTCORE_FIX.md) before rolling out AgentCore and platform changes.
+
 ```sh
 npm run dev
 ```
@@ -66,7 +68,7 @@ The pinned runtime speaks only the OpenAI Responses API. Providers that don't (C
 | `anthropic` | Gateway: Anthropic Messages API |
 | `gemini` | Gateway: Gemini `streamGenerateContent` |
 
-Optional profile fields: `route` (`gateway` forces a Responses profile through the gateway), `contextWindow`, `autoCompactTokenLimit`, `maxOutputTokens`, `thinking`, and `apiKeySecretArn` (read the key from AWS Secrets Manager instead of `apiKey`).
+Optional profile fields: `route` (`gateway` forces a Responses profile through the gateway), `contextWindow`, `autoCompactTokenLimit`, `maxOutputTokens`, `thinking`, `apiKeySecretArn` (read the key from AWS Secrets Manager instead of `apiKey`), and `promptCache` ([provider controls and live benchmarking](docs/PROMPT_CACHING.md)).
 
 For gateway profiles the platform never sends the provider key to agent-core. Codex receives the gateway URL `MODEL_GATEWAY_URL/p/<profileId>/v1` and a token signed with `MODEL_GATEWAY_SECRET` that is valid only for that profile. The gateway checks the token, loads the profile and key from `truex_models`, and calls the provider. Tokens do not expire, because Codex keeps a thread's provider config for the life of the thread. Revoke access by disabling the profile (`enabled: false`) or rotating the secret.
 

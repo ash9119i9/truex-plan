@@ -516,6 +516,20 @@ export class PlatformService {
             .toArray()
         : Promise.resolve([]),
     );
+    // Old attachments cannot authorize a connector, but must not disappear
+    // silently when an operator has not run the scope migration.
+    const legacyMcpRead = settled(
+      agent.mcpProfileIds?.length
+        ? this.store.mcp.findOne(
+            {
+              _id: { $in: agent.mcpProfileIds.flatMap(idCandidates) },
+              scope: { $exists: false },
+              enabled: { $ne: false },
+            },
+            { projection: { _id: 1 } },
+          )
+        : Promise.resolve(null),
+    );
     const skillsRead = settled(this.skills(agent.skillIds || []));
     const modelResult = await modelRead;
     if (modelResult.status === "rejected") throw modelResult.reason;
@@ -559,6 +573,14 @@ export class PlatformService {
     const ownerMcpResult = await ownerMcpRead;
     if (ownerMcpResult.status === "rejected") throw ownerMcpResult.reason;
     const userMcps = ownerMcpResult.value;
+    const legacyMcpResult = await legacyMcpRead;
+    if (legacyMcpResult.status === "rejected") throw legacyMcpResult.reason;
+    if (legacyMcpResult.value)
+      throw new ApiError(
+        422,
+        "This agent's MCP attachments require migration. Ask your administrator to complete the connector migration, then retry.",
+        "MCP_MIGRATION_REQUIRED",
+      );
     // Tenant names are reserved tenant-wide (attached here or not), so a user
     // copy made before the tenant one existed is skipped, and the chat still
     // starts. The owner sees the same warning in MCP settings.

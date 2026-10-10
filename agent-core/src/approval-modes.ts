@@ -64,6 +64,43 @@ export function grantKey(ref: ToolRef) {
   const c = toolCandidates(ref)[0];
   return `${c.server ?? "actor:" + (c.actor ?? "")}\u0000${c.tool}`;
 }
+// A generic dispatcher may call many unrelated tools. Consent for one read
+// must not become a remembered approval for every connector action.
+export function isOmniInvocation(question: any): boolean {
+  if (!isToolQuestion(question)) return false;
+  const ref = parseToolQuestion(question.question);
+  return (
+    !!ref &&
+    toolCandidates(ref).some(
+      (c) =>
+        (c.server === "omni" && c.tool === "invoke_tool") ||
+        (c.server === "adaptive" &&
+          !["discover_server", "discover_tools", "get_tool_schema"].includes(
+            c.tool,
+          )),
+    )
+  );
+}
+export function singleCallApprovals(detail: any) {
+  if (!Array.isArray(detail?.questions)) return detail;
+  return {
+    ...detail,
+    questions: detail.questions.map((q: any) =>
+      isOmniInvocation(q)
+        ? {
+            ...q,
+            options: Array.isArray(q.options)
+              ? q.options.filter(
+                  (o: any) =>
+                    o?.label !== ALLOW_FOR_CHAT &&
+                    o?.label !== "Allow for this session",
+                )
+              : q.options,
+          }
+        : q,
+    ),
+  };
+}
 const READ_VERBS = new Set([
   "get",
   "list",
@@ -121,10 +158,12 @@ export function findTool(index: ToolIndex, ref: ToolRef) {
 }
 // Adds the chat grant after "Allow" on tool approval questions.
 export function withChatGrant(detail: any) {
+  detail = singleCallApprovals(detail);
   if (!Array.isArray(detail?.questions)) return detail;
   return {
     ...detail,
     questions: detail.questions.map((q: any) => {
+      if (isOmniInvocation(q)) return q;
       if (!isToolQuestion(q) || !Array.isArray(q.options)) return q;
       // A grant needs a tool to remember; unparsed wording gets none.
       if (!parseToolQuestion(q.question)) return q;

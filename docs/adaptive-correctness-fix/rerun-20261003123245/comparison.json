@@ -1,0 +1,2850 @@
+{
+  "generatedAt": "2026-10-03T12:42:54.794Z",
+  "messages": [
+    "hi this is ashok ?",
+    "What is the capital of India ?",
+    "what are the Qlik apps ?",
+    "What is the capital of tamilnadu ?",
+    "Explain this qlik app T_DCF_BANKREC_P"
+  ],
+  "allCompleted": true,
+  "correctnessGate": {
+    "status": "failed",
+    "performanceClaimsAllowed": false
+  },
+  "summaries": {
+    "direct": {
+      "outcome": "completed",
+      "threadId": "01a101c2-02fa-73f1-b263-73609b5ca587",
+      "reportedUsage": {
+        "input": 67195,
+        "output": 476,
+        "attempts": 8,
+        "missingInput": 0,
+        "missingOutput": 0,
+        "non200": 0,
+        "incompleteStreams": 0,
+        "zeroToolOutputAnomalies": 0
+      },
+      "startupGatewayEvents": [],
+      "runConditions": {
+        "turnTimeoutMs": 600000,
+        "upstreamFirstByteTimeoutMs": 180000,
+        "upstreamIdleTimeoutMs": 180000,
+        "maxCalls": 48
+      },
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "hi this is ashok ?",
+          "status": "completed",
+          "durationMs": 5050.784999999996,
+          "reportedUsage": {
+            "input": 7953,
+            "output": 111,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "What is the capital of India ?",
+          "status": "completed",
+          "durationMs": 2426.210791999998,
+          "reportedUsage": {
+            "input": 8067,
+            "output": 47,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 3,
+          "userMessage": "what are the Qlik apps ?",
+          "status": "completed",
+          "durationMs": 9664.362666,
+          "reportedUsage": {
+            "input": 24965,
+            "output": 148,
+            "attempts": 3,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [
+              {
+                "tool": "list_mcp_resource_templates",
+                "arguments": {
+                  "server": "qlik"
+                },
+                "error": {
+                  "message": "resources/templates/list failed: failed to get client: MCP startup failed: timed out handshaking with MCP server after 29.999754041s"
+                },
+                "result": null
+              },
+              {
+                "tool": "list_mcp_resources",
+                "arguments": {
+                  "server": "qlik"
+                },
+                "error": {
+                  "message": "resources/list failed: failed to get client: MCP startup failed: timed out handshaking with MCP server after 29.999754041s"
+                },
+                "result": null
+              },
+              {
+                "tool": "list_mcp_resource_templates",
+                "arguments": {
+                  "server": "qlik"
+                },
+                "error": {
+                  "message": "resources/templates/list failed: failed to get client: MCP startup failed: timed out handshaking with MCP server after 29.999754041s"
+                },
+                "result": null
+              },
+              {
+                "tool": "list_mcp_resources",
+                "arguments": {
+                  "server": "qlik"
+                },
+                "error": {
+                  "message": "resources/list failed: failed to get client: MCP startup failed: timed out handshaking with MCP server after 29.999754041s"
+                },
+                "result": null
+              }
+            ],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": [
+            {
+              "server": "qlik",
+              "tool": "list_mcp_resource_templates",
+              "args": {
+                "server": "qlik"
+              },
+              "status": "failed"
+            },
+            {
+              "server": "qlik",
+              "tool": "list_mcp_resources",
+              "args": {
+                "server": "qlik"
+              },
+              "status": "failed"
+            },
+            {
+              "server": "qlik",
+              "tool": "list_mcp_resource_templates",
+              "args": {
+                "server": "qlik"
+              },
+              "status": "failed"
+            },
+            {
+              "server": "qlik",
+              "tool": "list_mcp_resources",
+              "args": {
+                "server": "qlik"
+              },
+              "status": "failed"
+            }
+          ]
+        },
+        {
+          "turn": 4,
+          "userMessage": "What is the capital of tamilnadu ?",
+          "status": "completed",
+          "durationMs": 2220.0996250000026,
+          "reportedUsage": {
+            "input": 8630,
+            "output": 43,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 5,
+          "userMessage": "Explain this qlik app T_DCF_BANKREC_P",
+          "status": "completed",
+          "durationMs": 5834.695374999996,
+          "reportedUsage": {
+            "input": 17580,
+            "output": 127,
+            "attempts": 2,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [
+              {
+                "tool": "list_mcp_resources",
+                "arguments": {
+                  "server": "qlik"
+                },
+                "error": {
+                  "message": "resources/list failed: failed to get client: MCP startup failed: timed out handshaking with MCP server after 29.999754041s"
+                },
+                "result": null
+              },
+              {
+                "tool": "list_mcp_resource_templates",
+                "arguments": {
+                  "server": "qlik"
+                },
+                "error": {
+                  "message": "resources/templates/list failed: failed to get client: MCP startup failed: timed out handshaking with MCP server after 29.999754041s"
+                },
+                "result": null
+              }
+            ],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": [
+            {
+              "server": "qlik",
+              "tool": "list_mcp_resources",
+              "args": {
+                "server": "qlik"
+              },
+              "status": "failed"
+            },
+            {
+              "server": "qlik",
+              "tool": "list_mcp_resource_templates",
+              "args": {
+                "server": "qlik"
+              },
+              "status": "failed"
+            }
+          ]
+        }
+      ],
+      "runtimeReconciliation": [
+        {
+          "turn": 1,
+          "providerInput": 7953,
+          "providerOutput": 111,
+          "runtimeMainInput": 7953,
+          "runtimeMainOutput": 111,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 2,
+          "providerInput": 8067,
+          "providerOutput": 47,
+          "runtimeMainInput": 8067,
+          "runtimeMainOutput": 47,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 3,
+          "providerInput": 24965,
+          "providerOutput": 148,
+          "runtimeMainInput": 24965,
+          "runtimeMainOutput": 148,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 4,
+          "providerInput": 8630,
+          "providerOutput": 43,
+          "runtimeMainInput": 8630,
+          "runtimeMainOutput": 43,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 5,
+          "providerInput": 17580,
+          "providerOutput": 127,
+          "runtimeMainInput": 17580,
+          "runtimeMainOutput": 127,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        }
+      ]
+    },
+    "omni": {
+      "outcome": "completed",
+      "threadId": "01a101c3-bb49-7161-9b75-5df502790bf7",
+      "reportedUsage": {
+        "input": 81032,
+        "output": 554,
+        "attempts": 9,
+        "missingInput": 0,
+        "missingOutput": 0,
+        "non200": 0,
+        "incompleteStreams": 0,
+        "zeroToolOutputAnomalies": 1
+      },
+      "startupGatewayEvents": [],
+      "runConditions": {
+        "turnTimeoutMs": 600000,
+        "upstreamFirstByteTimeoutMs": 180000,
+        "upstreamIdleTimeoutMs": 180000,
+        "maxCalls": 48
+      },
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "hi this is ashok ?",
+          "status": "completed",
+          "durationMs": 4232.510834000001,
+          "reportedUsage": {
+            "input": 8581,
+            "output": 112,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "What is the capital of India ?",
+          "status": "completed",
+          "durationMs": 3432.5352089999997,
+          "reportedUsage": {
+            "input": 8696,
+            "output": 56,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 3,
+          "userMessage": "what are the Qlik apps ?",
+          "status": "completed",
+          "durationMs": 72362.623708,
+          "reportedUsage": {
+            "input": 35763,
+            "output": 157,
+            "attempts": 4,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 1
+          },
+          "answerEvidence": {
+            "successfulTools": [
+              "discover_server"
+            ],
+            "failedTools": [
+              {
+                "tool": "discover_tools",
+                "arguments": {
+                  "server": "qlik",
+                  "query": "list apps"
+                },
+                "error": null,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\"error\":\"The operation was aborted due to timeout\"}"
+                    }
+                  ],
+                  "structuredContent": null,
+                  "_meta": null
+                }
+              },
+              {
+                "tool": "discover_tools",
+                "arguments": {
+                  "server": "qlik",
+                  "query": "apps"
+                },
+                "error": null,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\"error\":\"The operation was aborted due to timeout\"}"
+                    }
+                  ],
+                  "structuredContent": null,
+                  "_meta": null
+                }
+              }
+            ],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": [
+            {
+              "server": "omni",
+              "tool": "discover_server",
+              "args": {
+                "query": "qlik"
+              },
+              "status": "completed"
+            },
+            {
+              "server": "omni",
+              "tool": "discover_tools",
+              "args": {
+                "server": "qlik",
+                "query": "list apps"
+              },
+              "status": "failed"
+            },
+            {
+              "server": "omni",
+              "tool": "discover_tools",
+              "args": {
+                "server": "qlik",
+                "query": "apps"
+              },
+              "status": "failed"
+            }
+          ]
+        },
+        {
+          "turn": 4,
+          "userMessage": "What is the capital of tamilnadu ?",
+          "status": "completed",
+          "durationMs": 3627.702333999987,
+          "reportedUsage": {
+            "input": 9243,
+            "output": 51,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 5,
+          "userMessage": "Explain this qlik app T_DCF_BANKREC_P",
+          "status": "completed",
+          "durationMs": 37310.760333,
+          "reportedUsage": {
+            "input": 18749,
+            "output": 178,
+            "attempts": 2,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [
+              {
+                "tool": "discover_tools",
+                "arguments": {
+                  "server": "qlik",
+                  "query": "app details"
+                },
+                "error": null,
+                "result": {
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "{\"error\":\"The operation was aborted due to timeout\"}"
+                    }
+                  ],
+                  "structuredContent": null,
+                  "_meta": null
+                }
+              }
+            ],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": [
+            {
+              "server": "omni",
+              "tool": "discover_tools",
+              "args": {
+                "server": "qlik",
+                "query": "app details"
+              },
+              "status": "failed"
+            }
+          ]
+        }
+      ],
+      "runtimeReconciliation": [
+        {
+          "turn": 1,
+          "providerInput": 8581,
+          "providerOutput": 112,
+          "runtimeMainInput": 8581,
+          "runtimeMainOutput": 112,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 2,
+          "providerInput": 8696,
+          "providerOutput": 56,
+          "runtimeMainInput": 8696,
+          "runtimeMainOutput": 56,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 3,
+          "providerInput": 35763,
+          "providerOutput": 157,
+          "runtimeMainInput": 35763,
+          "runtimeMainOutput": 157,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 4,
+          "providerInput": 9243,
+          "providerOutput": 51,
+          "runtimeMainInput": 9243,
+          "runtimeMainOutput": 51,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 5,
+          "providerInput": 18749,
+          "providerOutput": 178,
+          "runtimeMainInput": 18749,
+          "runtimeMainOutput": 178,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        }
+      ]
+    },
+    "adaptive": {
+      "outcome": "completed",
+      "threadId": "01a101c7-14f2-78e2-b212-9e838539e001",
+      "reportedUsage": {
+        "input": 26154,
+        "output": 587,
+        "attempts": 7,
+        "missingInput": 0,
+        "missingOutput": 0,
+        "non200": 0,
+        "incompleteStreams": 0,
+        "zeroToolOutputAnomalies": 0
+      },
+      "startupGatewayEvents": [
+        {
+          "at": "2026-10-03T12:38:46.003Z",
+          "turn": 0,
+          "type": "hydration_attempt",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "phase": "started",
+          "server": "qlik",
+          "attempt": 1,
+          "maxAttempts": 2,
+          "hydrationTimeoutMs": 30000,
+          "startedAt": "2026-10-03T12:38:46.003Z"
+        },
+        {
+          "at": "2026-10-03T12:38:46.004Z",
+          "turn": 0,
+          "type": "transport_stage",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "stage": "initialize",
+          "phase": "started",
+          "startedAt": "2026-10-03T12:38:46.004Z",
+          "server": "qlik"
+        },
+        {
+          "at": "2026-10-03T12:39:16.010Z",
+          "turn": 0,
+          "type": "transport_stage",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "stage": "initialize",
+          "phase": "failed",
+          "startedAt": "2026-10-03T12:38:46.004Z",
+          "completedAt": "2026-10-03T12:39:16.010Z",
+          "durationMs": 30006.0155,
+          "timeToHeadersMs": null,
+          "httpStatus": null,
+          "errorKind": "timeout",
+          "timedOut": true,
+          "server": "qlik"
+        },
+        {
+          "at": "2026-10-03T12:39:16.010Z",
+          "turn": 0,
+          "type": "unavailable",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "server": "qlik",
+          "message": "The operation was aborted due to timeout",
+          "kind": "timeout",
+          "stage": "initialize",
+          "retryable": true,
+          "phase": "hydration",
+          "attempt": 1
+        },
+        {
+          "at": "2026-10-03T12:39:16.010Z",
+          "turn": 0,
+          "type": "hydration_attempt",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "phase": "failed",
+          "server": "qlik",
+          "attempt": 1,
+          "maxAttempts": 2,
+          "startedAt": "2026-10-03T12:38:46.003Z",
+          "completedAt": "2026-10-03T12:39:16.010Z",
+          "durationMs": 30006.898,
+          "errorStage": "initialize",
+          "errorKind": "timeout"
+        },
+        {
+          "at": "2026-10-03T12:39:16.010Z",
+          "turn": 0,
+          "type": "metadata_retry",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "server": "qlik",
+          "attempt": 2,
+          "maxAttempts": 2,
+          "retryDelayMs": 100,
+          "stage": "initialize"
+        },
+        {
+          "at": "2026-10-03T12:39:16.112Z",
+          "turn": 0,
+          "type": "hydration_attempt",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "phase": "started",
+          "server": "qlik",
+          "attempt": 2,
+          "maxAttempts": 2,
+          "hydrationTimeoutMs": 30000,
+          "startedAt": "2026-10-03T12:39:16.112Z"
+        },
+        {
+          "at": "2026-10-03T12:39:16.112Z",
+          "turn": 0,
+          "type": "transport_stage",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "stage": "initialize",
+          "phase": "started",
+          "startedAt": "2026-10-03T12:39:16.112Z",
+          "server": "qlik"
+        },
+        {
+          "at": "2026-10-03T12:39:46.115Z",
+          "turn": 0,
+          "type": "transport_stage",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "stage": "initialize",
+          "phase": "failed",
+          "startedAt": "2026-10-03T12:39:16.112Z",
+          "completedAt": "2026-10-03T12:39:46.115Z",
+          "durationMs": 30002.825625000005,
+          "timeToHeadersMs": null,
+          "httpStatus": null,
+          "errorKind": "timeout",
+          "timedOut": true,
+          "server": "qlik"
+        },
+        {
+          "at": "2026-10-03T12:39:46.116Z",
+          "turn": 0,
+          "type": "unavailable",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "server": "qlik",
+          "message": "The operation was aborted due to timeout",
+          "kind": "timeout",
+          "stage": "initialize",
+          "retryable": true,
+          "phase": "hydration",
+          "attempt": 2
+        },
+        {
+          "at": "2026-10-03T12:39:46.116Z",
+          "turn": 0,
+          "type": "hydration_attempt",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "phase": "failed",
+          "server": "qlik",
+          "attempt": 2,
+          "maxAttempts": 2,
+          "startedAt": "2026-10-03T12:39:16.112Z",
+          "completedAt": "2026-10-03T12:39:46.116Z",
+          "durationMs": 30003.941709000006,
+          "errorStage": "initialize",
+          "errorKind": "timeout"
+        },
+        {
+          "at": "2026-10-03T12:39:46.116Z",
+          "turn": 0,
+          "type": "registry_normalization",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "registryVersion": 0,
+          "toolCount": 0,
+          "durationMs": 0.35824999999749707
+        },
+        {
+          "at": "2026-10-03T12:39:46.116Z",
+          "turn": 0,
+          "type": "binding_commit",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "registryVersion": 0,
+          "toolCount": 0,
+          "durationMs": 0.0064579999962006696
+        },
+        {
+          "at": "2026-10-03T12:39:46.117Z",
+          "turn": 0,
+          "type": "registry",
+          "scope": {
+            "tenantId": "default",
+            "userId": "benchmark-user"
+          },
+          "registryVersion": 0,
+          "tools": 0,
+          "upstreamToolCount": 0,
+          "authorizedExposureCount": 0,
+          "state": "failed",
+          "status": {
+            "state": "failed",
+            "configuredServerCount": 1,
+            "enabledServerCount": 1,
+            "upstreamToolCount": 0,
+            "registryVersion": 0,
+            "servers": [
+              {
+                "server": "qlik",
+                "state": "unavailable",
+                "upstreamToolCount": 0,
+                "attempts": 2,
+                "updatedAt": "2026-10-03T12:39:46.116Z",
+                "lastError": {
+                  "message": "The operation was aborted due to timeout",
+                  "kind": "timeout",
+                  "stage": "initialize",
+                  "retryable": true
+                }
+              }
+            ]
+          },
+          "durationMs": 60113.530125
+        }
+      ],
+      "runConditions": {
+        "turnTimeoutMs": 600000,
+        "upstreamFirstByteTimeoutMs": 180000,
+        "upstreamIdleTimeoutMs": 180000,
+        "maxCalls": 48
+      },
+      "turns": [
+        {
+          "turn": 1,
+          "userMessage": "hi this is ashok ?",
+          "status": "completed",
+          "durationMs": 4839.304457999999,
+          "reportedUsage": {
+            "input": 3068,
+            "output": 179,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 2,
+          "userMessage": "What is the capital of India ?",
+          "status": "completed",
+          "durationMs": 3234.5253749999974,
+          "reportedUsage": {
+            "input": 3241,
+            "output": 56,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 3,
+          "userMessage": "what are the Qlik apps ?",
+          "status": "completed",
+          "durationMs": 69183.155375,
+          "reportedUsage": {
+            "input": 11756,
+            "output": 189,
+            "attempts": 3,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [
+              "discover_server",
+              "discover_server"
+            ],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": [
+            {
+              "server": "adaptive",
+              "tool": "discover_server",
+              "args": {
+                "query": "qlik"
+              },
+              "status": "completed"
+            },
+            {
+              "server": "adaptive",
+              "tool": "discover_server",
+              "args": {
+                "query": "qlik"
+              },
+              "status": "completed"
+            }
+          ]
+        },
+        {
+          "turn": 4,
+          "userMessage": "What is the capital of tamilnadu ?",
+          "status": "completed",
+          "durationMs": 2428.418708000012,
+          "reportedUsage": {
+            "input": 3798,
+            "output": 55,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        },
+        {
+          "turn": 5,
+          "userMessage": "Explain this qlik app T_DCF_BANKREC_P",
+          "status": "completed",
+          "durationMs": 63952.80837499999,
+          "reportedUsage": {
+            "input": 4291,
+            "output": 108,
+            "attempts": 1,
+            "missingInput": 0,
+            "missingOutput": 0,
+            "non200": 0,
+            "incompleteStreams": 0,
+            "zeroToolOutputAnomalies": 0
+          },
+          "answerEvidence": {
+            "successfulTools": [],
+            "failedTools": [],
+            "appResults": [],
+            "appResultPayloadSizes": [],
+            "detailsRetrieved": false,
+            "detailsTopLevelKeys": [],
+            "scriptRetrieved": false,
+            "sheetsRetrieved": false,
+            "lineageRetrieved": false,
+            "scriptInvocationCount": 0,
+            "replyClaimsScriptTimedOutTwice": false,
+            "replyClaimsNoSheets": false
+          },
+          "tools": []
+        }
+      ],
+      "runtimeReconciliation": [
+        {
+          "turn": 1,
+          "providerInput": 3068,
+          "providerOutput": 179,
+          "runtimeMainInput": 3068,
+          "runtimeMainOutput": 179,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 2,
+          "providerInput": 3241,
+          "providerOutput": 56,
+          "runtimeMainInput": 3241,
+          "runtimeMainOutput": 56,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 3,
+          "providerInput": 11756,
+          "providerOutput": 189,
+          "runtimeMainInput": 11756,
+          "runtimeMainOutput": 189,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 4,
+          "providerInput": 3798,
+          "providerOutput": 55,
+          "runtimeMainInput": 3798,
+          "runtimeMainOutput": 55,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        },
+        {
+          "turn": 5,
+          "providerInput": 4291,
+          "providerOutput": 108,
+          "runtimeMainInput": 4291,
+          "runtimeMainOutput": 108,
+          "helperUsage": null,
+          "inputMatchesMain": true,
+          "outputMatchesMain": true
+        }
+      ]
+    }
+  },
+  "calls": [
+    {
+      "mode": "direct",
+      "call": 1,
+      "turn": 1,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 7953,
+        "output_tokens": 111
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 73,
+          "bytes": 73
+        },
+        "completeBodyBytes": 37253,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 43,
+          "assistantText": 0,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 30,
+          "totalHistoryBytes": 73
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 467,
+          "bytes": 467
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 3194.152374999998,
+        "firstBodyByteMs": 3195.8403340000004,
+        "firstTextDeltaMs": 3197.7765839999993,
+        "streamDurationMs": 4745.039666999997
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "direct",
+      "call": 2,
+      "turn": 2,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8067,
+        "output_tokens": 47
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 693,
+          "bytes": 693
+        },
+        "completeBodyBytes": 37873,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 98,
+          "assistantText": 502,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 93,
+          "totalHistoryBytes": 693
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 174,
+          "bytes": 174
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 1597.0150839999988,
+        "firstBodyByteMs": 1597.6254589999953,
+        "firstTextDeltaMs": 1598.1613339999967,
+        "streamDurationMs": 2313.1054589999985
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "direct",
+      "call": 3,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8125,
+        "output_tokens": 12
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 1009,
+          "bytes": 1009
+        },
+        "completeBodyBytes": 38189,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 706,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 156,
+          "totalHistoryBytes": 1009
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 49,
+          "bytes": 49
+        },
+        "toolArgumentJson": [
+          {
+            "name": "list_mcp_resources",
+            "chars": 18,
+            "bytes": 18
+          },
+          {
+            "name": "list_mcp_resource_templates",
+            "chars": 18,
+            "bytes": 18
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 1972.7712079999983,
+        "firstBodyByteMs": 1973.719250000002,
+        "firstTextDeltaMs": 1973.911165999998,
+        "firstToolBlockMs": 2905.7263329999987,
+        "streamDurationMs": 2910.480540999997
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "direct",
+      "call": 4,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8314,
+        "output_tokens": 39
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 1818,
+          "bytes": 1818
+        },
+        "completeBodyBytes": 38998,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 780,
+          "toolCalls": 241,
+          "toolResults": 428,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 222,
+          "totalHistoryBytes": 1818
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 157,
+          "bytes": 159
+        },
+        "toolArgumentJson": [
+          {
+            "name": "list_mcp_resource_templates",
+            "chars": 18,
+            "bytes": 18
+          },
+          {
+            "name": "list_mcp_resources",
+            "chars": 18,
+            "bytes": 18
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 2077.381583000002,
+        "firstBodyByteMs": 2078.272208000002,
+        "firstTextDeltaMs": 2078.408958,
+        "firstToolBlockMs": 3473.870750000002,
+        "streamDurationMs": 3476.351125000001
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "direct",
+      "call": 5,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8526,
+        "output_tokens": 97
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 2735,
+          "bytes": 2737
+        },
+        "completeBodyBytes": 39917,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 964,
+          "toolCalls": 482,
+          "toolResults": 856,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 288,
+          "totalHistoryBytes": 2737
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 393,
+          "bytes": 395
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 1547.0821250000008,
+        "firstBodyByteMs": 1548.2370410000003,
+        "firstTextDeltaMs": 1548.824416000003,
+        "streamDurationMs": 3051.4180410000045
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "direct",
+      "call": 6,
+      "turn": 4,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8630,
+        "output_tokens": 43
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 3277,
+          "bytes": 3281
+        },
+        "completeBodyBytes": 40461,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 206,
+          "assistantText": 1386,
+          "toolCalls": 482,
+          "toolResults": 856,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 351,
+          "totalHistoryBytes": 3281
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 156,
+          "bytes": 156
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 1512.9514589999962,
+        "firstBodyByteMs": 1513.740291999995,
+        "firstTextDeltaMs": 1513.9259999999995,
+        "streamDurationMs": 2117.4757089999985
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "direct",
+      "call": 7,
+      "turn": 5,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8690,
+        "output_tokens": 16
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 3588,
+          "bytes": 3592
+        },
+        "completeBodyBytes": 40772,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 268,
+          "assistantText": 1572,
+          "toolCalls": 482,
+          "toolResults": 856,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 414,
+          "totalHistoryBytes": 3592
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 56,
+          "bytes": 56
+        },
+        "toolArgumentJson": [
+          {
+            "name": "list_mcp_resources",
+            "chars": 18,
+            "bytes": 18
+          },
+          {
+            "name": "list_mcp_resource_templates",
+            "chars": 18,
+            "bytes": 18
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 1683.1227919999947,
+        "firstBodyByteMs": 1684.4182079999955,
+        "firstTextDeltaMs": 1684.9814999999944,
+        "firstToolBlockMs": 2457.6543329999986,
+        "streamDurationMs": 2463.0166669999962
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "direct",
+      "call": 8,
+      "turn": 5,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8890,
+        "output_tokens": 111
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 24142,
+          "bytes": 24142
+        },
+        "historyJson": {
+          "chars": 4404,
+          "bytes": 4408
+        },
+        "completeBodyBytes": 41588,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 268,
+          "assistantText": 1653,
+          "toolCalls": 723,
+          "toolResults": 1284,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 480,
+          "totalHistoryBytes": 4408
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 436,
+          "bytes": 436
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 25,
+      "schemasSent": 25,
+      "timing": {
+        "firstHeaderMs": 1493.3207079999993,
+        "firstBodyByteMs": 1493.967875000002,
+        "firstTextDeltaMs": 1494.807292000005,
+        "streamDurationMs": 3111.3977920000034
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 1,
+      "turn": 1,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8581,
+        "output_tokens": 112
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 73,
+          "bytes": 73
+        },
+        "completeBodyBytes": 40189,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 43,
+          "assistantText": 0,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 30,
+          "totalHistoryBytes": 73
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 465,
+          "bytes": 465
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 2606.6775829999997,
+        "firstBodyByteMs": 2609.7604579999997,
+        "firstTextDeltaMs": 2610.676875,
+        "streamDurationMs": 4049.1347920000007
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 2,
+      "turn": 2,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8696,
+        "output_tokens": 56
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 691,
+          "bytes": 691
+        },
+        "completeBodyBytes": 40807,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 98,
+          "assistantText": 500,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 93,
+          "totalHistoryBytes": 691
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 193,
+          "bytes": 193
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 2507.5456670000003,
+        "firstBodyByteMs": 2508.5959170000006,
+        "firstTextDeltaMs": 2509.5790419999994,
+        "streamDurationMs": 3204.1845840000005
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 3,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8762,
+        "output_tokens": 12
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 1027,
+          "bytes": 1027
+        },
+        "completeBodyBytes": 41143,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 724,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 156,
+          "totalHistoryBytes": 1027
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 49,
+          "bytes": 49
+        },
+        "toolArgumentJson": [
+          {
+            "name": "mcp__omni__discover_server",
+            "chars": 17,
+            "bytes": 17
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 1929.2458750000005,
+        "firstBodyByteMs": 1930.9132499999996,
+        "firstTextDeltaMs": 1931.602334000001,
+        "firstToolBlockMs": 2342.6521250000005,
+        "streamDurationMs": 2347.74575
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 4,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8876,
+        "output_tokens": 0
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 1493,
+          "bytes": 1493
+        },
+        "completeBodyBytes": 41609,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 798,
+          "toolCalls": 123,
+          "toolResults": 205,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 220,
+          "totalHistoryBytes": 1493
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 0,
+          "bytes": 0
+        },
+        "toolArgumentJson": [
+          {
+            "name": "mcp__omni__discover_tools",
+            "chars": 40,
+            "bytes": 40
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 2011.8090840000004,
+        "firstBodyByteMs": 2012.6542090000003,
+        "firstToolBlockMs": 2318.1203339999993,
+        "streamDurationMs": 2320.413084
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": true
+    },
+    {
+      "mode": "omni",
+      "call": 5,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 8986,
+        "output_tokens": 48
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 1922,
+          "bytes": 1922
+        },
+        "completeBodyBytes": 42038,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 798,
+          "toolCalls": 266,
+          "toolResults": 428,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 283,
+          "totalHistoryBytes": 1922
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 190,
+          "bytes": 190
+        },
+        "toolArgumentJson": [
+          {
+            "name": "mcp__omni__discover_tools",
+            "chars": 35,
+            "bytes": 35
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 2293.46875,
+        "firstBodyByteMs": 2294.8862919999956,
+        "firstTextDeltaMs": 2295.3448329999956,
+        "firstToolBlockMs": 3573.7150829999955,
+        "streamDurationMs": 3577.0179999999964
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 6,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 9139,
+        "output_tokens": 97
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 2562,
+          "bytes": 2562
+        },
+        "completeBodyBytes": 42678,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 1013,
+          "toolCalls": 404,
+          "toolResults": 651,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 347,
+          "totalHistoryBytes": 2562
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 365,
+          "bytes": 365
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 2403.3582079999906,
+        "firstBodyByteMs": 2404.6898749999964,
+        "firstTextDeltaMs": 2405.225250000003,
+        "streamDurationMs": 3788.6918749999895
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 7,
+      "turn": 4,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 9243,
+        "output_tokens": 51
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 3081,
+          "bytes": 3081
+        },
+        "completeBodyBytes": 43197,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 206,
+          "assistantText": 1410,
+          "toolCalls": 404,
+          "toolResults": 651,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 410,
+          "totalHistoryBytes": 3081
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 181,
+          "bytes": 181
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 2953.4373750000086,
+        "firstBodyByteMs": 2954.6460829999996,
+        "firstTextDeltaMs": 2955.089208000005,
+        "streamDurationMs": 3545.113000000012
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 8,
+      "turn": 5,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 9310,
+        "output_tokens": 24
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 3418,
+          "bytes": 3418
+        },
+        "completeBodyBytes": 43534,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 268,
+          "assistantText": 1622,
+          "toolCalls": 404,
+          "toolResults": 651,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 473,
+          "totalHistoryBytes": 3418
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 96,
+          "bytes": 96
+        },
+        "toolArgumentJson": [
+          {
+            "name": "mcp__omni__discover_tools",
+            "chars": 42,
+            "bytes": 42
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 1688.4097499999916,
+        "firstBodyByteMs": 1689.7389169999951,
+        "firstTextDeltaMs": 1690.3805839999986,
+        "firstToolBlockMs": 2536.0450839999976,
+        "streamDurationMs": 2538.3809170000022
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "omni",
+      "call": 9,
+      "turn": 5,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 9439,
+        "output_tokens": 154
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 13388,
+          "bytes": 13388
+        },
+        "systemJson": {
+          "chars": 13594,
+          "bytes": 13594
+        },
+        "schemasJson": {
+          "chars": 26310,
+          "bytes": 26310
+        },
+        "historyJson": {
+          "chars": 3971,
+          "bytes": 3971
+        },
+        "completeBodyBytes": 44087,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 25,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 24142,
+        "mcpSchemaJsonBytes": 2169,
+        "historyBlockJsonBytes": {
+          "userText": 268,
+          "assistantText": 1743,
+          "toolCalls": 549,
+          "toolResults": 874,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 537,
+          "totalHistoryBytes": 3971
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 559,
+          "bytes": 561
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 29,
+      "timing": {
+        "firstHeaderMs": 2800.7344580000063,
+        "firstBodyByteMs": 2801.705833,
+        "firstTextDeltaMs": 2801.872875000001,
+        "streamDurationMs": 4603.311207999999
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "adaptive",
+      "call": 1,
+      "turn": 1,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 3068,
+        "output_tokens": 179
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 2040,
+          "bytes": 2040
+        },
+        "historyJson": {
+          "chars": 73,
+          "bytes": 73
+        },
+        "completeBodyBytes": 15151,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 2,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 2040,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 43,
+          "assistantText": 0,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 30,
+          "totalHistoryBytes": 73
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 709,
+          "bytes": 709
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 2,
+      "timing": {
+        "firstHeaderMs": 2230.850416000001,
+        "firstBodyByteMs": 2232.722999999998,
+        "firstTextDeltaMs": 2233.2932500000024,
+        "streamDurationMs": 4664.987875000006
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "adaptive",
+      "call": 2,
+      "turn": 2,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 3241,
+        "output_tokens": 56
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 2040,
+          "bytes": 2040
+        },
+        "historyJson": {
+          "chars": 942,
+          "bytes": 942
+        },
+        "completeBodyBytes": 16020,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 2,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 2040,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 98,
+          "assistantText": 751,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 93,
+          "totalHistoryBytes": 942
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 195,
+          "bytes": 195
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 2,
+      "timing": {
+        "firstHeaderMs": 2612.0505829999893,
+        "firstBodyByteMs": 2612.9508329999953,
+        "firstTextDeltaMs": 2613.396041999993,
+        "streamDurationMs": 3080.2818329999864
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "adaptive",
+      "call": 3,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 3730,
+        "output_tokens": 14
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 3878,
+          "bytes": 3878
+        },
+        "historyJson": {
+          "chars": 1280,
+          "bytes": 1280
+        },
+        "completeBodyBytes": 18196,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 2,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 2040,
+        "mcpSchemaJsonBytes": 1839,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 977,
+          "toolCalls": 0,
+          "toolResults": 0,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 156,
+          "totalHistoryBytes": 1280
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 62,
+          "bytes": 62
+        },
+        "toolArgumentJson": [
+          {
+            "name": "mcp__adaptive__discover_server",
+            "chars": 17,
+            "bytes": 17
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 6,
+      "timing": {
+        "firstHeaderMs": 2315.637875000015,
+        "firstBodyByteMs": 2317.050667000003,
+        "firstTextDeltaMs": 2317.213625000004,
+        "firstToolBlockMs": 2958.183667000005,
+        "streamDurationMs": 2960.9757080000127
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "adaptive",
+      "call": 4,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 3895,
+        "output_tokens": 94
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 3878,
+          "bytes": 3878
+        },
+        "historyJson": {
+          "chars": 2053,
+          "bytes": 2053
+        },
+        "completeBodyBytes": 18969,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 2,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 2040,
+        "mcpSchemaJsonBytes": 1839,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 1064,
+          "toolCalls": 127,
+          "toolResults": 495,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 220,
+          "totalHistoryBytes": 2053
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 373,
+          "bytes": 373
+        },
+        "toolArgumentJson": [
+          {
+            "name": "mcp__adaptive__discover_server",
+            "chars": 17,
+            "bytes": 17
+          }
+        ],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 6,
+      "timing": {
+        "firstHeaderMs": 1455.2328329999873,
+        "firstBodyByteMs": 1456.471916999988,
+        "firstTextDeltaMs": 1457.0749579999829,
+        "firstToolBlockMs": 3117.4366670000018,
+        "streamDurationMs": 3119.9260829999985
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "adaptive",
+      "call": 5,
+      "turn": 3,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 4131,
+        "output_tokens": 81
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 3878,
+          "bytes": 3878
+        },
+        "historyJson": {
+          "chars": 3139,
+          "bytes": 3139
+        },
+        "completeBodyBytes": 20055,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 2,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 2040,
+        "mcpSchemaJsonBytes": 1839,
+        "historyBlockJsonBytes": {
+          "userText": 147,
+          "assistantText": 1464,
+          "toolCalls": 254,
+          "toolResults": 990,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 284,
+          "totalHistoryBytes": 3139
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 326,
+          "bytes": 326
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 6,
+      "timing": {
+        "firstHeaderMs": 1455.5832919999957,
+        "firstBodyByteMs": 1456.309083,
+        "firstTextDeltaMs": 1457.0222920000087,
+        "streamDurationMs": 2607.322542000009
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "adaptive",
+      "call": 6,
+      "turn": 4,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 3798,
+        "output_tokens": 55
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 2040,
+          "bytes": 2040
+        },
+        "historyJson": {
+          "chars": 3614,
+          "bytes": 3614
+        },
+        "completeBodyBytes": 18692,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 2,
+        "mcpSchemas": 0,
+        "nativeSchemaJsonBytes": 2040,
+        "mcpSchemaJsonBytes": 2,
+        "historyBlockJsonBytes": {
+          "userText": 206,
+          "assistantText": 1817,
+          "toolCalls": 254,
+          "toolResults": 990,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 347,
+          "totalHistoryBytes": 3614
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 202,
+          "bytes": 202
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 2,
+      "timing": {
+        "firstHeaderMs": 1786.7510409999813,
+        "firstBodyByteMs": 1787.3462500000023,
+        "firstTextDeltaMs": 1787.4684579999885,
+        "streamDurationMs": 2289.8547909999907
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    },
+    {
+      "mode": "adaptive",
+      "call": 7,
+      "turn": 5,
+      "status": 200,
+      "reportedUsage": {
+        "input_tokens": 4291,
+        "output_tokens": 108
+      },
+      "inputLevels": {
+        "systemText": {
+          "chars": 12624,
+          "bytes": 12624
+        },
+        "systemJson": {
+          "chars": 12826,
+          "bytes": 12826
+        },
+        "schemasJson": {
+          "chars": 3878,
+          "bytes": 3878
+        },
+        "historyJson": {
+          "chars": 3972,
+          "bytes": 3972
+        },
+        "completeBodyBytes": 20888,
+        "requestEnvelopeJsonBytes": 181,
+        "nativeSchemas": 2,
+        "mcpSchemas": 4,
+        "nativeSchemaJsonBytes": 2040,
+        "mcpSchemaJsonBytes": 1839,
+        "historyBlockJsonBytes": {
+          "userText": 268,
+          "assistantText": 2050,
+          "toolCalls": 254,
+          "toolResults": 990,
+          "thinking": 0,
+          "otherBlocks": 0,
+          "messageWrappers": 410,
+          "totalHistoryBytes": 3972
+        }
+      },
+      "outputLevels": {
+        "assistantText": {
+          "chars": 402,
+          "bytes": 402
+        },
+        "toolArgumentJson": [],
+        "thinkingText": {
+          "chars": 0,
+          "bytes": 0
+        }
+      },
+      "schemasBefore": 29,
+      "schemasSent": 6,
+      "timing": {
+        "firstHeaderMs": 2303.986082999996,
+        "firstBodyByteMs": 2305.5943329999864,
+        "firstTextDeltaMs": 2306.318292000011,
+        "streamDurationMs": 3746.309749999986
+      },
+      "streamComplete": true,
+      "zeroToolOutputAnomaly": false
+    }
+  ],
+  "verification": [
+    {
+      "mode": "direct",
+      "sameFiveMessages": true,
+      "rootUserTurnStarts": 5,
+      "sequentialTurnTimes": true,
+      "completedTurns": 5,
+      "allCallsHttp200": true,
+      "allCallsHaveReportedUsage": true,
+      "replyContainsNewDelhi": true,
+      "replyContainsChennai": true,
+      "projectionSubsetChecks": []
+    },
+    {
+      "mode": "omni",
+      "sameFiveMessages": true,
+      "rootUserTurnStarts": 5,
+      "sequentialTurnTimes": true,
+      "completedTurns": 5,
+      "allCallsHttp200": true,
+      "allCallsHaveReportedUsage": true,
+      "replyContainsNewDelhi": true,
+      "replyContainsChennai": true,
+      "projectionSubsetChecks": []
+    },
+    {
+      "mode": "adaptive",
+      "sameFiveMessages": true,
+      "rootUserTurnStarts": 5,
+      "sequentialTurnTimes": true,
+      "completedTurns": 5,
+      "allCallsHttp200": true,
+      "allCallsHaveReportedUsage": true,
+      "replyContainsNewDelhi": true,
+      "replyContainsChennai": true,
+      "projectionSubsetChecks": []
+    }
+  ],
+  "note": "Token counters are provider-reported. Captured character/byte categories are not component token charges. Unknown usage is excluded from numeric sums and explicitly counted; zero generated-tool output is an upstream anomaly."
+}
