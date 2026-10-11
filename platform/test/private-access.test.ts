@@ -1147,6 +1147,12 @@ test(
           post(B, "/auth/switch-tenant", { tenantId: "demo" }),
         ]);
         assert.deepEqual(racers.map((r) => r.status).sort(), [200, 401]);
+        const winner = racers.find((r) => r.status === 200)!;
+        assert.equal(
+          (await store.users.findOne({ _id: bobId }))?.lastTenantId,
+          winner.data.tenant.id,
+          "a losing concurrent switch must not change the remembered workspace",
+        );
         assert.equal(
           await store.authSessions.countDocuments({ userId: bobId }),
           before,
@@ -1164,7 +1170,17 @@ test(
       "removing a member signs them out and asks the runtime to stop their turns",
       async () => {
         const admin = await p.adminCookie();
-        const Bnew = await p.session(claims("bob"));
+        let Bnew = await p.session(claims("bob"));
+        // The preceding switch race can remember either accessible workspace.
+        // This test removes Demo access, so bind the session to Demo explicitly.
+        const selected = await post(Bnew, "/auth/switch-tenant", {
+          tenantId: "demo",
+        });
+        assert.equal(selected.status, 200);
+        Bnew = selected.headers
+          .getSetCookie()
+          .find((c) => c.startsWith("truex_session="))!
+          .split(";")[0];
         assert.equal((await get(Bnew, "/api/me")).status, 200);
         const mark = core.mark();
         const removed = await p.request(

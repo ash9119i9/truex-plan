@@ -38,6 +38,12 @@ export interface TenantDocument {
   admissionPolicy?: AdmissionPolicy;
   createdAt: string;
   updatedAt: string;
+  /** Absent on legacy/operator-created workspaces. */
+  kind?: "personal" | "team";
+  createdBy?: string;
+  /** Unique retry key scoped to the creator; never supplied as a tenant ID. */
+  creationKey?: string;
+  provisioningStatus?: "pending" | "ready";
 }
 export interface TenantRef {
   id: string;

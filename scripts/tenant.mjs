@@ -10,6 +10,7 @@
 //   npm run tenant -- admission <id> open|inviteOnly
 //   npm run tenant -- agent-indexes <id>
 //   npm run tenant -- provision-demo [id] [--name <name...>] [--dry-run]
+//   npm run tenant -- provision-default [id] [--name <name...>] [--dry-run]
 //   npm run tenant -- drop <id> --confirm <id>
 //   npm run tenant -- invite <id> <email> --role admin|user
 //   npm run tenant -- members <id>
@@ -51,6 +52,9 @@ const usage = `usage: node scripts/tenant.mjs <command>
   provision-demo [id] [--name <n...>] [--dry-run]
                                         register a fresh, empty, private demo workspace
                                         (default id "demo"); repeatable, never copies data
+  provision-default [id] [--name <n...>] [--dry-run]
+                                        provision the private default signup workspace
+                                        (default id "default-tenant", name "Default tenant")
   drop <id> --confirm <id>              delete a tenant database and registry entry
   invite <id> <email> --role admin|user create an invite and print its link (no email)
   members <id>                          list active members with role and last sign-in`;
@@ -561,7 +565,9 @@ async function main(argv) {
         );
         return;
       }
+      case "provision-default":
       case "provision-demo": {
+        const isDefault = command === "provision-default";
         const flags = new Set(["--dry-run"]);
         const dryRun = args.includes("--dry-run");
         const nameAt = args.indexOf("--name");
@@ -570,18 +576,24 @@ async function main(argv) {
             !flags.has(a) && a !== "--name" && !(nameAt >= 0 && i > nameAt),
         );
         if (positional.length > 1)
-          fail("usage: provision-demo [id] [--name <name...>] [--dry-run]");
-        const id = validId(positional[0] ?? "demo");
+          fail(`usage: ${command} [id] [--name <name...>] [--dry-run]`);
+        const id = validId(
+          positional[0] ??
+            (isDefault
+              ? process.env.DEFAULT_SIGNUP_TENANT_ID?.trim() || "default-tenant"
+              : "demo"),
+        );
+        const defaultName = isDefault ? "Default tenant" : "Demo";
         const name =
           (nameAt >= 0
             ? args
                 .slice(nameAt + 1)
                 .filter((a) => !flags.has(a))
                 .join(" ")
-            : "Demo"
-          ).trim() || "Demo";
+            : defaultName
+          ).trim() || defaultName;
         if (id === DEFAULT_TENANT_ID)
-          fail('the demo cannot be the implicit "default" tenant');
+          fail('public signup cannot use the implicit legacy "default" tenant');
         const dbName = dbNameFor(id);
         if (dbName === catalogDatabase || dbName === database)
           fail(
@@ -612,10 +624,14 @@ async function main(argv) {
             `${dryRun ? "would register" : "registering"} tenant "${id}" (${name}) -> database ${dbName}, private, invite-only`,
           );
         } else {
+          if (isDefault && (existing.kind === "personal" || existing.createdBy))
+            fail(
+              `tenant "${id}" was customer-created; refusing to adopt it for public signup`,
+            );
           const p = effectivePrivate(existing);
           if (p.invalid || p.value !== true)
             fail(
-              `tenant "${id}" exists but is not private (isUserSpecific); the demo must be`,
+              `tenant "${id}" exists but is not private (isUserSpecific); public signup requires it`,
             );
           say(
             `tenant "${id}" is already registered (${existing.status}, admission ${existing.admissionPolicy ?? "inviteOnly"}); verifying only`,
@@ -638,6 +654,9 @@ async function main(argv) {
             admissionPolicy: "inviteOnly",
             isUserSpecific: true,
             chatVisibility: "own",
+            ...(isDefault
+              ? { kind: "team", provisioningStatus: "pending" }
+              : {}),
             createdAt: now(),
             updatedAt: now(),
           });
@@ -652,13 +671,25 @@ async function main(argv) {
           fail(
             `${handleIndexProblem(dbName)} The tenant "${id}" stays registered (invite-only), and the demo admits no one while the index exists.`,
           );
+        if (isDefault) {
+          const finalized = await tenants.updateOne(
+            { _id: id, status: "active", createdBy: { $exists: false } },
+            { $set: { provisioningStatus: "ready", updatedAt: now() } },
+          );
+          if (!finalized.matchedCount)
+            fail(
+              `tenant "${id}" is disabled or no longer operator-managed; signup remains unavailable`,
+            );
+        }
         console.log(
           existing
             ? `verified tenant "${id}" -> database ${dbName}; indexes ensured`
             : `created tenant "${id}" (${name}) -> database ${dbName}; private, invite-only, empty`,
         );
         console.log(
-          `next: allow-models ${id} <modelId...>, allow-skills ${id} <skillId...>, invite the product owner as admin, set DEMO_TENANT_ID=${id}, then admission ${id} open`,
+          isDefault
+            ? `next: configure DEFAULT_SIGNUP_TENANT_ID=${id}; grant operator-approved admins by invitation. Customers join as members and cannot create tenants.`
+            : `next: allow-models ${id} <modelId...>, allow-skills ${id} <skillId...>, invite the product owner as admin, set DEMO_TENANT_ID=${id}, then admission ${id} open`,
         );
         return;
       }

@@ -1,4 +1,4 @@
-import { WorkspaceChooser } from "@/components/auth/workspace-chooser";
+import { redirect } from "next/navigation";
 
 export const metadata = {
   title: "Choose a workspace · Truex",
@@ -7,5 +7,5 @@ export const metadata = {
 };
 
 export default function SelectTenantPage() {
-  return <WorkspaceChooser />;
+  redirect("/workspaces");
 }

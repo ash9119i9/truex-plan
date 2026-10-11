@@ -2658,21 +2658,22 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
               <UserMenu
                 name={me.user.name}
                 email={me.user.email}
-                workspace={me.tenants.length > 1 ? me.tenant.name : undefined}
+                workspace={me.tenant.name}
+                showWorkspaces={me.showWorkspaces}
                 role={me.role}
                 onSettings={() => {
                   setPop(null);
                   setPanel("mcp");
                 }}
-                onSwitchWorkspace={
-                  me.tenants.length > 1
+                onSignOut={me.auth === "google" ? actions.signOut : undefined}
+                onWorkspaces={
+                  me.auth === "google" || me.tenants.length > 1
                     ? () => {
                         setPop(null);
-                        location.assign("/select-tenant");
+                        location.assign("/workspaces");
                       }
                     : undefined
                 }
-                onSignOut={me.auth === "google" ? actions.signOut : undefined}
               />
             </Popover>
             <FloatingDock

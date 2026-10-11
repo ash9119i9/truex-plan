@@ -56,7 +56,7 @@ function launch(extra: Record<string, string>) {
     [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
     {
       cwd: resolve(root, "platform"),
-      env: { ...process.env, ...extra },
+      env: { ...process.env, DOTENV_CONFIG_PATH: "/nonexistent", DEMO_TENANT_ID: "", DEFAULT_TENANT_SIGNUP: "on", DEFAULT_SIGNUP_TENANT_ID: "default-tenant", ...extra },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -295,6 +295,8 @@ test(
       tenants: [{ id: "acme", name: "ACME", role: "admin" }],
       // Lets the app know whether there is a session to end.
       auth: "google",
+      selfService: false,
+      showWorkspaces: true,
     });
 
     // Missing, tampered, expired and idle-expired cookies are 401.

@@ -7,6 +7,7 @@ export interface WorkspaceRef {
   id: string;
   name: string;
   role: Role;
+  kind?: "personal" | "team";
 }
 export interface Me {
   user: { id: string; email: string; name?: string };
@@ -15,6 +16,9 @@ export interface Me {
   tenants: WorkspaceRef[];
   /** "google" has a session to end; the dev and POC modes do not. */
   auth: "google" | "dev" | "poc";
+  selfService?: boolean;
+  /** Presentation only; membership checks still control access. */
+  showWorkspaces?: boolean;
 }
 export const meKey = (me: Me) => `${me.user.id}:${me.tenant.id}`;
 
@@ -22,6 +26,7 @@ export type MeResult =
   | { kind: "ok"; me: Me }
   /** No valid session: show sign-in. */
   | { kind: "signedOut" }
+  | { kind: "onboarding" }
   /** Signed in, but this workspace cannot be used right now. */
   | { kind: "blocked"; code: string; message: string }
   /** The platform could not be asked. Not the same as signed out. */
@@ -45,7 +50,12 @@ export function parseMe(data: unknown): Me | null {
   for (const t of Array.isArray(d.tenants) ? d.tenants.slice(0, 200) : []) {
     const tid = text(t?.id, 64);
     if (!tid || (t.role !== "user" && t.role !== "admin")) continue;
-    tenants.push({ id: tid, name: text(t.name, 200) ?? tid, role: t.role });
+    tenants.push({
+      id: tid,
+      name: text(t.name, 200) ?? tid,
+      role: t.role,
+      ...(t.kind === "personal" || t.kind === "team" ? { kind: t.kind } : {}),
+    });
   }
   const name = text(d.user?.name, 200);
   return {
@@ -60,6 +70,12 @@ export function parseMe(data: unknown): Me | null {
     role: d.role,
     tenants,
     auth: d.auth === "google" || d.auth === "poc" ? d.auth : "dev",
+    ...(typeof d.selfService === "boolean"
+      ? { selfService: d.selfService }
+      : {}),
+    ...(typeof d.showWorkspaces === "boolean"
+      ? { showWorkspaces: d.showWorkspaces }
+      : {}),
   };
 }
 
@@ -97,6 +113,8 @@ export async function fetchMe(
     return me ? { kind: "ok", me } : { kind: "unavailable", message: OUTAGE };
   }
   const code = typeof data?.code === "string" ? data.code : "";
+  if (res.status === 409 && code === "ONBOARDING_REQUIRED")
+    return { kind: "onboarding" };
   // An admin-console cookie on the main app is not a session for it.
   if (res.status === 403 && code === "WRONG_APP") return { kind: "signedOut" };
   if (res.status === 403)
@@ -195,7 +213,14 @@ export async function fetchTenants(
       .map((t: any): WorkspaceRef | null => {
         const id = text(t?.id, 64);
         return id && (t.role === "user" || t.role === "admin")
-          ? { id, name: text(t.name, 200) ?? id, role: t.role }
+          ? {
+              id,
+              name: text(t.name, 200) ?? id,
+              role: t.role,
+              ...(t.kind === "personal" || t.kind === "team"
+                ? { kind: t.kind }
+                : {}),
+            }
           : null;
       })
       .filter((t: WorkspaceRef | null): t is WorkspaceRef => !!t);

@@ -200,8 +200,18 @@ export class Store {
         .collection("tenants")
         .createIndex({ dbName: 1 }, { unique: true }),
       this.catalog
+        .collection("tenants")
+        .createIndex(
+          { creationKey: 1 },
+          {
+            unique: true,
+            partialFilterExpression: { creationKey: { $type: "string" } },
+          },
+        ),
+      this.catalog
         .collection("truex_skills")
         .createIndex({ name: 1 }, { unique: true }),
+      this.catalog.collection("tenants").createIndex({ createdBy: 1, provisioningStatus: 1 }),
       ...this.authIndexes(),
     ]);
     return this;
@@ -280,7 +290,10 @@ export class Store {
     return [
       this.users.createIndex({ googleSub: 1 }, { unique: true }),
       this.users.createIndex({ emailKey: 1 }, { unique: true }),
-      this.memberships.createIndex({ userId: 1, tenantId: 1 }, { unique: true }),
+      this.memberships.createIndex(
+        { userId: 1, tenantId: 1 },
+        { unique: true },
+      ),
       this.memberships.createIndex({ tenantId: 1, role: 1 }),
       this.invites.createIndex({ tokenHash: 1 }, { unique: true }),
       // One pending invite per address and tenant. Partial filters cannot
@@ -370,6 +383,12 @@ export class Store {
     const hit = this.tenants.get(id);
     if (!options.fresh && hit && hit.expires > Date.now()) return hit.ref;
     const doc = await this.tenantRegistry.findOne({ _id: id });
+    if (doc?.provisioningStatus === "pending")
+      throw new ApiError(
+        403,
+        "This workspace is still being set up. Try again shortly.",
+        "TENANT_NOT_READY",
+      );
     if (doc?.status === "disabled")
       throw new ApiError(403, "This workspace is disabled", "TENANT_DISABLED");
     let ref: TenantRef;
@@ -381,7 +400,9 @@ export class Store {
   }
   /** Every tenant whose sessions need background ingestion. */
   async activeTenants(): Promise<TenantRef[]> {
-    const docs = await this.tenantRegistry.find({ status: "active" }).toArray();
+    const docs = await this.tenantRegistry
+      .find({ status: "active", provisioningStatus: { $ne: "pending" } })
+      .toArray();
     const def = docs.find((d) => d._id === DEFAULT_TENANT_ID);
     const disabledDefault = await this.tenantRegistry.findOne({
       _id: DEFAULT_TENANT_ID,
@@ -395,7 +416,9 @@ export class Store {
       ...docs.filter((d) => d._id !== DEFAULT_TENANT_ID),
     ])
       try {
-        refs.push(d && d._id !== DEFAULT_TENANT_ID ? this.toRef(d) : this.defaultRef(d));
+        refs.push(
+          d && d._id !== DEFAULT_TENANT_ID ? this.toRef(d) : this.defaultRef(d),
+        );
       } catch (error) {
         log("error", "tenant skipped by ingestion", {
           tenantId: d?._id ?? DEFAULT_TENANT_ID,

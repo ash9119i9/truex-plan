@@ -6,6 +6,7 @@ import { createServer as createNetServer } from "node:net";
 import { createServer, type Server } from "node:http";
 import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { resolve } from "node:path";
+import { createTenant } from "../src/admin";
 import { Store } from "../src/store";
 import { tenantDbName } from "../src/tenant";
 import { emailKey, hashToken, newToken } from "../src/auth";
@@ -48,7 +49,7 @@ function launch(extra: Record<string, string>) {
     [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
     {
       cwd: resolve(root, "platform"),
-      env: { ...process.env, ...extra },
+      env: { ...process.env, DOTENV_CONFIG_PATH: "/nonexistent", DEMO_TENANT_ID: "", DEFAULT_TENANT_SIGNUP: "on", DEFAULT_SIGNUP_TENANT_ID: "default-tenant", ...extra },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -173,6 +174,7 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
   // which need a replica set.
   const mongo = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   const store = await new Store(mongo.getUri(), "google_test", "google_test").connect();
+  await createTenant(store, { id: "default-tenant", name: "Default tenant" });
   const platformPort = await port();
   const { child, logs } = launch({
     PORT: String(platformPort),
@@ -464,20 +466,20 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
     assert.equal((await store.invites.findOne({ _id: corp.id }))?.status, "accepted");
   });
 
-  await t.test("/login needs an account and never accepts pending invites", async () => {
+  await t.test("/login joins the default tenant and never accepts pending invites", async () => {
     const inv = await invite("beta", "pending@gmail.com");
     const { location, session } = await signIn({
       sub: "sub-pending",
       email: "pending@gmail.com",
       email_verified: true,
     });
-    expectError(location, "not_invited");
-    assert.equal(session, undefined);
+    assert.equal(location.pathname, "/");
+    assert.ok(session);
     assert.equal((await store.invites.findOne({ _id: inv.id }))?.status, "pending");
-    assert.equal(await store.users.countDocuments({ googleSub: "sub-pending" }), 0);
+    assert.equal(await store.users.countDocuments({ googleSub: "sub-pending" }), 1);
   });
 
-  await t.test("/login binds one tenant, or goes to the picker with two", async () => {
+  await t.test("/login remembers entered workspaces and offers a picker when no choice is remembered", async () => {
     const one = await signIn(ashok);
     assert.equal(one.location.href, `${FRONTEND}/`);
     assert.ok(one.session);
@@ -491,6 +493,9 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
       status: "active",
       createdAt: new Date(Date.now() + 1000).toISOString(),
     });
+    const remembered = await signIn(ashok);
+    assert.equal(remembered.location.href, `${FRONTEND}/`);
+    await store.users.updateOne({ _id: user._id }, { $unset: { lastTenantId: "" } });
     const two = await signIn(ashok);
     assert.equal(two.location.href, `${FRONTEND}/select-tenant`);
     const me = await fetch(`${base}/api/me`, {
@@ -526,7 +531,7 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
     const as = (id: string) => ({ sub: `sub-${id}`, email: `${id}@gmail.com`, email_verified: true });
     expectError((await signIn(as("offuser"))).location, "account_disabled");
     expectError((await signIn(as("goneuser"))).location, "tenant_disabled");
-    expectError((await signIn(as("lonely"))).location, "no_tenant");
+    assert.equal((await signIn(as("lonely"))).location.pathname, "/");
   });
 
   await t.test("reused, expired and missing flows are rejected", async () => {
