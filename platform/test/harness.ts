@@ -303,6 +303,8 @@ export async function startPlatform(
         MCP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
         NODE_ENV: "",
         DEMO_TENANT_ID: "",
+        DEFAULT_TENANT_SIGNUP: "on",
+        DEFAULT_SIGNUP_TENANT_ID: "default-tenant",
         ...options.env,
       },
       stdio: ["ignore", "pipe", "pipe"],

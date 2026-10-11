@@ -43,7 +43,7 @@ import {
   pocUserResolver,
   userContext,
 } from "./user";
-import { assertGoogleConfig, googleRoutes, googleSettings } from "./google";
+import { assertGoogleConfig, defaultSignupSettings, googleRoutes, googleSettings } from "./google";
 import { adminApiRoutes, adminAuthRoutes, adminGate } from "./admin";
 import { inviteLookupRoutes, inviteMailer } from "./invites";
 import {
@@ -58,6 +58,7 @@ import { checkSession } from "./access";
 import { auditAfter } from "./audit";
 import { DemoGate, demoConfig } from "./demo";
 import { DemoQuota } from "./quota";
+import { workspaceRoutes } from "./workspaces";
 import {
   StreamLimiter,
   logStreamEnd,
@@ -147,6 +148,7 @@ async function main() {
   }
   const service = new PlatformService(store);
   const demo = new DemoGate(store, demoSettings, mode);
+  const defaultSignup = mode === "google" ? defaultSignupSettings() : undefined;
   if (demoSettings) service.quota = new DemoQuota(store, demoSettings);
   const streams = new StreamLimiter(streamLimit());
   if (mode === "google")
@@ -287,7 +289,11 @@ async function main() {
     // cookie. The dev resolvers are never built in this mode.
     http.use("/api", authMiddleware(store));
     http.use("/auth", authRoutes(store));
-    http.use("/auth", googleRoutes(store, googleSettings(), demo));
+    http.use(
+      "/auth",
+      workspaceRoutes(store, mailer!, !demo.enabled, defaultSignup!.tenantId),
+    );
+    http.use("/auth", googleRoutes(store, googleSettings(), demo, defaultSignup));
   } else {
     // Every API request works on exactly one tenant's database.
     http.use(
@@ -330,6 +336,12 @@ async function main() {
         tenants,
         // Lets the app know whether there is a session to end.
         auth: mode,
+        ...(mode === "google"
+          ? {
+              selfService: false,
+              showWorkspaces: tenant.id !== defaultSignup!.tenantId,
+            }
+          : {}),
       });
     }),
   );

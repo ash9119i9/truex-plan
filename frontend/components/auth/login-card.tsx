@@ -50,11 +50,26 @@ export function Brand() {
 }
 
 /** Page frame shared by every screen in this family. */
-export function AuthFrame({ children }: { children: ReactNode }) {
+export function AuthFrame({
+  children,
+  wide = false,
+  toolbar,
+}: {
+  children: ReactNode;
+  wide?: boolean;
+  toolbar?: ReactNode;
+}) {
   return (
-    <main className="au-page">
+    <main className={`au-page${wide ? " au-workspaces" : ""}`}>
       <div className="au-wrap">
-        <Brand />
+        {wide ? (
+          <div className="au-top">
+            <Brand />
+            {toolbar}
+          </div>
+        ) : (
+          <Brand />
+        )}
         {children}
       </div>
     </main>

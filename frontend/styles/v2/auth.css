@@ -85,3 +85,74 @@
 .au-ws-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .au-ws-sub { font-size: 12.5px; color: var(--ink-3); }
 .au-pill { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-fg); font-size: 12px; font-weight: 600; flex: none; }
+
+/* Workspace setup uses the same card, controls, spacing and theme tokens. */
+.au-form { display: flex; flex-direction: column; gap: 12px; }
+.au-section-title { margin: 0; color: var(--ink); font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+.au-field { display: flex; flex-direction: column; gap: 6px; color: var(--ink-2); font-weight: 500; }
+.au-input { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--border-control); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; }
+.au-input:disabled { opacity: .65; }
+.au-btn { text-decoration: none; }
+.au-invites { list-style: none; padding: 0; margin: 0; max-height: 360px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.au-invite { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; }
+.au-invite-email { overflow-wrap: anywhere; }
+
+/* The account's workspace hub shares the auth components and v2 tokens. */
+.au-page.au-workspaces {
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  place-items: start center;
+  padding: 28px 24px 56px;
+  background: radial-gradient(ellipse at 18% 0%, var(--glow-2), transparent 48%), var(--bg);
+}
+.au-workspaces .au-wrap { max-width: 1080px; gap: 24px; }
+.au-workspaces .au-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+.au-workspaces .au-brand { margin: 0; }
+.au-workspaces .au-mark { width: 30px; height: 30px; }
+.au-workspaces .au-word { font-size: 20px; }
+.au-workspaces .au-btn { gap: 7px; }
+.au-workspaces .au-theme { width: 40px; padding: 0; }
+.au-workspaces .au-workspace-header { display: flex; flex-direction: column; gap: 12px; padding: 16px 0 4px; }
+.au-workspaces .au-eyebrow { margin: 0; color: var(--accent-fg); font: 500 11px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; }
+.au-workspaces h1 { font-size: clamp(32px, 5vw, 46px); }
+.au-workspaces .au-account-email { margin: 0; color: var(--ink-2); font-size: 13px; overflow-wrap: anywhere; }
+.au-workspaces .au-account-email strong { font-weight: 500; color: var(--ink); }
+.au-workspaces .au-workspace-status { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.au-workspaces .au-workspace-status:empty { display: none; }
+.au-workspaces .au-workspace-status > .au-btn { align-self: flex-start; }
+.au-workspaces .au-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.au-workspaces .au-workspace-column { min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.au-workspaces .au-workspace-column:only-child { grid-column: 1 / -1; }
+.au-workspaces .au-card { padding: 24px; gap: 20px; box-shadow: var(--shadow-sm); }
+.au-workspaces .au-panel-heading { display: flex; align-items: center; gap: 12px; }
+.au-workspaces .au-panel-heading > div { min-width: 0; flex: 1; }
+.au-workspaces .au-panel-heading .au-fine { margin-top: 3px; }
+.au-workspaces .au-panel-icon { width: 42px; height: 42px; display: grid; place-items: center; flex: none; background: var(--accent-soft); color: var(--accent-fg); border: 1px solid var(--accent-soft-2); border-radius: 12px; }
+.au-workspaces .au-count { display: grid; place-items: center; min-width: 28px; height: 28px; border-radius: 8px; background: var(--surface-3); color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.au-workspaces .au-list { gap: 12px; }
+.au-workspaces .au-ws { padding: 18px 16px; min-height: 84px; transition: background .15s, border-color .15s; }
+.au-workspaces .au-ws[aria-current="true"] { background: var(--accent-soft); }
+.au-workspaces .au-ws-logo { width: 42px; height: 42px; border-radius: 12px; background: var(--surface-3); border: 1px solid var(--line); color: var(--ink); font-size: 17px; }
+.au-workspaces .au-ws[aria-current="true"] .au-ws-logo { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.au-workspaces .au-ws-name { font-size: 15px; }
+.au-workspaces .au-ws-sub { margin-top: 3px; }
+.au-workspaces .au-ws > svg { flex: none; color: var(--accent-fg); }
+.au-workspaces .au-workspace-note { display: flex; align-items: flex-start; gap: 7px; }
+.au-workspaces .au-workspace-note svg { flex: none; margin-top: 2px; }
+.au-workspaces .au-workspace-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 12px; text-align: center; border: 1px dashed var(--line-strong); border-radius: 12px; background: var(--surface-3); }
+.au-workspaces .au-workspace-empty > svg { color: var(--accent-fg); }
+.au-workspaces .au-input:focus-visible { border-color: var(--accent-2); }
+@media (max-width: 760px) {
+  .au-page.au-workspaces { padding: 20px 16px 40px; }
+  .au-workspaces .au-wrap { gap: 20px; }
+  .au-workspaces .au-workspace-grid { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+}
+@media (max-width: 440px) {
+  .au-workspaces .au-top .au-actions { width: 100%; }
+  .au-workspaces .au-card { padding: 20px 16px; }
+  .au-workspaces .au-ws { gap: 9px; padding: 14px 10px; }
+  .au-workspaces .au-ws-logo { width: 34px; height: 34px; }
+  .au-workspaces .au-ws > svg { display: none; }
+  .au-workspaces .au-ws-sub { font-size: 11.5px; }
+}

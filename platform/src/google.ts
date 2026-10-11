@@ -17,16 +17,16 @@ import {
   type UserDocument,
 } from "./auth";
 import type { Store } from "./store";
-import { DEFAULT_TENANT_ID } from "./tenant";
+import { DEFAULT_TENANT_ID, effectivePrivacy, tenantDbName, tenantId as validateTenantId } from "./tenant";
 import type { DemoAdmission, DemoGate } from "./demo";
 import { ApiError } from "./errors";
 
 // Google sign-in (AUTH_MODE=google): authorization code flow with PKCE,
 // state and nonce, for personal Gmail and Google Workspace accounts alike.
 // A person who already belongs to a workspace signs in to it. A person who
-// belongs to none is enrolled as a regular user in the one configured demo
-// tenant when, and only when, its admission is open; otherwise accounts are
-// created only by accepting an invite. Tokens and claims never go into a URL
+// belongs to none joins the operator-provisioned default signup tenant.
+// Configured demo deployments retain their existing admission rules.
+// Tokens and claims never go into a URL
 // or a log; the one exception is the wrong-account redirect, which carries
 // the signed-in email so the invite page can say who the user signed in as.
 
@@ -36,6 +36,24 @@ export interface GoogleSettings {
   issuer: string;
   appUrl: string;
   redirectUri: string;
+}
+
+export interface DefaultSignupSettings {
+  enabled: boolean;
+  tenantId: string;
+}
+export function defaultSignupSettings(
+  env: NodeJS.ProcessEnv = process.env,
+): DefaultSignupSettings {
+  const value = env.DEFAULT_TENANT_SIGNUP?.trim().toLowerCase();
+  if (value && value !== "on" && value !== "off")
+    throw new Error("DEFAULT_TENANT_SIGNUP must be on or off.");
+  return {
+    enabled: value !== "off",
+    tenantId: validateTenantId(
+      env.DEFAULT_SIGNUP_TENANT_ID?.trim() || "default-tenant",
+    ),
+  };
 }
 
 export function googleSettings(env: NodeJS.ProcessEnv = process.env): GoogleSettings {
@@ -117,6 +135,7 @@ type ErrorCode =
   | "no_tenant"
   | "tenant_disabled"
   | "demo_unavailable"
+  | "default_unavailable"
   | "unavailable"
   | "signup_limit"
   | "session_expired"
@@ -199,6 +218,7 @@ export function googleRoutes(
   store: Store,
   settings = googleSettings(),
   demo?: DemoGate,
+  defaultSignup = defaultSignupSettings(),
 ) {
   const router = Router();
 
@@ -237,7 +257,9 @@ export function googleRoutes(
     return config;
   };
 
-  const redirectError = (res: Response, error: SignInError, inviteToken?: string) => {
+  const redirectError = (
+    res: Response, error: SignInError, inviteToken?: string,
+  ) => {
     const query = new URLSearchParams({ error: error.code, ...error.extra });
     const path =
       inviteToken && INVITE_PAGE.has(error.code)
@@ -260,6 +282,9 @@ export function googleRoutes(
     const run = async () => {
       let invite: InviteDocument | null = null;
       let displayName: string | undefined;
+      // Retired team-link entry must not start another signup or consume an invite.
+      if (req.query.join !== undefined)
+        throw new SignInError("not_invited");
       if (raw !== undefined) {
         invite = TOKEN.test(raw)
           ? await store.invites.findOne({ tokenHash: hashToken(raw) })
@@ -374,11 +399,16 @@ export function googleRoutes(
 
       const { user, tenantId, picker } = flow.inviteId
         ? await acceptInvite(store, flow.inviteId, identity, flow.displayName)
-        : await signIn(store, identity, demo);
+        : await signIn(store, identity, demo, defaultSignup);
 
       await store.users.updateOne(
         { _id: user._id },
-        { $set: { lastLoginAt: new Date().toISOString() } },
+        {
+          $set: {
+            lastLoginAt: new Date().toISOString(),
+            ...(tenantId && !picker ? { lastTenantId: tenantId } : {}),
+          },
+        },
       );
       // A new token on every sign-in; an older session in this browser ends.
       const old = parseCookies(req.get("cookie")).get(cookieSpec("main").name);
@@ -513,6 +543,7 @@ async function acceptInvite(
         { session },
       );
       if (
+        tenant?.provisioningStatus === "pending" ||
         tenant?.status === "disabled" ||
         (!tenant && current.tenantId !== DEFAULT_TENANT_ID)
       )
@@ -596,7 +627,10 @@ async function grantMembership(
   }
 }
 
-async function signIn(store: Store, identity: Identity, demo?: DemoGate) {
+async function signIn(
+  store: Store, identity: Identity, demo?: DemoGate,
+  defaultSignup = defaultSignupSettings(),
+) {
   // Never accepts pending invites; only the invite link does.
   return settle(async () => {
     let user = await store.users.findOne({ googleSub: identity.sub });
@@ -604,10 +638,16 @@ async function signIn(store: Store, identity: Identity, demo?: DemoGate) {
       if (user.status === "disabled") throw new SignInError("account_disabled");
       user = await refreshProfile(store, user, identity);
       const tenants = await userTenants(store, user._id);
-      // Several tenants: bind the first and let the picker switch. Signing in
-      // never adds another workspace.
-      if (tenants.length)
-        return { user, tenantId: tenants[0].id, picker: tenants.length > 1 };
+      // A remembered choice is a selector only: the membership list above is
+      // authoritative. Without a valid choice keep the existing picker flow.
+      if (tenants.length) {
+        const remembered = tenants.find((t) => t.id === user!.lastTenantId);
+        return {
+          user,
+          tenantId: remembered?.id ?? tenants[0].id,
+          picker: tenants.length > 1 && !remembered,
+        };
+      }
       // A membership in a disabled workspace is still a membership: say so
       // rather than quietly enrolling the person somewhere else.
       const active = await store.memberships.countDocuments({
@@ -615,13 +655,23 @@ async function signIn(store: Store, identity: Identity, demo?: DemoGate) {
         status: "active",
       });
       if (active) throw new SignInError("tenant_disabled");
-    } else if (await store.users.findOne({ emailKey: identity.key })) {
+    } else if (await store.users.findOne({ emailKey: identity.key, googleSub: { $ne: identity.sub } })) {
       // A different Google account holds this address: no linking, no merging.
       throw new SignInError("account_conflict");
     }
 
-    const admission = await (demo?.admission() ?? Promise.resolve<DemoAdmission>({ state: "off" }));
-    if (admission.state === "unavailable") throw new SignInError("demo_unavailable");
+    if (!demo?.enabled) {
+      if (!defaultSignup.enabled)
+        throw new SignInError(user ? "no_tenant" : "not_invited");
+      const account = await enrollInDefault(store, identity, defaultSignup.tenantId);
+      const tenants = await userTenants(store, account._id);
+      if (!tenants.some((t) => t.id === defaultSignup.tenantId))
+        throw new SignInError("tenant_disabled");
+      return { user: account, tenantId: defaultSignup.tenantId, picker: false };
+    }
+    const admission = await demo!.admission();
+    if (admission.state === "unavailable")
+      throw new SignInError("demo_unavailable");
     if (admission.state !== "open")
       throw new SignInError(user ? "no_tenant" : "not_invited");
     const enrolled = await enrollInDemo(store, identity, admission);
@@ -670,6 +720,90 @@ const utcDay = (now: Date) => now.toISOString().slice(0, 10);
 // Idempotent: the user and the membership are inserted when missing and never
 // changed when present. A removed membership stays removed, and an admin
 // membership is never overwritten with "user".
+/** Signup grants membership only; tenant creation belongs to operators. */
+async function enrollInDefault(
+  store: Store,
+  identity: Identity,
+  tenantId: string,
+) {
+  // Verify provisioning outside the short transaction, then re-read the tenant
+  // inside it. A missing/unsafe tenant must never become an implicit shared DB.
+  const tenant = await store.tenantRegistry.findOne({ _id: tenantId });
+  const ready = (doc: typeof tenant) => {
+    const privacy = effectivePrivacy(doc);
+    return (
+      !!doc &&
+      doc.status === "active" &&
+      doc.provisioningStatus !== "pending" &&
+      doc.kind !== "personal" &&
+      !doc.createdBy &&
+      !privacy.invalid &&
+      privacy.isUserSpecific === true &&
+      doc.dbName === tenantDbName(tenantId) &&
+      doc.dbName !== store.database &&
+      doc.dbName !== store.catalogDatabase
+    );
+  };
+  if (!ready(tenant)) throw new SignInError("default_unavailable");
+  const indexes = await store.client
+    .db(tenant!.dbName)
+    .collection("truex_agents")
+    .indexes()
+    .catch((error) => {
+      if (error?.code === 26) throw new SignInError("default_unavailable");
+      throw error;
+    });
+  if (
+    !indexes.some(
+      (i) =>
+        i.name === "agent_creator_handle" &&
+        i.unique &&
+        i.key.createdBy === 1 &&
+        i.key.handle === 1,
+    ) ||
+    indexes.some((i) => i.name === "handle_1")
+  )
+    throw new SignInError("default_unavailable");
+  return store.withCatalogTransaction(async (session) => {
+    const current = await store.tenantRegistry.findOne(
+      { _id: tenantId },
+      { session },
+    );
+    if (!ready(current)) throw new SignInError("default_unavailable");
+    const now = new Date();
+    let user = await store.users.findOne(
+      { googleSub: identity.sub },
+      { session },
+    );
+    if (user) {
+      if (user.status === "disabled") throw new SignInError("account_disabled");
+    } else {
+      if (await store.users.findOne({ emailKey: identity.key }, { session }))
+        throw new SignInError("account_conflict");
+      user = newUser(identity, now);
+      await store.users.insertOne(user, { session });
+    }
+    const existing = await store.memberships.findOne(
+      { userId: user._id, tenantId },
+      { session },
+    );
+    if (existing?.status === "removed") throw new SignInError("access_removed");
+    if (!existing)
+      await store.memberships.insertOne(
+        {
+          _id: randomUUID(),
+          userId: user._id,
+          tenantId,
+          role: "user",
+          status: "active",
+          createdAt: now.toISOString(),
+        } satisfies MembershipDocument,
+        { session },
+      );
+    return user;
+  });
+}
+
 async function enrollInDemo(
   store: Store,
   identity: Identity,

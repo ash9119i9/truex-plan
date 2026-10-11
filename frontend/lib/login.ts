@@ -63,6 +63,11 @@ const NOTICES: Record<string, LoginNotice> = {
     lead: "The demo isn't taking new sign-ups right now.",
     rest: "Try again later.",
   },
+  default_unavailable: {
+    tone: "warn",
+    lead: "The default workspace isn't ready for sign-in yet.",
+    rest: "Contact your administrator or try again later.",
+  },
   signup_limit: {
     tone: "warn",
     lead: "The demo has reached today's sign-up limit.",

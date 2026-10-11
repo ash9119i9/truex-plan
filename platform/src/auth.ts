@@ -1,5 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
-import { Router, type Request, type Response, type NextFunction } from "express";
+import {
+  Router,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
 import { ApiError } from "./errors";
 import type { Store } from "./store";
 import { DEFAULT_TENANT_ID, tenantId } from "./tenant";
@@ -17,6 +22,9 @@ export interface UserDocument {
   status: "active" | "disabled";
   createdAt: string;
   lastLoginAt?: string;
+  lastTenantId?: string;
+  /** Lifetime self-service team creations, including pending provisioning. */
+  workspaceCount?: number;
 }
 export interface MembershipDocument {
   _id: string;
@@ -179,7 +187,12 @@ export function parseCookies(header: string | undefined) {
 }
 
 // Path=/ and no Domain in both cases, as __Host- requires.
-function setCookie(res: Response, app: AuthApp, value: string, maxAgeMs: number) {
+function setCookie(
+  res: Response,
+  app: AuthApp,
+  value: string,
+  maxAgeMs: number,
+) {
   const { name, secure } = cookieSpec(app);
   const parts = [
     `${name}=${value}`,
@@ -255,7 +268,10 @@ export async function readSession(
     return undefined;
   }
   // Written at most once a minute; admin sessions never slide.
-  if (options.touch !== false && now - session.lastSeenAt.getTime() >= TOUCH_MS) {
+  if (
+    options.touch !== false &&
+    now - session.lastSeenAt.getTime() >= TOUCH_MS
+  ) {
     const lastSeenAt = new Date(now);
     const idleExpiresAt =
       app === "main"
@@ -341,13 +357,13 @@ function wrongApp() {
 
 // A main session whose user is still active. Missing or invalid is 401; a
 // request carrying only an admin session is 403 WRONG_APP.
-async function mainSession(
+export async function accountSession(
   store: Store,
   req: Request,
   options: { touch?: boolean } = {},
 ) {
   const session = await readSession(store, req, "main", options);
-  if (!session?.userId || !session.tenantId) {
+  if (!session?.userId) {
     if (await readSession(store, req, "admin", options)) throw wrongApp();
     throw unauthenticated();
   }
@@ -360,6 +376,21 @@ async function mainSession(
     throw unauthenticated();
   }
   return { session, user };
+}
+
+async function mainSession(
+  store: Store,
+  req: Request,
+  options: { touch?: boolean } = {},
+) {
+  const account = await accountSession(store, req, options);
+  if (!account.session.tenantId)
+    throw new ApiError(
+      409,
+      "Finish setting up your workspace to continue",
+      "ONBOARDING_REQUIRED",
+    );
+  return account;
 }
 
 /** Active memberships of a user in tenants that are not disabled. */
@@ -375,11 +406,17 @@ export async function userTenants(store: Store, userId: string) {
   const byId = new Map(docs.map((d) => [d._id, d]));
   return memberships.flatMap((m) => {
     const doc = byId.get(m.tenantId);
-    if (doc?.status === "disabled") return [];
+    if (doc?.status === "disabled" || doc?.provisioningStatus === "pending")
+      return [];
     // The default tenant exists without a registry entry.
     if (!doc && m.tenantId !== DEFAULT_TENANT_ID) return [];
     return [
-      { id: m.tenantId, name: doc?.name ?? m.tenantId, role: m.role },
+      {
+        id: m.tenantId,
+        name: doc?.name ?? m.tenantId,
+        role: m.role,
+        ...(doc?.kind ? { kind: doc.kind } : {}),
+      },
     ];
   });
 }
@@ -508,7 +545,11 @@ export function rateLimit(options: { windowMs: number; max: number }) {
     if (++hit.count > options.max) {
       res.setHeader("Retry-After", String(Math.ceil((hit.reset - now) / 1000)));
       return next(
-        new ApiError(429, "Too many requests, try again shortly", "RATE_LIMITED"),
+        new ApiError(
+          429,
+          "Too many requests, try again shortly",
+          "RATE_LIMITED",
+        ),
       );
     }
     next();
@@ -534,14 +575,14 @@ export function authRoutes(store: Store) {
   router.get(
     "/tenants",
     wrap(async (req, res) => {
-      const { user } = await mainSession(store, req);
+      const { user } = await accountSession(store, req);
       res.json({ tenants: await userTenants(store, user._id) });
     }),
   );
   router.post(
     "/switch-tenant",
     wrap(async (req, res) => {
-      const { user } = await mainSession(store, req);
+      const { user } = await accountSession(store, req);
       const target = tenantId(req.body?.tenantId);
       const membership = await store.memberships.findOne({
         userId: user._id,
@@ -562,6 +603,12 @@ export function authRoutes(store: Store) {
         userId: user._id,
         tenantId: target,
       });
+      // Only the request that successfully rotates the cookie remembers its
+      // choice. A losing concurrent switch must not overwrite it.
+      await store.users.updateOne(
+        { _id: user._id, status: "active" },
+        { $set: { lastTenantId: target } },
+      );
       res.json({ tenant: { id: target }, role: membership.role });
     }),
   );
