@@ -165,6 +165,16 @@ export async function forward(
   if (!(FORWARDED_METHODS as readonly string[]).includes(method))
     return json(405, "Method not allowed", "METHOD_NOT_ALLOWED");
 
+  // This forwarder is cookie-only. An Authorization header is refused, not
+  // dropped: dropping it would silently authenticate whichever cookie the
+  // browser also sent. Bearer clients call the platform API origin directly.
+  if (req.headers.has("authorization"))
+    return json(
+      401,
+      "Access tokens are not accepted on this origin. Use the API endpoint, or sign in with the browser.",
+      "BEARER_NOT_SUPPORTED",
+    );
+
   const requestId = REQUEST_ID.test(req.headers.get("x-request-id") ?? "")
     ? req.headers.get("x-request-id")!
     : crypto.randomUUID();

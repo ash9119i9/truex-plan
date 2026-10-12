@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import express from "express";
@@ -556,14 +557,13 @@ test(
       await store.client.close();
       await mongo.stop();
     });
-    const env = {
-      ...process.env,
+    const env = testEnvironment({
       MONGO_URI: mongo.getUri(),
       MONGO_DB: "prov",
       CATALOG_MONGO_DB: "prov_catalog",
       DEMO_TENANT_ID: "",
       APP_PUBLIC_URL: "http://app.test",
-    };
+    });
     const run = (...args: string[]) =>
       promisify(execFile)(
         process.execPath,

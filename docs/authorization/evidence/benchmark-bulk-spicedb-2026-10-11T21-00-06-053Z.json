@@ -1,0 +1,20 @@
+{
+  "sourceArtifact": "/home/bdhayalesh/truex-plan/docs/authorization/evidence/benchmark-components-both-1000000-2026-10-11T20-26-36-158Z.json",
+  "finishedAt": "2026-10-11T21:00:06.053Z",
+  "engine": "spicedb:v1.56.2",
+  "candidates": 1000,
+  "batchSize": 50,
+  "batches": 20,
+  "allowed": 201,
+  "denied": 799,
+  "failures": 0,
+  "milliseconds": 1122.4922490000001,
+  "candidatesPerSecond": 890.8747484812252,
+  "batchLatency": {
+    "p50Ms": 53.10704799999996,
+    "p95Ms": 74.30719999999997,
+    "p99Ms": 86.40652999999998
+  },
+  "consistency": "fullyConsistent; four server-fixture references per candidate, including completed hot-tenant revocations",
+  "limitations": "Native checks only. No production Mongo candidate query, root snapshot/fence/lease, index/cardinality cost or pagination measured. Twenty samples do not establish production tail latency."
+}

@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -14,13 +15,12 @@ async function provision(p: Platform, args: string[] = []) {
     process.execPath,
     [resolve("../scripts/tenant.mjs"), "provision-default", ...args],
     {
-      env: {
-        ...process.env,
+      env: testEnvironment({
         MONGO_URI: p.mongo.getUri(),
         MONGO_DB: p.store.database,
         CATALOG_MONGO_DB: p.store.catalogDatabase,
         DEFAULT_SIGNUP_TENANT_ID: "default-tenant",
-      },
+      }),
     },
   );
 }

@@ -1,0 +1,163 @@
+{
+  "startedAt": "2026-10-11T20:26:36.158Z",
+  "finishedAt": "2026-10-11T20:32:17.318Z",
+  "options": {
+    "principals": 10000,
+    "resources": 100000,
+    "relationships": 1000000,
+    "checks": 1000,
+    "concurrency": 16,
+    "tenants": 10,
+    "copies": 1,
+    "writeConcurrency": 1,
+    "writeBatchSize": 1000
+  },
+  "publication": "components",
+  "environment": {
+    "node": "v24.11.0",
+    "os": "linux",
+    "release": "6.6.87.2-microsoft-standard-WSL2",
+    "cpu": "Intel(R) Core(TM) Ultra 5 235U",
+    "cpuCount": 12,
+    "memoryBytes": 12542230528,
+    "images": {
+      "openfga": "v1.22.0",
+      "spicedb": "v1.56.2",
+      "postgres": "17.11-bookworm"
+    },
+    "topology": "Docker loopback HTTP, one shared fixture PostgreSQL process with separate engine databases; no production availability/latency claim",
+    "model": "poc.components.openfga.json / poc.components.spicedb.zed; private capability/content intersection; not the full production action model",
+    "contextSource": "Fixed fixture active references only; no production Mongo, outbox, credentials, queue or admission timing measured"
+  },
+  "results": [
+    {
+      "engine": "openfga",
+      "status": "failed",
+      "cleanupErrors": [],
+      "publications": [],
+      "error": "Error: TimeoutError: The operation was aborted due to timeout",
+      "partialPublication": {
+        "namespace": "e4d63dae-3482-4c93-9525-a32310794d43",
+        "sent": 499000,
+        "acknowledged": 498000,
+        "unknownOrRejected": 1000,
+        "milliseconds": 191281.496603
+      }
+    },
+    {
+      "engine": "spicedb",
+      "status": "completed",
+      "cleanupErrors": [],
+      "publications": [
+        {
+          "copy": 1,
+          "tenants": [
+            {
+              "namespace": "a60bc875-8c4b-4a48-b0f2-e5808769d7ad",
+              "principals": 8000,
+              "resources": 80000,
+              "relationships": 800000,
+              "milliseconds": 124103.66456900002
+            },
+            {
+              "namespace": "d9cfc89a-842a-4c6d-918d-6f238c565169",
+              "principals": 223,
+              "resources": 2223,
+              "relationships": 22223,
+              "milliseconds": 2377.8785509999725
+            },
+            {
+              "namespace": "9b75fed0-900b-434a-8ab5-99bbbf2531c8",
+              "principals": 223,
+              "resources": 2223,
+              "relationships": 22223,
+              "milliseconds": 2290.3427789999987
+            },
+            {
+              "namespace": "86419f44-e98c-4a47-ba20-cb4db283a4bd",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2446.456697000016
+            },
+            {
+              "namespace": "4379508d-a6e4-44e9-8084-cfee5fec4349",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2739.1524910000153
+            },
+            {
+              "namespace": "02224580-b1d3-4535-8244-8fefd2e9289d",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2585.2891750000417
+            },
+            {
+              "namespace": "f0aa4e68-28f7-4077-a1a7-c3e28c154efd",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2552.1554469999974
+            },
+            {
+              "namespace": "415eec89-859a-4788-a12c-e2c1c3d7ecae",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2439.74143200001
+            },
+            {
+              "namespace": "104163cc-5b83-4069-b6eb-fa488dc6eb1a",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2166.8382179999608
+            },
+            {
+              "namespace": "220a96aa-0104-4063-857e-342524f47e67",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2656.161476999987
+            }
+          ],
+          "milliseconds": 146360.240891
+        }
+      ],
+      "componentUpdates": [
+        {
+          "name": "group-revoke",
+          "relationships": 1,
+          "milliseconds": 7.431749999988824,
+          "contextBytes": 554
+        },
+        {
+          "name": "role-revoke",
+          "relationships": 8000,
+          "milliseconds": 1204.4379550000303,
+          "contextBytes": 554
+        },
+        {
+          "name": "content-revoke",
+          "relationships": 3,
+          "milliseconds": 6.2221819999977015,
+          "contextBytes": 554
+        }
+      ],
+      "checks": {
+        "count": 1000,
+        "p50Ms": 22.94212699995842,
+        "p95Ms": 36.78151900001103,
+        "p99Ms": 62.793399999965914,
+        "maxMs": 92.81678799999645,
+        "allowed": 500,
+        "denied": 500,
+        "failures": 0,
+        "milliseconds": 1558.7139779999852,
+        "requestsPerSecond": 641.5545213003854
+      }
+    }
+  ]
+}

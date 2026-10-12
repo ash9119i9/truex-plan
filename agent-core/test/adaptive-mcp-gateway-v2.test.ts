@@ -80,6 +80,11 @@ async function fixture(
     initialize: any[] = [],
     requests: any[] = [];
   const server = createServer(async (req, res) => {
+    // Fixture-only transport warm-up has no MCP side effects or request count.
+    if (req.url === "/fixture-warmup") {
+      res.writeHead(204).end();
+      return;
+    }
     let raw = "";
     for await (const part of req) raw += part;
     const rpc = JSON.parse(raw),
@@ -173,6 +178,16 @@ async function fixture(
       },
     ]),
   );
+  if (behavior.warmTransport) {
+    // The 20 ms retry test measures a received hung RPC, not first-fetch setup.
+    // Without this, cold fetch can time out before the first initialize reaches
+    // the fixture and consume one of the two attempts without exercising it.
+    const origin = new URL(Object.values(configs)[0].url!).origin;
+    const warm = await fetch(`${origin}/fixture-warmup`, {
+      signal: AbortSignal.timeout(1000),
+    });
+    assert.equal(warm.status, 204);
+  }
   const events: any[] = [];
   const gateway = new AdaptiveMcpGatewayV2(
     configs,
@@ -863,12 +878,26 @@ test("transient metadata timeout recovers within the bounded read retry without 
     t,
     undefined,
     { hydration: { maxAttempts: 2, retryDelayMs: 0, hydrationTimeoutMs: 20 } },
-    { hangInitializeAttempts: 1 },
+    { hangInitializeAttempts: 1, warmTransport: true },
   );
-  assert.equal(f.gateway.registryStatus.state, "ready");
+  assert.equal(
+    f.gateway.registryStatus.state,
+    "ready",
+    JSON.stringify({
+      requests: f.requests.map((r: { method: string }) => r.method),
+      attempts: f.gateway.registryStatus.servers[0].attempts,
+      failure: f.gateway.registryStatus.servers[0].lastError?.stage,
+    }),
+  );
   assert.equal(f.registry.length, 1);
   assert.equal(f.registry[0].bindingName, "get_apps");
   assert.equal(f.gateway.registryStatus.servers[0].attempts, 2);
+  assert.equal(
+    f.requests.filter((r: { method: string }) => r.method === "initialize")
+      .length,
+    2,
+  );
+  assert.equal(f.initialize.length, 1);
   assert.equal(f.calls.length, 0);
   assert.ok(f.events.some((event) => event.type === "metadata_retry"));
 });

@@ -1,0 +1,564 @@
+{
+  "schema_version": "1.1",
+  "type_definitions": [
+    {
+      "type": "user",
+      "relations": {},
+      "metadata": {
+        "relations": {}
+      }
+    },
+    {
+      "type": "group",
+      "relations": {
+        "member": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "member": {
+            "directly_related_user_types": [
+              {
+                "type": "user"
+              },
+              {
+                "type": "group",
+                "relation": "member"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "role",
+      "relations": {
+        "assignee": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "assignee": {
+            "directly_related_user_types": [
+              {
+                "type": "user"
+              },
+              {
+                "type": "group",
+                "relation": "member"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "organization",
+      "relations": {
+        "administrator": {
+          "this": {}
+        },
+        "read_cap": {
+          "this": {}
+        },
+        "send_cap": {
+          "this": {}
+        },
+        "approve_cap": {
+          "this": {}
+        },
+        "settings_cap": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "administrator": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "read_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "send_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "approve_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "settings_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "workspace",
+      "relations": {
+        "organization": {
+          "this": {}
+        },
+        "read_role": {
+          "this": {}
+        },
+        "read_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "read_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "organization"
+                  },
+                  "computedUserset": {
+                    "relation": "read_cap"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "send_role": {
+          "this": {}
+        },
+        "send_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "send_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "organization"
+                  },
+                  "computedUserset": {
+                    "relation": "send_cap"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "approve_role": {
+          "this": {}
+        },
+        "approve_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "approve_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "organization"
+                  },
+                  "computedUserset": {
+                    "relation": "approve_cap"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "settings_role": {
+          "this": {}
+        },
+        "settings_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "settings_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "organization"
+                  },
+                  "computedUserset": {
+                    "relation": "settings_cap"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "organization": {
+            "directly_related_user_types": [
+              {
+                "type": "organization"
+              }
+            ]
+          },
+          "read_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "send_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "approve_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "settings_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "conversation",
+      "relations": {
+        "workspace": {
+          "this": {}
+        },
+        "owner": {
+          "this": {}
+        },
+        "reader": {
+          "this": {}
+        },
+        "emergency_reader": {
+          "this": {}
+        },
+        "read_role": {
+          "this": {}
+        },
+        "read_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "read_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "workspace"
+                  },
+                  "computedUserset": {
+                    "relation": "read_cap"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "send_role": {
+          "this": {}
+        },
+        "send_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "send_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "workspace"
+                  },
+                  "computedUserset": {
+                    "relation": "send_cap"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "approve_role": {
+          "this": {}
+        },
+        "approve_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "approve_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "workspace"
+                  },
+                  "computedUserset": {
+                    "relation": "approve_cap"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "settings_role": {
+          "this": {}
+        },
+        "settings_cap": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "settings_role"
+                }
+              },
+              {
+                "tupleToUserset": {
+                  "tupleset": {
+                    "relation": "workspace"
+                  },
+                  "computedUserset": {
+                    "relation": "settings_cap"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "content_reader": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "reader"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "emergency_reader"
+                }
+              }
+            ]
+          }
+        },
+        "can_read": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "read_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "content_reader"
+                }
+              }
+            ]
+          }
+        },
+        "can_send": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "send_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              }
+            ]
+          }
+        },
+        "can_approve": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "approve_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              }
+            ]
+          }
+        },
+        "can_settings": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "settings_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "workspace": {
+            "directly_related_user_types": [
+              {
+                "type": "workspace"
+              }
+            ]
+          },
+          "owner": {
+            "directly_related_user_types": [
+              {
+                "type": "user"
+              }
+            ]
+          },
+          "reader": {
+            "directly_related_user_types": [
+              {
+                "type": "user"
+              },
+              {
+                "type": "group",
+                "relation": "member"
+              }
+            ]
+          },
+          "emergency_reader": {
+            "directly_related_user_types": [
+              {
+                "type": "user"
+              }
+            ]
+          },
+          "read_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "send_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "approve_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "settings_role": {
+            "directly_related_user_types": [
+              {
+                "type": "role",
+                "relation": "assignee"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "document",
+      "relations": {
+        "conversation": {
+          "this": {}
+        },
+        "can_read": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "conversation"
+            },
+            "computedUserset": {
+              "relation": "can_read"
+            }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "conversation": {
+            "directly_related_user_types": [
+              {
+                "type": "conversation"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

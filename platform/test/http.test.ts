@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -141,7 +142,9 @@ test(
         ],
         {
           cwd: resolve(root, service),
-          env: { ...process.env, ...extra },
+          env: testEnvironment({
+            ...extra,
+          }),
           stdio: ["ignore", "pipe", "pipe"],
         },
       );

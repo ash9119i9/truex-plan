@@ -39,7 +39,7 @@ export function userRole(role: unknown): UserRole {
   return role;
 }
 
-export type AuthMode = "poc" | "dev" | "google";
+export type AuthMode = "poc" | "dev" | "google" | "oidc";
 const GOOGLE_KEYS = [
   "GOOGLE_CLIENT_ID",
   "GOOGLE_CLIENT_SECRET",
@@ -52,9 +52,16 @@ const GOOGLE_KEYS = [
 export function authMode(env: NodeJS.ProcessEnv = process.env): AuthMode {
   const mode = env.AUTH_MODE?.trim().toLowerCase() || "dev";
   if (mode === "dev" || mode === "poc") return mode;
+  if (mode === "oidc") {
+    if (!env.OIDC_LOGIN_CONFIG?.trim() || !env.FRONTEND_ORIGIN?.trim())
+      throw new Error(
+        "AUTH_MODE=oidc requires OIDC_LOGIN_CONFIG and FRONTEND_ORIGIN.",
+      );
+    return mode;
+  }
   if (mode !== "google")
     throw new Error(
-      `AUTH_MODE=${mode} is not supported. Use AUTH_MODE=poc, dev, or google.`,
+      `AUTH_MODE=${mode} is not supported. Use AUTH_MODE=poc, dev, google, or oidc.`,
     );
   const missing = GOOGLE_KEYS.filter((key) => !env[key]?.trim());
   if (missing.length)

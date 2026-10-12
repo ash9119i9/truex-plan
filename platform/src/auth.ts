@@ -9,11 +9,21 @@ import { ApiError } from "./errors";
 import type { Store } from "./store";
 import { DEFAULT_TENANT_ID, tenantId } from "./tenant";
 import type { UserRef, UserRole } from "./user";
+import {
+  browserAccount,
+  browserContext,
+  browserTenants,
+  identityMembership,
+} from "./browser-auth";
+import { IdentityStore } from "./identity";
+import type { BrowserSessionAuthorization } from "./browser-auth";
 
 // Catalog documents for sign-in. They live in the catalog DB because sign-in
 // has to find a user's tenants before any tenant database is opened.
 export interface UserDocument {
   _id: string;
+  /** Additive enterprise migration marker; absent legacy rows are not enterprise identities. */
+  authorizationGeneration?: string;
   googleSub: string;
   email: string;
   emailKey: string;
@@ -28,6 +38,7 @@ export interface UserDocument {
 }
 export interface MembershipDocument {
   _id: string;
+  authorizationGeneration?: string;
   userId: string;
   tenantId: string;
   role: UserRole;
@@ -60,6 +71,8 @@ export interface AuthSessionDocument {
   userId: string | null;
   tenantId: string | null;
   app: AuthApp;
+  /** Captured at issuance, never filled from a live binding during validation. */
+  authorization?: BrowserSessionAuthorization;
   createdAt: Date;
   lastSeenAt: Date;
   idleExpiresAt: Date;
@@ -217,24 +230,65 @@ export async function createSession(
     userAgent?: string;
   },
 ) {
+  const { token, document } = sessionRecord(options);
+  await store.authSessions.insertOne(document);
+  setCookie(res, options.app, token, LIFETIME[options.app].absolute);
+  return token;
+}
+
+/** Pure construction; bound OIDC callers persist this inside their catalog transaction. */
+export function sessionRecord(options: {
+  userId: string | null;
+  tenantId: string | null;
+  app: AuthApp;
+  userAgent?: string;
+  authorization?: BrowserSessionAuthorization;
+  absoluteExpiresAt?: Date;
+}) {
   const token = newToken();
   const now = new Date();
   const life = LIFETIME[options.app];
-  await store.authSessions.insertOne({
+  const absoluteExpiresAt = new Date(
+    Math.min(
+      now.getTime() + life.absolute,
+      options.absoluteExpiresAt?.getTime() ?? Infinity,
+    ),
+  );
+  const document: AuthSessionDocument = {
     _id: hashToken(token),
     userId: options.userId,
     tenantId: options.tenantId,
     app: options.app,
     createdAt: now,
     lastSeenAt: now,
-    idleExpiresAt: new Date(now.getTime() + life.idle),
-    absoluteExpiresAt: new Date(now.getTime() + life.absolute),
+    idleExpiresAt: new Date(
+      Math.min(now.getTime() + life.idle, absoluteExpiresAt.getTime()),
+    ),
+    absoluteExpiresAt,
+    ...(options.authorization
+      ? { authorization: structuredClone(options.authorization) }
+      : {}),
     ...(options.userAgent
       ? { userAgent: options.userAgent.slice(0, 256) }
       : {}),
-  });
-  setCookie(res, options.app, token, life.absolute);
-  return token;
+  };
+  return { token, document };
+}
+/** Must run after commit. The raw cookie stays out of the stored document. */
+export function setSessionCookie(
+  res: Response,
+  session: AuthSessionDocument,
+  token: string,
+) {
+  // Explicit token required: the stored hash must never be sent as a credential.
+  if (!token || !TOKEN.test(token))
+    throw new Error("A session cookie needs its raw issuance token");
+  setCookie(
+    res,
+    session.app,
+    token,
+    session.absoluteExpiresAt.getTime() - Date.now(),
+  );
 }
 
 const cookieToken = (req: Request, app: AuthApp) => {
@@ -319,9 +373,50 @@ export async function rotateSession(
   next: { userId: string; tenantId: string },
 ) {
   const token = cookieToken(req, "main");
-  const deleted = token
-    ? await store.authSessions.findOneAndDelete({ _id: hashToken(token) })
+  const existing = token
+    ? await store.authSessions.findOne({ _id: hashToken(token), app: "main" })
     : null;
+  if (!existing) throw unauthenticated();
+  if (existing.authorization !== undefined) {
+    const rotated = await store.withCatalogTransaction(async (tx) => {
+      const deleted = await store.authSessions.findOneAndDelete(
+        { _id: existing._id, app: "main" },
+        { session: tx },
+      );
+      if (!deleted || deleted.userId !== next.userId) throw unauthenticated();
+      await browserContext(store, deleted, next.tenantId, tx);
+      const result = sessionRecord({
+        ...next,
+        app: "main",
+        userAgent: req.get("user-agent"),
+        authorization: deleted.authorization,
+        absoluteExpiresAt: deleted.absoluteExpiresAt,
+      });
+      await store.authSessions.insertOne(result.document, { session: tx });
+      await new IdentityStore(store).audit.insertOne(
+        {
+          _id: result.document._id,
+          action: "session.tenant.switch",
+          actor: {
+            kind: "human",
+            id: next.userId,
+            generation: deleted.authorization!.principalGeneration,
+          },
+          targetId: result.document._id,
+          tenantId: next.tenantId,
+          generation: deleted.authorization!.principalGeneration,
+          at: new Date(),
+        },
+        { session: tx },
+      );
+      return result;
+    });
+    setSessionCookie(res, rotated.document, rotated.token);
+    return rotated.token;
+  }
+  const deleted = await store.authSessions.findOneAndDelete({
+    _id: existing._id,
+  });
   if (!deleted) throw unauthenticated();
   return createSession(store, res, {
     userId: next.userId,
@@ -367,6 +462,18 @@ export async function accountSession(
     if (await readSession(store, req, "admin", options)) throw wrongApp();
     throw unauthenticated();
   }
+  if (session.authorization !== undefined) {
+    try {
+      const account = await browserAccount(store, session);
+      return { session, user: account.user };
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401)
+        await store.authSessions.deleteOne({ _id: session._id });
+      throw error;
+    }
+  }
+  if (process.env.AUTH_MODE?.trim().toLowerCase() === "oidc")
+    throw unauthenticated();
   const user = await store.users.findOne({
     _id: session.userId,
     status: "active",
@@ -387,8 +494,12 @@ async function mainSession(
   if (!account.session.tenantId)
     throw new ApiError(
       409,
-      "Finish setting up your workspace to continue",
-      "ONBOARDING_REQUIRED",
+      account.session.authorization
+        ? "Choose a workspace to continue"
+        : "Finish setting up your workspace to continue",
+      account.session.authorization
+        ? "TENANT_SELECTION_REQUIRED"
+        : "ONBOARDING_REQUIRED",
     );
   return account;
 }
@@ -435,25 +546,40 @@ export async function authorizeRequest(
   const { session, user } = await mainSession(store, req, {
     touch: !options.passive,
   });
-  const membership = await store.memberships.findOne({
-    userId: user._id,
-    tenantId: session.tenantId!,
-    status: "active",
-  });
+  let authorization: Awaited<ReturnType<typeof browserContext>> | undefined;
+  if (session.authorization !== undefined) {
+    try {
+      authorization = await browserContext(store, session);
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      throw new ApiError(
+        403,
+        "Your access to this workspace has ended. Select another workspace or sign in again.",
+        "TENANT_ACCESS_REVOKED",
+      );
+    }
+  }
+  const membership = authorization
+    ? await identityMembership(store, authorization)
+    : await store.memberships.findOne({
+        userId: user._id,
+        tenantId: session.tenantId!,
+        status: "active",
+      });
   if (!membership) {
     await store.authSessions.deleteOne({ _id: session._id });
     throw unauthenticated();
   }
   // Throws TENANT_DISABLED (403) for a disabled tenant.
   const tenant = await store.resolveTenant(membership.tenantId, {
-    fresh: options.passive,
+    fresh: options.passive || authorization !== undefined,
   });
   const ref: UserRef = {
     id: user._id,
     email: user.email,
     role: membership.role,
   };
-  return { session, user, membership, tenant, ref };
+  return { session, user, membership, tenant, ref, authorization };
 }
 
 /**
@@ -463,6 +589,8 @@ export async function authorizeRequest(
  */
 export function authMiddleware(store: Store) {
   const handle = async (req: Request, res: Response) => {
+    // bearerGate already produced the same locals from a verified token.
+    if (res.locals.bearerVerified === true) return;
     const path = req.baseUrl + req.path;
     if (/^\/api\/admin(\/|$)/.test(path)) {
       const admin = await readSession(store, req, "admin");
@@ -473,7 +601,10 @@ export function authMiddleware(store: Store) {
       res.locals.admin = true;
       return;
     }
-    const { user, tenant, ref } = await authorizeRequest(store, req);
+    const { user, tenant, ref, authorization, session } =
+      await authorizeRequest(store, req);
+    if (authorization) res.locals.authorization = authorization;
+    if (session.authorization) res.locals.browserSession = session;
     res.locals.tenant = tenant;
     res.locals.user = ref;
     res.locals.profile = {
@@ -500,8 +631,11 @@ export function csrfMiddleware(options: {
   allowMissingOrigin: boolean;
 }) {
   const origins = new Set(options.origins.filter(Boolean));
-  return (req: Request, _res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction) => {
     if (!STATE_CHANGING.has(req.method)) return next();
+    // Set only by bearerGate after full verification (no cookie present, valid
+    // signature, live identity). A bare Authorization header never exempts.
+    if (res.locals.bearerVerified === true) return next();
     const origin = req.get("origin");
     if (origin ? !origins.has(origin) : !options.allowMissingOrigin)
       return next(
@@ -575,20 +709,39 @@ export function authRoutes(store: Store) {
   router.get(
     "/tenants",
     wrap(async (req, res) => {
-      const { user } = await accountSession(store, req);
-      res.json({ tenants: await userTenants(store, user._id) });
+      const { user, session } = await accountSession(store, req);
+      res.json({
+        tenants: session.authorization
+          ? await browserTenants(store, session)
+          : await userTenants(store, user._id),
+      });
     }),
   );
   router.post(
     "/switch-tenant",
     wrap(async (req, res) => {
-      const { user } = await accountSession(store, req);
+      const { user, session } = await accountSession(store, req);
       const target = tenantId(req.body?.tenantId);
-      const membership = await store.memberships.findOne({
-        userId: user._id,
-        tenantId: target,
-        status: "active",
-      });
+      let targetContext: Awaited<ReturnType<typeof browserContext>> | undefined;
+      if (session.authorization) {
+        try {
+          targetContext = await browserContext(store, session, target);
+        } catch (error) {
+          if (!(error instanceof ApiError) || error.status !== 401) throw error;
+          throw new ApiError(
+            403,
+            "Sign in again to access this workspace, or select another workspace.",
+            "TENANT_ACCESS_REVOKED",
+          );
+        }
+      }
+      const membership = targetContext
+        ? await identityMembership(store, targetContext)
+        : await store.memberships.findOne({
+            userId: user._id,
+            tenantId: target,
+            status: "active",
+          });
       if (!membership)
         throw new ApiError(
           403,

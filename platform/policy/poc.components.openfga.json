@@ -1,0 +1,520 @@
+{
+  "schema_version": "1.1",
+  "type_definitions": [
+    {
+      "type": "cmp_user",
+      "relations": {},
+      "metadata": {
+        "relations": {}
+      }
+    },
+    {
+      "type": "cmp_group_version",
+      "relations": {
+        "member": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "member": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_user"
+              },
+              {
+                "type": "cmp_group",
+                "relation": "member"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_group",
+      "relations": {
+        "version": {
+          "this": {}
+        },
+        "member": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "member"
+            }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "version": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_group_version",
+                "condition": "cmp_active_version"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_role_version",
+      "relations": {
+        "assignee": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "assignee": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_user"
+              },
+              {
+                "type": "cmp_group",
+                "relation": "member"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_role",
+      "relations": {
+        "version": {
+          "this": {}
+        },
+        "assignee": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "assignee"
+            }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "version": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_role_version",
+                "condition": "cmp_active_version"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_org_version",
+      "relations": {
+        "read_cap": {
+          "this": {}
+        },
+        "send_cap": {
+          "this": {}
+        },
+        "approve_cap": {
+          "this": {}
+        },
+        "settings_cap": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "read_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "send_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "approve_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_role",
+                "relation": "assignee"
+              }
+            ]
+          },
+          "settings_cap": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_role",
+                "relation": "assignee"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_org",
+      "relations": {
+        "version": {
+          "this": {}
+        },
+        "read_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "read_cap"
+            }
+          }
+        },
+        "send_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "send_cap"
+            }
+          }
+        },
+        "approve_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "approve_cap"
+            }
+          }
+        },
+        "settings_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "settings_cap"
+            }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "version": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_org_version",
+                "condition": "cmp_active_version"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_conversation_version",
+      "relations": {
+        "scope": {
+          "this": {}
+        },
+        "owner": {
+          "this": {}
+        },
+        "reader": {
+          "this": {}
+        },
+        "emergency_reader": {
+          "this": {}
+        },
+        "content_reader": {
+          "union": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "reader"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "emergency_reader"
+                }
+              }
+            ]
+          }
+        },
+        "read_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "scope"
+            },
+            "computedUserset": {
+              "relation": "read_cap"
+            }
+          }
+        },
+        "can_read": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "read_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "content_reader"
+                }
+              }
+            ]
+          }
+        },
+        "send_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "scope"
+            },
+            "computedUserset": {
+              "relation": "send_cap"
+            }
+          }
+        },
+        "can_send": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "send_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              }
+            ]
+          }
+        },
+        "approve_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "scope"
+            },
+            "computedUserset": {
+              "relation": "approve_cap"
+            }
+          }
+        },
+        "can_approve": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "approve_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              }
+            ]
+          }
+        },
+        "settings_cap": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "scope"
+            },
+            "computedUserset": {
+              "relation": "settings_cap"
+            }
+          }
+        },
+        "can_settings": {
+          "intersection": {
+            "child": [
+              {
+                "computedUserset": {
+                  "relation": "settings_cap"
+                }
+              },
+              {
+                "computedUserset": {
+                  "relation": "owner"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "scope": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_org"
+              }
+            ]
+          },
+          "owner": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_user"
+              }
+            ]
+          },
+          "reader": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_user"
+              },
+              {
+                "type": "cmp_group",
+                "relation": "member"
+              }
+            ]
+          },
+          "emergency_reader": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_user"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_conversation",
+      "relations": {
+        "version": {
+          "this": {}
+        },
+        "can_read": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "can_read"
+            }
+          }
+        },
+        "can_send": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "can_send"
+            }
+          }
+        },
+        "can_approve": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "can_approve"
+            }
+          }
+        },
+        "can_settings": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "version"
+            },
+            "computedUserset": {
+              "relation": "can_settings"
+            }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "version": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_conversation_version",
+                "condition": "cmp_active_version"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "cmp_document",
+      "relations": {
+        "conversation": {
+          "this": {}
+        },
+        "can_read": {
+          "tupleToUserset": {
+            "tupleset": {
+              "relation": "conversation"
+            },
+            "computedUserset": {
+              "relation": "can_read"
+            }
+          }
+        }
+      },
+      "metadata": {
+        "relations": {
+          "conversation": {
+            "directly_related_user_types": [
+              {
+                "type": "cmp_conversation"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "conditions": {
+    "cmp_active_version": {
+      "name": "cmp_active_version",
+      "expression": "key in active && active[key] == revision",
+      "parameters": {
+        "active": {
+          "type_name": "TYPE_NAME_MAP",
+          "generic_types": [
+            {
+              "type_name": "TYPE_NAME_STRING"
+            }
+          ]
+        },
+        "key": {
+          "type_name": "TYPE_NAME_STRING"
+        },
+        "revision": {
+          "type_name": "TYPE_NAME_STRING"
+        }
+      }
+    }
+  }
+}

@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test test/*.test.ts",
+    "test:authz": "node --experimental-strip-types --test test/authz-*.test.ts",
     "postinstall": "node scripts/patch-legend-list.mjs"
   },
   "dependencies": {

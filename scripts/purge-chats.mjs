@@ -23,7 +23,8 @@ import { dirname, join, resolve, sep } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(resolve(root, "platform/package.json"));
-const envFile = resolve(root, "platform/.env");
+const envFile =
+  process.env.DOTENV_CONFIG_PATH ?? resolve(root, "platform/.env");
 if (existsSync(envFile))
   require("dotenv").config({ path: envFile, quiet: true });
 const { MongoClient } = require("mongodb");

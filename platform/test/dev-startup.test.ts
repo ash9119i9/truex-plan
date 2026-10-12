@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:net";
@@ -107,10 +108,9 @@ for (const scenario of [
                 : `import{createServer}from'node:http';setTimeout(()=>createServer((q,r)=>r.end('[]')).listen(${port},'127.0.0.1'),${name === "platform" ? 1500 : 0});`;
         await writeFile(resolve(dir, "index.mjs"), script);
       }
-      const environment = {
-        ...process.env,
+      const environment = testEnvironment({
         AGENTCORE_RUNTIME_ARN: remote ? "fixture-runtime" : "",
-      };
+      });
       delete environment.HOST;
       delete environment.PORT;
       child = spawn(process.execPath, [launcher], {

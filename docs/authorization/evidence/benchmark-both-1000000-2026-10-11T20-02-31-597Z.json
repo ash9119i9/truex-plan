@@ -1,0 +1,217 @@
+{
+  "startedAt": "2026-10-11T20:02:31.597Z",
+  "finishedAt": "2026-10-11T20:08:55.515Z",
+  "options": {
+    "principals": 10000,
+    "resources": 100000,
+    "relationships": 1000000,
+    "checks": 1000,
+    "concurrency": 16,
+    "tenants": 10,
+    "copies": 2,
+    "writeConcurrency": 4,
+    "writeBatchSize": 100
+  },
+  "environment": {
+    "node": "v24.11.0",
+    "os": "linux",
+    "release": "6.6.87.2-microsoft-standard-WSL2",
+    "cpu": "Intel(R) Core(TM) Ultra 5 235U",
+    "cpuCount": 12,
+    "memoryBytes": 12542230528,
+    "images": {
+      "openfga": "v1.22.0",
+      "spicedb": "v1.56.2",
+      "postgres": "17.11-bookworm"
+    },
+    "topology": "Docker loopback HTTP, one shared fixture PostgreSQL process with separate engine databases; no production availability/latency claim",
+    "model": "poc.openfga.json / poc.spicedb.zed; private capability/content intersection; not the full production action model"
+  },
+  "results": [
+    {
+      "engine": "openfga",
+      "status": "failed",
+      "cleanupErrors": [],
+      "publications": [],
+      "error": "Error: Error: http://127.0.0.1:18088/stores/01M4P8YKJ3P6ES3M68YAX9F03V/write: 500: {\"code\":\"deadline_exceeded\",\"message\":\"Request Deadline Exceeded\"}\n",
+      "partialPublication": {
+        "namespace": "22741413-5223-4682-bdd4-8032555dda45",
+        "sent": 556200,
+        "acknowledged": 556100,
+        "unknownOrRejected": 100,
+        "milliseconds": 181130.125091
+      }
+    },
+    {
+      "engine": "spicedb",
+      "status": "completed",
+      "cleanupErrors": [],
+      "publications": [
+        {
+          "copy": 1,
+          "tenants": [
+            {
+              "namespace": "f600929c-8e12-4c27-beb4-5645d472814f",
+              "principals": 8000,
+              "resources": 80000,
+              "relationships": 800000,
+              "milliseconds": 89720.61521800002
+            },
+            {
+              "namespace": "830f6a13-4f35-49ca-b070-c573497bbdcd",
+              "principals": 223,
+              "resources": 2223,
+              "relationships": 22223,
+              "milliseconds": 2550.7897450000164
+            },
+            {
+              "namespace": "439ff6ad-f132-4dd2-b323-cb7ea44e914b",
+              "principals": 223,
+              "resources": 2223,
+              "relationships": 22223,
+              "milliseconds": 2514.587332999974
+            },
+            {
+              "namespace": "4e01955d-7568-48ea-9ad6-fc04880e7962",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1828.1080549999606
+            },
+            {
+              "namespace": "0e7c6868-3bae-4da0-b4ad-c7715e53d36b",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1739.9168490000302
+            },
+            {
+              "namespace": "f643c3b5-f76e-45c3-a88b-38b7304a24f6",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2083.1839679999975
+            },
+            {
+              "namespace": "c93055b1-5911-4f51-a4da-c1ed5f355aaf",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 2238.0158489999594
+            },
+            {
+              "namespace": "47bff22c-bedf-48c3-9970-52cb6df3e7ed",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1948.8062799999607
+            },
+            {
+              "namespace": "98e3a5ac-a9e2-47cc-b9f2-2bf2f154bdbf",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1734.1808250000468
+            },
+            {
+              "namespace": "25de4b3d-4786-4ee7-a5dc-d1f6a5bc2351",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1579.0348559999838
+            }
+          ],
+          "milliseconds": 107942.14385699999
+        },
+        {
+          "copy": 2,
+          "tenants": [
+            {
+              "namespace": "b63375a5-b45e-456e-96e1-0a0b83471e79",
+              "principals": 8000,
+              "resources": 80000,
+              "relationships": 800000,
+              "milliseconds": 77169.22316499997
+            },
+            {
+              "namespace": "58cce19a-0119-486f-8abf-b21d71d38a6d",
+              "principals": 223,
+              "resources": 2223,
+              "relationships": 22223,
+              "milliseconds": 1727.5285180000355
+            },
+            {
+              "namespace": "7b60a42f-c2b6-4d14-9631-d58df1c203df",
+              "principals": 223,
+              "resources": 2223,
+              "relationships": 22223,
+              "milliseconds": 1525.3377639999962
+            },
+            {
+              "namespace": "cf9cecad-4db9-47da-a0f8-69a58fd01ddf",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1721.2989119999693
+            },
+            {
+              "namespace": "d339bdbe-a11a-4261-afb2-e6d5eedb2f7d",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1713.4754320000065
+            },
+            {
+              "namespace": "e0f664df-0ee6-43a2-b8bf-628fc4774d2b",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1768.2165390000446
+            },
+            {
+              "namespace": "9ca10c04-073a-4378-a3a8-2cf9bc0b1987",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1710.4903139999951
+            },
+            {
+              "namespace": "10dc2a24-9473-4ad4-a604-585b3ea1554d",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1689.2020239999983
+            },
+            {
+              "namespace": "6e2fdc89-b3b5-4398-84c8-e0d16d1dbee2",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1573.7907819999964
+            },
+            {
+              "namespace": "bcaf62cc-4588-43a1-bca7-d3312c94a409",
+              "principals": 222,
+              "resources": 2222,
+              "relationships": 22222,
+              "milliseconds": 1533.130651000014
+            }
+          ],
+          "milliseconds": 92133.54239299998
+        }
+      ],
+      "checks": {
+        "count": 1000,
+        "p50Ms": 23.26743800000986,
+        "p95Ms": 48.473429000005126,
+        "p99Ms": 67.01377299998421,
+        "maxMs": 83.91376799996942,
+        "allowed": 500,
+        "denied": 500,
+        "failures": 0,
+        "milliseconds": 1739.3349959999905,
+        "requestsPerSecond": 574.9323749017498
+      }
+    }
+  ]
+}

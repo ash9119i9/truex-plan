@@ -1,0 +1,69 @@
+# Isolated local consistency POC. Fixture credentials, loopback HTTP ports,
+# durable PostgreSQL; this file is not a production deployment template.
+name: truex-authz-poc
+services:
+  postgres:
+    image: postgres:17.11-bookworm
+    environment:
+      POSTGRES_USER: authz_fixture
+      POSTGRES_PASSWORD: authz_fixture_local_only
+      POSTGRES_DB: openfga
+    volumes:
+      - policy-postgres:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/authz.sql:ro
+    healthcheck:
+      test: [CMD, pg_isready, -U, authz_fixture, -d, openfga]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  openfga-migrate:
+    image: openfga/openfga:v1.22.0
+    command: migrate
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://authz_fixture:authz_fixture_local_only@postgres:5432/openfga?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+  openfga:
+    image: openfga/openfga:v1.22.0
+    command: run
+    environment:
+      OPENFGA_DATASTORE_ENGINE: postgres
+      OPENFGA_DATASTORE_URI: postgres://authz_fixture:authz_fixture_local_only@postgres:5432/openfga?sslmode=disable
+      OPENFGA_AUTHN_METHOD: preshared
+      OPENFGA_AUTHN_PRESHARED_KEYS: truex-poc-fixture-only
+      OPENFGA_PLAYGROUND_ENABLED: "false"
+      OPENFGA_LOG_FORMAT: json
+      OPENFGA_MAX_TUPLES_PER_WRITE: "1000"
+    ports:
+      - 127.0.0.1:18088:8080
+    depends_on:
+      openfga-migrate:
+        condition: service_completed_successfully
+  spicedb-migrate:
+    image: authzed/spicedb:v1.56.2
+    command: [migrate, head]
+    environment:
+      SPICEDB_DATASTORE_ENGINE: postgres
+      SPICEDB_DATASTORE_CONN_URI: postgres://authz_fixture:authz_fixture_local_only@postgres:5432/spicedb?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+  spicedb:
+    image: authzed/spicedb:v1.56.2
+    command: serve
+    environment:
+      SPICEDB_DATASTORE_ENGINE: postgres
+      SPICEDB_DATASTORE_CONN_URI: postgres://authz_fixture:authz_fixture_local_only@postgres:5432/spicedb?sslmode=disable
+      SPICEDB_GRPC_PRESHARED_KEY: truex-poc-fixture-only
+      SPICEDB_HTTP_ENABLED: "true"
+      SPICEDB_HTTP_ADDR: 0.0.0.0:8443
+      SPICEDB_TELEMETRY_ENDPOINT: ""
+    ports:
+      - 127.0.0.1:18089:8443
+    depends_on:
+      spicedb-migrate:
+        condition: service_completed_successfully
+volumes:
+  policy-postgres:

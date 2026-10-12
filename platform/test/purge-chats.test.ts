@@ -29,7 +29,7 @@ const KEPT_CATALOG = ["truex_models", "truex_skills", "tenants"];
 function run(args: string[], env: Record<string, string>) {
   return new Promise<{ code: number | null; out: string }>((done) => {
     const child = spawn(process.execPath, [script, ...args], {
-      env: { PATH: process.env.PATH ?? "", ...env },
+      env: testEnvironment(env),
     });
     let out = "";
     child.stdout.on("data", (d) => (out += d));
@@ -218,3 +218,4 @@ test("purge-chats: dry run, refusals, and a real run", async (t) => {
     assert.ok(existsSync(join(outside, "keep.txt")), "symlink target kept");
   });
 });
+import { testEnvironment } from "./environment";

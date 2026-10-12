@@ -1,0 +1,49 @@
+// Consistency/privacy POC, not the complete production action model.
+definition user {}
+definition group {
+  relation member: user | group#member
+}
+definition role {
+  relation assignee: user | group#member
+}
+definition organization {
+  relation read_cap: role#assignee
+  relation send_cap: role#assignee
+  relation approve_cap: role#assignee
+  relation settings_cap: role#assignee
+  relation administrator: role#assignee
+}
+definition workspace {
+  relation organization: organization
+  relation read_role: role#assignee
+  relation send_role: role#assignee
+  relation approve_role: role#assignee
+  relation settings_role: role#assignee
+  permission read_cap = read_role + organization->read_cap
+  permission send_cap = send_role + organization->send_cap
+  permission approve_cap = approve_role + organization->approve_cap
+  permission settings_cap = settings_role + organization->settings_cap
+}
+definition conversation {
+  relation workspace: workspace
+  relation owner: user
+  relation reader: user | group#member
+  relation emergency_reader: user
+  relation read_role: role#assignee
+  relation send_role: role#assignee
+  relation approve_role: role#assignee
+  relation settings_role: role#assignee
+  permission read_cap = read_role + workspace->read_cap
+  permission send_cap = send_role + workspace->send_cap
+  permission approve_cap = approve_role + workspace->approve_cap
+  permission settings_cap = settings_role + workspace->settings_cap
+  permission content_reader = owner + reader + emergency_reader
+  permission can_read = read_cap & content_reader
+  permission can_send = send_cap & owner
+  permission can_approve = approve_cap & owner
+  permission can_settings = settings_cap & owner
+}
+definition document {
+  relation conversation: conversation
+  permission can_read = conversation->can_read
+}

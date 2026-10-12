@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
 import { GoogleButton } from "./google-button";
-import { GOOGLE_START, type LoginNotice } from "@/lib/login";
+import {
+  fetchLoginMethod,
+  type LoginMethod,
+  type LoginNotice,
+} from "@/lib/login";
 import "@/styles/v2/auth.css";
 
 export function Banner({ notice }: { notice: LoginNotice }) {
@@ -85,6 +89,22 @@ export function LoginCard({
   action?: { label: string; onClick: () => void; busy?: boolean };
 }) {
   const [cookiesOff, setCookiesOff] = useState(false);
+  const [method, setMethod] = useState<LoginMethod | null>(null);
+  const [methodLoading, setMethodLoading] = useState(true);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setMethodLoading(true);
+    void fetchLoginMethod().then((value) => {
+      if (live) {
+        setMethod(value);
+        setMethodLoading(false);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, [attempt]);
   useEffect(
     () =>
       setCookiesOff(
@@ -101,8 +121,11 @@ export function LoginCard({
           </h1>
         </div>
         <p className="au-lead">
-          Use your Google account. Personal Gmail and Google Workspace accounts
-          both work.
+          {method?.kind === "oidc"
+            ? "Sign in with your organization’s identity provider."
+            : method?.kind === "google"
+              ? "Use your Google account. Personal Gmail and Google Workspace accounts both work."
+              : "Checking sign-in options…"}
         </p>
         {cookiesOff && (
           <Banner
@@ -126,11 +149,26 @@ export function LoginCard({
             </button>
           </div>
         )}
-        <GoogleButton href={GOOGLE_START} />
+        {method?.kind === "google" ? (
+          <GoogleButton href={method.href} />
+        ) : method?.kind === "oidc" ? (
+          <a className="au-btn primary" href={method.href}>
+            Continue with organization sign-in
+          </a>
+        ) : methodLoading ? (
+          <p role="status">Loading sign-in…</p>
+        ) : (
+          <div role="alert">
+            <p>Sign-in is temporarily unavailable.</p>
+            <button className="au-btn" onClick={() => setAttempt((n) => n + 1)}>
+              Try again
+            </button>
+          </div>
+        )}
       </section>
       <p className="au-fine center">
         Truex keeps you signed in with a cookie. Signing out of Truex doesn’t
-        sign you out of Google.
+        sign you out of your identity provider.
       </p>
     </AuthFrame>
   );

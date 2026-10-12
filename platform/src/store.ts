@@ -8,6 +8,7 @@ import {
 import { MongoClient, Db, type ClientSession } from "mongodb";
 import { publicPlan, type PlanStep } from "./public";
 import { ApiError } from "./errors";
+import { requireAuthorizationContext } from "./authorization-context";
 import { errorFields, log } from "../../shared/logging";
 import {
   currentTenant,
@@ -177,6 +178,10 @@ export class Store {
   /** Models, skills and the tenant registry, shared by every tenant. */
   catalog!: Db;
   private connected = false;
+  // Capture the startup mode; mutating process.env cannot reopen the fallback.
+  private readonly enterprise =
+    process.env.AUTH_MODE?.trim().toLowerCase() === "oidc";
+  private readonly registryRefs = new WeakSet<TenantRef>();
   private indexed = new Map<string, Promise<unknown>>();
   private mcpIndexed = new Map<string, Promise<unknown>>();
   private tenants = new Map<string, { ref: TenantRef; expires: number }>();
@@ -195,7 +200,7 @@ export class Store {
     this.catalog = this.client.db(this.catalogDatabase);
     this.connected = true;
     await Promise.all([
-      this.tenantIndexes(this.database),
+      ...(this.enterprise ? [] : [this.tenantIndexes(this.database)]),
       this.catalog
         .collection("tenants")
         .createIndex({ dbName: 1 }, { unique: true }),
@@ -216,10 +221,42 @@ export class Store {
     ]);
     return this;
   }
-  // Database of the tenant in context; the default tenant outside any.
-  get db(): Db {
-    if (!this.connected) return undefined as unknown as Db;
+  get requiresAuthorizationContext() {
+    return this.enterprise;
+  }
+  // Structural storage boundary. Live identity and resource permission checks
+  // are still required by the caller; possession of a ref is not permission.
+  private storageTenant(): TenantRef | undefined {
     const tenant = currentTenant();
+    if (!this.enterprise) return tenant;
+    const context = requireAuthorizationContext();
+    if (
+      !tenant ||
+      !this.registryRefs.has(tenant) ||
+      tenant.id !== context.tenant.id ||
+      tenant.authorizationGeneration !== context.tenant.generation
+    )
+      throw new ApiError(
+        403,
+        "Verified workspace context is required",
+        "AUTHORIZATION_TENANT_CONTEXT_DENIED",
+      );
+    if (!this.connected)
+      throw new ApiError(
+        503,
+        "Workspace storage is unavailable",
+        "STORAGE_UNAVAILABLE",
+      );
+    return tenant;
+  }
+  /** Mechanical tenant routing assertion without selecting a database. */
+  assertAuthorizationTenant(): void {
+    if (this.enterprise) this.storageTenant();
+  }
+  // Legacy deployments keep the default fallback; enterprise never uses it.
+  get db(): Db {
+    const tenant = this.storageTenant();
+    if (!this.connected) return undefined as unknown as Db;
     const dbName = tenant?.dbName ?? this.database;
     // Background: a failure (or shutdown mid-build) is logged and retried on
     // the next use, never left as an unhandled rejection.
@@ -234,6 +271,18 @@ export class Store {
   }
   /** Builds a tenant database's indexes now, e.g. right after creating it. */
   ensureTenantIndexes(dbName: string, creatorHandles = false) {
+    if (this.enterprise) {
+      const tenant = this.storageTenant()!;
+      if (
+        dbName !== tenant.dbName ||
+        creatorHandles !== (tenant.isUserSpecific === true)
+      )
+        throw new ApiError(
+          403,
+          "Workspace index context does not match",
+          "AUTHORIZATION_TENANT_CONTEXT_DENIED",
+        );
+    }
     return this.tenantIndexes(dbName, creatorHandles);
   }
   /**
@@ -242,7 +291,7 @@ export class Store {
    * written before the index that would have rejected it.
    */
   indexesReady() {
-    const tenant = currentTenant();
+    const tenant = this.storageTenant();
     return this.tenantIndexes(
       tenant?.dbName ?? this.database,
       tenant?.isUserSpecific === true,
@@ -273,7 +322,7 @@ export class Store {
   // on unique indexes, so MCP writes wait for these first: a duplicate written
   // before the build would slip through and then make the build itself fail.
   mcpReady() {
-    const dbName = currentTenant()?.dbName ?? this.database;
+    const dbName = this.storageTenant()?.dbName ?? this.database;
     let done = this.mcpIndexed.get(dbName);
     if (!done) {
       done = Promise.all(mcpIndexes(this.client.db(dbName))).catch((error) => {
@@ -350,38 +399,85 @@ export class Store {
   get demoTurns() {
     return this.catalog.collection<DemoTurnDocument>("demo_turn_reservations");
   }
+  private captureRegistryRef(ref: TenantRef): TenantRef {
+    if (!this.enterprise) return ref;
+    // Copy arrays before freezing so registry/caller mutation cannot change routing.
+    const captured = structuredClone(ref);
+    if (captured.allowedModelIds) Object.freeze(captured.allowedModelIds);
+    if (captured.allowedSkillIds) Object.freeze(captured.allowedSkillIds);
+    Object.freeze(captured);
+    this.registryRefs.add(captured);
+    return captured;
+  }
+  private validateEnterpriseTenant(doc?: TenantDocument | null): void {
+    if (!this.enterprise) return;
+    if (!doc || doc.status !== "active")
+      throw new ApiError(
+        403,
+        "Unknown or inactive workspace",
+        "TENANT_NOT_FOUND",
+      );
+    if (
+      typeof doc.authorizationGeneration !== "string" ||
+      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(doc.authorizationGeneration) ||
+      typeof doc.dbName !== "string" ||
+      !/^[a-z0-9_-]{1,63}$/.test(doc.dbName) ||
+      ["admin", "local", "config"].includes(doc.dbName) ||
+      (doc._id !== DEFAULT_TENANT_ID &&
+        [this.database, this.catalogDatabase].includes(doc.dbName)) ||
+      (doc._id === DEFAULT_TENANT_ID && doc.dbName !== this.database)
+    )
+      throw new ApiError(
+        503,
+        "Workspace registry requires repair",
+        "TENANT_REGISTRY_INVALID",
+      );
+  }
   private defaultRef(doc?: TenantDocument | null): TenantRef {
-    return {
+    this.validateEnterpriseTenant(doc);
+    return this.captureRegistryRef({
       id: DEFAULT_TENANT_ID,
+      ...(doc?.authorizationGeneration
+        ? { authorizationGeneration: doc.authorizationGeneration }
+        : {}),
       dbName: this.database,
       ...(doc?.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
       ...(doc?.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
       ...policyOf(doc),
-    };
+    });
   }
   private toRef(doc: TenantDocument): TenantRef {
-    return {
+    this.validateEnterpriseTenant(doc);
+    return this.captureRegistryRef({
       id: doc._id,
+      ...(doc.authorizationGeneration
+        ? { authorizationGeneration: doc.authorizationGeneration }
+        : {}),
       dbName: doc.dbName,
       ...(doc.allowedModelIds ? { allowedModelIds: doc.allowedModelIds } : {}),
       ...(doc.allowedSkillIds ? { allowedSkillIds: doc.allowedSkillIds } : {}),
       ...policyOf(doc),
-    };
+    });
   }
   /** Drops the cached ref, e.g. right after a policy or status change. */
   invalidateTenant(id: string) {
     this.tenants.delete(id);
   }
-  // The default tenant always exists (its database is MONGO_DB); others must
-  // be registered and active. Briefly cached: every request resolves one.
-  // fresh reads the registry now, for checks that must not trust the cache
-  // (e.g. whether a long-lived stream may keep going).
+  // Legacy deployments synthesize a default tenant and briefly cache refs.
+  // Enterprise always reads an active, generation-bearing registry record.
+  // fresh bypasses the legacy cache (e.g. for ongoing stream checks).
   async resolveTenant(
     id: string,
     options: { fresh?: boolean } = {},
   ): Promise<TenantRef> {
+    if (
+      this.enterprise &&
+      (typeof id !== "string" || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(id))
+    )
+      throw new ApiError(403, "Unknown workspace", "TENANT_NOT_FOUND");
     const hit = this.tenants.get(id);
-    if (!options.fresh && hit && hit.expires > Date.now()) return hit.ref;
+    if (!this.enterprise && !options.fresh && hit && hit.expires > Date.now())
+      return hit.ref;
     const doc = await this.tenantRegistry.findOne({ _id: id });
     if (doc?.provisioningStatus === "pending")
       throw new ApiError(
@@ -411,10 +507,13 @@ export class Store {
     // A tenant with an invalid policy is skipped (and logged) rather than
     // stopping ingestion for every other tenant.
     const refs: TenantRef[] = [];
-    for (const d of [
-      ...(disabledDefault ? [] : [def ?? null]),
-      ...docs.filter((d) => d._id !== DEFAULT_TENANT_ID),
-    ])
+    const candidates = this.enterprise
+      ? docs
+      : [
+          ...(disabledDefault ? [] : [def ?? null]),
+          ...docs.filter((d) => d._id !== DEFAULT_TENANT_ID),
+        ];
+    for (const d of candidates)
       try {
         refs.push(
           d && d._id !== DEFAULT_TENANT_ID ? this.toRef(d) : this.defaultRef(d),
@@ -459,7 +558,7 @@ export class Store {
       )
         throw new ApiError(
           503,
-          "Sign-in storage does not support transactions. The database must run as a replica set.",
+          "Authorization storage does not support transactions. The database must run as a replica set.",
           "TRANSACTIONS_UNAVAILABLE",
           { cause: error },
         );

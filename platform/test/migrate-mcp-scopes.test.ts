@@ -19,7 +19,7 @@ const T1_DB = tenantDbName("t1");
 function run(args: string[], env: Record<string, string>) {
   return new Promise<{ code: number | null; out: string }>((done) => {
     const child = spawn(process.execPath, [script, ...args], {
-      env: { PATH: process.env.PATH ?? "", ...env },
+      env: testEnvironment(env),
     });
     let out = "";
     child.stdout.on("data", (d) => (out += d));
@@ -289,3 +289,4 @@ test(
     );
   },
 );
+import { testEnvironment } from "./environment";

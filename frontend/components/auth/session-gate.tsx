@@ -89,6 +89,10 @@ export function SessionGate({
         current.current = result.me;
         // New role or workspace list: shown without discarding the view.
         setState({ kind: "ready", me: result.me });
+      } else if (result.kind === "selectTenant") {
+        bumpIdentityGeneration();
+        clearPrivateBrowserState();
+        location.replace("/select-tenant");
       } else if (result.kind === "onboarding") {
         bumpIdentityGeneration();
         clearPrivateBrowserState();

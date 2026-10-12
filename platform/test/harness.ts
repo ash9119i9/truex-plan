@@ -1,3 +1,4 @@
+import { testEnvironment, assertFixtureRuntime } from "./environment";
 // Shared harness for the Google-mode HTTP tests: a MongoDB replica set (the
 // catalog needs transactions), a fake Google issuer, a fake agent-core that
 // records every call, and the real platform running as a child process.
@@ -276,37 +277,34 @@ export async function startPlatform(
   const store = await new Store(mongo.getUri(), db, db).connect();
   const port = await freePort();
   let logs = "";
+  const environment = testEnvironment({
+    PORT: String(port),
+    MONGO_URI: mongo.getUri(),
+    MONGO_DB: db,
+    CATALOG_MONGO_DB: db,
+    AGENT_CORE_URLS: core.url,
+    AUTH_MODE: "google",
+    GOOGLE_CLIENT_ID: CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: "test-secret",
+    GOOGLE_ISSUER_URL: idp.issuer,
+    FRONTEND_ORIGIN: FRONTEND,
+    APP_PUBLIC_URL: FRONTEND,
+    ADMIN_ORIGIN: "",
+    TRUST_PROXY: "loopback",
+    MCP_ALLOWED_PRIVATE_HOSTS: "example.com",
+    MCP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
+    DEMO_TENANT_ID: "",
+    DEFAULT_TENANT_SIGNUP: "on",
+    DEFAULT_SIGNUP_TENANT_ID: "default-tenant",
+    ...options.env,
+  });
+  assertFixtureRuntime(environment, core.url);
   const child = spawn(
     process.execPath,
     [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
     {
       cwd: resolve(root, "platform"),
-      env: {
-        ...process.env,
-        // Never the developer's own platform/.env.
-        DOTENV_CONFIG_PATH: "/nonexistent",
-        PORT: String(port),
-        MONGO_URI: mongo.getUri(),
-        MONGO_DB: db,
-        CATALOG_MONGO_DB: db,
-        AGENT_CORE_URLS: core.url,
-        AGENTCORE_RUNTIME_ARN: "",
-        AUTH_MODE: "google",
-        GOOGLE_CLIENT_ID: CLIENT_ID,
-        GOOGLE_CLIENT_SECRET: "test-secret",
-        GOOGLE_ISSUER_URL: idp.issuer,
-        FRONTEND_ORIGIN: FRONTEND,
-        APP_PUBLIC_URL: FRONTEND,
-        ADMIN_ORIGIN: "",
-        TRUST_PROXY: "loopback",
-        MCP_ALLOWED_PRIVATE_HOSTS: "example.com",
-        MCP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
-        NODE_ENV: "",
-        DEMO_TENANT_ID: "",
-        DEFAULT_TENANT_SIGNUP: "on",
-        DEFAULT_SIGNUP_TENANT_ID: "default-tenant",
-        ...options.env,
-      },
+      env: environment,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );

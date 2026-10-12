@@ -22,6 +22,8 @@ export const admissionPolicyOf = (
 // database. Models and skills are shared and live in the catalog database.
 export interface TenantDocument {
   _id: string;
+  /** Additive migration marker, not an enforcement flag. */
+  authorizationGeneration?: string;
   name: string;
   /** Server-generated, see tenantDbName. Never taken from user input. */
   dbName: string;
@@ -47,6 +49,7 @@ export interface TenantDocument {
 }
 export interface TenantRef {
   id: string;
+  authorizationGeneration?: string;
   dbName: string;
   allowedModelIds?: string[];
   allowedSkillIds?: string[];

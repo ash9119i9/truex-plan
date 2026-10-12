@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -54,7 +55,9 @@ function launch(extra: Record<string, string>) {
     [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
     {
       cwd: resolve(root, "platform"),
-      env: { ...process.env, ...extra },
+      env: testEnvironment({
+        ...extra,
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
@@ -75,7 +78,9 @@ function script(
       const child = spawn(
         process.execPath,
         [resolve(root, "scripts", name), ...args],
-        { cwd: root, env: { ...process.env, ...env } },
+        { cwd: root, env: testEnvironment({
+            ...env,
+          }) },
       );
       let stdout = "";
       let stderr = "";

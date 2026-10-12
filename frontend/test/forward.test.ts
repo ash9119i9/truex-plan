@@ -119,7 +119,6 @@ test("methods, bodies and headers: only what the platform needs is forwarded", a
         "x-truex-tenant": "other",
         "x-forwarded-for": "6.6.6.6",
         "x-forwarded-host": "evil.example",
-        authorization: "Bearer stolen",
         connection: "keep-alive",
       },
       body: hasBody ? JSON.stringify({ n: 1 }) : undefined,
@@ -134,7 +133,7 @@ test("methods, bodies and headers: only what the platform needs is forwarded", a
     assert.equal(got.headers["x-request-id"], "req-1");
     assert.equal(got.headers["last-event-id"], "g:5");
     assert.equal(got.body, hasBody ? '{"n":1}' : "");
-    for (const forged of ["x-truex-user", "x-truex-role", "x-truex-tenant", "x-forwarded-for", "x-forwarded-host", "authorization"])
+    for (const forged of ["x-truex-user", "x-truex-role", "x-truex-tenant", "x-forwarded-for", "x-forwarded-host"])
       assert.equal(got.headers[forged], undefined, `${method} ${forged}`);
     assert.notEqual(got.headers.host, "evil.example");
   }

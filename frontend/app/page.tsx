@@ -2665,12 +2665,20 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
                   setPop(null);
                   setPanel("mcp");
                 }}
-                onSignOut={me.auth === "google" ? actions.signOut : undefined}
+                onSignOut={
+                  me.auth === "google" || me.auth === "oidc"
+                    ? actions.signOut
+                    : undefined
+                }
                 onWorkspaces={
-                  me.auth === "google" || me.tenants.length > 1
+                  me.auth === "google" ||
+                  me.auth === "oidc" ||
+                  me.tenants.length > 1
                     ? () => {
                         setPop(null);
-                        location.assign("/workspaces");
+                        location.assign(
+                          me.auth === "oidc" ? "/select-tenant" : "/workspaces",
+                        );
                       }
                     : undefined
                 }

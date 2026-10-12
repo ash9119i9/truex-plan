@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
@@ -49,7 +50,13 @@ function launch(extra: Record<string, string>) {
     [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
     {
       cwd: resolve(root, "platform"),
-      env: { ...process.env, DOTENV_CONFIG_PATH: "/nonexistent", DEMO_TENANT_ID: "", DEFAULT_TENANT_SIGNUP: "on", DEFAULT_SIGNUP_TENANT_ID: "default-tenant", ...extra },
+      env: testEnvironment({
+        DOTENV_CONFIG_PATH: "/nonexistent",
+        DEMO_TENANT_ID: "",
+        DEFAULT_TENANT_SIGNUP: "on",
+        DEFAULT_SIGNUP_TENANT_ID: "default-tenant",
+        ...extra,
+      }),
       stdio: ["ignore", "pipe", "pipe"],
     },
   );

@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 // Evidence rig, not a test: measures the public-demo paths under load against
 // the real platform in Google mode. Run with:  npx tsx test/load.rig.ts
 // Numbers it prints are measurements on this machine only; they are not
@@ -214,8 +215,7 @@ async function main() {
       [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
       {
         cwd: resolve(root, "platform"),
-        env: {
-          ...process.env,
+        env: testEnvironment({
           DOTENV_CONFIG_PATH: "/nonexistent",
           PORT: String(port2),
           MONGO_URI: p.mongo.getUri(),
@@ -234,7 +234,7 @@ async function main() {
           MCP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString("base64"),
           NODE_ENV: "",
           DEMO_TENANT_ID: "",
-        },
+        }),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

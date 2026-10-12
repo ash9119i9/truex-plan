@@ -1,0 +1,39 @@
+{
+  "sourceArtifact": "/home/bdhayalesh/truex-plan/docs/authorization/evidence/benchmark-catalog-spicedb-1000000-2026-10-11T21-04-42-306Z.json",
+  "finishedAt": "2026-10-11T21:20:47.409Z",
+  "stages": [
+    {
+      "obsoleteVersions": 0,
+      "checks": 20,
+      "failures": 0,
+      "p50Ms": 3.713504999999998,
+      "p95Ms": 14.458812999999964,
+      "maxMs": 18.05420399999997
+    },
+    {
+      "obsoleteVersions": 10,
+      "checks": 20,
+      "failures": 0,
+      "p50Ms": 2.6175889999999526,
+      "p95Ms": 8.812660999999935,
+      "maxMs": 13.610825000000034
+    },
+    {
+      "obsoleteVersions": 100,
+      "checks": 20,
+      "failures": 0,
+      "p50Ms": 2.9161509999999,
+      "p95Ms": 11.120017999999959,
+      "maxMs": 11.259141
+    },
+    {
+      "obsoleteVersions": 1000,
+      "checks": 20,
+      "failures": 0,
+      "p50Ms": 8.246489999999994,
+      "p95Ms": 22.39135999999985,
+      "maxMs": 42.124709000000166
+    }
+  ],
+  "limitations": "Single fixture role alias; 20 sequential fully consistent checks per stage, no application/root overhead. Both allowed current assignee and revoked assignee checked. Added fixture rows removed exactly; no production GC proof or SLA claim."
+}

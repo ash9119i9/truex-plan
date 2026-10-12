@@ -1,0 +1,581 @@
+// Generated from authorization-model.ts. Candidate only: no production guards yet.
+caveat az_v1_active_version(active map<string>, key string, revision string) {
+  key in active && active[key] == revision
+}
+caveat az_v1_emergency_unexpired(current_time timestamp, expires_at timestamp) {
+  current_time < expires_at
+}
+definition az_v1_principal {}
+definition az_v1_workload {}
+definition az_v1_group_version {
+  relation member: az_v1_principal | az_v1_group#member
+}
+definition az_v1_group {
+  relation version: az_v1_group_version with az_v1_active_version
+  permission member = version->member
+}
+definition az_v1_role_version {
+  relation assignee: az_v1_principal | az_v1_workload | az_v1_group#member
+}
+definition az_v1_role {
+  relation version: az_v1_role_version with az_v1_active_version
+  permission assignee = version->assignee
+}
+definition az_v1_org_version {
+  relation cap_organization_read: az_v1_role#assignee
+  relation cap_organization_members_manage: az_v1_role#assignee
+  relation cap_organization_groups_manage: az_v1_role#assignee
+  relation cap_organization_roles_manage: az_v1_role#assignee
+  relation cap_organization_clients_manage: az_v1_role#assignee
+  relation cap_organization_security_manage: az_v1_role#assignee
+  relation cap_workspace_read: az_v1_role#assignee
+  relation cap_workspace_manage: az_v1_role#assignee
+  relation cap_agent_read: az_v1_role#assignee
+  relation cap_agent_create: az_v1_role#assignee
+  relation cap_agent_update: az_v1_role#assignee
+  relation cap_agent_delete: az_v1_role#assignee
+  relation cap_agent_publish: az_v1_role#assignee
+  relation cap_agent_use: az_v1_role#assignee
+  relation cap_conversation_create: az_v1_role#assignee
+  relation cap_conversation_read: az_v1_role#assignee
+  relation cap_conversation_send: az_v1_role#assignee
+  relation cap_conversation_interrupt: az_v1_role#assignee
+  relation cap_conversation_approve: az_v1_role#assignee
+  relation cap_conversation_approval_mode_manage: az_v1_role#assignee
+  relation cap_conversation_settings_manage: az_v1_role#assignee
+  relation cap_conversation_archive: az_v1_role#assignee
+  relation cap_conversation_fork: az_v1_role#assignee
+  relation cap_conversation_resume: az_v1_role#assignee
+  relation cap_conversation_delete: az_v1_role#assignee
+  relation cap_conversation_share: az_v1_role#assignee
+  relation cap_conversation_trace_read: az_v1_role#assignee
+  relation cap_conversation_goal_read: az_v1_role#assignee
+  relation cap_conversation_goal_update: az_v1_role#assignee
+  relation cap_conversation_goal_review: az_v1_role#assignee
+  relation cap_conversation_compact: az_v1_role#assignee
+  relation cap_document_read: az_v1_role#assignee
+  relation cap_document_download: az_v1_role#assignee
+  relation cap_document_upload: az_v1_role#assignee
+  relation cap_document_delete: az_v1_role#assignee
+  relation cap_project_read: az_v1_role#assignee
+  relation cap_project_create: az_v1_role#assignee
+  relation cap_project_update: az_v1_role#assignee
+  relation cap_project_delete: az_v1_role#assignee
+  relation cap_connector_read: az_v1_role#assignee
+  relation cap_connector_create: az_v1_role#assignee
+  relation cap_connector_update: az_v1_role#assignee
+  relation cap_connector_delete: az_v1_role#assignee
+  relation cap_connector_manage: az_v1_role#assignee
+  relation cap_connector_attach: az_v1_role#assignee
+  relation cap_connector_use: az_v1_role#assignee
+  relation cap_tool_discover: az_v1_role#assignee
+  relation cap_tool_read: az_v1_role#assignee
+  relation cap_tool_invoke: az_v1_role#assignee
+  relation cap_tool_write: az_v1_role#assignee
+  relation cap_model_read: az_v1_role#assignee
+  relation cap_model_use: az_v1_role#assignee
+  relation cap_skill_read: az_v1_role#assignee
+  relation cap_skill_use: az_v1_role#assignee
+  relation cap_audit_read: az_v1_role#assignee
+  relation cap_audit_export: az_v1_role#assignee
+  relation cap_support_request_access: az_v1_role#assignee
+  relation cap_support_approve_access: az_v1_role#assignee
+  relation cap_platform_tenants_read: az_v1_role#assignee
+  relation cap_platform_tenants_create: az_v1_role#assignee
+  relation cap_platform_tenants_manage: az_v1_role#assignee
+  relation cap_platform_members_manage: az_v1_role#assignee
+  relation cap_platform_invites_manage: az_v1_role#assignee
+  relation cap_platform_security_manage: az_v1_role#assignee
+  relation cap_worker_records_read: az_v1_role#assignee
+  relation cap_worker_records_persist: az_v1_role#assignee
+  relation cap_worker_records_ack: az_v1_role#assignee
+  relation cap_worker_policy_project: az_v1_role#assignee
+  relation cap_worker_policy_reconcile: az_v1_role#assignee
+  relation cap_worker_cleanup: az_v1_role#assignee
+}
+definition az_v1_org {
+  relation version: az_v1_org_version with az_v1_active_version
+  permission cap_organization_read = version->cap_organization_read
+  permission cap_organization_members_manage = version->cap_organization_members_manage
+  permission cap_organization_groups_manage = version->cap_organization_groups_manage
+  permission cap_organization_roles_manage = version->cap_organization_roles_manage
+  permission cap_organization_clients_manage = version->cap_organization_clients_manage
+  permission cap_organization_security_manage = version->cap_organization_security_manage
+  permission cap_workspace_read = version->cap_workspace_read
+  permission cap_workspace_manage = version->cap_workspace_manage
+  permission cap_agent_read = version->cap_agent_read
+  permission cap_agent_create = version->cap_agent_create
+  permission cap_agent_update = version->cap_agent_update
+  permission cap_agent_delete = version->cap_agent_delete
+  permission cap_agent_publish = version->cap_agent_publish
+  permission cap_agent_use = version->cap_agent_use
+  permission cap_conversation_create = version->cap_conversation_create
+  permission cap_conversation_read = version->cap_conversation_read
+  permission cap_conversation_send = version->cap_conversation_send
+  permission cap_conversation_interrupt = version->cap_conversation_interrupt
+  permission cap_conversation_approve = version->cap_conversation_approve
+  permission cap_conversation_approval_mode_manage = version->cap_conversation_approval_mode_manage
+  permission cap_conversation_settings_manage = version->cap_conversation_settings_manage
+  permission cap_conversation_archive = version->cap_conversation_archive
+  permission cap_conversation_fork = version->cap_conversation_fork
+  permission cap_conversation_resume = version->cap_conversation_resume
+  permission cap_conversation_delete = version->cap_conversation_delete
+  permission cap_conversation_share = version->cap_conversation_share
+  permission cap_conversation_trace_read = version->cap_conversation_trace_read
+  permission cap_conversation_goal_read = version->cap_conversation_goal_read
+  permission cap_conversation_goal_update = version->cap_conversation_goal_update
+  permission cap_conversation_goal_review = version->cap_conversation_goal_review
+  permission cap_conversation_compact = version->cap_conversation_compact
+  permission cap_document_read = version->cap_document_read
+  permission cap_document_download = version->cap_document_download
+  permission cap_document_upload = version->cap_document_upload
+  permission cap_document_delete = version->cap_document_delete
+  permission cap_project_read = version->cap_project_read
+  permission cap_project_create = version->cap_project_create
+  permission cap_project_update = version->cap_project_update
+  permission cap_project_delete = version->cap_project_delete
+  permission cap_connector_read = version->cap_connector_read
+  permission cap_connector_create = version->cap_connector_create
+  permission cap_connector_update = version->cap_connector_update
+  permission cap_connector_delete = version->cap_connector_delete
+  permission cap_connector_manage = version->cap_connector_manage
+  permission cap_connector_attach = version->cap_connector_attach
+  permission cap_connector_use = version->cap_connector_use
+  permission cap_tool_discover = version->cap_tool_discover
+  permission cap_tool_read = version->cap_tool_read
+  permission cap_tool_invoke = version->cap_tool_invoke
+  permission cap_tool_write = version->cap_tool_write
+  permission cap_model_read = version->cap_model_read
+  permission cap_model_use = version->cap_model_use
+  permission cap_skill_read = version->cap_skill_read
+  permission cap_skill_use = version->cap_skill_use
+  permission cap_audit_read = version->cap_audit_read
+  permission cap_audit_export = version->cap_audit_export
+  permission cap_support_request_access = version->cap_support_request_access
+  permission cap_support_approve_access = version->cap_support_approve_access
+  permission cap_platform_tenants_read = version->cap_platform_tenants_read
+  permission cap_platform_tenants_create = version->cap_platform_tenants_create
+  permission cap_platform_tenants_manage = version->cap_platform_tenants_manage
+  permission cap_platform_members_manage = version->cap_platform_members_manage
+  permission cap_platform_invites_manage = version->cap_platform_invites_manage
+  permission cap_platform_security_manage = version->cap_platform_security_manage
+  permission cap_worker_records_read = version->cap_worker_records_read
+  permission cap_worker_records_persist = version->cap_worker_records_persist
+  permission cap_worker_records_ack = version->cap_worker_records_ack
+  permission cap_worker_policy_project = version->cap_worker_policy_project
+  permission cap_worker_policy_reconcile = version->cap_worker_policy_reconcile
+  permission cap_worker_cleanup = version->cap_worker_cleanup
+  permission organization_read = cap_organization_read
+  permission organization_members_manage = cap_organization_members_manage
+  permission organization_groups_manage = cap_organization_groups_manage
+  permission organization_roles_manage = cap_organization_roles_manage
+  permission organization_clients_manage = cap_organization_clients_manage
+  permission organization_security_manage = cap_organization_security_manage
+  permission audit_read = cap_audit_read
+  permission audit_export = cap_audit_export
+  permission support_request_access = cap_support_request_access
+  permission platform_tenants_read = cap_platform_tenants_read
+  permission platform_tenants_create = cap_platform_tenants_create
+  permission platform_tenants_manage = cap_platform_tenants_manage
+  permission platform_members_manage = cap_platform_members_manage
+  permission platform_invites_manage = cap_platform_invites_manage
+  permission platform_security_manage = cap_platform_security_manage
+  permission worker_records_read = cap_worker_records_read
+  permission worker_records_persist = cap_worker_records_persist
+  permission worker_records_ack = cap_worker_records_ack
+  permission worker_policy_project = cap_worker_policy_project
+  permission worker_policy_reconcile = cap_worker_policy_reconcile
+  permission worker_cleanup = cap_worker_cleanup
+}
+definition az_v1_workspace_version {
+  relation scope: az_v1_org
+  relation cap_organization_read_local: az_v1_role#assignee
+  relation cap_organization_members_manage_local: az_v1_role#assignee
+  relation cap_organization_groups_manage_local: az_v1_role#assignee
+  relation cap_organization_roles_manage_local: az_v1_role#assignee
+  relation cap_organization_clients_manage_local: az_v1_role#assignee
+  relation cap_organization_security_manage_local: az_v1_role#assignee
+  relation cap_workspace_read_local: az_v1_role#assignee
+  relation cap_workspace_manage_local: az_v1_role#assignee
+  relation cap_agent_read_local: az_v1_role#assignee
+  relation cap_agent_create_local: az_v1_role#assignee
+  relation cap_agent_update_local: az_v1_role#assignee
+  relation cap_agent_delete_local: az_v1_role#assignee
+  relation cap_agent_publish_local: az_v1_role#assignee
+  relation cap_agent_use_local: az_v1_role#assignee
+  relation cap_conversation_create_local: az_v1_role#assignee
+  relation cap_conversation_read_local: az_v1_role#assignee
+  relation cap_conversation_send_local: az_v1_role#assignee
+  relation cap_conversation_interrupt_local: az_v1_role#assignee
+  relation cap_conversation_approve_local: az_v1_role#assignee
+  relation cap_conversation_approval_mode_manage_local: az_v1_role#assignee
+  relation cap_conversation_settings_manage_local: az_v1_role#assignee
+  relation cap_conversation_archive_local: az_v1_role#assignee
+  relation cap_conversation_fork_local: az_v1_role#assignee
+  relation cap_conversation_resume_local: az_v1_role#assignee
+  relation cap_conversation_delete_local: az_v1_role#assignee
+  relation cap_conversation_share_local: az_v1_role#assignee
+  relation cap_conversation_trace_read_local: az_v1_role#assignee
+  relation cap_conversation_goal_read_local: az_v1_role#assignee
+  relation cap_conversation_goal_update_local: az_v1_role#assignee
+  relation cap_conversation_goal_review_local: az_v1_role#assignee
+  relation cap_conversation_compact_local: az_v1_role#assignee
+  relation cap_document_read_local: az_v1_role#assignee
+  relation cap_document_download_local: az_v1_role#assignee
+  relation cap_document_upload_local: az_v1_role#assignee
+  relation cap_document_delete_local: az_v1_role#assignee
+  relation cap_project_read_local: az_v1_role#assignee
+  relation cap_project_create_local: az_v1_role#assignee
+  relation cap_project_update_local: az_v1_role#assignee
+  relation cap_project_delete_local: az_v1_role#assignee
+  relation cap_connector_read_local: az_v1_role#assignee
+  relation cap_connector_create_local: az_v1_role#assignee
+  relation cap_connector_update_local: az_v1_role#assignee
+  relation cap_connector_delete_local: az_v1_role#assignee
+  relation cap_connector_manage_local: az_v1_role#assignee
+  relation cap_connector_attach_local: az_v1_role#assignee
+  relation cap_connector_use_local: az_v1_role#assignee
+  relation cap_tool_discover_local: az_v1_role#assignee
+  relation cap_tool_read_local: az_v1_role#assignee
+  relation cap_tool_invoke_local: az_v1_role#assignee
+  relation cap_tool_write_local: az_v1_role#assignee
+  relation cap_model_read_local: az_v1_role#assignee
+  relation cap_model_use_local: az_v1_role#assignee
+  relation cap_skill_read_local: az_v1_role#assignee
+  relation cap_skill_use_local: az_v1_role#assignee
+  relation cap_audit_read_local: az_v1_role#assignee
+  relation cap_audit_export_local: az_v1_role#assignee
+  relation cap_support_request_access_local: az_v1_role#assignee
+  relation cap_support_approve_access_local: az_v1_role#assignee
+  relation cap_platform_tenants_read_local: az_v1_role#assignee
+  relation cap_platform_tenants_create_local: az_v1_role#assignee
+  relation cap_platform_tenants_manage_local: az_v1_role#assignee
+  relation cap_platform_members_manage_local: az_v1_role#assignee
+  relation cap_platform_invites_manage_local: az_v1_role#assignee
+  relation cap_platform_security_manage_local: az_v1_role#assignee
+  relation cap_worker_records_read_local: az_v1_role#assignee
+  relation cap_worker_records_persist_local: az_v1_role#assignee
+  relation cap_worker_records_ack_local: az_v1_role#assignee
+  relation cap_worker_policy_project_local: az_v1_role#assignee
+  relation cap_worker_policy_reconcile_local: az_v1_role#assignee
+  relation cap_worker_cleanup_local: az_v1_role#assignee
+  permission cap_organization_read = cap_organization_read_local + scope->cap_organization_read
+  permission cap_organization_members_manage = cap_organization_members_manage_local + scope->cap_organization_members_manage
+  permission cap_organization_groups_manage = cap_organization_groups_manage_local + scope->cap_organization_groups_manage
+  permission cap_organization_roles_manage = cap_organization_roles_manage_local + scope->cap_organization_roles_manage
+  permission cap_organization_clients_manage = cap_organization_clients_manage_local + scope->cap_organization_clients_manage
+  permission cap_organization_security_manage = cap_organization_security_manage_local + scope->cap_organization_security_manage
+  permission cap_workspace_read = cap_workspace_read_local + scope->cap_workspace_read
+  permission cap_workspace_manage = cap_workspace_manage_local + scope->cap_workspace_manage
+  permission cap_agent_read = cap_agent_read_local + scope->cap_agent_read
+  permission cap_agent_create = cap_agent_create_local + scope->cap_agent_create
+  permission cap_agent_update = cap_agent_update_local + scope->cap_agent_update
+  permission cap_agent_delete = cap_agent_delete_local + scope->cap_agent_delete
+  permission cap_agent_publish = cap_agent_publish_local + scope->cap_agent_publish
+  permission cap_agent_use = cap_agent_use_local + scope->cap_agent_use
+  permission cap_conversation_create = cap_conversation_create_local + scope->cap_conversation_create
+  permission cap_conversation_read = cap_conversation_read_local + scope->cap_conversation_read
+  permission cap_conversation_send = cap_conversation_send_local + scope->cap_conversation_send
+  permission cap_conversation_interrupt = cap_conversation_interrupt_local + scope->cap_conversation_interrupt
+  permission cap_conversation_approve = cap_conversation_approve_local + scope->cap_conversation_approve
+  permission cap_conversation_approval_mode_manage = cap_conversation_approval_mode_manage_local + scope->cap_conversation_approval_mode_manage
+  permission cap_conversation_settings_manage = cap_conversation_settings_manage_local + scope->cap_conversation_settings_manage
+  permission cap_conversation_archive = cap_conversation_archive_local + scope->cap_conversation_archive
+  permission cap_conversation_fork = cap_conversation_fork_local + scope->cap_conversation_fork
+  permission cap_conversation_resume = cap_conversation_resume_local + scope->cap_conversation_resume
+  permission cap_conversation_delete = cap_conversation_delete_local + scope->cap_conversation_delete
+  permission cap_conversation_share = cap_conversation_share_local + scope->cap_conversation_share
+  permission cap_conversation_trace_read = cap_conversation_trace_read_local + scope->cap_conversation_trace_read
+  permission cap_conversation_goal_read = cap_conversation_goal_read_local + scope->cap_conversation_goal_read
+  permission cap_conversation_goal_update = cap_conversation_goal_update_local + scope->cap_conversation_goal_update
+  permission cap_conversation_goal_review = cap_conversation_goal_review_local + scope->cap_conversation_goal_review
+  permission cap_conversation_compact = cap_conversation_compact_local + scope->cap_conversation_compact
+  permission cap_document_read = cap_document_read_local + scope->cap_document_read
+  permission cap_document_download = cap_document_download_local + scope->cap_document_download
+  permission cap_document_upload = cap_document_upload_local + scope->cap_document_upload
+  permission cap_document_delete = cap_document_delete_local + scope->cap_document_delete
+  permission cap_project_read = cap_project_read_local + scope->cap_project_read
+  permission cap_project_create = cap_project_create_local + scope->cap_project_create
+  permission cap_project_update = cap_project_update_local + scope->cap_project_update
+  permission cap_project_delete = cap_project_delete_local + scope->cap_project_delete
+  permission cap_connector_read = cap_connector_read_local + scope->cap_connector_read
+  permission cap_connector_create = cap_connector_create_local + scope->cap_connector_create
+  permission cap_connector_update = cap_connector_update_local + scope->cap_connector_update
+  permission cap_connector_delete = cap_connector_delete_local + scope->cap_connector_delete
+  permission cap_connector_manage = cap_connector_manage_local + scope->cap_connector_manage
+  permission cap_connector_attach = cap_connector_attach_local + scope->cap_connector_attach
+  permission cap_connector_use = cap_connector_use_local + scope->cap_connector_use
+  permission cap_tool_discover = cap_tool_discover_local + scope->cap_tool_discover
+  permission cap_tool_read = cap_tool_read_local + scope->cap_tool_read
+  permission cap_tool_invoke = cap_tool_invoke_local + scope->cap_tool_invoke
+  permission cap_tool_write = cap_tool_write_local + scope->cap_tool_write
+  permission cap_model_read = cap_model_read_local + scope->cap_model_read
+  permission cap_model_use = cap_model_use_local + scope->cap_model_use
+  permission cap_skill_read = cap_skill_read_local + scope->cap_skill_read
+  permission cap_skill_use = cap_skill_use_local + scope->cap_skill_use
+  permission cap_audit_read = cap_audit_read_local + scope->cap_audit_read
+  permission cap_audit_export = cap_audit_export_local + scope->cap_audit_export
+  permission cap_support_request_access = cap_support_request_access_local + scope->cap_support_request_access
+  permission cap_support_approve_access = cap_support_approve_access_local + scope->cap_support_approve_access
+  permission cap_platform_tenants_read = cap_platform_tenants_read_local + scope->cap_platform_tenants_read
+  permission cap_platform_tenants_create = cap_platform_tenants_create_local + scope->cap_platform_tenants_create
+  permission cap_platform_tenants_manage = cap_platform_tenants_manage_local + scope->cap_platform_tenants_manage
+  permission cap_platform_members_manage = cap_platform_members_manage_local + scope->cap_platform_members_manage
+  permission cap_platform_invites_manage = cap_platform_invites_manage_local + scope->cap_platform_invites_manage
+  permission cap_platform_security_manage = cap_platform_security_manage_local + scope->cap_platform_security_manage
+  permission cap_worker_records_read = cap_worker_records_read_local + scope->cap_worker_records_read
+  permission cap_worker_records_persist = cap_worker_records_persist_local + scope->cap_worker_records_persist
+  permission cap_worker_records_ack = cap_worker_records_ack_local + scope->cap_worker_records_ack
+  permission cap_worker_policy_project = cap_worker_policy_project_local + scope->cap_worker_policy_project
+  permission cap_worker_policy_reconcile = cap_worker_policy_reconcile_local + scope->cap_worker_policy_reconcile
+  permission cap_worker_cleanup = cap_worker_cleanup_local + scope->cap_worker_cleanup
+  permission workspace_read = cap_workspace_read
+  permission workspace_manage = cap_workspace_manage
+  permission agent_create = cap_agent_create
+  permission conversation_create = cap_conversation_create
+  permission project_create = cap_project_create
+  permission connector_create = cap_connector_create
+}
+definition az_v1_workspace {
+  relation version: az_v1_workspace_version with az_v1_active_version
+  permission cap_organization_read = version->cap_organization_read
+  permission cap_organization_members_manage = version->cap_organization_members_manage
+  permission cap_organization_groups_manage = version->cap_organization_groups_manage
+  permission cap_organization_roles_manage = version->cap_organization_roles_manage
+  permission cap_organization_clients_manage = version->cap_organization_clients_manage
+  permission cap_organization_security_manage = version->cap_organization_security_manage
+  permission cap_workspace_read = version->cap_workspace_read
+  permission cap_workspace_manage = version->cap_workspace_manage
+  permission cap_agent_read = version->cap_agent_read
+  permission cap_agent_create = version->cap_agent_create
+  permission cap_agent_update = version->cap_agent_update
+  permission cap_agent_delete = version->cap_agent_delete
+  permission cap_agent_publish = version->cap_agent_publish
+  permission cap_agent_use = version->cap_agent_use
+  permission cap_conversation_create = version->cap_conversation_create
+  permission cap_conversation_read = version->cap_conversation_read
+  permission cap_conversation_send = version->cap_conversation_send
+  permission cap_conversation_interrupt = version->cap_conversation_interrupt
+  permission cap_conversation_approve = version->cap_conversation_approve
+  permission cap_conversation_approval_mode_manage = version->cap_conversation_approval_mode_manage
+  permission cap_conversation_settings_manage = version->cap_conversation_settings_manage
+  permission cap_conversation_archive = version->cap_conversation_archive
+  permission cap_conversation_fork = version->cap_conversation_fork
+  permission cap_conversation_resume = version->cap_conversation_resume
+  permission cap_conversation_delete = version->cap_conversation_delete
+  permission cap_conversation_share = version->cap_conversation_share
+  permission cap_conversation_trace_read = version->cap_conversation_trace_read
+  permission cap_conversation_goal_read = version->cap_conversation_goal_read
+  permission cap_conversation_goal_update = version->cap_conversation_goal_update
+  permission cap_conversation_goal_review = version->cap_conversation_goal_review
+  permission cap_conversation_compact = version->cap_conversation_compact
+  permission cap_document_read = version->cap_document_read
+  permission cap_document_download = version->cap_document_download
+  permission cap_document_upload = version->cap_document_upload
+  permission cap_document_delete = version->cap_document_delete
+  permission cap_project_read = version->cap_project_read
+  permission cap_project_create = version->cap_project_create
+  permission cap_project_update = version->cap_project_update
+  permission cap_project_delete = version->cap_project_delete
+  permission cap_connector_read = version->cap_connector_read
+  permission cap_connector_create = version->cap_connector_create
+  permission cap_connector_update = version->cap_connector_update
+  permission cap_connector_delete = version->cap_connector_delete
+  permission cap_connector_manage = version->cap_connector_manage
+  permission cap_connector_attach = version->cap_connector_attach
+  permission cap_connector_use = version->cap_connector_use
+  permission cap_tool_discover = version->cap_tool_discover
+  permission cap_tool_read = version->cap_tool_read
+  permission cap_tool_invoke = version->cap_tool_invoke
+  permission cap_tool_write = version->cap_tool_write
+  permission cap_model_read = version->cap_model_read
+  permission cap_model_use = version->cap_model_use
+  permission cap_skill_read = version->cap_skill_read
+  permission cap_skill_use = version->cap_skill_use
+  permission cap_audit_read = version->cap_audit_read
+  permission cap_audit_export = version->cap_audit_export
+  permission cap_support_request_access = version->cap_support_request_access
+  permission cap_support_approve_access = version->cap_support_approve_access
+  permission cap_platform_tenants_read = version->cap_platform_tenants_read
+  permission cap_platform_tenants_create = version->cap_platform_tenants_create
+  permission cap_platform_tenants_manage = version->cap_platform_tenants_manage
+  permission cap_platform_members_manage = version->cap_platform_members_manage
+  permission cap_platform_invites_manage = version->cap_platform_invites_manage
+  permission cap_platform_security_manage = version->cap_platform_security_manage
+  permission cap_worker_records_read = version->cap_worker_records_read
+  permission cap_worker_records_persist = version->cap_worker_records_persist
+  permission cap_worker_records_ack = version->cap_worker_records_ack
+  permission cap_worker_policy_project = version->cap_worker_policy_project
+  permission cap_worker_policy_reconcile = version->cap_worker_policy_reconcile
+  permission cap_worker_cleanup = version->cap_worker_cleanup
+  permission workspace_read = version->workspace_read
+  permission workspace_manage = version->workspace_manage
+  permission agent_create = version->agent_create
+  permission conversation_create = version->conversation_create
+  permission project_create = version->project_create
+  permission connector_create = version->connector_create
+}
+definition az_v1_agent_version {
+  relation scope: az_v1_workspace
+  relation owner: az_v1_principal
+  relation reader: az_v1_principal | az_v1_group#member | az_v1_role#assignee
+  permission owned = owner
+  permission content_read = owner + reader
+  permission agent_read = scope->cap_agent_read & content_read
+  permission agent_update = scope->cap_agent_update & owner
+  permission agent_delete = scope->cap_agent_delete & owner
+  permission agent_publish = scope->cap_agent_publish & owner
+  permission agent_use = scope->cap_agent_use & content_read
+  permission conversation_create = scope->cap_conversation_create & agent_use
+}
+definition az_v1_agent {
+  relation version: az_v1_agent_version with az_v1_active_version
+  permission owned = version->owned
+  permission content_read = version->content_read
+  permission agent_read = version->agent_read
+  permission agent_update = version->agent_update
+  permission agent_delete = version->agent_delete
+  permission agent_publish = version->agent_publish
+  permission agent_use = version->agent_use
+  permission conversation_create = version->conversation_create
+}
+definition az_v1_conversation_version {
+  relation scope: az_v1_workspace
+  relation owner: az_v1_principal
+  relation reader: az_v1_principal | az_v1_group#member | az_v1_role#assignee
+  relation emergency_reader: az_v1_principal with az_v1_emergency_unexpired
+  permission owned = owner
+  permission content_read = owner + reader + emergency_reader
+  permission conversation_read = scope->cap_conversation_read & content_read
+  permission conversation_send = scope->cap_conversation_send & owner
+  permission conversation_interrupt = scope->cap_conversation_interrupt & owner
+  permission conversation_approve = scope->cap_conversation_approve & owner
+  permission conversation_approval_mode_manage = scope->cap_conversation_approval_mode_manage & owner
+  permission conversation_settings_manage = scope->cap_conversation_settings_manage & owner
+  permission conversation_archive = scope->cap_conversation_archive & owner
+  permission conversation_fork = scope->cap_conversation_fork & owner
+  permission conversation_resume = scope->cap_conversation_resume & owner
+  permission conversation_delete = scope->cap_conversation_delete & owner
+  permission conversation_share = scope->cap_conversation_share & owner
+  permission conversation_trace_read = scope->cap_conversation_trace_read & content_read
+  permission conversation_goal_read = scope->cap_conversation_goal_read & content_read
+  permission conversation_goal_update = scope->cap_conversation_goal_update & owner
+  permission conversation_goal_review = scope->cap_conversation_goal_review & owner
+  permission conversation_compact = scope->cap_conversation_compact & owner
+  permission document_upload = scope->cap_document_upload & owner
+  permission support_approve_access = scope->cap_support_approve_access & owner
+}
+definition az_v1_conversation {
+  relation version: az_v1_conversation_version with az_v1_active_version
+  permission owned = version->owned
+  permission content_read = version->content_read
+  permission conversation_read = version->conversation_read
+  permission conversation_send = version->conversation_send
+  permission conversation_interrupt = version->conversation_interrupt
+  permission conversation_approve = version->conversation_approve
+  permission conversation_approval_mode_manage = version->conversation_approval_mode_manage
+  permission conversation_settings_manage = version->conversation_settings_manage
+  permission conversation_archive = version->conversation_archive
+  permission conversation_fork = version->conversation_fork
+  permission conversation_resume = version->conversation_resume
+  permission conversation_delete = version->conversation_delete
+  permission conversation_share = version->conversation_share
+  permission conversation_trace_read = version->conversation_trace_read
+  permission conversation_goal_read = version->conversation_goal_read
+  permission conversation_goal_update = version->conversation_goal_update
+  permission conversation_goal_review = version->conversation_goal_review
+  permission conversation_compact = version->conversation_compact
+  permission document_upload = version->document_upload
+  permission support_approve_access = version->support_approve_access
+}
+definition az_v1_document_version {
+  relation scope: az_v1_workspace
+  permission owned = conversation->owned
+  permission content_read = conversation->conversation_read
+  relation conversation: az_v1_conversation
+  permission document_read = scope->cap_document_read & conversation->conversation_read
+  permission document_download = scope->cap_document_download & conversation->conversation_read
+  permission document_delete = scope->cap_document_delete & conversation->owned
+}
+definition az_v1_document {
+  relation version: az_v1_document_version with az_v1_active_version
+  permission owned = version->owned
+  permission content_read = version->content_read
+  permission document_read = version->document_read
+  permission document_download = version->document_download
+  permission document_delete = version->document_delete
+}
+definition az_v1_project_version {
+  relation scope: az_v1_workspace
+  relation owner: az_v1_principal
+  relation reader: az_v1_principal | az_v1_group#member | az_v1_role#assignee
+  permission owned = owner
+  permission content_read = owner + reader
+  permission project_read = scope->cap_project_read & owner
+  permission project_update = scope->cap_project_update & owner
+  permission project_delete = scope->cap_project_delete & owner
+}
+definition az_v1_project {
+  relation version: az_v1_project_version with az_v1_active_version
+  permission owned = version->owned
+  permission content_read = version->content_read
+  permission project_read = version->project_read
+  permission project_update = version->project_update
+  permission project_delete = version->project_delete
+}
+definition az_v1_connector_version {
+  relation scope: az_v1_workspace
+  relation owner: az_v1_principal
+  relation reader: az_v1_principal | az_v1_group#member | az_v1_role#assignee
+  permission owned = owner
+  permission content_read = owner + reader + manager
+  relation manager: az_v1_role#assignee
+  relation allowed: az_v1_principal | az_v1_group#member | az_v1_role#assignee
+  permission connector_read = scope->cap_connector_read & content_read
+  permission connector_update = scope->cap_connector_update & (owner + manager)
+  permission connector_delete = scope->cap_connector_delete & (owner + manager)
+  permission connector_manage = scope->cap_connector_manage & (owner + manager)
+  permission connector_attach = scope->cap_connector_attach & (owner + manager)
+  permission connector_use = scope->cap_connector_use & (owner + allowed)
+  permission tool_discover = scope->cap_tool_discover & (owner + allowed)
+  permission tool_read = scope->cap_tool_read & (owner + allowed)
+  permission tool_invoke = scope->cap_tool_invoke & (owner + allowed)
+  permission tool_write = scope->cap_tool_write & (owner + allowed)
+}
+definition az_v1_connector {
+  relation version: az_v1_connector_version with az_v1_active_version
+  permission owned = version->owned
+  permission content_read = version->content_read
+  permission connector_read = version->connector_read
+  permission connector_update = version->connector_update
+  permission connector_delete = version->connector_delete
+  permission connector_manage = version->connector_manage
+  permission connector_attach = version->connector_attach
+  permission connector_use = version->connector_use
+  permission tool_discover = version->tool_discover
+  permission tool_read = version->tool_read
+  permission tool_invoke = version->tool_invoke
+  permission tool_write = version->tool_write
+}
+definition az_v1_model_version {
+  relation scope: az_v1_workspace
+  relation allowed: az_v1_principal | az_v1_group#member | az_v1_role#assignee
+  permission model_read = scope->cap_model_read & allowed
+  permission model_use = scope->cap_model_use & allowed
+}
+definition az_v1_model {
+  relation version: az_v1_model_version with az_v1_active_version
+  permission model_read = version->model_read
+  permission model_use = version->model_use
+}
+definition az_v1_skill_version {
+  relation scope: az_v1_workspace
+  relation allowed: az_v1_principal | az_v1_group#member | az_v1_role#assignee
+  permission skill_read = scope->cap_skill_read & allowed
+  permission skill_use = scope->cap_skill_use & allowed
+}
+definition az_v1_skill {
+  relation version: az_v1_skill_version with az_v1_active_version
+  permission skill_read = version->skill_read
+  permission skill_use = version->skill_use
+}

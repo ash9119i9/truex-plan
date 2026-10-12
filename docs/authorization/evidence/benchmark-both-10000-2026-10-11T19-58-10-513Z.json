@@ -1,0 +1,104 @@
+{
+  "startedAt": "2026-10-11T19:58:10.513Z",
+  "finishedAt": "2026-10-11T19:58:12.294Z",
+  "options": {
+    "principals": 100,
+    "resources": 1000,
+    "relationships": 10000,
+    "checks": 100,
+    "concurrency": 16,
+    "tenants": 2,
+    "copies": 1
+  },
+  "environment": {
+    "node": "v24.11.0",
+    "os": "linux",
+    "release": "6.6.87.2-microsoft-standard-WSL2",
+    "cpu": "Intel(R) Core(TM) Ultra 5 235U",
+    "cpuCount": 12,
+    "memoryBytes": 12542230528,
+    "images": {
+      "openfga": "v1.22.0",
+      "spicedb": "v1.56.2",
+      "postgres": "17.11-bookworm"
+    },
+    "topology": "Docker loopback HTTP, one shared fixture PostgreSQL process with separate engine databases; no production availability/latency claim",
+    "model": "poc.openfga.json / poc.spicedb.zed; private capability/content intersection; not the full production action model"
+  },
+  "results": [
+    {
+      "engine": "openfga",
+      "publications": [
+        {
+          "copy": 1,
+          "tenants": [
+            {
+              "namespace": "ea52bae8-27ef-47ee-a14f-f238d492214f",
+              "principals": 80,
+              "resources": 800,
+              "relationships": 8000,
+              "milliseconds": 506.140671
+            },
+            {
+              "namespace": "aff7303a-3282-47bf-9865-acd16c6daf8a",
+              "principals": 20,
+              "resources": 200,
+              "relationships": 2000,
+              "milliseconds": 171.800932
+            }
+          ],
+          "milliseconds": 678.521344
+        }
+      ],
+      "checks": {
+        "count": 100,
+        "p50Ms": 24.278197999999975,
+        "p95Ms": 87.606852,
+        "p99Ms": 96.54740299999992,
+        "maxMs": 112.27932800000008,
+        "allowed": 50,
+        "denied": 50,
+        "failures": 0,
+        "milliseconds": 259.37488599999995,
+        "requestsPerSecond": 385.5423381275241
+      }
+    },
+    {
+      "engine": "spicedb",
+      "publications": [
+        {
+          "copy": 1,
+          "tenants": [
+            {
+              "namespace": "b7e1de34-3a83-40b5-8489-df5c3e18151d",
+              "principals": 80,
+              "resources": 800,
+              "relationships": 8000,
+              "milliseconds": 374.48237600000016
+            },
+            {
+              "namespace": "3925c7ef-f0a3-4d97-8f6b-8844ac6bb868",
+              "principals": 20,
+              "resources": 200,
+              "relationships": 2000,
+              "milliseconds": 129.47737600000005
+            }
+          ],
+          "milliseconds": 504.17739600000004
+        }
+      ],
+      "checks": {
+        "count": 100,
+        "p50Ms": 26.365958999999975,
+        "p95Ms": 72.37244600000008,
+        "p99Ms": 80.64102200000002,
+        "maxMs": 81.9608740000001,
+        "allowed": 50,
+        "denied": 50,
+        "failures": 0,
+        "milliseconds": 207.8584820000001,
+        "requestsPerSecond": 481.09655683908994
+      }
+    }
+  ]
+}

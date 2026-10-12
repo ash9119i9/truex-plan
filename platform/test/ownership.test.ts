@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -172,12 +173,11 @@ test("tenant CLI: chat-visibility, including the implicit default tenant", { tim
     await store.client.close();
     await mongo.stop();
   });
-  const env = {
-    ...process.env,
-    MONGO_URI: mongo.getUri(),
-    MONGO_DB: "cli_test",
-    CATALOG_MONGO_DB: "cli_catalog",
-  };
+  const env = testEnvironment({
+      MONGO_URI: mongo.getUri(),
+      MONGO_DB: "cli_test",
+      CATALOG_MONGO_DB: "cli_catalog",
+    });
   const run = (...args: string[]) =>
     promisify(execFile)(process.execPath, [resolve(root, "scripts/tenant.mjs"), ...args], { env });
   await store.tenantRegistry.insertOne(tenantDoc("t1"));
@@ -255,8 +255,7 @@ test(
       [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
       {
         cwd: resolve(root, "platform"),
-        env: {
-          ...process.env,
+        env: testEnvironment({
           PORT: String(platformPort),
           MONGO_URI: mongo.getUri(),
           MONGO_DB: "own_test",
@@ -266,7 +265,7 @@ test(
           DEV_USER_HEADER: "on",
           DEV_TENANT_HEADER: "on",
           APPROVAL_MODES: "on",
-        },
+        }),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

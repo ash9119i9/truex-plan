@@ -22,6 +22,8 @@ export function LoginScreen() {
       if (!live) return;
       // Straight in, unless this page was opened to show why sign-in failed.
       if (result.kind === "ok" && !code) location.replace("/");
+      else if (result.kind === "selectTenant" && !code)
+        location.replace("/select-tenant");
       else if (result.kind === "onboarding" && !code)
         location.replace("/onboarding");
       else setReady(true);

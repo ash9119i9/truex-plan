@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { TenantSelectionScreen } from "@/components/auth/tenant-selection-screen";
 
 export const metadata = {
   title: "Choose a workspace · Truex",
@@ -7,5 +7,5 @@ export const metadata = {
 };
 
 export default function SelectTenantPage() {
-  redirect("/workspaces");
+  return <TenantSelectionScreen />;
 }

@@ -2,6 +2,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import type { Request, Response, NextFunction } from "express";
 import { httpError } from "../../shared/errors";
 import { ApiError } from "./errors";
+import { withAuthorizationContext } from "./authorization-context";
+import {
+  isAuthorizationContext,
+  type AuthorizationContext,
+} from "../../shared/authorization";
 import { tenantContext, type TenantRef, type TenantResolver } from "./tenant";
 import { userContext, type UserRef, type UserResolver } from "./user";
 import {
@@ -61,8 +66,9 @@ export function userMiddleware(resolver: UserResolver) {
 // Runs a handler inside its request context. Set per handler because async
 // context does not survive the body parser's stream events.
 //
-// No user in context means an internal caller (ingestion, scripts), which is
-// allowed everything. A request on /api must therefore never reach a handler
+// Legacy internal callers still have implicit authority until their A06
+// migration. Enterprise requests additionally carry a verified immutable
+// authorization context. A request on /api must never reach a handler
 // without its user and tenant: that would turn a missing middleware into an
 // internal-caller bypass. It fails closed here, whatever mounted the route.
 // /api/admin is the separate control plane, gated by its own session.
@@ -71,11 +77,11 @@ export const route =
   (req: Request, res: Response, next: NextFunction) => {
     const user: UserRef | undefined = res.locals.user;
     const tenant: TenantRef | undefined = res.locals.tenant;
-    if (
-      /^\/api(\/|\?|$)/.test(req.originalUrl) &&
-      res.locals.admin !== true &&
-      (!user || !tenant)
-    ) {
+    const authorization: AuthorizationContext | undefined =
+      res.locals.authorization;
+    const api = /^\/api(\/|\?|$)/i.test(req.originalUrl);
+    const enterprise = process.env.AUTH_MODE?.trim().toLowerCase() === "oidc";
+    if (api && res.locals.admin !== true && (!user || !tenant)) {
       log("error", "api request without user or tenant context", {
         requestId: res.locals.requestId,
         method: req.method,
@@ -83,6 +89,23 @@ export const route =
       });
       return next(
         new ApiError(500, "Request context is missing", "CONTEXT_MISSING"),
+      );
+    }
+    if (
+      api &&
+      enterprise &&
+      (!isAuthorizationContext(authorization) ||
+        authorization.principal.kind === "workload" ||
+        authorization.principal.id !== user?.id ||
+        authorization.tenant.id !== tenant?.id ||
+        authorization.tenant.generation !== tenant?.authorizationGeneration)
+    ) {
+      return next(
+        new ApiError(
+          500,
+          "Verified request context is missing or inconsistent",
+          "CONTEXT_MISSING",
+        ),
       );
     }
     if (req.path.startsWith("/api/sessions/"))
@@ -93,8 +116,23 @@ export const route =
           .then(() => fn(req, res))
           .catch(next),
       );
-    const withUser = () => (user ? userContext.run(user, run) : run());
-    return tenant ? tenantContext.run(tenant, withUser) : withUser();
+    const withAuthorization = () =>
+      authorization
+        ? withAuthorizationContext(
+            {
+              ...authorization,
+              requestId: res.locals.requestId ?? authorization.requestId,
+            },
+            run,
+          )
+        : run();
+    const withUser = () =>
+      user ? userContext.run(user, withAuthorization) : withAuthorization();
+    try {
+      return tenant ? tenantContext.run(tenant, withUser) : withUser();
+    } catch (error) {
+      return next(error);
+    }
   };
 
 // Invite and session tokens travel in URL paths. A path is logged with any

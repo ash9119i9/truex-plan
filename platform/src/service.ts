@@ -18,6 +18,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
+import {
+  requireLiveWorkloadRuntimeScope,
+  requireLiveWorkerAction,
+  type WorkloadAuthenticator,
+} from "./workload-auth";
+import type { TenantRef } from "./tenant";
 import { newAgent } from "./agents";
 import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
@@ -348,6 +354,11 @@ export class PlatformService {
    * it from launching a turn after access was withdrawn. Set in Google mode.
    */
   dispatchGuard?: () => Promise<void>;
+  /** Trusted workload credential provider, configured only by the control plane. */
+  ingestionWorkload?: {
+    authenticator: WorkloadAuthenticator;
+    credential: (tenant: TenantRef) => Promise<string>;
+  };
   constructor(
     readonly store: Store,
     hosts = runtimeHosts(),
@@ -369,6 +380,19 @@ export class PlatformService {
         "This conversation's runtime is not configured. Start a new conversation.",
         "OWNER_UNCONFIGURED",
       );
+    if (this.store.requiresAuthorizationContext) {
+      await requireLiveWorkloadRuntimeScope(path, method);
+      this.store.assertAuthorizationTenant();
+      if (!this.dispatchGuard)
+        throw new ApiError(
+          503,
+          "Runtime admission is not configured",
+          "AUTHORIZATION_NOT_READY",
+        );
+      await this.dispatchGuard();
+      await requireLiveWorkloadRuntimeScope(path, method);
+      this.store.assertAuthorizationTenant();
+    }
     let response: Response;
     try {
       response = await this.transport.request({
@@ -2099,8 +2123,58 @@ export class PlatformService {
     return result;
   }
   async ingest(s: Session) {
+    const enterprise = this.store.requiresAuthorizationContext;
+    if (enterprise) {
+      await requireLiveWorkerAction("ingestion", "worker.records.read");
+      // Reload from the verified tenant database; Session has no tenant claim.
+      // A caller-supplied conversation cannot select another runtime/thread.
+      const stored = await this.store.sessions.findOne({ _id: s._id });
+      if (
+        !stored ||
+        stored.threadId !== s.threadId ||
+        stored.agentCoreHost !== s.agentCoreHost ||
+        stored.agentCoreSessionId !== s.agentCoreSessionId
+      )
+        throw new ApiError(
+          403,
+          "Worker conversation is not bound to this workspace",
+          "WORKLOAD_ACTION_DENIED",
+        );
+      s = stored;
+      await requireLiveWorkerAction("ingestion", "worker.records.read");
+    }
     const records = await this.owned(s, "/records");
+    // The installed runtime emits pages of at most 100 adapter records.
+    // Validate the whole page before any write or acknowledgement.
+    if (
+      enterprise &&
+      (!Array.isArray(records) ||
+        records.length > 100 ||
+        records.some(
+          (r: any) =>
+            !r ||
+            typeof r.key !== "string" ||
+            r.key.length > 200 ||
+            !/^[\w-]+\.json$/.test(r.key) ||
+            !r.event ||
+            typeof r.event !== "object" ||
+            Array.isArray(r.event) ||
+            r.event.threadId !== s.threadId ||
+            typeof r.event.type !== "string" ||
+            !r.event.data ||
+            typeof r.event.data !== "object" ||
+            Array.isArray(r.event.data),
+        ) ||
+        new Set(records.map((r: any) => r.key)).size !== records.length)
+    )
+      throw new ApiError(
+        502,
+        "Runtime returned an invalid record page",
+        "WORKLOAD_RECORDS_INVALID",
+      );
     for (const record of records) {
+      if (enterprise)
+        await requireLiveWorkerAction("ingestion", "worker.records.persist");
       const event = record.event;
       if (event?.type === "goal.updated" || event?.type === "goal.cleared") {
         const goal =
@@ -2118,10 +2192,13 @@ export class PlatformService {
       }
       await this.store.persist(s._id, event);
     }
-    if (records.length)
+    if (records.length) {
+      if (enterprise)
+        await requireLiveWorkerAction("ingestion", "worker.records.ack");
       await this.owned(s, "/records/ack", "POST", {
         keys: records.map((r: any) => r.key),
       });
+    }
   }
   startIngestion() {
     this.timer = setInterval(() => {
@@ -2136,27 +2213,72 @@ export class PlatformService {
     this.timer.unref();
   }
   async poll() {
-    if (this.polling || !this.store.db) return;
+    if (this.polling) return;
+    const enterprise = this.store.requiresAuthorizationContext;
+    const workload = this.ingestionWorkload;
+    if (
+      enterprise &&
+      (!workload || workload.authenticator.registry.store !== this.store)
+    )
+      throw new ApiError(
+        503,
+        "Ingestion workload authentication is not configured",
+        "WORKLOAD_AUTH_NOT_CONFIGURED",
+      );
+    if (!enterprise && !this.store.db) return;
     this.polling = true;
     try {
       // Each tenant's sessions are ingested inside that tenant's context, so
       // every read and write lands in its own database.
-      for (const tenant of await this.store.activeTenants())
-        await this.store.withTenant(tenant, async () => {
-          for await (const s of this.store.sessions.find({
-            status: { $ne: "dead" },
-            runtimePolicyVersion: POLICY_VERSION,
-            agentCoreHost: { $in: this.hosts },
-          }))
-            await this.ingest(s).catch((error) =>
-              log("warn", "persistence ingestion failed", {
-                sessionId: s._id,
-                tenantId: tenant.id,
-                op: "ingest",
-                ...errorFields(error),
-              }),
-            );
-        });
+      for (const tenant of await this.store.activeTenants()) {
+        const ingestTenant = () =>
+          this.store.withTenant(tenant, async () => {
+            if (enterprise)
+              await requireLiveWorkerAction("ingestion", "worker.records.read");
+            const cursor = this.store.sessions
+              .find({
+                status: { $ne: "dead" },
+                runtimePolicyVersion: POLICY_VERSION,
+                agentCoreHost: { $in: this.hosts },
+              })
+              .batchSize(25);
+            try {
+              for (;;) {
+                if (enterprise)
+                  await requireLiveWorkerAction(
+                    "ingestion",
+                    "worker.records.read",
+                  );
+                const s = await cursor.next();
+                if (!s) break;
+                if (enterprise)
+                  await requireLiveWorkerAction(
+                    "ingestion",
+                    "worker.records.read",
+                  );
+                await this.ingest(s).catch((error) =>
+                  log("warn", "persistence ingestion failed", {
+                    sessionId: s._id,
+                    tenantId: tenant.id,
+                    op: "ingest",
+                    ...errorFields(error),
+                  }),
+                );
+              }
+            } finally {
+              await cursor.close();
+            }
+          });
+        if (enterprise) {
+          const credential = await workload!.credential(tenant);
+          await workload!.authenticator.run(
+            credential,
+            "ingestion",
+            tenant.id,
+            ingestTenant,
+          );
+        } else await ingestTenant();
+      }
     } finally {
       this.polling = false;
     }

@@ -1,0 +1,54 @@
+// Fixed publication invariant; active references must come from Mongo, never callers.
+caveat cmp_active_version(active map<string>, key string, revision string) {
+  key in active && active[key] == revision
+}
+definition cmp_user {}
+definition cmp_group_version {
+  relation member: cmp_user | cmp_group#member
+}
+definition cmp_group {
+  relation version: cmp_group_version with cmp_active_version
+  permission member = version->member
+}
+definition cmp_role_version {
+  relation assignee: cmp_user | cmp_group#member
+}
+definition cmp_role {
+  relation version: cmp_role_version with cmp_active_version
+  permission assignee = version->assignee
+}
+definition cmp_org_version {
+  relation read_cap: cmp_role#assignee
+  relation send_cap: cmp_role#assignee
+  relation approve_cap: cmp_role#assignee
+  relation settings_cap: cmp_role#assignee
+}
+definition cmp_org {
+  relation version: cmp_org_version with cmp_active_version
+  permission read_cap = version->read_cap
+  permission send_cap = version->send_cap
+  permission approve_cap = version->approve_cap
+  permission settings_cap = version->settings_cap
+}
+definition cmp_conversation_version {
+  relation scope: cmp_org
+  relation owner: cmp_user
+  relation reader: cmp_user | cmp_group#member
+  relation emergency_reader: cmp_user
+  permission content_reader = owner + reader + emergency_reader
+  permission can_read = scope->read_cap & content_reader
+  permission can_send = scope->send_cap & owner
+  permission can_approve = scope->approve_cap & owner
+  permission can_settings = scope->settings_cap & owner
+}
+definition cmp_conversation {
+  relation version: cmp_conversation_version with cmp_active_version
+  permission can_read = version->can_read
+  permission can_send = version->can_send
+  permission can_approve = version->can_approve
+  permission can_settings = version->can_settings
+}
+definition cmp_document {
+  relation conversation: cmp_conversation
+  permission can_read = conversation->can_read
+}

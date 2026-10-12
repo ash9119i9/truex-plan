@@ -14,8 +14,8 @@ export interface Me {
   tenant: { id: string; name: string; isUserSpecific?: boolean };
   role: Role;
   tenants: WorkspaceRef[];
-  /** "google" has a session to end; the dev and POC modes do not. */
-  auth: "google" | "dev" | "poc";
+  /** Cookie login modes have a session to end. */
+  auth: "google" | "oidc" | "dev" | "poc";
   selfService?: boolean;
   /** Presentation only; membership checks still control access. */
   showWorkspaces?: boolean;
@@ -27,6 +27,7 @@ export type MeResult =
   /** No valid session: show sign-in. */
   | { kind: "signedOut" }
   | { kind: "onboarding" }
+  | { kind: "selectTenant" }
   /** Signed in, but this workspace cannot be used right now. */
   | { kind: "blocked"; code: string; message: string }
   /** The platform could not be asked. Not the same as signed out. */
@@ -41,10 +42,13 @@ export function parseMe(data: unknown): Me | null {
   const d = data as Record<string, any> | null;
   if (!d || typeof d !== "object") return null;
   const id = text(d.user?.id, 128),
-    email = text(d.user?.email, 320),
+    email =
+      typeof d.user?.email === "string" && d.user.email.length <= 320
+        ? d.user.email
+        : undefined,
     tenantId = text(d.tenant?.id, 64),
     tenantName = text(d.tenant?.name, 200) ?? tenantId;
-  if (!id || !email || !tenantId || !tenantName) return null;
+  if (!id || email === undefined || !tenantId || !tenantName) return null;
   if (d.role !== "user" && d.role !== "admin") return null;
   const tenants: WorkspaceRef[] = [];
   for (const t of Array.isArray(d.tenants) ? d.tenants.slice(0, 200) : []) {
@@ -69,7 +73,10 @@ export function parseMe(data: unknown): Me | null {
     },
     role: d.role,
     tenants,
-    auth: d.auth === "google" || d.auth === "poc" ? d.auth : "dev",
+    auth:
+      d.auth === "google" || d.auth === "oidc" || d.auth === "poc"
+        ? d.auth
+        : "dev",
     ...(typeof d.selfService === "boolean"
       ? { selfService: d.selfService }
       : {}),
@@ -113,6 +120,11 @@ export async function fetchMe(
     return me ? { kind: "ok", me } : { kind: "unavailable", message: OUTAGE };
   }
   const code = typeof data?.code === "string" ? data.code : "";
+  if (
+    (res.status === 409 && code === "TENANT_SELECTION_REQUIRED") ||
+    (res.status === 403 && code === "TENANT_ACCESS_REVOKED")
+  )
+    return { kind: "selectTenant" };
   if (res.status === 409 && code === "ONBOARDING_REQUIRED")
     return { kind: "onboarding" };
   // An admin-console cookie on the main app is not a session for it.

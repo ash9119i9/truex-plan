@@ -54,6 +54,15 @@ import {
   rateLimit,
   userTenants,
 } from "./auth";
+import {
+  ApiAuthenticator,
+  apiAuthOptionsFromEnv,
+  bearerGate,
+} from "./api-auth";
+import { IdentityStore } from "./identity";
+import { WorkloadStore } from "./workload-auth";
+import { oidcRoutes, oidcSettings, ensureOidcIndexes } from "./oidc";
+import { browserTenants } from "./browser-auth";
 import { checkSession } from "./access";
 import { auditAfter } from "./audit";
 import { DemoGate, demoConfig } from "./demo";
@@ -79,6 +88,7 @@ async function main() {
   // Refuses an unknown mode, or google without its keys, before anything
   // else is built.
   const mode = authMode();
+  const enterpriseLogin = mode === "oidc" ? oidcSettings() : undefined;
   // The public demo exists only with Google sign-in. Refused here rather than
   // quietly running a demo that cannot identify anyone.
   const demoSettings = demoConfig();
@@ -98,7 +108,7 @@ async function main() {
   // POC mode does not register invitation routes or initialize email delivery.
   // Without a mail key outside development, invitations are issued with the
   // operator command and the demo needs no mail at all.
-  const mailer = mode === "poc" ? undefined : inviteMailer();
+  const mailer = mode === "poc" || mode === "oidc" ? undefined : inviteMailer();
   const origins = [
     process.env.FRONTEND_ORIGIN || "http://localhost:3000",
     process.env.ADMIN_ORIGIN,
@@ -146,6 +156,15 @@ async function main() {
         "the database does not support transactions; Google sign-in and invitations will fail until MongoDB runs as a replica set",
       );
   }
+  if (mode === "oidc") {
+    if (!connected || !(await store.supportsTransactions()))
+      throw new Error(
+        "Enterprise OIDC requires available replica-set catalog storage.",
+      );
+    await new IdentityStore(store).ensureIndexes();
+    await new WorkloadStore(store).ensureIndexes();
+    await ensureOidcIndexes(store);
+  }
   const service = new PlatformService(store);
   const demo = new DemoGate(store, demoSettings, mode);
   const defaultSignup = mode === "google" ? defaultSignupSettings() : undefined;
@@ -175,7 +194,15 @@ async function main() {
       // Throws TENANT_DISABLED for a workspace disabled since the request began.
       await store.resolveTenant(tenant.id, { fresh: true });
     };
-  service.startIngestion();
+  if (mode === "oidc")
+    service.dispatchGuard = async () => {
+      throw new ApiError(
+        503,
+        "Enterprise authorization is still being configured",
+        "AUTHORIZATION_NOT_READY",
+      );
+    };
+  else service.startIngestion();
   http.get("/livez", (_req: Request, res: Response) => res.json({ ok: true }));
   http.get(
     "/healthz",
@@ -261,12 +288,29 @@ async function main() {
       }),
     );
   }
+  // Bearer credentials are resolved before CSRF so only a verified token is
+  // exempt; an unverifiable Authorization header is refused, never ignored.
+  if (mode === "google" || mode === "oidc") {
+    const apiAuth = apiAuthOptionsFromEnv();
+    http.use(
+      "/api",
+      bearerGate(
+        store,
+        apiAuth
+          ? new ApiAuthenticator(new IdentityStore(store), apiAuth)
+          : undefined,
+      ),
+    );
+  }
   // State-changing requests need a known Origin and JSON. Dev and POC
   // modes also let a request without any Origin through, so curl and the
   // test suite work; a foreign Origin is refused in every mode.
   http.use(
     ["/api", "/auth"],
-    csrfMiddleware({ origins, allowMissingOrigin: mode !== "google" }),
+    csrfMiddleware({
+      origins,
+      allowMissingOrigin: mode !== "google" && mode !== "oidc",
+    }),
   );
   // Per req.ip; see TRUST_PROXY above.
   http.use("/auth", rateLimit({ windowMs: 60_000, max: 60 }));
@@ -275,7 +319,7 @@ async function main() {
   // an admin session cookie and never reads the dev tenant or user headers;
   // the admin router answers every /api/admin request (404 for unknown
   // paths), so the dev resolvers and authMiddleware below never see one.
-  if (mode !== "poc") {
+  if (mode !== "poc" && mode !== "oidc") {
     http.use("/auth/admin", adminAuthRoutes(store));
     http.use("/auth/invites", inviteLookupRoutes(store));
     http.use(
@@ -284,7 +328,35 @@ async function main() {
       adminApiRoutes(store, service, mailer!, demo),
     );
   }
-  if (mode === "google") {
+  if (mode === "oidc") {
+    // Shared-password administration, email signup and legacy resource handlers
+    // cannot become enterprise paths before their dedicated enforcement steps.
+    http.use(
+      ["/auth/admin", "/api/admin"],
+      (_req: Request, _res: Response, next: NextFunction) =>
+        next(
+          new ApiError(
+            403,
+            "Enterprise administration requires a named operator",
+            "NAMED_OPERATOR_REQUIRED",
+          ),
+        ),
+    );
+    http.use("/auth", authRoutes(store));
+    http.use("/auth", oidcRoutes(store, enterpriseLogin!));
+    http.use("/api", authMiddleware(store));
+    http.use("/api", (req: Request, _res: Response, next: NextFunction) => {
+      if (["GET", "HEAD"].includes(req.method) && /^\/me\/?$/i.test(req.path))
+        return next();
+      next(
+        new ApiError(
+          503,
+          "Enterprise authorization is still being configured",
+          "AUTHORIZATION_NOT_READY",
+        ),
+      );
+    });
+  } else if (mode === "google") {
     // Every API request resolves its tenant and user from the session
     // cookie. The dev resolvers are never built in this mode.
     http.use("/api", authMiddleware(store));
@@ -309,21 +381,34 @@ async function main() {
       userMiddleware(mode === "poc" ? pocUserResolver() : devUserResolver()),
     );
   }
+  http.get("/auth/method", (_req: Request, res: Response) => {
+    res
+      .set("Cache-Control", "no-store")
+      .json(
+        mode === "oidc"
+          ? { kind: "oidc", href: "/auth/oidc/start" }
+          : { kind: "google", href: "/auth/google/start" },
+      );
+  });
   http.get(
     "/api/me",
     route(async (_req, res) => {
       const user = currentUser()!;
       const tenant = currentTenant()!;
       const tenants =
-        mode === "google"
-          ? await userTenants(store, user.id)
-          : [{ id: tenant.id, name: tenant.id, role: user.role }];
+        mode === "oidc"
+          ? res.locals.browserSession
+            ? await browserTenants(store, res.locals.browserSession)
+            : []
+          : mode === "google"
+            ? await userTenants(store, user.id)
+            : [{ id: tenant.id, name: tenant.id, role: user.role }];
       const current = tenants.find((t) => t.id === tenant.id);
       res.json({
         user: {
           id: user.id,
           email: user.email,
-          ...(mode === "google" ? res.locals.profile : {}),
+          ...(mode === "google" || mode === "oidc" ? res.locals.profile : {}),
         },
         tenant: {
           id: tenant.id,
@@ -336,6 +421,9 @@ async function main() {
         tenants,
         // Lets the app know whether there is a session to end.
         auth: mode,
+        ...(mode === "oidc"
+          ? { selfService: false, showWorkspaces: false }
+          : {}),
         ...(mode === "google"
           ? {
               selfService: false,

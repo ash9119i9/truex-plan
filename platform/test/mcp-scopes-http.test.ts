@@ -1,3 +1,4 @@
+import { testEnvironment } from "./environment";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
@@ -85,8 +86,7 @@ test(
       [resolve(root, "platform/node_modules/tsx/dist/cli.mjs"), "src/index.ts"],
       {
         cwd: resolve(root, "platform"),
-        env: {
-          ...process.env,
+        env: testEnvironment({
           PORT: String(platformPort),
           MONGO_URI: mongo.getUri(),
           MONGO_DB: "mcp_http",
@@ -99,7 +99,7 @@ test(
           MCP_ENCRYPTION_KEYS: "",
           // Exempt from the private-address check, so no real DNS lookup runs.
           MCP_ALLOWED_PRIVATE_HOSTS: "example.com",
-        },
+        }),
         stdio: ["ignore", "pipe", "pipe"],
       },
     );

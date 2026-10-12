@@ -233,6 +233,9 @@ test(
     const pinned = join(dir, "files", "doc");
     const future = new Date(Date.now() + 10 * 365 * DAY);
     await utimes(pinned, future, future);
+    // Filesystem timestamp precision may differ from Date's milliseconds.
+    // Compare the actual stored value to prove the sweeper never rewrites it.
+    const pinnedMtime = (await stat(pinned)).mtimeMs;
     // Small skew within the tolerance is honoured as-is.
     const skewed = await workspace(root, id(2), 60 * DAY);
     const soon = new Date(Date.now() + 30_000);
@@ -248,7 +251,7 @@ test(
         workspacesRemoved: 0,
       },
     );
-    assert.equal((await stat(pinned)).mtimeMs, future.getTime());
+    assert.equal((await stat(pinned)).mtimeMs, pinnedMtime);
     assert.ok((await stat(join(skewed, "files", "doc"))).mtimeMs > Date.now());
 
     // Two days later both age out, instead of the pinned one surviving ten years.

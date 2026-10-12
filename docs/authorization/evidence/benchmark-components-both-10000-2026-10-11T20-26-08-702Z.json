@@ -1,0 +1,152 @@
+{
+  "startedAt": "2026-10-11T20:26:08.702Z",
+  "finishedAt": "2026-10-11T20:26:12.656Z",
+  "options": {
+    "principals": 100,
+    "resources": 1000,
+    "relationships": 10000,
+    "checks": 100,
+    "concurrency": 16,
+    "tenants": 2,
+    "copies": 1,
+    "writeConcurrency": 4,
+    "writeBatchSize": 100
+  },
+  "publication": "components",
+  "environment": {
+    "node": "v24.11.0",
+    "os": "linux",
+    "release": "6.6.87.2-microsoft-standard-WSL2",
+    "cpu": "Intel(R) Core(TM) Ultra 5 235U",
+    "cpuCount": 12,
+    "memoryBytes": 12542230528,
+    "images": {
+      "openfga": "v1.22.0",
+      "spicedb": "v1.56.2",
+      "postgres": "17.11-bookworm"
+    },
+    "topology": "Docker loopback HTTP, one shared fixture PostgreSQL process with separate engine databases; no production availability/latency claim",
+    "model": "poc.components.openfga.json / poc.components.spicedb.zed; private capability/content intersection; not the full production action model",
+    "contextSource": "Fixed fixture active references only; no production Mongo, outbox, credentials, queue or admission timing measured"
+  },
+  "results": [
+    {
+      "engine": "openfga",
+      "status": "completed",
+      "cleanupErrors": [],
+      "publications": [
+        {
+          "copy": 1,
+          "tenants": [
+            {
+              "namespace": "ba9f58b7-470a-40cf-9067-7877ed06f485",
+              "principals": 80,
+              "resources": 800,
+              "relationships": 8000,
+              "milliseconds": 1167.104535
+            },
+            {
+              "namespace": "6d4f1523-a83b-4dc9-8eb4-d37ddb396a7d",
+              "principals": 20,
+              "resources": 200,
+              "relationships": 2000,
+              "milliseconds": 206.22279300000014
+            }
+          ],
+          "milliseconds": 1373.6956839999998
+        }
+      ],
+      "componentUpdates": [
+        {
+          "name": "group-revoke",
+          "relationships": 1,
+          "milliseconds": 10.226542999999992,
+          "contextBytes": 554
+        },
+        {
+          "name": "role-revoke",
+          "relationships": 80,
+          "milliseconds": 80.26214300000015,
+          "contextBytes": 554
+        },
+        {
+          "name": "content-revoke",
+          "relationships": 3,
+          "milliseconds": 22.57483699999966,
+          "contextBytes": 554
+        }
+      ],
+      "checks": {
+        "count": 100,
+        "p50Ms": 40.660507999999936,
+        "p95Ms": 136.53770200000008,
+        "p99Ms": 165.6917269999999,
+        "maxMs": 195.92344000000003,
+        "allowed": 50,
+        "denied": 50,
+        "failures": 0,
+        "milliseconds": 355.06599299999993,
+        "requestsPerSecond": 281.6377855707517
+      }
+    },
+    {
+      "engine": "spicedb",
+      "status": "completed",
+      "cleanupErrors": [],
+      "publications": [
+        {
+          "copy": 1,
+          "tenants": [
+            {
+              "namespace": "18d0e5c7-3746-40f5-8fcc-a6ed5a7d7037",
+              "principals": 80,
+              "resources": 800,
+              "relationships": 8000,
+              "milliseconds": 1140.4254769999998
+            },
+            {
+              "namespace": "cf1d33cf-cb3a-4179-b708-586108229246",
+              "principals": 20,
+              "resources": 200,
+              "relationships": 2000,
+              "milliseconds": 287.8527879999997
+            }
+          ],
+          "milliseconds": 1428.5694909999997
+        }
+      ],
+      "componentUpdates": [
+        {
+          "name": "group-revoke",
+          "relationships": 1,
+          "milliseconds": 9.348343000000114,
+          "contextBytes": 554
+        },
+        {
+          "name": "role-revoke",
+          "relationships": 80,
+          "milliseconds": 21.405444999999872,
+          "contextBytes": 554
+        },
+        {
+          "name": "content-revoke",
+          "relationships": 3,
+          "milliseconds": 10.777509999999893,
+          "contextBytes": 554
+        }
+      ],
+      "checks": {
+        "count": 100,
+        "p50Ms": 38.77714500000002,
+        "p95Ms": 72.1852200000003,
+        "p99Ms": 89.20004999999992,
+        "maxMs": 96.58195500000011,
+        "allowed": 50,
+        "denied": 50,
+        "failures": 0,
+        "milliseconds": 278.43541000000005,
+        "requestsPerSecond": 359.1497216535784
+      }
+    }
+  ]
+}

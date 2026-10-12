@@ -18,6 +18,11 @@ const NOTICES: Record<string, LoginNotice> = {
     lead: "That sign-in expired or was started in another tab.",
     rest: "Start again and finish in this tab.",
   },
+  oidc_failed: {
+    tone: "warn",
+    lead: "Organization sign-in could not be verified.",
+    rest: "Start sign-in again. If it keeps failing, contact your administrator.",
+  },
   google_failed: {
     tone: "warn",
     lead: "Google sign-in didn't finish.",
@@ -86,7 +91,7 @@ const NOTICES: Record<string, LoginNotice> = {
   signed_out: {
     tone: "info",
     lead: "You're signed out of Truex.",
-    rest: "You're still signed in to Google.",
+    rest: "Signing out of Truex does not sign you out of your identity provider.",
   },
   // The session ended somewhere else: signed out in another tab, expired, or
   // access removed. Not the same as session_expired, which is a sign-in attempt
@@ -108,4 +113,34 @@ export function loginNotice(
 ): LoginNotice | null {
   if (!code) return null;
   return Object.hasOwn(NOTICES, code) ? NOTICES[code] : GENERIC;
+}
+
+export type LoginMethod =
+  | { kind: "google"; href: "/auth/google/start" }
+  | { kind: "oidc"; href: "/auth/oidc/start" };
+export function parseLoginMethod(value: unknown): LoginMethod | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  return v.kind === "google" && v.href === GOOGLE_START
+    ? { kind: "google", href: GOOGLE_START }
+    : v.kind === "oidc" && v.href === "/auth/oidc/start"
+      ? { kind: "oidc", href: "/auth/oidc/start" }
+      : null;
+}
+/** No issuer, client credential or arbitrary redirect is sent to the browser. */
+export async function fetchLoginMethod(
+  fetchImpl: typeof fetch = fetch,
+): Promise<LoginMethod | null> {
+  try {
+    const res = await fetchImpl("/auth/method", {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+    });
+    // Compatibility with a platform that predates the descriptor route.
+    if (res.status === 404) return { kind: "google", href: GOOGLE_START };
+    return res.ok ? parseLoginMethod(await res.json()) : null;
+  } catch {
+    return null;
+  }
 }
