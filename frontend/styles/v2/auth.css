@@ -74,6 +74,64 @@
 @keyframes au-pulse { 50% { opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .au-dot { animation: none; } .au-google { transition: none; } }
 
+/* Login uses the invitation frame and shared capabilities board. Keep these
+   rules scoped so session errors, onboarding and workspace management retain
+   their existing layout. Authentication still leaves this page via redirect. */
+.au-page.au-login {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  place-items: stretch;
+  padding: 12px;
+}
+.au-login .au-wrap { max-width: 460px; gap: 20px; }
+.au-login .au-login-brand { display: flex; align-items: center; gap: 7px; color: var(--ink-2); }
+.au-login .au-brand { margin: 0; gap: 6px; }
+.au-login .au-mark { width: 24px; height: 24px; border-radius: 7px; }
+.au-login .au-word { color: var(--ink); font-size: 17px; }
+.au-login .au-brand-slash { color: var(--line-strong); }
+.au-login .au-eyebrow { margin: 0; color: var(--ink-2); font: 500 11px/1.5 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; }
+.au-login h1 { font-size: clamp(30px, 4vw, 42px); line-height: 1.06; }
+.au-login .au-lead { font-size: 15px; line-height: 1.5; }
+.au-login .au-card { padding: 16px; gap: 16px; }
+.au-login .au-check-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--ink-2); font-size: 12.5px; }
+.au-login .au-counter { font: 11.5px var(--font-mono); font-variant-numeric: tabular-nums; }
+.au-login .au-progress { height: 4px; margin-top: 8px; border-radius: 4px; background: var(--surface-3); overflow: hidden; }
+.au-login .au-progress > span { display: block; width: 0; height: 100%; background: var(--accent); }
+.au-login .au-progress.bad > span { width: 33.333%; background: var(--error-text); }
+.au-login .au-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0; margin: 10px 0 0; list-style: none; }
+.au-login .au-steps li { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--ink-2); font-size: 12.5px; }
+.au-login .au-step-dot { display: grid; place-items: center; width: 18px; height: 18px; flex: none; border: 1.5px solid var(--line-strong); border-radius: 50%; font: 600 10px var(--font-mono); }
+.au-login .au-steps .is-on { color: var(--ink); }
+.au-login .is-on .au-step-dot { border-color: var(--accent-2); color: var(--accent-fg); }
+.au-login .au-steps .is-bad { color: var(--error-text); }
+.au-login .is-bad .au-step-dot { border-color: var(--error-text); background: var(--error-bg); }
+.au-login .au-google { border-color: var(--border-control); border-radius: 12px; box-shadow: var(--shadow-sm); font: 600 15px/20px var(--font-sans); letter-spacing: normal; }
+.au-login .au-google:hover { border-color: var(--line-strong); }
+.au-login .au-fine { color: var(--ink-2); font-size: 12px; }
+.au-login .au-status { padding: 16px; }
+.au-login .jp-fine .jp-text-action { padding: 0; border: 0; background: none; color: var(--accent-fg); font: inherit; cursor: pointer; }
+.au-login .jp-fine .jp-text-action:hover:not(:disabled) { text-decoration: underline; }
+.au-login .jp-fine .jp-text-action:disabled { opacity: .6; cursor: progress; }
+@media (max-height: 840px) and (min-width: 961px) {
+  .au-login .jp-invite { padding-block: 16px 12px; gap: 16px; }
+  .au-login .au-card { padding: 14px; gap: 12px; }
+}
+@media (max-width: 960px) {
+  .au-page.au-login { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content max-content; overflow-y: auto; align-content: start; }
+  .au-login .jp-left { overflow: visible; }
+  .au-login .jp-invite { flex: none; padding-block: 32px 24px; }
+}
+@media (max-width: 520px) {
+  .au-login .jp-left { padding: 8px 12px 12px; }
+  .au-login .jp-top { height: auto; min-height: 52px; flex-wrap: wrap; }
+  .au-login .au-wrap { gap: 16px; }
+  .au-login .right .right-head { flex-direction: column; }
+}
+@media (max-width: 360px) {
+  .au-login .au-steps { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* workspace chooser */
 .au-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .au-ws { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 10px 14px; text-align: left; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); cursor: pointer; }

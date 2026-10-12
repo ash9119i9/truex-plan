@@ -479,6 +479,78 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
     assert.equal(await store.users.countDocuments({ googleSub: "sub-pending" }), 1);
   });
 
+  await t.test("new default-tenant accounts confirm their name once, including Workspace email", async () => {
+    for (const email of ["profile@gmail.com", "profile@company.example"]) {
+      const claims = { sub: `sub-${email}`, email, email_verified: true, name: "Google Name" };
+      const { location, session } = await signIn(claims);
+      assert.equal(location.pathname, "/");
+      const headers = { cookie: `truex_session=${session}` };
+      const me = await (await fetch(`${base}/api/me`, { headers })).json();
+      assert.equal(me.tenant.id, "default-tenant");
+      assert.equal(me.user.nameRequired, true);
+      assert.equal(me.user.name, "Google Name");
+      const save = (body: unknown, extras: Record<string, string> = {}) => fetch(`${base}/auth/profile/name`, {
+        method: "POST",
+        headers: { ...headers, origin: FRONTEND, "content-type": "application/json", "x-forwarded-for": ip(), ...extras },
+        body: JSON.stringify(body),
+      });
+      // Refresh/re-login before confirmation must resume this same one-time step.
+      const resumed = await signIn(claims);
+      headers.cookie = `truex_session=${resumed.session}`;
+      assert.equal((await (await fetch(`${base}/api/me`, { headers })).json()).user.nameRequired, true);
+      const original = await store.users.findOne({ _id: me.user.id });
+      for (const name of [undefined, null, 42, [], "", " ", "A", "123", "!?!", "x".repeat(61), "A\u200bB", "A\u202eB", "A\u0000B"]) {
+        const invalid = await save({ userId: me.user.id, name });
+        assert.equal(invalid.status, 400, JSON.stringify(name));
+        assert.equal((await invalid.json()).code, "INVALID_NAME");
+      }
+      const changed = await save({ userId: "other-user", name: "Valid Name" });
+      assert.equal(changed.status, 409);
+      assert.equal((await changed.json()).code, "ACCOUNT_CHANGED");
+      assert.equal((await save({ userId: me.user.id, name: "Valid Name" }, { origin: "https://evil.example" })).status, 403);
+      assert.equal((await save({ userId: me.user.id, name: "Valid Name" }, { cookie: "" })).status, 401);
+      assert.deepEqual(await store.users.findOne({ _id: me.user.id }), original);
+      const saved = await save({ userId: me.user.id, name: "  Priya \t  Raman  " });
+      assert.equal(saved.status, 204);
+      assert.equal(saved.headers.get("cache-control"), "no-store");
+      const confirmed = await (await fetch(`${base}/api/me`, { headers })).json();
+      assert.equal(confirmed.user.name, "Priya Raman");
+      assert.equal(confirmed.user.nameRequired, undefined);
+      // A duplicate request or stale tab cannot overwrite the confirmed name.
+      assert.equal((await save({ userId: me.user.id, name: "Other Name" })).status, 204);
+      const returning = await signIn({ ...claims, name: "Changed Google Name" });
+      const returned = await (await fetch(`${base}/api/me`, { headers: { cookie: `truex_session=${returning.session}` } })).json();
+      assert.equal(returned.user.name, "Priya Raman");
+      assert.equal(returned.user.nameRequired, undefined);
+      assert.doesNotMatch(logs(), /Priya Raman|Changed Google Name/);
+    }
+  });
+
+  await t.test("name confirmation is atomic and does not rename existing accounts", async () => {
+    const claims = { sub: "sub-profile-race", email: "profile-race@gmail.com", name: "Google Name" };
+    const { session } = await signIn(claims);
+    const user = (await store.users.findOne({ googleSub: claims.sub }))!;
+    const save = (id: string, token: string | undefined, name: string) => fetch(`${base}/auth/profile/name`, {
+      method: "POST",
+      headers: { cookie: `truex_session=${token}`, origin: FRONTEND, "content-type": "application/json", "x-forwarded-for": ip() },
+      body: JSON.stringify({ userId: id, name }),
+    });
+    const results = await Promise.all([save(user._id, session, "Анна Ли"), save(user._id, session, "李 小龍")]);
+    assert.deepEqual(results.map((r) => r.status), [204, 204]);
+    const confirmed = (await store.users.findOne({ _id: user._id }))!;
+    assert.ok(["Анна Ли", "李 小龍"].includes(confirmed.name!));
+    assert.equal(confirmed.nameRequired, undefined);
+
+    const legacy = await signIn(ashok);
+    const account = (await store.users.findOne({ googleSub: ashok.sub }))!;
+    assert.equal(account.nameRequired, undefined);
+    assert.equal((await save(account._id, legacy.session, "Replace Existing Name")).status, 204);
+    assert.equal((await store.users.findOne({ _id: account._id }))?.name, account.name);
+    await store.users.updateOne({ _id: user._id }, { $set: { status: "disabled", nameRequired: true } });
+    assert.equal((await save(user._id, session, "Disabled Name")).status, 401);
+    assert.equal((await store.users.findOne({ _id: user._id }))?.name, confirmed.name);
+  });
+
   await t.test("/login remembers entered workspaces and offers a picker when no choice is remembered", async () => {
     const one = await signIn(ashok);
     assert.equal(one.location.href, `${FRONTEND}/`);
@@ -776,14 +848,17 @@ test("google sign-in: invites, login, flows and sessions", { timeout: 120000 }, 
     assert.doesNotMatch(location.href, /Priya/);
     const user = await store.users.findOne({ googleSub: "sub-named" });
     assert.equal(user?.name, "Priya Raman");
+    assert.equal(user?.nameRequired, undefined);
     assert.equal(await store.authFlows.countDocuments({ displayName: { $exists: true } }), 0);
     assert.equal((await lookup(inv.token, session)).viewer?.name, "Priya Raman");
 
     // Existing user joining a second tenant, with a non-Latin name.
     const second = await invite("beta", "named@gmail.com");
+    await store.users.updateOne({ _id: user!._id }, { $set: { nameRequired: true } });
     const again = await signIn(named, second.token, "Анна Ли");
     assert.equal(again.location.href, joined(second.token));
     assert.equal((await store.users.findOne({ googleSub: "sub-named" }))?.name, "Анна Ли");
+    assert.equal((await store.users.findOne({ googleSub: "sub-named" }))?.nameRequired, undefined);
     // Plain /login ignores name and keeps the stored one.
     const plain = await fetch(`${base}/auth/google/start?name=x`, {
       redirect: "manual",

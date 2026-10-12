@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AuthFrame, LoginCard } from "./login-card";
 import { fetchMe } from "@/lib/session";
 import { loginNotice, type LoginNotice } from "@/lib/login";
@@ -12,8 +12,12 @@ import { loginNotice, type LoginNotice } from "@/lib/login";
 export function LoginScreen() {
   const [notice, setNotice] = useState<LoginNotice | null>(null);
   const [ready, setReady] = useState(false);
+  const initialError = useRef<string | null>(null);
   useEffect(() => {
-    const code = new URLSearchParams(location.search).get("error");
+    // Keep the code through Strict Mode's effect replay after URL cleanup.
+    const code =
+      initialError.current ?? new URLSearchParams(location.search).get("error");
+    initialError.current = code;
     setNotice(loginNotice(code));
     // Remove the code from the address so a reload or a shared link doesn't repeat it.
     if (code) history.replaceState(null, "", location.pathname);
@@ -35,7 +39,7 @@ export function LoginScreen() {
   // shown a sign-in button for the moment before they are sent on.
   if (!ready && !notice)
     return (
-      <AuthFrame>
+      <AuthFrame split>
         <div className="au-status" role="status" aria-live="polite">
           <span className="au-dot" aria-hidden="true" />
           Checking your session…

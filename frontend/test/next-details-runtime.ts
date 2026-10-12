@@ -24,7 +24,6 @@ function load(filename: string): any {
     baseline &&
     filename.startsWith(directory + "/") &&
     relative &&
-    !relative.includes("/") &&
     existsSync(resolve(baseline, relative))
       ? resolve(baseline, relative)
       : filename;
@@ -38,6 +37,8 @@ function load(filename: string): any {
     fileName: filename,
   }).outputText;
   const localRequire = (specifier: string) => {
+    // Styles have no behavior in server-rendered component tests.
+    if (specifier.endsWith(".css")) return {};
     if (!specifier.startsWith(".") && !specifier.startsWith("@/"))
       return require(specifier);
     const path = specifier.startsWith("@/")

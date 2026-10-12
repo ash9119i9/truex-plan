@@ -7,11 +7,57 @@ import {
   AGENT_TINTS,
   DEFAULT_AGENT_LOOK,
   DEFAULT_AGENT_TINT,
+  GENERAL_AGENT_ID,
+  GENERAL_AGENT_HANDLE,
   agentHandle,
   type AgentTint,
 } from "../../shared/contracts";
 import type { AgentDocument } from "./documents";
 import { ApiError } from "./errors";
+import { currentTenant } from "./tenant";
+
+export function hasGeneralAgent() {
+  return (
+    currentTenant()?.id ===
+    (process.env.DEFAULT_SIGNUP_TENANT_ID?.trim() || "default-tenant")
+  );
+}
+
+/** Code-owned: one shared definition, with no customer owner or per-user copies. */
+export function generalAgent(modelProfileId: string): AgentDocument {
+  return {
+    _id: GENERAL_AGENT_ID,
+    name: "General Agent",
+    handle: GENERAL_AGENT_HANDLE,
+    description:
+      "Your everyday assistant for questions, writing, research, and planning.",
+    systemPrompt:
+      "Help with everyday questions, writing, research, analysis, planning, and technical work. Adapt to the user's goal, explain clearly, and be honest about uncertainty. Use available tools when useful and ask for missing information when needed.",
+    modelProfileId,
+    scope: "general",
+    sandbox: "read-only",
+    approvalPolicy: "on-request",
+    look: DEFAULT_AGENT_LOOK,
+    tint: DEFAULT_AGENT_TINT,
+    builtin: true,
+    enabled: true,
+    mcpProfileIds: [],
+    skillIds: [],
+  };
+}
+
+export function isGeneralAgent(agent: {
+  _id?: unknown;
+  builtin?: boolean;
+  createdBy?: string;
+}) {
+  return (
+    hasGeneralAgent() &&
+    String(agent._id) === GENERAL_AGENT_ID &&
+    agent.builtin === true &&
+    !agent.createdBy
+  );
+}
 
 // Everything else (sandbox, persona, builtin, skills, MCP) is server-owned.
 const FIELDS = new Set([
@@ -56,7 +102,11 @@ export function newAgent(body: unknown, createdBy?: string): AgentDocument {
       "AGENT_HANDLE_INVALID",
     );
   const look = input.look ?? DEFAULT_AGENT_LOOK;
-  if (!Number.isInteger(look) || (look as number) < 0 || (look as number) >= AGENT_LOOK_COUNT)
+  if (
+    !Number.isInteger(look) ||
+    (look as number) < 0 ||
+    (look as number) >= AGENT_LOOK_COUNT
+  )
     invalid(`Look must be a whole number from 0 to ${AGENT_LOOK_COUNT - 1}`);
   const tint = input.tint ?? DEFAULT_AGENT_TINT;
   if (!AGENT_TINTS.includes(tint as AgentTint))
@@ -68,7 +118,11 @@ export function newAgent(body: unknown, createdBy?: string): AgentDocument {
     name,
     handle,
     description: text(input.description, "Purpose", AGENT_PURPOSE_MAX),
-    systemPrompt: text(input.systemPrompt, "Instructions", AGENT_INSTRUCTIONS_MAX),
+    systemPrompt: text(
+      input.systemPrompt,
+      "Instructions",
+      AGENT_INSTRUCTIONS_MAX,
+    ),
     scope: "general",
     look: look as number,
     tint: tint as AgentTint,

@@ -1,7 +1,8 @@
-// New-agent dialog: pure helpers plus thin API wrappers so the dialog stays
+// Agent dialog: pure helpers plus thin API wrappers so the dialog stays
 // focused on UI state.
 import type {
   AgentSummary,
+  AgentDetails,
   AgentTint,
   ModelOption,
 } from "../../shared/contracts";
@@ -9,7 +10,10 @@ import { api } from "./api.ts";
 
 /** Badge footer label: "Claude Opus 5.5" → "opus 5.5", "gpt-5" → "gpt-5". */
 export function modelShort(name: string): string {
-  return name.trim().toLowerCase().replace(/^claude\s+/, "");
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/^claude\s+/, "");
 }
 
 export interface AgentFields {
@@ -42,3 +46,11 @@ export const fetchModels = (): Promise<ModelOption[]> => api("/api/models");
 
 export const createAgent = (body: AgentFields): Promise<AgentSummary> =>
   api("/api/agents", body);
+
+export const fetchAgent = (id: string): Promise<AgentDetails> =>
+  api(`/api/agents/${encodeURIComponent(id)}`);
+
+export const updateAgent = (
+  id: string,
+  body: AgentFields,
+): Promise<AgentSummary> => api(`/api/agents/${encodeURIComponent(id)}`, body);

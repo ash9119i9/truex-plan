@@ -91,6 +91,12 @@ export interface AgentSummary {
   canUse?: boolean;
   canWrite?: boolean;
 }
+export interface AgentDetails extends AgentSummary {
+  systemPrompt: string;
+  modelProfileId: string;
+}
+export const GENERAL_AGENT_ID = "truex_general";
+export const GENERAL_AGENT_HANDLE = "generalagent";
 export interface Session {
   runtimePolicyVersion?: number;
   /** Alpha approval mode; absent means the configured default. */

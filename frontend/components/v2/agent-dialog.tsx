@@ -4,9 +4,11 @@ import {
   agentHandle,
   AGENT_NAME_MAX,
   AGENT_PURPOSE_MAX,
+  AGENT_INSTRUCTIONS_MAX,
   DEFAULT_AGENT_LOOK,
   DEFAULT_AGENT_TINT,
   type AgentSummary,
+  type AgentDetails,
   type AgentTint,
   type ModelOption,
 } from "../../../shared/contracts";
@@ -17,15 +19,13 @@ import {
   fetchModels,
   handleTaken,
   modelShort,
+  updateAgent,
 } from "@/lib/agents";
 import { LOOKS, TINTS, tintOf } from "@/lib/agent-look";
 import { Badge, Confetti, Robot } from "./agent-badge";
 import { Icon } from "./icon";
 
-// New agent dialog (design spec "s-dialog"). Create mode only for now: the
-// platform has no edit or remove endpoints yet. When it does, add an
-// `editing` prop that seeds the form, fixes the handle and swaps the submit
-// action; the form and stage below are shared by both modes.
+// Creation and editing share the existing form and live badge preview.
 
 type Models =
   | { state: "loading" }
@@ -44,14 +44,18 @@ const emptyForm = () => ({
 export function AgentDialog({
   open,
   agents,
+  editing = null,
   onClose,
   onCreated,
+  onUpdated,
   onSayHi,
 }: {
   open: boolean;
   agents: AgentSummary[];
+  editing?: AgentDetails | null;
   onClose: () => void;
   onCreated: (a: AgentSummary) => void;
+  onUpdated: (a: AgentSummary) => void;
   onSayHi: (a: AgentSummary) => void;
 }) {
   const [f, setF] = useState(emptyForm),
@@ -62,6 +66,8 @@ export function AgentDialog({
     // A handle the server reported as taken (409) that the list didn't know.
     [serverTaken, setServerTaken] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
+  const generation = useRef(0);
+  const pending = useRef(false);
   const set = <K extends keyof ReturnType<typeof emptyForm>>(
     k: K,
     v: ReturnType<typeof emptyForm>[K],
@@ -72,7 +78,20 @@ export function AgentDialog({
 
   useEffect(() => {
     if (!open) return;
-    setF(emptyForm());
+    const version = ++generation.current;
+    pending.current = false;
+    setF(
+      editing
+        ? {
+            name: editing.name,
+            description: editing.description,
+            systemPrompt: editing.systemPrompt,
+            look: editing.look ?? DEFAULT_AGENT_LOOK,
+            tint: editing.tint ?? DEFAULT_AGENT_TINT,
+            modelProfileId: editing.modelProfileId,
+          }
+        : emptyForm(),
+    );
     setCreated(null);
     setSubmitting(false);
     setError("");
@@ -84,7 +103,8 @@ export function AgentDialog({
         if (!live) return;
         const safe = Array.isArray(list) ? list : [];
         setModels({ state: "ready", list: safe });
-        setF((x) => ({ ...x, modelProfileId: safe[0]?.id || "" }));
+        if (!editing)
+          setF((x) => ({ ...x, modelProfileId: safe[0]?.id || "" }));
       },
       (e) => {
         if (live) setModels({ state: "error", message: userMessage(e) });
@@ -93,39 +113,55 @@ export function AgentDialog({
     const focus = setTimeout(() => nameRef.current?.focus(), 30);
     return () => {
       live = false;
+      if (generation.current === version) generation.current++;
       clearTimeout(focus);
     };
-  }, [open]);
+  }, [open, editing]);
   if (!open) return null;
 
-  const handle = agentHandle(f.name);
+  const handle = editing ? editing.handle || editing.id : agentHandle(f.name);
   const taken =
-    !!handle && (handleTaken(handle, agents) || handle === serverTaken);
+    !editing &&
+    !!handle &&
+    (handleTaken(handle, agents) || handle === serverTaken);
   const list = models.state === "ready" ? models.list : [];
   const selectedModel = list.find((m) => m.id === f.modelProfileId);
   const valid =
     !!f.name.trim() &&
-    !!f.description.trim() &&
-    !!f.systemPrompt.trim() &&
+    (!!editing || (!!f.description.trim() && !!f.systemPrompt.trim())) &&
     !!handle &&
     !taken &&
     !!selectedModel &&
+    (!editing || (!editing.builtin && editing.canWrite !== false)) &&
     !submitting;
 
   const submit = async () => {
-    if (!valid) return;
+    if (!valid || pending.current) return;
+    pending.current = true;
+    const version = generation.current;
     setSubmitting(true);
     setError("");
     try {
-      const a = await createAgent(createAgentBody(f));
-      onCreated(a);
-      setCreated(a);
+      const body = createAgentBody(f);
+      const a = editing
+        ? await updateAgent(editing.id, body)
+        : await createAgent(body);
+      if (generation.current !== version) return;
+      if (editing) onUpdated(a);
+      else {
+        onCreated(a);
+        setCreated(a);
+      }
     } catch (e) {
+      if (generation.current !== version) return;
       if (e instanceof ApiRequestError && e.code === "AGENT_HANDLE_TAKEN")
         setServerTaken(handle);
       else setError(userMessage(e));
     } finally {
-      setSubmitting(false);
+      if (generation.current === version) {
+        pending.current = false;
+        setSubmitting(false);
+      }
     }
   };
 
@@ -217,7 +253,7 @@ export function AgentDialog({
           }}
         >
           <div className="nad-head">
-            <h2 id="nad-title">New agent</h2>
+            <h2 id="nad-title">{editing ? "Edit agent" : "New agent"}</h2>
             <p>
               A persistent specialist with its own identity and chat. Mention it
               in groups by its handle.
@@ -245,22 +281,27 @@ export function AgentDialog({
             />
           </label>
           <label className="field">
-            <span className="field-label">Purpose (required)</span>
+            <span className="field-label">
+              Purpose{!editing && " (required)"}
+            </span>
             <input
               className="input"
               value={f.description}
-              required
+              required={!editing}
               maxLength={AGENT_PURPOSE_MAX}
               placeholder="What this specialist owns"
               onChange={(e) => set("description", e.target.value)}
             />
           </label>
           <label className="field">
-            <span className="field-label">Instructions (required)</span>
+            <span className="field-label">
+              Instructions{!editing && " (required)"}
+            </span>
             <textarea
               className="input"
               value={f.systemPrompt}
-              required
+              required={!editing}
+              maxLength={AGENT_INSTRUCTIONS_MAX}
               rows={3}
               placeholder="Standing instructions injected into every one of its turns"
               onChange={(e) => set("systemPrompt", e.target.value)}
@@ -331,11 +372,18 @@ export function AgentDialog({
                     No models available
                   </option>
                 ) : (
-                  list.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))
+                  <>
+                    {editing && !selectedModel && (
+                      <option value={f.modelProfileId} disabled>
+                        Current model unavailable — choose another
+                      </option>
+                    )}
+                    {list.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </>
                 )}
               </select>
               <Icon name="chevron" size={14} />
@@ -358,7 +406,13 @@ export function AgentDialog({
               Cancel
             </button>
             <button type="submit" className="btn-solid lg" disabled={!valid}>
-              {submitting ? "Creating…" : "Create agent"}
+              {editing
+                ? submitting
+                  ? "Saving…"
+                  : "Save changes"
+                : submitting
+                  ? "Creating…"
+                  : "Create agent"}
             </button>
           </div>
         </form>

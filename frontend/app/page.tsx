@@ -125,6 +125,7 @@ import {
 } from "@/lib/slash-commands";
 import type {
   AgentSummary,
+  AgentDetails,
   ApprovalRecord,
   Message,
   ApprovalMode,
@@ -138,6 +139,7 @@ import type {
   TurnTiming,
 } from "../../shared/contracts";
 import { agentHandle } from "../../shared/contracts";
+import { fetchAgent } from "@/lib/agents";
 // The public payload includes the alpha approval mode when it is enabled.
 type Session = PublicSession;
 type HistoryWindow = { hasOlder: boolean; beforeCursor: string | null };
@@ -269,12 +271,14 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
     [paletteOpen, setPaletteOpen] = useState(false),
     [pop, setPop] = useState<null | "agent" | "user">(null),
     [agentDialogOpen, setAgentDialogOpen] = useState(false),
+    [editingAgent, setEditingAgent] = useState<AgentDetails | null>(null),
     // The stage shows the conversation or the agents board.
     [view, setView] = useState<"chat" | "agents">("chat"),
     [composerFocused, setComposerFocused] = useState(false),
     [shellReady, setShellReady] = useState(false);
   const agentBtn = useRef<HTMLButtonElement>(null),
     userBtn = useRef<HTMLButtonElement>(null);
+  const agentEditRequest = useRef(0);
   // Follow activity: a new goal, plan or helper brings its tab forward.
   // Auto-opening uses the list size and never pushes an open sidebar out.
   const follow = useFollowActivity({
@@ -1963,6 +1967,28 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
     setNotice("");
     setTimeout(() => composer.current?.focus(), 0);
   }
+  function openNewAgent() {
+    agentEditRequest.current++;
+    setEditingAgent(null);
+    setAgentDialogOpen(true);
+  }
+  function closeAgentDialog() {
+    agentEditRequest.current++;
+    setAgentDialogOpen(false);
+  }
+  async function editAgent(a: AgentSummary) {
+    if (a.builtin || a.canWrite === false) return;
+    const request = ++agentEditRequest.current;
+    try {
+      const details = await fetchAgent(a.id);
+      if (request !== agentEditRequest.current) return;
+      if (details.builtin || details.canWrite === false) return;
+      setEditingAgent(details);
+      setAgentDialogOpen(true);
+    } catch (e) {
+      if (request === agentEditRequest.current) setNotice(userMessage(e));
+    }
+  }
   const togglePop = (next: "agent" | "user") =>
     setPop((cur) => (cur === next ? null : next));
   // The list refreshes with the server-generated title; the open session may not.
@@ -2463,12 +2489,9 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
             <AgentsView
               agents={agents}
               currentId={session?.agentId || agentId}
-              // Waits on an agent edit endpoint; AgentDialog is create-only.
-              onEdit={(a: AgentSummary) =>
-                setNotice(`Editing ${a.name} isn’t available yet.`)
-              }
+              onEdit={(a) => void editAgent(a)}
               onChat={chatWith}
-              onNew={() => setAgentDialogOpen(true)}
+              onNew={openNewAgent}
             />
           ) : selectedId && !session && !entries.length && !paintOnly ? (
             <p className="conversation-loading" role="status">
@@ -2499,7 +2522,7 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
                   <button
                     type="button"
                     className="fa-btn"
-                    onClick={() => setAgentDialogOpen(true)}
+                    onClick={openNewAgent}
                   >
                     Create your first agent
                   </button>
@@ -2644,7 +2667,7 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
                 }}
                 onNew={() => {
                   setPop(null);
-                  setAgentDialogOpen(true);
+                  openNewAgent();
                 }}
               />
             </Popover>
@@ -2796,16 +2819,23 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
       />
       <AgentDialog
         open={agentDialogOpen}
+        editing={editingAgent}
         // Handles are unique per creator in a private workspace, so only the
-        // agents this person can change count toward a clash. An admin's
-        // list also holds everyone else's.
-        agents={agents.filter((a) => a.canWrite !== false)}
-        onClose={() => setAgentDialogOpen(false)}
+        // agents this person can change and reserved built-ins count toward
+        // a clash. An admin's list also holds everyone else's.
+        agents={agents.filter((a) => a.builtin || a.canWrite !== false)}
+        onClose={closeAgentDialog}
         onCreated={(a) => setAgents((list) => [...list, a])}
+        onUpdated={(a) => {
+          setAgents((list) =>
+            list.map((existing) => (existing.id === a.id ? a : existing)),
+          );
+          closeAgentDialog();
+        }}
         // Source: close, start a new chat with the agent, pre-fill "@handle hi, ".
         onSayHi={(a) => {
           if (busy || sending.current) return;
-          setAgentDialogOpen(false);
+          closeAgentDialog();
           newChat();
           setAgentId(a.id);
           setView("chat");

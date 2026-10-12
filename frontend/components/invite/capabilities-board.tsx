@@ -34,26 +34,47 @@ const LEGEND: [n: string, title: string, desc: string][] = [
 // Decorative timer from the prototype: starts at 00:31:23 and ticks each second.
 const TIMER_START = 31 * 60 + 23;
 const pad = (n: number) => String(n).padStart(2, "0");
-const clock = (s: number) => `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+const clock = (s: number) =>
+  `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
 
 function Check() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
       <circle cx="12" cy="12" r="10" />
-      <path d="M7.5 12.2l3 3 6-6" fill="none" stroke="var(--board-bg)" strokeWidth="2.4" strokeLinecap="round" />
+      <path
+        d="M7.5 12.2l3 3 6-6"
+        fill="none"
+        stroke="var(--board-bg)"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
 
 function Plus({ width }: { width: number }) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={width} strokeLinecap="round">
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={width}
+      strokeLinecap="round"
+    >
       <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }
 
-export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
+type BoardProps =
+  | { variant?: "join"; profile: BoardProfile }
+  | { variant: "login"; profile?: never };
+
+export function CapabilitiesBoard(props: BoardProps) {
+  const login = props.variant === "login";
+  const profile: BoardProfile = login
+    ? { name: "", initials: "YOU", sub: "set up in a minute", joined: false }
+    : props.profile;
   // useId output can hold characters that break url(#…); keep it to a safe id.
   const clipId = `clover-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const rightRef = useRef<HTMLElement>(null);
@@ -74,8 +95,14 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const move = (e: PointerEvent) => {
       const r = board.getBoundingClientRect();
-      board.style.setProperty("--px", String(((e.clientX - r.left) / r.width - 0.5) * -10));
-      board.style.setProperty("--py", String(((e.clientY - r.top) / r.height - 0.5) * -10));
+      board.style.setProperty(
+        "--px",
+        String(((e.clientX - r.left) / r.width - 0.5) * -10),
+      );
+      board.style.setProperty(
+        "--py",
+        String(((e.clientY - r.top) / r.height - 0.5) * -10),
+      );
     };
     const leave = () => {
       board.style.setProperty("--px", "0");
@@ -93,13 +120,27 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
   const empty = profile.name.trim() === "";
   const auraStyle: Vars | undefined =
     !empty && profile.aura
-      ? { "--a1": `var(${profile.aura[0]})`, "--a2": `var(${profile.aura[1]})`, "--a3": `var(${profile.aura[2]})` }
+      ? {
+          "--a1": `var(${profile.aura[0]})`,
+          "--a2": `var(${profile.aura[1]})`,
+          "--a3": `var(${profile.aura[2]})`,
+        }
       : undefined;
 
   return (
-    <aside ref={rightRef} className="right" aria-labelledby={`${clipId}-h`} style={{ "--clover": `url(#${clipId})` } as Vars}>
+    <aside
+      ref={rightRef}
+      className="right"
+      aria-labelledby={`${clipId}-h`}
+      style={{ "--clover": `url(#${clipId})` } as Vars}
+    >
       {/* Shared clover (water-lily) shape, in object-bounding-box units */}
-      <svg width="0" height="0" style={{ position: "absolute" }} aria-hidden="true">
+      <svg
+        width="0"
+        height="0"
+        style={{ position: "absolute" }}
+        aria-hidden="true"
+      >
         <clipPath id={clipId} clipPathUnits="objectBoundingBox">
           <path d="M.5,.1 C.82,-.1 1.1,.18 .9,.5 C1.1,.82 .82,1.1 .5,.9 C.18,1.1 -.1,.82 .1,.5 C-.1,.18 .18,-.1 .5,.1Z" />
         </clipPath>
@@ -110,17 +151,36 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
           <h2 id={`${clipId}-h`}>
             What you can do in <em>truex</em>
           </h2>
-          <p>Eight things waiting on the other side of that button.</p>
+          <p>
+            {login
+              ? "Eight things you can do once you sign in."
+              : "Eight things waiting on the other side of that button."}
+          </p>
         </div>
-        <span className="mono">TRUEX · CAPABILITIES</span>
+        <span className="mono">
+          {login ? "TRUEX · 08 CAPABILITIES" : "TRUEX · CAPABILITIES"}
+        </span>
       </div>
 
       <div className="board-wrap">
-        <div ref={boardRef} className={`board${hot ? " has-hot" : ""}`} aria-hidden="true">
-          <div className="sp bar-a grain" style={{ "--d": 0.4, "--fd": "12s" } as Vars} />
-          <div className="sp bar-b grain" style={{ "--d": 0.6, "--fd": "10s", "--fdl": "-3s" } as Vars} />
+        <div
+          ref={boardRef}
+          className={`board${hot ? " has-hot" : ""}`}
+          aria-hidden="true"
+        >
+          <div
+            className="sp bar-a grain"
+            style={{ "--d": 0.4, "--fd": "12s" } as Vars}
+          />
+          <div
+            className="sp bar-b grain"
+            style={{ "--d": 0.6, "--fd": "10s", "--fdl": "-3s" } as Vars}
+          />
 
-          <div className={`${sp(1)} drop`} style={{ "--d": 0.9, "--fd": "9s", "--fdl": "-1s" } as Vars}>
+          <div
+            className={`${sp(1)} drop`}
+            style={{ "--d": 0.9, "--fd": "9s", "--fdl": "-1s" } as Vars}
+          >
             <div className="clover grain lit">
               <span className="aurora" />
               <span className="core" />
@@ -128,15 +188,23 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
             <span className="idx">01</span>
           </div>
 
-          <div className={sp(2)} style={{ "--d": 1.3, "--fd": "8s", "--fdl": "-4s" } as Vars}>
+          <div
+            className={sp(2)}
+            style={{ "--d": 1.3, "--fd": "8s", "--fdl": "-4s" } as Vars}
+          >
             <div className="pill glass">
               <span className="live" />
               <span>{clock(secs)}</span>
             </div>
-            <span className="idx" style={{ right: "-5cqw", top: 0 }}>02</span>
+            <span className="idx" style={{ right: "-5cqw", top: 0 }}>
+              02
+            </span>
           </div>
 
-          <div className={sp(3)} style={{ "--d": 1.1, "--fd": "11s", "--fdl": "-2s" } as Vars}>
+          <div
+            className={sp(3)}
+            style={{ "--d": 1.1, "--fd": "11s", "--fdl": "-2s" } as Vars}
+          >
             <div className="tile glass grain">
               <div className="lotus">
                 <i />
@@ -148,9 +216,18 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
             <span className="idx">03</span>
           </div>
 
-          <div className={sp(4)} style={{ "--d": 1.6, "--fd": "7s", "--fdl": "-5s" } as Vars}>
+          <div
+            className={sp(4)}
+            style={{ "--d": 1.6, "--fd": "7s", "--fdl": "-5s" } as Vars}
+          >
             <div className="orb glass">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
                 <circle cx="10.5" cy="10.5" r="6.5" />
                 <path d="M15.5 15.5L20 20" />
               </svg>
@@ -159,12 +236,20 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
             <span className="idx">04</span>
           </div>
 
-          <div className={sp(5)} style={{ "--d": 0.7, "--fd": "10s", "--fdl": "-6s" } as Vars}>
+          <div
+            className={sp(5)}
+            style={{ "--d": 0.7, "--fd": "10s", "--fdl": "-6s" } as Vars}
+          >
             <div className="ghost-pill">Start session</div>
-            <span className="idx" style={{ right: "-4.6cqw" }}>05</span>
+            <span className="idx" style={{ right: "-4.6cqw" }}>
+              05
+            </span>
           </div>
 
-          <div className={sp(6)} style={{ "--d": 1.2, "--fd": "12s", "--fdl": "-3s" } as Vars}>
+          <div
+            className={sp(6)}
+            style={{ "--d": 1.2, "--fd": "12s", "--fdl": "-3s" } as Vars}
+          >
             <div className="frame drop">
               <div className="clover grain">
                 <span className="photo" />
@@ -175,43 +260,71 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
               </span>
             </div>
             <div className="who">
-              Your team
+              {login ? "Shared threads" : "Your team"}
               <Check />
             </div>
-            <div className="sub">shared threads</div>
-            <span className="idx" style={{ top: 0 }}>06</span>
+            <div className="sub">
+              {login ? "invite your team" : "shared threads"}
+            </div>
+            <span className="idx" style={{ top: 0 }}>
+              06
+            </span>
           </div>
 
-          <div className={sp(7)} style={{ "--d": 0.9, "--fd": "10s", "--fdl": "-2s" } as Vars}>
+          <div
+            className={sp(7)}
+            style={{ "--d": 0.9, "--fd": "10s", "--fdl": "-2s" } as Vars}
+          >
             <div className="drop">
-              <div className={`clover grain${empty ? " is-empty" : ""}`} style={auraStyle}>
+              <div
+                className={`clover grain${empty ? " is-empty" : ""}`}
+                style={auraStyle}
+              >
                 <span className="aura" />
                 <span className="me">{empty ? "YOU" : profile.initials}</span>
               </div>
             </div>
             <div className="who">
-              <span>{empty ? "Your name" : profile.name}</span>
+              <span>
+                {login ? "Your profile" : empty ? "Your name" : profile.name}
+              </span>
               {!empty && profile.joined && <Check />}
             </div>
-            <div className="sub">{empty ? "seat open" : profile.sub}</div>
-            <span className="idx" style={{ right: "-2.6cqw" }}>07</span>
+            <div className="sub">
+              {login ? "set up in a minute" : empty ? "seat open" : profile.sub}
+            </div>
+            <span className="idx" style={{ right: "-2.6cqw" }}>
+              07
+            </span>
           </div>
 
-          <div className={sp(8)} style={{ "--d": 1.4, "--fd": "9s", "--fdl": "-7s" } as Vars}>
+          <div
+            className={sp(8)}
+            style={{ "--d": 1.4, "--fd": "9s", "--fdl": "-7s" } as Vars}
+          >
             <div className="tile glass">
-              <span className="pearl" style={{ "--c": "var(--mint-dot)" } as Vars} />
+              <span
+                className="pearl"
+                style={{ "--c": "var(--mint-dot)" } as Vars}
+              />
               <span className="pearl add">
                 <Plus width={2.2} />
               </span>
-              <span className="pearl" style={{ "--c": "var(--butter-dot)" } as Vars} />
-              <span className="pearl" style={{ "--c": "var(--lilac-dot)" } as Vars} />
+              <span
+                className="pearl"
+                style={{ "--c": "var(--butter-dot)" } as Vars}
+              />
+              <span
+                className="pearl"
+                style={{ "--c": "var(--lilac-dot)" } as Vars}
+              />
             </div>
             <span className="idx">08</span>
           </div>
 
           <div className="board-foot">
             <div className="mono">
-              truex-invite-v3
+              {login ? "truex-signin-v1" : "truex-invite-v3"}
               <br />
               agents · sessions
               <br />
@@ -229,10 +342,24 @@ export function CapabilitiesBoard({ profile }: { profile: BoardProfile }) {
           const off = () => setHot((h) => (h === c ? null : h));
           return (
             // Focusable so keyboard users get the same highlight; the items have no action (spec, Legend).
-            <li key={n} tabIndex={0} data-c={c} onMouseEnter={on} onMouseLeave={off} onFocus={on} onBlur={off}>
+            <li
+              key={n}
+              tabIndex={0}
+              data-c={c}
+              onMouseEnter={on}
+              onMouseLeave={off}
+              onFocus={on}
+              onBlur={off}
+            >
               <span className="n">{n}</span>
               <b>{title}</b>
-              <span className="d">{desc}</span>
+              <span className="d">
+                {login && c === 6
+                  ? "Share threads and files with your team."
+                  : login && c === 7
+                    ? "Your name, photo and how agents address you."
+                    : desc}
+              </span>
             </li>
           );
         })}

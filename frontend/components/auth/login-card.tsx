@@ -2,13 +2,26 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { GoogleButton } from "./google-button";
 import { GOOGLE_START, type LoginNotice } from "@/lib/login";
+import { useTheme } from "@/lib/use-theme";
+import {
+  CapabilitiesBoard,
+  type BoardProfile,
+} from "@/components/invite/capabilities-board";
+import "@/styles/v2/invite.css";
+import "@/styles/v2/invite-board.css";
 import "@/styles/v2/auth.css";
 
-export function Banner({ notice }: { notice: LoginNotice }) {
+export function Banner({
+  notice,
+  variant = "auth",
+}: {
+  notice: LoginNotice;
+  variant?: "auth" | "invite";
+}) {
   const warn = notice.tone === "warn";
   return (
     <div
-      className={`au-banner ${notice.tone}`}
+      className={`${variant === "invite" ? "jp-banner" : "au-banner"} ${notice.tone}`}
       role={warn ? "alert" : "status"}
     >
       <svg
@@ -49,16 +62,62 @@ export function Brand() {
   );
 }
 
+function LoginTheme() {
+  const { theme, setTheme } = useTheme();
+  return (
+    <div className="jp-seg" role="group" aria-label="Theme">
+      {(["", "light", "dark"] as const).map((value) => (
+        <button
+          key={value || "auto"}
+          type="button"
+          aria-pressed={theme === value}
+          onClick={() => setTheme(value)}
+        >
+          {value === "" ? "Auto" : value === "light" ? "Light" : "Dark"}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /** Page frame shared by every screen in this family. */
 export function AuthFrame({
   children,
   wide = false,
+  split = false,
   toolbar,
+  profile,
 }: {
   children: ReactNode;
   wide?: boolean;
+  split?: boolean;
   toolbar?: ReactNode;
+  profile?: BoardProfile;
 }) {
+  if (split) {
+    return (
+      <div className="au-page join-page au-login">
+        <div className="jp-left">
+          <header className="jp-top">
+            <div className="au-login-brand">
+              <Brand />
+              <span className="au-brand-slash" aria-hidden="true">
+                /
+              </span>
+              <span>agents</span>
+            </div>
+            <LoginTheme />
+          </header>
+          <main className="jp-invite au-wrap">{children}</main>
+        </div>
+        {profile ? (
+          <CapabilitiesBoard profile={profile} />
+        ) : (
+          <CapabilitiesBoard variant="login" />
+        )}
+      </div>
+    );
+  }
   return (
     <main className={`au-page${wide ? " au-workspaces" : ""}`}>
       <div className="au-wrap">
@@ -93,17 +152,53 @@ export function LoginCard({
     [],
   );
   return (
-    <AuthFrame>
-      <section className="au-card" aria-labelledby="au-title">
-        <div>
-          <h1 id="au-title">
-            Sign in to <em>Truex</em>
-          </h1>
+    <AuthFrame split>
+      <p className="au-eyebrow">Sign in or create an account</p>
+      <h1 id="au-title">
+        Pick up where your <em>agents</em> left off
+      </h1>
+      <p className="au-lead">
+        One Google account, no new password. New here? We set you up in the same
+        step.
+      </p>
+      <section className="au-card" aria-label="Sign in to Truex">
+        <p className="au-eyebrow">Continue to truex</p>
+        <div className="au-check">
+          <div className="au-check-heading">
+            <span>Sign-in steps</span>
+            <span className="au-counter">0 of 3</span>
+          </div>
+          <div
+            className={`au-progress${notice?.tone === "warn" ? " bad" : ""}`}
+            role="progressbar"
+            aria-label="Sign-in progress"
+            aria-valuenow={0}
+            aria-valuemin={0}
+            aria-valuemax={3}
+          >
+            <span />
+          </div>
+          <ol className="au-steps">
+            {["Account", "Access", "Workspace"].map((label, index) => (
+              <li
+                key={label}
+                className={
+                  index === 0
+                    ? notice?.tone === "warn"
+                      ? "is-bad"
+                      : "is-on"
+                    : undefined
+                }
+                aria-current={index === 0 ? "step" : undefined}
+              >
+                <span className="au-step-dot" aria-hidden="true">
+                  {index === 0 && notice?.tone === "warn" ? "!" : index + 1}
+                </span>
+                <span>{label}</span>
+              </li>
+            ))}
+          </ol>
         </div>
-        <p className="au-lead">
-          Use your Google account. Personal Gmail and Google Workspace accounts
-          both work.
-        </p>
         {cookiesOff && (
           <Banner
             notice={{
@@ -127,6 +222,9 @@ export function LoginCard({
           </div>
         )}
         <GoogleButton href={GOOGLE_START} />
+        <p className="au-fine">
+          Personal Gmail and Google Workspace accounts both work.
+        </p>
       </section>
       <p className="au-fine center">
         Truex keeps you signed in with a cookie. Signing out of Truex doesn’t
