@@ -5,8 +5,10 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 import { AuthFrame, LoginCard, Banner } from "./login-card";
+import { ProfileNameCard } from "./profile-name-card";
 import {
   bumpIdentityGeneration,
   clearPrivateBrowserState,
@@ -63,7 +65,7 @@ export function SessionGate({
   const channel = useRef<ReturnType<typeof openTabChannel> | null>(null);
 
   // Stops showing the previous person's view before anything else happens.
-  const leave = useCallback((next: State) => {
+  const leave = useCallback((next: SetStateAction<State>) => {
     bumpIdentityGeneration();
     clearPrivateBrowserState();
     current.current = null;
@@ -93,9 +95,20 @@ export function SessionGate({
         bumpIdentityGeneration();
         clearPrivateBrowserState();
         location.replace("/onboarding");
-      } else if (result.kind === "signedOut")
-        leave({ kind: "signedOut", notice: "session_ended" });
-      else if (result.kind === "blocked") {
+      } else if (result.kind === "signedOut") {
+        leave((previous) => {
+          // No session in a fresh browser is normal. Only an established
+          // session ending needs a notice; retain explicit sign-out feedback.
+          if (previous.kind === "signedOut") return previous;
+          return {
+            kind: "signedOut",
+            notice:
+              previous.kind === "ready" || previous.kind === "blocked"
+                ? "session_ended"
+                : undefined,
+          };
+        });
+      } else if (result.kind === "blocked") {
         // Signed in but unusable: keep the identity so Sign out is offered.
         bumpIdentityGeneration();
         setState({ kind: "blocked", message: result.message });
@@ -195,7 +208,20 @@ export function SessionGate({
     recheck,
   };
 
-  if (state.kind === "ready") return <>{children(state.me, actions)}</>;
+  if (state.kind === "ready") {
+    if (state.me.auth === "google" && state.me.user.nameRequired)
+      return (
+        <ProfileNameCard
+          key={state.me.user.id}
+          user={state.me.user}
+          onSaved={() => location.reload()}
+          onSessionChanged={recheck}
+          onSignOut={actions.signOut}
+          signingOut={signingOut}
+        />
+      );
+    return <>{children(state.me, actions)}</>;
+  }
   if (state.kind === "signedOut")
     return (
       <LoginCard

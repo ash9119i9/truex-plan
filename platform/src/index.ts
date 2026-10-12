@@ -43,7 +43,12 @@ import {
   pocUserResolver,
   userContext,
 } from "./user";
-import { assertGoogleConfig, defaultSignupSettings, googleRoutes, googleSettings } from "./google";
+import {
+  assertGoogleConfig,
+  defaultSignupSettings,
+  googleRoutes,
+  googleSettings,
+} from "./google";
 import { adminApiRoutes, adminAuthRoutes, adminGate } from "./admin";
 import { inviteLookupRoutes, inviteMailer } from "./invites";
 import {
@@ -293,7 +298,10 @@ async function main() {
       "/auth",
       workspaceRoutes(store, mailer!, !demo.enabled, defaultSignup!.tenantId),
     );
-    http.use("/auth", googleRoutes(store, googleSettings(), demo, defaultSignup));
+    http.use(
+      "/auth",
+      googleRoutes(store, googleSettings(), demo, defaultSignup),
+    );
   } else {
     // Every API request works on exactly one tenant's database.
     http.use(
@@ -371,6 +379,18 @@ async function main() {
   http.get(
     "/api/models",
     route(async (_req, res) => res.json(await service.models())),
+  );
+  http.get(
+    "/api/agents/:id",
+    route(async (req, res) =>
+      res.json(await service.agentDetails(String(req.params.id))),
+    ),
+  );
+  http.post(
+    "/api/agents/:id",
+    route(async (req, res) =>
+      res.json(await service.updateAgent(String(req.params.id), req.body)),
+    ),
   );
   http.get(
     "/api/features",

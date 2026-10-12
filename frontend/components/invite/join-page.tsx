@@ -38,9 +38,9 @@ const NAME_ERROR = "Add your full name so teammates know who joined.";
 function readTheme(): Theme {
   try {
     const t = localStorage.getItem(THEME_KEY);
-    return t === "light" || t === "dark" ? t : "";
+    return t === "" || t === "light" || t === "dark" ? t : "light";
   } catch {
-    return "";
+    return "light";
   }
 }
 
@@ -81,7 +81,7 @@ export function JoinPage({ token }: { token: string }) {
     error: null,
     email: null,
   });
-  const [theme, setTheme] = useState<Theme>("");
+  const [theme, setTheme] = useState<Theme>("light");
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState(false);
   const [busy, setBusy] = useState(false);

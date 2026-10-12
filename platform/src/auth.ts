@@ -18,6 +18,8 @@ export interface UserDocument {
   email: string;
   emailKey: string;
   name?: string;
+  /** New self-signup accounts confirm their display name once. Legacy accounts skip it. */
+  nameRequired?: boolean;
   picture?: string;
   status: "active" | "disabled";
   createdAt: string;
@@ -127,6 +129,14 @@ export const newToken = () => randomBytes(32).toString("base64url");
 export const hashToken = (token: string) =>
   createHash("sha256").update(token).digest("hex");
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
+
+/** Typed display name: 2–60 characters, whitespace normalized, with a letter. */
+export function cleanDisplayName(value: string): string | undefined {
+  const name = value.trim().replace(/\s+/gu, " ");
+  const length = [...name].length;
+  if (length < 2 || length > 60 || !/\p{L}/u.test(name)) return undefined;
+  return name;
+}
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -478,6 +488,7 @@ export function authMiddleware(store: Store) {
     res.locals.user = ref;
     res.locals.profile = {
       ...(user.name ? { name: user.name } : {}),
+      ...(user.nameRequired === true ? { nameRequired: true } : {}),
       ...(user.picture ? { picture: user.picture } : {}),
     };
   };
@@ -565,6 +576,38 @@ const wrap =
 /** Session endpoints under /auth (google mode). */
 export function authRoutes(store: Store) {
   const router = Router();
+  router.post(
+    "/profile/name",
+    wrap(async (req, res) => {
+      const { user } = await accountSession(store, req);
+      // A tab must never name a different account after its shared cookie changes.
+      if (req.body?.userId !== user._id)
+        throw new ApiError(
+          409,
+          "Your account changed. Reload to continue.",
+          "ACCOUNT_CHANGED",
+        );
+      const name =
+        typeof req.body?.name === "string"
+          ? cleanDisplayName(req.body.name)
+          : undefined;
+      if (!name || /[\p{Cc}\p{Cf}\u2028\u2029]/u.test(name))
+        throw new ApiError(
+          400,
+          "Enter a name with 2 to 60 characters and at least one letter.",
+          "INVALID_NAME",
+        );
+      // First confirmation wins. Retries and other tabs cannot replace a saved name.
+      const saved = await store.users.updateOne(
+        { _id: user._id, status: "active", nameRequired: true },
+        { $set: { name }, $unset: { nameRequired: "" } },
+      );
+      // A no-op is a safe retry only while this is still an active account.
+      if (!saved.matchedCount) await accountSession(store, req);
+      res.setHeader("Cache-Control", "no-store");
+      res.status(204).end();
+    }),
+  );
   router.post(
     "/logout",
     wrap(async (req, res) => {

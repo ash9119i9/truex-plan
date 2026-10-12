@@ -1,6 +1,7 @@
 import { ApiError } from "./errors";
 import { currentTenant, type ChatVisibility } from "./tenant";
 import { currentUser, type UserRef } from "./user";
+import { isGeneralAgent } from "./agents";
 
 // Who may read or change a conversation or project folder.
 //
@@ -33,8 +34,7 @@ export function decide(
 ): Decision {
   if (!user) return "allow";
   if (ownerId && ownerId === user.id) return "allow";
-  const readable =
-    user.role === "admin" || (!!ownerId && visibility === "all");
+  const readable = user.role === "admin" || (!!ownerId && visibility === "all");
   if (!readable) return "hidden";
   return mode === "read" ? "allow" : "readOnly";
 }
@@ -111,25 +111,33 @@ export function decideAgent(
   mode: AgentAccess,
   user: UserRef | undefined,
   privateWorkspace: boolean,
+  sharedBuiltin = false,
 ): Decision {
+  if (sharedBuiltin) return mode === "write" ? "readOnly" : "allow";
   if (!user || !privateWorkspace) return "allow";
   if (createdBy && createdBy === user.id) return "allow";
   if (user.role !== "admin") return "hidden";
   return mode === "read" ? "allow" : "readOnly";
 }
 
-export function checkAgent<T extends { createdBy?: string }>(
-  agent: T,
-  mode: AgentAccess,
-): T {
+export function checkAgent<
+  T extends { _id?: unknown; builtin?: boolean; createdBy?: string },
+>(agent: T, mode: AgentAccess): T {
   const decision = decideAgent(
     agent.createdBy,
     mode,
     currentUser(),
     isPrivateWorkspace(),
+    isGeneralAgent(agent),
   );
   if (decision === "hidden")
     throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+  if (decision === "readOnly" && isGeneralAgent(agent))
+    throw new ApiError(
+      403,
+      "The built-in General Agent cannot be changed",
+      "BUILTIN_AGENT_LOCKED",
+    );
   if (decision === "readOnly")
     throw new ApiError(
       403,

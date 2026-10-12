@@ -5,6 +5,7 @@ import * as client from "openid-client";
 import { errorFields, log } from "../../shared/logging";
 import {
   cookieSpec,
+  cleanDisplayName,
   createSession,
   emailKey,
   hashToken,
@@ -165,16 +166,7 @@ class SignInError extends Error {
 // characters, which could make a name read differently from what it is.
 const INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/gu;
 
-/**
- * The name typed on the invite page: trimmed, inner whitespace collapsed,
- * 2 to 60 characters with at least one letter. undefined when invalid.
- */
-export function cleanDisplayName(value: string): string | undefined {
-  const name = value.trim().replace(/\s+/gu, " ");
-  const length = [...name].length;
-  if (length < 2 || length > 60 || !/\p{L}/u.test(name)) return undefined;
-  return name;
-}
+export { cleanDisplayName } from "./auth";
 /** Google's name claim, made safe to store and show; undefined if nothing is left. */
 export function profileName(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -580,10 +572,10 @@ async function acceptInvite(
       if (displayName) {
         await store.users.updateOne(
           { _id: user._id },
-          { $set: { name: displayName } },
+          { $set: { name: displayName }, $unset: { nameRequired: "" } },
           { session },
         );
-        user = { ...user, name: displayName };
+        user = { ...user, name: displayName, nameRequired: false };
       }
       return { user, tenantId: current.tenantId };
     }),
@@ -780,7 +772,7 @@ async function enrollInDefault(
     } else {
       if (await store.users.findOne({ emailKey: identity.key }, { session }))
         throw new SignInError("account_conflict");
-      user = newUser(identity, now);
+      user = { ...newUser(identity, now), nameRequired: true };
       await store.users.insertOne(user, { session });
     }
     const existing = await store.memberships.findOne(
@@ -830,7 +822,7 @@ async function enrollInDemo(
         { upsert: true, returnDocument: "after", session },
       );
       if (!used || used.count > budget) throw new SignInError("signup_limit");
-      user = newUser(identity, now);
+      user = { ...newUser(identity, now), nameRequired: true };
       await store.users.insertOne(user, { session });
     }
     const existing = await store.memberships.findOne(

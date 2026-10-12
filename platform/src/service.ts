@@ -18,7 +18,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { Store } from "./store";
-import { newAgent } from "./agents";
+import {
+  newAgent,
+  generalAgent,
+  hasGeneralAgent,
+  isGeneralAgent,
+} from "./agents";
+import { GENERAL_AGENT_ID, GENERAL_AGENT_HANDLE } from "../../shared/contracts";
 import { approvalMode, approvalModesConfig, effectiveMode } from "./features";
 import { orderConversation } from "../../shared/command-history";
 import { historyAnchor } from "./history-window";
@@ -42,6 +48,7 @@ import type {
   Session,
   SessionGoal,
   AgentSummary,
+  AgentDetails,
   ModelOption,
 } from "../../shared/contracts";
 import {
@@ -105,6 +112,7 @@ import {
   type DatabaseId,
   type McpDocument,
   type ModelDocument,
+  type AgentDocument,
 } from "./documents";
 import { gatewaySettings, resolveRoute, signGatewayToken } from "./model-route";
 import { currentTenant, currentTenantId } from "./tenant";
@@ -486,7 +494,7 @@ export class PlatformService {
       use,
     }: { cwd?: string; ownerId?: string; use?: boolean } = {},
   ) {
-    const agent = await this.store.findAgent(agentId);
+    const agent = await this.findAgent(agentId);
     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
     // Starting a conversation with an agent needs permission to use it; a
     // resume of an existing conversation carries on with its stored agent.
@@ -732,6 +740,59 @@ export class PlatformService {
         : {}),
     };
   }
+  private async findAgent(agentId: string): Promise<AgentDocument | null> {
+    if (agentId === GENERAL_AGENT_ID && hasGeneralAgent()) {
+      const models = await this.models();
+      const model =
+        models.find((m) => m.id === "default") ||
+        models.sort((a, b) => a.id.localeCompare(b.id))[0];
+      return generalAgent(model?.id || "__general_model_unavailable__");
+    }
+    return this.store.findAgent(agentId);
+  }
+
+  private agentSummary(
+    a: AgentDocument,
+    p: ModelDocument | null | undefined,
+    creatorName?: string,
+  ): AgentSummary {
+    const shared = isGeneralAgent(a);
+    return {
+      id: String(a._id),
+      name: a.name,
+      description: a.description || "",
+      provider: p?.provider || "unknown",
+      model: p?.modelName || "unknown",
+      sandbox: a.sandbox || "read-only",
+      ...(a.handle ? { handle: a.handle } : {}),
+      look:
+        Number.isInteger(a.look) && a.look! >= 0 && a.look! < AGENT_LOOK_COUNT
+          ? a.look!
+          : DEFAULT_AGENT_LOOK,
+      tint: AGENT_TINTS.includes(a.tint!) ? a.tint! : DEFAULT_AGENT_TINT,
+      builtin: a.builtin === true,
+      ...(a.createdBy ? { createdBy: a.createdBy } : {}),
+      ...(creatorName ? { creatorName } : {}),
+      canUse:
+        decideAgent(
+          a.createdBy,
+          "use",
+          currentUser(),
+          isPrivateWorkspace(),
+          shared,
+        ) === "allow",
+      canWrite:
+        !a.builtin &&
+        decideAgent(
+          a.createdBy,
+          "write",
+          currentUser(),
+          isPrivateWorkspace(),
+          shared,
+        ) === "allow",
+    };
+  }
+
   async agents(): Promise<AgentSummary[]> {
     const [agents, profiles] = await Promise.all([
       this.store.agents
@@ -745,12 +806,19 @@ export class PlatformService {
         )
         .toArray(),
     ]);
-    const user = currentUser();
-    const priv = isPrivateWorkspace();
+    if (hasGeneralAgent()) {
+      const general = (await this.findAgent(GENERAL_AGENT_ID))!;
+      // The code-owned definition wins over any old record with the reserved id.
+      for (let i = agents.length - 1; i >= 0; i--)
+        if (String(agents[i]._id) === GENERAL_AGENT_ID) agents.splice(i, 1);
+      agents.unshift(general);
+    }
     // An admin listing agents that are not theirs is reading private content,
     // and sees who made each one: handles repeat across creators, so the
     // name (one batched lookup, never one per agent) tells them apart.
-    const others = agents.filter((a) => readsOthersPrivate(a.createdBy));
+    const others = agents.filter(
+      (a) => !isGeneralAgent(a) && readsOthersPrivate(a.createdBy),
+    );
     const names = new Map<string, string>();
     if (others.length) {
       await this.auditRead("agent", "list", undefined, "list");
@@ -768,27 +836,11 @@ export class PlatformService {
       const p = profiles.find(
         (p) => String(p._id) === String(a.modelProfileId),
       );
-      return {
-        id: String(a._id),
-        name: a.name,
-        description: a.description || "",
-        provider: p?.provider || "unknown",
-        model: p?.modelName || "unknown",
-        sandbox: a.sandbox || "read-only",
-        ...(a.handle ? { handle: a.handle } : {}),
-        look:
-          Number.isInteger(a.look) && a.look! >= 0 && a.look! < AGENT_LOOK_COUNT
-            ? a.look!
-            : DEFAULT_AGENT_LOOK,
-        tint: AGENT_TINTS.includes(a.tint!) ? a.tint! : DEFAULT_AGENT_TINT,
-        builtin: a.builtin === true,
-        ...(a.createdBy ? { createdBy: a.createdBy } : {}),
-        ...(a.createdBy && names.has(a.createdBy)
-          ? { creatorName: names.get(a.createdBy) }
-          : {}),
-        canUse: decideAgent(a.createdBy, "use", user, priv) === "allow",
-        canWrite: decideAgent(a.createdBy, "write", user, priv) === "allow",
-      };
+      return this.agentSummary(
+        a,
+        p,
+        a.createdBy ? names.get(a.createdBy) : undefined,
+      );
     });
   }
   /** Models the agent dialog may offer: enabled, allowed, and usable. */
@@ -820,6 +872,12 @@ export class PlatformService {
     const user = currentUser();
     // The creator is the signed-in person, set here; the body cannot name one.
     const agent = newAgent(body, user?.id);
+    if (hasGeneralAgent() && agent.handle === GENERAL_AGENT_HANDLE)
+      throw new ApiError(
+        409,
+        "@generalagent is reserved for the built-in General Agent",
+        "AGENT_HANDLE_TAKEN",
+      );
     const profile = await this.store.findModel(agent.modelProfileId);
     if (!profile || !(profile.apiKey || profile.apikey))
       throw new ApiError(
@@ -867,21 +925,71 @@ export class PlatformService {
       if (error?.code === 11000) throw taken();
       throw error;
     }
+    return this.agentSummary(agent, profile);
+  }
+
+  async agentDetails(agentId: string): Promise<AgentDetails> {
+    const agent = await this.findAgent(agentId);
+    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+    checkAgent(agent, "read");
+    if (!isGeneralAgent(agent) && readsOthersPrivate(agent.createdBy))
+      await this.auditRead("agent", agentId, agent.createdBy);
     return {
-      id: String(agent._id),
-      name: agent.name,
-      description: agent.description || "",
-      provider: profile.provider,
-      model: profile.modelName,
-      sandbox: agent.sandbox!,
-      handle: agent.handle,
-      look: agent.look!,
-      tint: agent.tint!,
-      builtin: false,
-      ...(agent.createdBy ? { createdBy: agent.createdBy } : {}),
-      canUse: true,
-      canWrite: true,
+      ...this.agentSummary(
+        agent,
+        await this.store.findModel(agent.modelProfileId),
+      ),
+      systemPrompt: agent.systemPrompt || "",
+      modelProfileId: String(agent.modelProfileId),
     };
+  }
+
+  async updateAgent(agentId: string, body: unknown): Promise<AgentSummary> {
+    const agent = await this.findAgent(agentId);
+    if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
+    checkAgent(agent, "write");
+    if (agent.builtin)
+      throw new ApiError(
+        403,
+        "Built-in agents cannot be changed",
+        "BUILTIN_AGENT_LOCKED",
+      );
+    const input = newAgent(body);
+    const profile = await this.store.findModel(input.modelProfileId);
+    if (!profile || !(profile.apiKey || profile.apikey))
+      throw new ApiError(
+        422,
+        "That model is not available. Pick another model.",
+        "MODEL_UNAVAILABLE",
+      );
+    // Keep the id, handle, creator, skills, connectors, and runtime policy intact.
+    const fields = {
+      name: input.name,
+      description: input.description,
+      systemPrompt: input.systemPrompt,
+      look: input.look,
+      tint: input.tint,
+      modelProfileId: profile._id,
+    };
+    const updated = await this.store.agents.findOneAndUpdate(
+      {
+        _id: agent._id,
+        builtin: { $ne: true },
+        enabled: { $ne: false },
+        ...(isPrivateWorkspace() && currentUser()
+          ? { createdBy: currentUser()!.id }
+          : {}),
+      },
+      { $set: fields },
+      { returnDocument: "after" },
+    );
+    if (!updated)
+      throw new ApiError(
+        409,
+        "This agent changed or is no longer available. Refresh and try again.",
+        "AGENT_CHANGED",
+      );
+    return this.agentSummary(updated, profile);
   }
   // --- MCP profiles: tenant scope (admins) and user scope (the owner). ---
   // Credentials stay in storage; responses carry hasKey, never a key. Someone
@@ -911,10 +1019,14 @@ export class PlatformService {
   // creator. Content access for an admin is not permission to change another
   // person's agent.
   private async mcpAgentKey(agentId: string, mode: AgentAccess) {
-    const agent = await this.store.findAgent(agentId);
+    const agent = await this.findAgent(agentId);
     if (!agent) throw new ApiError(404, "Agent not found", "AGENT_NOT_FOUND");
     checkAgent(agent, mode);
-    if (mode === "read" && readsOthersPrivate(agent.createdBy))
+    if (
+      mode === "read" &&
+      !isGeneralAgent(agent) &&
+      readsOthersPrivate(agent.createdBy)
+    )
       await this.auditRead("agent", String(agent._id), agent.createdBy);
     // agentIds holds String(agent._id), whatever the _id's BSON type.
     return String(agent._id);

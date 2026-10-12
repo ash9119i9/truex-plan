@@ -106,15 +106,16 @@ export function AgentsView({ agents, currentId, onEdit, onChat, onNew }: {
             <>
               {shown.map((a, i) => {
                 const t = tintOf(a.tint), live = a.id === currentId;
+                const editable = !a.builtin && a.canWrite !== false;
                 return (
                   <li key={a.id} className="tb-card"
                     style={{ "--tint": t.bg, "--frame": t.dot, "--cap": inkOn(t.dot), "--tilt": `${TILTS[i % TILTS.length]}deg`, "--i": i } as CSSProperties}>
                     <BoardPin live={live} />
                     <div className="tb-frame">
-                      <button className="tb-photo" onClick={() => onEdit(a)} aria-label={`Edit ${a.name}`}>
+                      <button className="tb-photo" disabled={!editable} onClick={() => onEdit(a)} aria-label={editable ? `Edit ${a.name}` : `${a.name} · read-only`}>
                         {a.builtin && <span className="tb-lock" aria-hidden="true"><TbLock />built-in</span>}
                         <span className="tb-robot"><Robot look={a.look} size={128} /></span>
-                        <span className="tb-hint" aria-hidden="true"><TbPencil />Edit</span>
+                        {editable && <span className="tb-hint" aria-hidden="true"><TbPencil />Edit</span>}
                       </button>
                       <div className="tb-caption">{a.name}</div>
                     </div>

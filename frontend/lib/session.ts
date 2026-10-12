@@ -10,7 +10,7 @@ export interface WorkspaceRef {
   kind?: "personal" | "team";
 }
 export interface Me {
-  user: { id: string; email: string; name?: string };
+  user: { id: string; email: string; name?: string; nameRequired?: boolean };
   tenant: { id: string; name: string; isUserSpecific?: boolean };
   role: Role;
   tenants: WorkspaceRef[];
@@ -59,7 +59,12 @@ export function parseMe(data: unknown): Me | null {
   }
   const name = text(d.user?.name, 200);
   return {
-    user: { id, email, ...(name ? { name } : {}) },
+    user: {
+      id,
+      email,
+      ...(name ? { name } : {}),
+      ...(d.user?.nameRequired === true ? { nameRequired: true } : {}),
+    },
     tenant: {
       id: tenantId,
       name: tenantName,
@@ -159,6 +164,39 @@ export async function signOut(
 
 export type SwitchResult =
   { ok: true } | { ok: false; signedOut: boolean; message: string };
+
+/** Confirms a new account's name; retries never overwrite a confirmed name. */
+export async function saveProfileName(
+  userId: string,
+  name: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SwitchResult> {
+  let res: Response;
+  try {
+    res = await post(fetchImpl, "/auth/profile/name", { userId, name });
+  } catch {
+    return {
+      ok: false,
+      signedOut: false,
+      message: "Couldn't save your name. Check your connection and try again.",
+    };
+  }
+  if (res.ok) return { ok: true };
+  const data = await res.json().catch(() => null);
+  const signedOut =
+    res.status === 401 ||
+    (res.status === 403 && data?.code === "WRONG_APP") ||
+    (res.status === 409 && data?.code === "ACCOUNT_CHANGED");
+  return {
+    ok: false,
+    signedOut,
+    message: signedOut
+      ? "Your session changed. Sign in again to continue."
+      : data?.code === "INVALID_NAME"
+        ? "Enter a name with 2 to 60 characters and at least one letter."
+        : "Couldn't save your name. Try again in a moment.",
+  };
+}
 export async function switchWorkspace(
   tenantId: string,
   fetchImpl: typeof fetch = fetch,
