@@ -536,3 +536,45 @@ test("gemini: unreachable provider is a 502 and the default base URL is used", a
     { ...gemini, baseUrl: "", modelName: "models/gemini-2.5-flash" },
   );
 });
+
+test("toGeminiRequest: an MCP server's namespace description reaches the system instruction", () => {
+  const { body } = toGeminiRequest(
+    {
+      instructions: "Base",
+      tools: [
+        {
+          type: "namespace",
+          name: "mcp__sap__",
+          description: "Use get_order for order lookups.",
+          tools: [{ type: "function", name: "get_order" }],
+        },
+        {
+          type: "namespace",
+          name: "mcp__plain__",
+          description: "  ",
+          tools: [{ type: "function", name: "ping" }],
+        },
+      ],
+      input: [
+        {
+          type: "message",
+          role: "developer",
+          content: [{ type: "input_text", text: "Dev" }],
+        },
+        {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "Hi" }],
+        },
+      ],
+    },
+    { modelName: "gemini-3-pro-preview", maxOutputTokens: 1000 },
+  );
+  assert.deepEqual(body.systemInstruction, {
+    parts: [
+      {
+        text: "Base\n\nInstructions for the tools named mcp__sap__*:\nUse get_order for order lookups.\n\nDev",
+      },
+    ],
+  });
+});

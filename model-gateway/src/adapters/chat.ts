@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { UpstreamTimeoutError } from "../upstream";
 import type { AdapterContext } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
-import { ToolNames } from "../tool-names";
+import { ToolNames, systemPrompt } from "../tool-names";
 import { chatCacheOptions } from "../prompt-cache";
 
 // OpenAI Chat Completions (and the many providers that copy it).
@@ -54,7 +54,7 @@ function chatTool(names: ToolNames, tool: any, namespace?: string) {
 }
 
 function toMessages(input: any, tools: ToolNames): ChatMessage[] {
-  const system: string[] = input.instructions ? [input.instructions] : [];
+  const system: string[] = systemPrompt(input);
   const messages: ChatMessage[] = [];
   for (const item of input.input ?? []) {
     const type = item?.type ?? (item?.role ? "message" : undefined);
@@ -186,7 +186,9 @@ function outputText(output: any): string {
           ? part.text
           : part?.type === "input_image"
             ? "[image omitted]"
-            : "",
+            : part?.type === "input_audio"
+              ? "[audio omitted]"
+              : "",
       )
       .filter(Boolean)
       .join("\n");

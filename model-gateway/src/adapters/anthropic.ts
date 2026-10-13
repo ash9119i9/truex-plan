@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, type Usage } from "../responses";
-import { ToolNames } from "../tool-names";
+import { ToolNames, systemPrompt } from "../tool-names";
 import { isContextError } from "./chat";
 
 // Anthropic Messages API via the official SDK. Like the Chat adapter, every
@@ -221,7 +221,7 @@ class Conversation {
 }
 
 function toMessages(input: any, tools: ToolNames) {
-  const system: string[] = input.instructions ? [input.instructions] : [];
+  const system: string[] = systemPrompt(input);
   const conversation = new Conversation();
   let started = false;
   for (const item of input.input ?? []) {
@@ -340,7 +340,9 @@ function toolResult(item: any): Anthropic.ToolResultBlockParam {
       if (part?.type === "input_image") {
         const image = imageBlock(part.image_url);
         parts.push(image ?? { type: "text", text: "[image omitted]" });
-      } else if (typeof part?.text === "string" && part.text)
+      } else if (part?.type === "input_audio")
+        parts.push({ type: "text", text: "[audio omitted]" });
+      else if (typeof part?.text === "string" && part.text)
         parts.push({ type: "text", text: part.text });
     }
     if (parts.length) block.content = parts;

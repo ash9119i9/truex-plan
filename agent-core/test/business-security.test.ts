@@ -195,3 +195,35 @@ test(
     assert.equal(existsSync(marker), false);
   },
 );
+
+test("business connectors accept only native HTTP settings that cannot read the host", async (t) => {
+  const home = mkdtempSync(join(tmpdir(), "truex-connector-policy-"));
+  t.after(() => rmSync(home, { recursive: true, force: true }));
+  const runtime = new BusinessRuntime("unused", home);
+  const start = (server: unknown) =>
+    runtime.request("thread/start", {
+      model: "m",
+      modelProvider: "p",
+      config: { "mcp_servers.sap": server },
+    });
+  const policy = { status: 422, code: "CONNECTOR_POLICY" };
+  for (const server of [
+    { command: "node" },
+    { url: "https://mcp.example/mcp", command: "node" },
+    {
+      url: "https://mcp.example/mcp",
+      env_http_headers: { Authorization: "X" },
+    },
+    { url: "https://mcp.example/mcp", bearer_token_env_var: "MONGO_URI" },
+    { url: "https://mcp.example/mcp", http_headers_helper: "/bin/sh" },
+    { url: "https://mcp.example/mcp", env_vars: ["AWS_SECRET_ACCESS_KEY"] },
+    { url: "https://mcp.example/mcp", required: true },
+    null,
+    "https://mcp.example/mcp",
+  ])
+    await assert.rejects(start(server), policy, JSON.stringify(server));
+  await assert.rejects(
+    start({ url: "https://mcp.example/mcp", env_http_headers: {} }),
+    /"env_http_headers"/,
+  );
+});

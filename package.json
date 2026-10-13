@@ -20,6 +20,7 @@
     "purge:chats": "node scripts/purge-chats.mjs",
     "format": "prettier --write \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\"",
     "format:check": "prettier --check \"{agent-core,platform,model-gateway}/{src,test}/**/*.ts\" \"frontend/{app,components,lib}/**/*.{ts,tsx,css}\" \"scripts/*.mjs\" \"shared/{contracts,events,gateway-token}.ts\"",
+    "check:secrets": "node scripts/check-config-secrets.mjs",
     "profile:tokens": "node scripts/profile-agent-tokens.mjs"
   },
   "devDependencies": {

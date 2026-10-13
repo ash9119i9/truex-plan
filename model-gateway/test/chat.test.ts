@@ -337,3 +337,71 @@ test("streamChat: leading whitespace is kept once real text follows", async () =
   const done = res.events().find((e) => e.type === "response.output_item.done");
   assert.deepEqual(done.item.content, [{ type: "output_text", text: "\nHi" }]);
 });
+
+test("toChatRequest: an MCP server's namespace description reaches the system prompt", () => {
+  const { body } = toChatRequest(
+    {
+      instructions: "Base",
+      tools: [
+        {
+          type: "namespace",
+          name: "mcp__sap__",
+          description: "Use get_order for order lookups.",
+          tools: [{ type: "function", name: "get_order" }],
+        },
+        {
+          type: "namespace",
+          name: "mcp__plain__",
+          description: "  ",
+          tools: [{ type: "function", name: "ping" }],
+        },
+      ],
+      input: [
+        {
+          type: "message",
+          role: "developer",
+          content: [{ type: "input_text", text: "Dev" }],
+        },
+      ],
+    },
+    "provider-model",
+  );
+  assert.equal(
+    body.messages[0].content,
+    "Base\n\nInstructions for the tools named mcp__sap__*:\nUse get_order for order lookups.\n\nDev",
+  );
+  assert.deepEqual(
+    body.tools.map((t: any) => t.function.name),
+    ["mcp__sap__get_order", "mcp__plain__ping"],
+  );
+});
+
+test("toChatRequest: tool output that cannot be sent is marked, not dropped silently", () => {
+  const { body } = toChatRequest(
+    {
+      input: [
+        { type: "message", role: "user", content: "Hi" },
+        {
+          type: "function_call",
+          call_id: "c1",
+          name: "get_clip",
+          namespace: "mcp__media__",
+          arguments: "{}",
+        },
+        {
+          type: "function_call_output",
+          call_id: "c1",
+          output: [
+            { type: "input_text", text: "transcript" },
+            { type: "input_audio", audio_url: "data:audio/wav;base64,AAAA" },
+          ],
+        },
+      ],
+    },
+    "provider-model",
+  );
+  assert.equal(
+    body.messages.find((m: any) => m.role === "tool").content,
+    "transcript\n[audio omitted]",
+  );
+});

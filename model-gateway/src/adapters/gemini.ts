@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { UpstreamTimeoutError } from "../upstream";
 import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
-import { ToolNames } from "../tool-names";
+import { ToolNames, systemPrompt } from "../tool-names";
 import { isContextError } from "./chat";
 
 // Google Gemini (generativelanguage.googleapis.com, v1beta generateContent).
@@ -151,7 +151,7 @@ interface Turn {
 }
 
 function toContents(input: any, tools: ToolNames) {
-  const system: string[] = input.instructions ? [input.instructions] : [];
+  const system: string[] = systemPrompt(input);
   const contents: Content[] = [];
   const items: any[] = input.input ?? [];
   const signatures = new Map<string, string>();
@@ -301,7 +301,9 @@ function outputText(output: any): string {
           ? part.text
           : part?.type === "input_image"
             ? "[image omitted]"
-            : "",
+            : part?.type === "input_audio"
+              ? "[audio omitted]"
+              : "",
       )
       .filter(Boolean)
       .join("\n");
