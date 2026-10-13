@@ -7,9 +7,13 @@
 //
 // - profiles without an owner get scope "tenant" (with an owner: "user")
 // - agent.mcpProfileIds attachments are added to each profile's agentIds
-// - plain apiKey/apikey values are encrypted into apiKeyEnc and removed
-//   (needs MCP_ENCRYPTION_KEY; refused before any write when it is missing)
 // - the scope indexes are created (same as platform/src/store.ts)
+//
+// Stored credentials are never read, decrypted, encrypted, moved or removed:
+// apiKey, apikey and legacy apiKeyEnc keep their field names and values, and
+// the platform reads each as it does today (platform/src/mcp.ts, secrets.ts).
+// Encrypting plain keys is not part of this migration, because the platform
+// no longer has an encryption path to do it with.
 //
 // agent.mcpProfileIds is left in place, but the platform no longer reads it.
 // Every step is conditional, so running it again changes nothing.
@@ -19,11 +23,11 @@
 // unscoped (never loaded) until an operator renames them and runs it again.
 // The run then exits 1.
 //
-// Reads MONGO_URI, MONGO_DB, CATALOG_MONGO_DB and the MCP_ENCRYPTION_* keys
-// (process env first, then platform/.env; dotenv never overrides set values).
+// Reads MONGO_URI, MONGO_DB and CATALOG_MONGO_DB (process env first, then
+// platform/.env; dotenv never overrides set values).
 import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -54,28 +58,18 @@ const dryRun = !confirmed;
 const prefix = dryRun ? "[dry run] " : "";
 const would = (done, pending) => (dryRun ? pending : done);
 
-// The platform's own AES-256-GCM code (platform/src/secrets.ts): the built
-// copy when present, else the source through tsx.
-async function loadSecrets() {
-  const built = resolve(root, "platform/dist/platform/src/secrets.js");
-  const secrets = existsSync(built)
-    ? require(built)
-    : await require("tsx/esm/api").tsImport(
-        pathToFileURL(resolve(root, "platform/src/secrets.ts")).href,
-        import.meta.url,
-      );
-  return secrets.encryptSecret ?? secrets.default?.encryptSecret;
-}
-
 // Same candidates as idCandidates() in platform/src/documents.ts.
 const idCandidates = (id) => {
   const text = String(id);
   return ObjectId.isValid(text) ? [text, new ObjectId(text)] : [text];
 };
-const plainKey = (p) =>
-  (typeof p.apiKey === "string" && p.apiKey !== "") ||
-  (typeof p.apikey === "string" && p.apikey !== "");
-const hasPlainField = { $or: [{ apiKey: { $exists: true } }, { apikey: { $exists: true } }] };
+const hasCredentialField = {
+  $or: [
+    { apiKey: { $exists: true } },
+    { apikey: { $exists: true } },
+    { apiKeyEnc: { $exists: true } },
+  ],
+};
 
 // Same definitions as mcpIndexes() in platform/src/store.ts.
 const INDEXES = [
@@ -118,7 +112,7 @@ const scopeOf = (p) => p.scope || (p.ownerId ? "user" : "tenant");
 const nameKey = (p) =>
   scopeOf(p) === "tenant" ? `tenant:${p.name}` : `user:${p.ownerId}/${p.name}`;
 
-async function migrate(db, label, encryptSecret) {
+async function migrate(db, label) {
   const mcp = db.collection("truex_mcp");
   const agents = db.collection("truex_agents");
   const now = new Date().toISOString();
@@ -201,28 +195,10 @@ async function migrate(db, label, encryptSecret) {
     `${prefix}${label}: ${attached} attachment(s) ${would("moved", "would be moved")} into agentIds from ${withIds.length} agent(s)${missing ? `, ${missing} missing profile reference(s) skipped` : ""}; agent.mcpProfileIds left in place (unread)`,
   );
 
-  // 3. Plain keys -> apiKeyEnc.
-  let encrypted = 0,
-    dropped = 0;
-  for (const p of await mcp.find(hasPlainField).toArray()) {
-    // A stored apiKeyEnc already wins at build time; the plain copy is dead.
-    const encrypt = !p.apiKeyEnc && plainKey(p);
-    if (!dryRun)
-      await mcp.updateOne(
-        { _id: p._id },
-        {
-          $set: {
-            updatedAt: now,
-            ...(encrypt ? { apiKeyEnc: encryptSecret(p.apiKey || p.apikey) } : {}),
-          },
-          $unset: { apiKey: "", apikey: "" },
-        },
-      );
-    if (encrypt) encrypted++;
-    else dropped++;
-  }
+  // 3. Credentials are only counted. Nothing in them is read or written.
+  const withCredential = await mcp.countDocuments(hasCredentialField);
   console.log(
-    `${prefix}${label}: ${encrypted} plain key(s) ${would("encrypted into apiKeyEnc", "would be encrypted into apiKeyEnc")}, ${dropped} redundant plain field(s) ${would("removed", "would be removed")}`,
+    `${prefix}${label}: ${withCredential} profile(s) with a stored API key left as they are`,
   );
 
   // 4. Indexes. One that cannot be built (profiles scoped before this run
@@ -251,44 +227,13 @@ try {
     `${prefix}migrating MCP scopes in ${targets.length} tenant database(s): ${targets.map((t) => `${t.tenant} (${t.dbName})`).join(", ")}`,
   );
 
-  // Checked across all tenants before any write, so a missing key never
-  // leaves the migration half applied.
-  let keysToEncrypt = 0;
-  for (const { dbName } of targets)
-    keysToEncrypt += (
-      await client
-        .db(dbName)
-        .collection("truex_mcp")
-        .find(
-          { apiKeyEnc: { $exists: false }, ...hasPlainField },
-          { projection: { apiKey: 1, apikey: 1 } },
-        )
-        .toArray()
-    ).filter(plainKey).length;
-  let encryptSecret;
-  if (keysToEncrypt) {
-    const missing = `${keysToEncrypt} MCP profile(s) store a plain API key, and MCP_ENCRYPTION_KEY is not set. Set it (32 bytes, base64; the same value as the platform's)`;
-    if (process.env.MCP_ENCRYPTION_KEY?.trim()) {
-      encryptSecret = await loadSecrets();
-      // Fails here, before any write, if the key is malformed.
-      encryptSecret("probe");
-    } else if (dryRun)
-      // A dry run writes nothing, so it still reports; a real run refuses.
-      console.warn(`warning: ${missing}, or the real run refuses.`);
-    else {
-      console.error(`error: ${missing} and run again. Nothing was changed.`);
-      process.exitCode = 1;
-    }
-  }
-  if (!process.exitCode) {
-    let ok = true;
-    for (const { dbName, tenant } of targets)
-      ok = (await migrate(client.db(dbName), tenant, encryptSecret)) && ok;
-    if (!ok) process.exitCode = 1;
-    console.log(
-      `${prefix}done${ok ? "" : " with errors (see above)"}.${dryRun ? ` Nothing was written; apply with --confirm ${CONFIRM}.` : ""}`,
-    );
-  }
+  let ok = true;
+  for (const { dbName, tenant } of targets)
+    ok = (await migrate(client.db(dbName), tenant)) && ok;
+  if (!ok) process.exitCode = 1;
+  console.log(
+    `${prefix}done${ok ? "" : " with errors (see above)"}.${dryRun ? ` Nothing was written; apply with --confirm ${CONFIRM}.` : ""}`,
+  );
 } catch (error) {
   console.error(`error: ${error?.message ?? error}`);
   process.exitCode = 1;

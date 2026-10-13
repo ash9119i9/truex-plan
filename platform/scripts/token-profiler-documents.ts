@@ -138,6 +138,30 @@ export function parseDocumentText(text: string, filename = "document"): any {
   };
   return normalize(visit(declaration[0].initializer!));
 }
+// A credential field may hold "${NAME}" instead of the credential, so document
+// files can be committed without secrets. Only the whole value is a reference;
+// every other string, including placeholder text, is used as written.
+const credentialFields = ["apiKey", "apikey"] as const;
+const credentialReference = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+/** Replaces "${NAME}" credential references in a document with env values. */
+export function resolveCredentialReferences(
+  row: Record<string, any>,
+  path: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, any> {
+  const resolved = { ...row };
+  for (const field of credentialFields) {
+    const reference = credentialReference.exec(String(row[field] ?? ""));
+    if (!reference) continue;
+    // Name the variable only: the error must never carry a credential.
+    if (!env[reference[1]])
+      throw new Error(
+        `${path}: ${field} refers to environment variable ${reference[1]}, which is not set or is empty`,
+      );
+    resolved[field] = env[reference[1]];
+  }
+  return resolved;
+}
 export async function readDocuments(path: string): Promise<any[]> {
   const value = parseDocumentText(await readFile(resolve(path), "utf8"), path);
   const rows = Array.isArray(value) ? value : [value];
@@ -145,7 +169,7 @@ export async function readDocuments(path: string): Promise<any[]> {
     throw new Error(
       `${path}: document files must contain an object or array of objects`,
     );
-  return rows;
+  return rows.map((row) => resolveCredentialReferences(row, path));
 }
 /** Minimal read-only Store surface used by the production configuration builder. */
 export function documentStore(

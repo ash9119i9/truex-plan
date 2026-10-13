@@ -686,3 +686,38 @@ test("anthropic: unreachable provider becomes 502; base URL without /v1 works", 
     { ...profile, baseUrl: "https://api.anthropic.example" },
   );
 });
+
+test("toAnthropicRequest: an MCP server's namespace description reaches the system prompt", () => {
+  const { params } = toAnthropicRequest(
+    {
+      instructions: "Base",
+      tools: [
+        {
+          type: "namespace",
+          name: "mcp__sap__",
+          description: "Use get_order for order lookups.",
+          tools: [{ type: "function", name: "get_order" }],
+        },
+        {
+          type: "namespace",
+          name: "mcp__plain__",
+          description: "  ",
+          tools: [{ type: "function", name: "ping" }],
+        },
+      ],
+      input: [
+        {
+          type: "message",
+          role: "developer",
+          content: [{ type: "input_text", text: "Dev" }],
+        },
+        user("Hi"),
+      ],
+    },
+    { modelName: "claude-opus-5" },
+  );
+  assert.equal(
+    (params.system as any)[0].text,
+    "Base\n\nInstructions for the tools named mcp__sap__*:\nUse get_order for order lookups.\n\nDev",
+  );
+});

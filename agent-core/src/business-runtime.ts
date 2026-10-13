@@ -7,16 +7,6 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { CodexClient } from "./client";
 import { HttpError } from "./errors";
-import { mcpMethod } from "./mcp-method";
-import { AdaptiveSessionV2 } from "./adaptive-session-v2";
-import { AdaptiveMcpGatewayV2 } from "./adaptive-mcp-gateway-v2";
-import { AdaptiveModelRelayV2 } from "./adaptive-model-relay-v2";
-import { adaptiveInstructions } from "./mcp-routing-v2";
-import {
-  isToolQuestion,
-  parseToolQuestion,
-  toolCandidates,
-} from "./approval-modes";
 import { errorFields, log } from "../../shared/logging";
 import { ConversationFiles, fileTools } from "./file-tools";
 import { WorkspaceFiles, workspaceTools } from "./workspace-tools";
@@ -29,11 +19,6 @@ import {
 } from "./script-runner";
 import { visualizationInstructions } from "../../shared/visualizations";
 import { suggestionInstructions } from "../../shared/suggestions";
-import {
-  OmniMcpGateway,
-  omniInstructions,
-  type ConnectorConfig,
-} from "./omni-mcp-gateway";
 import {
   DEFAULT_TENANT,
   skillInstructions,
@@ -75,6 +60,43 @@ export function personaOptions(value: any): PersonaOptions {
     scope: value?.scope === "general" ? "general" : "business",
   };
 }
+// Native Codex MCP fields a business connector may set. Everything else is
+// refused: env_http_headers, bearer_token_env_var and env_vars would read this
+// process's environment into a request to the connector, and
+// http_headers_helper runs a local command.
+const mcpServerFields = new Set([
+  "url",
+  "http_headers",
+  "startup_timeout_sec",
+  "tool_timeout_sec",
+  "default_tools_approval_mode",
+  "enabled_tools",
+  "disabled_tools",
+  "enabled",
+]);
+function mcpServer(value: unknown) {
+  const server = value as Record<string, unknown> | null;
+  if (
+    !server ||
+    typeof server !== "object" ||
+    Array.isArray(server) ||
+    typeof server.url !== "string" ||
+    !server.url
+  )
+    throw new HttpError(
+      422,
+      "Business connectors must use HTTP",
+      "CONNECTOR_POLICY",
+    );
+  const unsupported = Object.keys(server).find((k) => !mcpServerFields.has(k));
+  if (unsupported)
+    throw new HttpError(
+      422,
+      `Business connectors do not support the MCP setting "${unsupported}"`,
+      "CONNECTOR_POLICY",
+    );
+  return server;
+}
 const scriptInstructions =
   "\nUse run_script to run a temporary Node or Python script from the workspace in an isolated sandbox without network access. Put temporary scripts under tmp/ and delete them when finished.";
 const workspaceToolNames = new Set(
@@ -105,31 +127,6 @@ export function subAgentOptions(value: any): SubAgentOptions {
 // This adapter is the only runtime used by the service. No browser-controlled
 // config, history import, path, environment or arbitrary RPC can reach the engine.
 export class BusinessRuntime extends CodexClient {
-  readonly mcpMethod = mcpMethod();
-  private readonly threadGateways = new Map<
-    string,
-    OmniMcpGateway | AdaptiveMcpGatewayV2
-  >();
-  private readonly activeGateways = new Set<
-    OmniMcpGateway | AdaptiveMcpGatewayV2
-  >();
-  private readonly adaptive = new Map<
-    AdaptiveMcpGatewayV2,
-    {
-      session: AdaptiveSessionV2;
-      relay: AdaptiveModelRelayV2;
-      original: ReturnType<BusinessRuntime["configuration"]>;
-    }
-  >();
-  // Operators can observe the gateway without exposing connector credentials.
-  get omniGateways(): ReadonlyMap<string, OmniMcpGateway> {
-    return new Map(
-      [...this.threadGateways].filter(
-        (entry): entry is [string, OmniMcpGateway] =>
-          entry[1] instanceof OmniMcpGateway,
-      ),
-    );
-  }
   // Helper agent threads spawned by conversations. They have no workspace of
   // their own and may only be interrupted.
   readonly helpers = new Set<string>();
@@ -153,185 +150,11 @@ export class BusinessRuntime extends CodexClient {
     // tmp/ is scratch space for a single task.
     this.on("notification", (msg: any) => {
       const id = msg?.params?.threadId;
-      if (msg?.method === "turn/started" && typeof id === "string") {
-        const gateway = this.threadGateways.get(id);
-        if (gateway instanceof AdaptiveMcpGatewayV2)
-          this.adaptive.get(gateway)?.relay.continueTurn();
-      }
       if (msg?.method !== "turn/completed" || typeof id !== "string") return;
       if (this.helpers.has(id) || !/^[\w-]+$/.test(id)) return;
       if (existsSync(this.marker(id)))
         this.workspaceFiles.clearTemp(id).catch(() => {});
     });
-    this.on("exit", () => void this.closeOmniGateways());
-  }
-  private async prepareMcp(
-    profile: ReturnType<BusinessRuntime["configuration"]>,
-    tenant: string,
-  ): Promise<OmniMcpGateway | AdaptiveMcpGatewayV2 | undefined> {
-    if (this.mcpMethod === "direct") return;
-    const connectors: Record<string, ConnectorConfig> = {};
-    for (const [key, value] of Object.entries(profile.config)) {
-      if (key.startsWith("mcp_servers."))
-        connectors[key.slice("mcp_servers.".length)] = value;
-    }
-    if (!Object.keys(connectors).length) return;
-    const gatewayId = randomUUID();
-    if (this.mcpMethod === "adaptive_v2") {
-      const original = structuredClone(profile);
-      // Platform has already resolved the tenant's connector configuration.
-      // The conversation is the host principal; no model-supplied identity is used.
-      const scope = { tenantId: tenant, userId: gatewayId };
-      const session = new AdaptiveSessionV2(connectors, {
-        scope,
-        authorize: (tool, current) => {
-          if (
-            current.tenantId !== tenant ||
-            current.userId !== gatewayId ||
-            tool.tenantId !== tenant
-          )
-            return false;
-          if (tool.sourceType === "native") return true;
-          const config = connectors[tool.serverId];
-          return (
-            !!config &&
-            config.enabled !== false &&
-            (!config.enabled_tools ||
-              config.enabled_tools.includes(tool.toolName)) &&
-            !config.disabled_tools?.includes(tool.toolName)
-          );
-        },
-        onEvent: (event) =>
-          this.emit("adaptiveGatewayEvent", {
-            ...event,
-            gatewayId,
-            threadIds: [...this.threadGateways]
-              .filter(([, attached]) => attached === session.gateway)
-              .map(([id]) => id),
-          }),
-        refreshDispatchCatalog: async () => {
-          const id = [...this.threadGateways].find(
-            ([, gateway]) => gateway === session.gateway,
-          )?.[0];
-          if (!id)
-            throw new Error(
-              "Resume the conversation to refresh adaptive tools",
-            );
-          const active = this.profiles.get(id)!;
-          await super.request("thread/unsubscribe", { threadId: id });
-          await super.request("thread/resume", { ...active, threadId: id });
-        },
-      });
-      const providerKey = `model_providers.${profile.modelProvider}`;
-      const relay = new AdaptiveModelRelayV2(
-        session,
-        profile.config[providerKey] || {},
-      );
-      try {
-        const server = await session.start();
-        profile.config[providerKey] = await relay.start();
-        for (const key of Object.keys(profile.config))
-          if (key.startsWith("mcp_servers.")) delete profile.config[key];
-        profile.config["mcp_servers.adaptive"] = server;
-        profile.baseInstructions += adaptiveInstructions;
-        this.adaptive.set(session.gateway, { session, relay, original });
-        this.activeGateways.add(session.gateway);
-        return session.gateway;
-      } catch (error) {
-        relay.close();
-        session.close();
-        throw error;
-      }
-    }
-    const projectionRequired =
-      process.env.TRUEX_MCP_GATEWAY_PROJECTION === "required";
-    const gateway = new OmniMcpGateway(
-      connectors,
-      (event) => {
-        this.emit("omniGatewayEvent", {
-          ...event,
-          gatewayId,
-          threadIds: [...this.threadGateways]
-            .filter(([, attached]) => attached === gateway)
-            .map(([id]) => id),
-        });
-      },
-      fetch,
-      { requireProjection: projectionRequired },
-    );
-    this.activeGateways.add(gateway);
-    try {
-      const server = await gateway.start();
-      for (const key of Object.keys(profile.config)) {
-        if (key.startsWith("mcp_servers.")) delete profile.config[key];
-      }
-      profile.config["mcp_servers.omni"] = server;
-      profile.baseInstructions += omniInstructions;
-      if (projectionRequired)
-        profile.baseInstructions +=
-          '\nFor invoke_tool, fields is required. Select the smallest set of dotted JSON paths needed to answer; use ["*"] only when the complete result is necessary or the result is not structured JSON.';
-      return gateway;
-    } catch (error) {
-      this.activeGateways.delete(gateway);
-      await gateway.close();
-      throw error;
-    }
-  }
-  private async releaseGateway(id: string) {
-    const gateway = this.threadGateways.get(id);
-    this.threadGateways.delete(id);
-    if (gateway && ![...this.threadGateways.values()].includes(gateway)) {
-      this.activeGateways.delete(gateway);
-      await this.closeGateway(gateway);
-    }
-  }
-  private async closeGateway(gateway: OmniMcpGateway | AdaptiveMcpGatewayV2) {
-    const adaptive =
-      gateway instanceof AdaptiveMcpGatewayV2
-        ? this.adaptive.get(gateway)
-        : undefined;
-    if (adaptive) {
-      adaptive.relay.close();
-      adaptive.session.close();
-      this.adaptive.delete(gateway as AdaptiveMcpGatewayV2);
-    } else await gateway.close();
-  }
-  finishMcpTurn(id: string) {
-    const gateway = this.threadGateways.get(id);
-    if (gateway instanceof AdaptiveMcpGatewayV2)
-      this.adaptive.get(gateway)?.relay.finishTurn();
-  }
-  approveMcpInvocation(id: string, detail: any, result: any) {
-    const gateway = this.threadGateways.get(id);
-    const adaptive =
-      gateway instanceof AdaptiveMcpGatewayV2
-        ? this.adaptive.get(gateway)
-        : undefined;
-    if (!adaptive) return;
-    for (const question of detail?.questions || []) {
-      if (
-        !isToolQuestion(question) ||
-        !result?.answers?.[question.id]?.answers?.includes("Allow")
-      )
-        continue;
-      const ref = parseToolQuestion(question.question);
-      const binding =
-        ref &&
-        toolCandidates(ref).find(
-          (candidate) => candidate.server === "adaptive",
-        );
-      if (binding) adaptive.relay.approve(question.id, binding.tool);
-    }
-  }
-  async closeOmniGateways() {
-    const gateways = [...this.activeGateways];
-    this.activeGateways.clear();
-    this.threadGateways.clear();
-    await Promise.all(gateways.map((gateway) => this.closeGateway(gateway)));
-  }
-  override stop() {
-    void this.closeOmniGateways();
-    super.stop();
   }
   get scriptsEnabled() {
     return !(this.scriptRunner instanceof DisabledScriptRunner);
@@ -483,16 +306,9 @@ export class BusinessRuntime extends CodexClient {
     const config: Record<string, any> = {};
     for (const [key, value] of Object.entries(params.config || {})) {
       if (/^model_providers\.[\w-]+$/.test(key)) config[key] = value;
-      else if (/^mcp_servers\.[\w-]+$/.test(key)) {
-        const server = value as any;
-        if (!server?.url || server.command)
-          throw new HttpError(
-            422,
-            "Business connectors must use HTTP",
-            "CONNECTOR_POLICY",
-          );
-        config[key] = server;
-      } else if (
+      else if (/^mcp_servers\.[\w-]+$/.test(key))
+        config[key] = mcpServer(value);
+      else if (
         key === "model_reasoning_effort" ||
         key === "model_context_window" ||
         key === "model_auto_compact_token_limit"
@@ -576,22 +392,13 @@ export class BusinessRuntime extends CodexClient {
       const cwd = join(tenantWorkspaces(this.home, tenant), randomUUID());
       const profile = this.configuration(params, cwd);
       mkdirSync(cwd, { recursive: true, mode: 0o700 });
-      const gateway = await this.prepareMcp(profile, tenant);
-      let result: any;
-      try {
-        result = await super.request(method, {
-          ...profile,
-          dynamicTools: this.dynamicTools(),
-          environments: [],
-          selectedCapabilityRoots: [],
-          experimentalRawEvents: false,
-        });
-      } catch (error) {
-        if (gateway) this.activeGateways.delete(gateway);
-        if (gateway) await this.closeGateway(gateway);
-        throw error;
-      }
-      if (gateway) this.threadGateways.set(result.thread.id, gateway);
+      const result = await super.request(method, {
+        ...profile,
+        dynamicTools: this.dynamicTools(),
+        environments: [],
+        selectedCapabilityRoots: [],
+        experimentalRawEvents: false,
+      });
       this.profiles.set(result.thread.id, profile);
       try {
         mkdirSync(join(this.home, "business-threads"), {
@@ -614,7 +421,6 @@ export class BusinessRuntime extends CodexClient {
         );
       } catch (error) {
         this.profiles.delete(result.thread.id);
-        await this.releaseGateway(result.thread.id);
         throw error;
       }
       return result;
@@ -635,52 +441,22 @@ export class BusinessRuntime extends CodexClient {
         },
         cwd,
       );
-      const gateway = await this.prepareMcp(
-        profile,
-        this.tenant(params.threadId),
-      );
-      let result: any;
-      try {
-        result = await super.request(method, {
-          ...profile,
-          threadId: params.threadId,
-        });
-      } catch (error) {
-        if (gateway) this.activeGateways.delete(gateway);
-        if (gateway) await this.closeGateway(gateway);
-        throw error;
-      }
-      await this.releaseGateway(params.threadId);
-      if (gateway) this.threadGateways.set(params.threadId, gateway);
+      const result = await super.request(method, {
+        ...profile,
+        threadId: params.threadId,
+      });
       this.profiles.set(params.threadId, profile);
       return result;
     }
     if (method === "turn/start") {
       this.workspace(params.threadId);
-      const gateway = this.threadGateways.get(params.threadId);
-      const adaptive =
-        gateway instanceof AdaptiveMcpGatewayV2
-          ? this.adaptive.get(gateway)
-          : undefined;
-      if (adaptive)
-        await adaptive.relay.beforeTurn(
-          (params.input || [])
-            .filter((item: any) => item.type === "text")
-            .map((item: any) => item.text)
-            .join("\n") || "Review the supplied attachments",
-        );
-      try {
-        return await super.request(method, {
-          threadId: params.threadId,
-          input: params.input,
-          clientUserMessageId: params.clientUserMessageId,
-          environments: [],
-          approvalPolicy: "on-request",
-        });
-      } catch (error) {
-        adaptive?.relay.finishTurn();
-        throw error;
-      }
+      return super.request(method, {
+        threadId: params.threadId,
+        input: params.input,
+        clientUserMessageId: params.clientUserMessageId,
+        environments: [],
+        approvalPolicy: "on-request",
+      });
     }
     if (Object.hasOwn(businessCapabilities, method)) {
       try {
@@ -694,51 +470,23 @@ export class BusinessRuntime extends CodexClient {
       }
       this.workspace(params.threadId);
       if (method === "thread/fork") {
-        const inheritedGateway = this.threadGateways.get(params.threadId);
-        const inherited =
-          inheritedGateway instanceof AdaptiveMcpGatewayV2
-            ? this.adaptive.get(inheritedGateway)
-            : undefined;
         const activeSource = this.profiles.get(params.threadId);
-        const source = inherited
-          ? structuredClone({
-              ...inherited.original,
-              model: activeSource?.model,
-              serviceTier: activeSource?.serviceTier,
-            })
-          : activeSource && structuredClone(activeSource);
-        if (
-          !source ||
-          ((source.config["mcp_servers.omni"] ||
-            source.config["mcp_servers.adaptive"]) &&
-            !this.threadGateways.has(params.threadId))
-        )
+        const source = activeSource && structuredClone(activeSource);
+        if (!source)
           throw new HttpError(409, "Resume the conversation before forking");
         const tenant = this.tenant(params.threadId);
         const cwd = join(tenantWorkspaces(this.home, tenant), randomUUID());
         mkdirSync(cwd, { recursive: true, mode: 0o700 });
         source.cwd = cwd;
-        const forkGateway = inherited
-          ? await this.prepareMcp(source, tenant)
-          : undefined;
-        let result: any;
-        try {
-          result = await super.request(method, {
-            ...source,
-            ...params,
-            cwd,
-            runtimeWorkspaceRoots: [],
-            sandbox: "read-only",
-            approvalPolicy: "on-request",
-            deferGoalContinuation: true,
-          });
-        } catch (error) {
-          if (forkGateway) {
-            this.activeGateways.delete(forkGateway);
-            await this.closeGateway(forkGateway);
-          }
-          throw error;
-        }
+        const result = await super.request(method, {
+          ...source,
+          ...params,
+          cwd,
+          runtimeWorkspaceRoots: [],
+          sandbox: "read-only",
+          approvalPolicy: "on-request",
+          deferGoalContinuation: true,
+        });
         writeFileSync(
           this.marker(result.thread.id),
           JSON.stringify({
@@ -758,15 +506,11 @@ export class BusinessRuntime extends CodexClient {
           },
         );
         this.profiles.set(result.thread.id, { ...source, cwd });
-        const gateway = forkGateway ?? this.threadGateways.get(params.threadId);
-        if (gateway) this.threadGateways.set(result.thread.id, gateway);
         await this.files.copy(params.threadId, result.thread.id);
         await this.workspaceFiles.copy(params.threadId, result.thread.id);
         return result;
       }
       const result = await super.request(method, params);
-      if (method === "thread/archive")
-        await this.releaseGateway(params.threadId);
       if (method === "thread/settings/update") {
         const profile = this.profiles.get(params.threadId);
         if (profile) {
@@ -780,9 +524,7 @@ export class BusinessRuntime extends CodexClient {
     // Only agent-core calls this, to reload a thread with a new MCP config.
     if (method === "thread/unsubscribe") {
       this.workspace(params.threadId);
-      const result = await super.request(method, { threadId: params.threadId });
-      await this.releaseGateway(params.threadId);
-      return result;
+      return super.request(method, { threadId: params.threadId });
     }
     // Approval modes read tool annotations; only agent-core calls this.
     if (method === "mcpServerStatus/list") {
@@ -803,10 +545,7 @@ export class BusinessRuntime extends CodexClient {
       ].includes(method)
     ) {
       this.workspace(params.threadId);
-      const result = await super.request(method, params);
-      if (method === "thread/delete")
-        await this.releaseGateway(params.threadId);
-      return result;
+      return super.request(method, params);
     }
     throw new HttpError(
       403,

@@ -12,6 +12,24 @@ export interface ToolRef {
 
 const MAX_NAME = 64;
 
+// A namespace description is where Codex puts an MCP server's own instructions.
+// Chat-style APIs have no namespace, so the text moves to the system prompt
+// instead of being dropped.
+export function systemPrompt(input: any): string[] {
+  const notes: string[] = [];
+  for (const tool of input.tools ?? []) {
+    const description =
+      tool?.type === "namespace" && typeof tool.description === "string"
+        ? tool.description.trim()
+        : "";
+    if (description)
+      notes.push(
+        `Instructions for the tools named ${String(tool.name).replace(/_+$/, "")}__*:\n${description}`,
+      );
+  }
+  return [...(input.instructions ? [input.instructions] : []), ...notes];
+}
+
 export class ToolNames {
   private readonly flat = new Map<string, ToolRef>();
 

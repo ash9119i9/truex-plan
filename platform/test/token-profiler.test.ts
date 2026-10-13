@@ -538,6 +538,39 @@ test("Mongo shell exports parse as data; executable expressions are rejected", a
   );
 });
 
+test("document credentials may reference environment variables; a missing one is an error", async () => {
+  const { resolveCredentialReferences } =
+    await import("../scripts/token-profiler-documents");
+  const env = { PROFILE_KEY: "from-env", EMPTY_KEY: "" };
+  assert.deepEqual(
+    resolveCredentialReferences(
+      { name: "m", apikey: "${PROFILE_KEY}", apiKey: "plain-value" },
+      "model.json",
+      env,
+    ),
+    { name: "m", apikey: "from-env", apiKey: "plain-value" },
+  );
+  // Only a whole-value reference counts; other fields are never rewritten.
+  assert.deepEqual(
+    resolveCredentialReferences(
+      { systemPrompt: "${PROFILE_KEY}", apiKey: "<placeholder>" },
+      "agent.json",
+      env,
+    ),
+    { systemPrompt: "${PROFILE_KEY}", apiKey: "<placeholder>" },
+  );
+  for (const name of ["MISSING_KEY", "EMPTY_KEY"])
+    assert.throws(
+      () =>
+        resolveCredentialReferences(
+          { apikey: "${" + name + "}" },
+          "models.json",
+          env,
+        ),
+      new RegExp(`models.json: apikey refers to environment variable ${name}`),
+    );
+});
+
 test("sequential turns reuse one thread and wait for each terminal trace before the next send", async () => {
   const { runSequentialTurns } =
     await import("../scripts/profile-agent-tokens");

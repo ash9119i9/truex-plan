@@ -184,6 +184,12 @@ test("MCP URLs to loopback, link-local, private and CGNAT addresses are rejected
     "https://[fe80::1]/mcp",
     "https://[::ffff:127.0.0.1]/mcp",
     "https://[::ffff:8.8.8.8]/mcp",
+    "https://192.0.0.192/mcp",
+    "https://198.18.0.1/mcp",
+    "https://[64:ff9b::7f00:1]/mcp",
+    "https://[64:ff9b:1::a00:1]/mcp",
+    "https://[2002:7f00:1::]/mcp",
+    "https://[2001:0:4136:e378:8000:63bf:3fff:fdd2]/mcp",
   ])
     await assert.rejects(checkMcpUrl(url), /private network address/, url);
   for (const url of [
@@ -511,7 +517,7 @@ test(
 
     assert.match(
       config.baseInstructions,
-      /discover and call the relevant tools/,
+      /call the relevant MCP tools/,
     );
     assert.match(
       config.baseInstructions,

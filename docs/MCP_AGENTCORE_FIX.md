@@ -49,10 +49,9 @@ connections. Duplicate names are reported and left unscoped until resolved.
    changes. Never copy the placeholder credential from `mcps.json` into a
    real database; use Connected tools to save the current credential.
 4. Run the platform from this branch. Build and deploy the AgentCore image
-   from the same branch using the existing deployment workflow. If choosing
-   `MCP_METHOD=direct`, `omni`, or `adaptive_v2`, set it in the deployed
-   AgentCore environment. A local `agent-core/.env` is excluded from the
-   image and does not configure AWS. The default is `direct`.
+   from the same branch using the existing deployment workflow. MCP needs no
+   runtime setting: Codex connects to the configured servers itself. See
+   [MCP](MCP.md).
 5. Check Connected tools for the intended agent and tenant. Start a new chat
    and ask a read-only question that needs the connector. Verify that a tool
    call and its result appear in the chat. The MCP HTTP endpoint must be
@@ -71,8 +70,8 @@ attachments load, detachment works despite retained legacy references, and
 another owner's tools remain inaccessible. The migration integration test
 checks that migrated ObjectId references and decrypted Qlik/custom-header and
 bearer credentials reach the platform's runtime configuration. Existing
-runtime tests execute tools with the pinned binary in all three MCP modes,
-including approval and denial.
+runtime tests execute tools with the pinned binary, including approval,
+denial, credential rotation and timeouts.
 
 When running platform integration tests in a workspace with a deployment
 `.env`, use `DOTENV_CONFIG_PATH=/dev/null` so test child processes use their

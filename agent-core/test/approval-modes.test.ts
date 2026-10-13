@@ -14,7 +14,6 @@ import {
   parseToolQuestion,
   readOnlyName,
   withChatGrant,
-  singleCallApprovals,
 } from "../src/approval-modes";
 import { ALLOW_FOR_CHAT } from "../../shared/contracts";
 const RUI = "item/tool/requestUserInput";
@@ -119,82 +118,45 @@ const resolved = (manager: ThreadManager) =>
 const statusCalls = (runtime: Fake) =>
   runtime.calls.filter((c) => c.method === "mcpServerStatus/list").length;
 
-test("Omni dispatcher approvals cannot grant unrelated tools for a session or chat", () => {
-  const detail = {
-    questions: [tool("omni", "invoke_tool"), tool("qlik", "get_apps")],
-  };
-  const scoped = withChatGrant(detail);
-  assert.deepEqual(
-    scoped.questions[0].options.map((o: any) => o.label),
-    ["Allow", "Cancel"],
-  );
-  assert.ok(
-    scoped.questions[1].options.some((o: any) => o.label === ALLOW_FOR_CHAT),
-  );
-  assert.ok(
-    detail.questions[0].options.some(
-      (o) => o.label === "Allow for this session",
-    ),
-  );
-  const qualified = singleCallApprovals({
-    questions: [tool("omni", "mcp__omni__invoke_tool")],
+test("connector tool approvals offer a chat grant for that tool only", () => {
+  const scoped = withChatGrant({
+    questions: [tool("crm", "lookup"), tool("crm", "update")],
   });
-  assert.deepEqual(
-    qualified.questions[0].options.map((o: any) => o.label),
-    ["Allow", "Cancel"],
-  );
+  for (const q of scoped.questions)
+    assert.ok(q.options.some((o: any) => o.label === ALLOW_FOR_CHAT));
 });
 
-for (const [server, name] of [
-  ["omni", "invoke_tool"],
-  ["adaptive", "invoke_tool"],
-  ["adaptive", "get_order"],
-])
-  for (const mode of [undefined, "ask", "readOnly"] as const)
-    test(`${server}/${name} approval is single-call under ${mode || "legacy"} mode`, async (t) => {
-      const { runtime, manager } = fixture(t);
-      await manager.create({ ...(mode ? { approvalMode: mode } : {}) });
-      ask(runtime, 71, [tool(server, name)]);
-      await tick();
-      const pending = manager.snapshot("thread_1").pending[0];
-      assert.ok(pending);
-      assert.deepEqual(
-        (pending.detail as any).questions[0].options.map((o: any) => o.label),
-        ["Allow", "Cancel"],
-      );
-      const qid = (pending.detail as any).questions[0].id;
-      for (const broad of [ALLOW_FOR_CHAT, "Allow for this session"])
-        assert.throws(
-          () =>
-            manager.answer("thread_1", pending.requestId, {
-              answers: { [qid]: { answers: [broad] } },
-            }),
-          /this call only/,
-        );
-      assert.equal(reply(runtime, 71), undefined);
-      manager.answer("thread_1", pending.requestId, {
-        answers: { [qid]: { answers: ["Allow"] } },
-      });
-      assert.ok(reply(runtime, 71));
-      ask(runtime, 72, [tool(server, name)]);
-      await tick();
-      assert.equal(
-        reply(runtime, 72),
-        undefined,
-        "A different dispatcher invocation still needs its own decision",
-      );
+for (const mode of ["ask", "readOnly"] as const)
+  test(`a chat grant for one connector tool does not cover another under ${mode} mode`, async (t) => {
+    const { runtime, manager } = fixture(t);
+    await manager.create({ approvalMode: mode });
+    ask(runtime, 71, [tool("crm", "update")]);
+    await tick();
+    const pending = manager.snapshot("thread_1").pending[0];
+    assert.ok(pending);
+    const qid = (pending.detail as any).questions[0].id;
+    manager.answer("thread_1", pending.requestId, {
+      answers: { [qid]: { answers: [ALLOW_FOR_CHAT] } },
     });
+    assert.ok(reply(runtime, 71));
+    ask(runtime, 72, [tool("crm", "update")]);
+    await tick();
+    assert.ok(reply(runtime, 72), "the granted tool is not asked again");
+    ask(runtime, 73, [tool("crm", "delete")]);
+    await tick();
+    assert.equal(
+      reply(runtime, 73),
+      undefined,
+      "a different tool still needs its own decision",
+    );
+  });
 
-test("an unanswered Omni invocation expires as Cancel, not an automatic Allow", async (t) => {
+test("an unanswered connector tool approval is never an automatic Allow", async (t) => {
   const { runtime, manager } = fixture(t, 35);
   await manager.create({});
-  ask(runtime, 73, [tool("omni", "invoke_tool")]);
+  ask(runtime, 73, [tool("crm", "update")]);
   await new Promise((r) => setTimeout(r, 70));
-  assert.deepEqual(
-    reply(runtime, 73).result.answers.mcp_tool_call_approval_invoke_tool
-      .answers,
-    ["Cancel"],
-  );
+  assert.deepEqual(reply(runtime, 73).result, { answers: {} });
 });
 
 test("helpers parse questions, names, modes and annotations", () => {
