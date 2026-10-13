@@ -8,7 +8,7 @@ RUN --mount=type=cache,id=truex-model-gateway-npm,target=/root/.npm \
     npm ci
 COPY model-gateway/tsconfig.json ./
 COPY model-gateway/src ./src
-COPY shared/gateway-token.ts /app/shared/gateway-token.ts
+COPY shared/gateway-token.ts shared/prompt-cache.ts /app/shared/
 RUN npm run build && npm prune --omit=dev
 
 FROM node:24-bookworm-slim AS runtime

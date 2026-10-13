@@ -10,6 +10,7 @@
 !model-gateway/src/**
 !shared/
 !shared/gateway-token.ts
+!shared/prompt-cache.ts
 **/.env
 **/.env.*
 **/node_modules
