@@ -1,3 +1,4 @@
+import { resolvePlatformSource } from "../../../platform/scripts/source-paths.mjs";
 // Isolated PlatformService/Store fixture. Run using platform's installed tsx loader.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -10,10 +11,10 @@ const root = resolve(new URL("../../../", import.meta.url).pathname);
 const require = createRequire(resolve(root, "platform/package.json"));
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const { PlatformService } = await import(
-  pathToFileURL(resolve(root, "platform/src/service.ts"))
+  pathToFileURL(resolvePlatformSource(root, "platform/src/service.ts"))
 );
 const { Store } = await import(
-  pathToFileURL(resolve(root, "platform/src/store.ts"))
+  pathToFileURL(resolvePlatformSource(root, "platform/src/store.ts"))
 );
 const { insertFixtures } = await import(
   pathToFileURL(resolve(root, "platform/test/fixtures.ts"))

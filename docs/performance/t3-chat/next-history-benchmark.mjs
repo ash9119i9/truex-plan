@@ -1,3 +1,4 @@
+import { resolvePlatformSource } from "../../../platform/scripts/source-paths.mjs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,13 +11,13 @@ const root = resolve(process.argv[2] || ".");
 const require = createRequire(resolve(root, "platform/package.json"));
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const { Store } = await import(
-  pathToFileURL(resolve(root, "platform/src/store.ts"))
+  pathToFileURL(resolvePlatformSource(root, "platform/src/store.ts"))
 );
 const { PlatformService } = await import(
-  pathToFileURL(resolve(root, "platform/src/service.ts"))
+  pathToFileURL(resolvePlatformSource(root, "platform/src/service.ts"))
 );
 const { POLICY_VERSION } = await import(
-  pathToFileURL(resolve(root, "platform/src/public.ts"))
+  pathToFileURL(resolvePlatformSource(root, "platform/src/public.ts"))
 );
 const mongo = await MongoMemoryServer.create();
 const store = await new Store(mongo.getUri(), "paired-history").connect();

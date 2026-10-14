@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { publicEvent, PublicEventStream } from "../src/public";
+import { publicEvent } from "../src/public/events";
+import { PublicEventStream } from "../src/streaming/event-stream";
 
 const marker = () => ({
   type: "sync.completed",

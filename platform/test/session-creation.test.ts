@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
 import {
   creationApprovalOptions,
   confirmRuntimeApproval,
-} from "../src/session-creation";
+} from "../src/conversations/session-creation";
 import { asUser, ashok, dharun, insertFixtures } from "./fixtures";
 import type { ApprovalModesConfig } from "../../shared/contracts";
 

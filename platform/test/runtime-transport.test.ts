@@ -5,9 +5,9 @@ import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { sdkStreamMixin } from "@smithy/core/serde";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { RuntimeTransport, runtimeHosts } from "../src/runtime-transport";
-import { PlatformService } from "../src/service";
-import { Store } from "../src/store";
+import { RuntimeTransport, runtimeHosts } from "../src/runtime/transport";
+import { PlatformService } from "../src/app/platform-service";
+import { Store } from "../src/persistence/store";
 import { insertFixtures } from "./fixtures";
 
 const owner =

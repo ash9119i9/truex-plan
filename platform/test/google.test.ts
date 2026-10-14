@@ -6,10 +6,10 @@ import { createServer as createNetServer } from "node:net";
 import { createServer, type Server } from "node:http";
 import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { resolve } from "node:path";
-import { createTenant } from "../src/admin";
-import { Store } from "../src/store";
-import { tenantDbName } from "../src/tenant";
-import { emailKey, hashToken, newToken } from "../src/auth";
+import { createTenant } from "../src/admin/admin";
+import { Store } from "../src/persistence/store";
+import { tenantDbName } from "../src/tenancy/tenant";
+import { emailKey, hashToken, newToken } from "../src/identity/auth";
 
 const root = resolve("..");
 // Never fetched: the callback is replayed straight against the platform.

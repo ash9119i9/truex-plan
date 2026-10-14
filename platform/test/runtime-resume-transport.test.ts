@@ -5,7 +5,7 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import { sdkStreamMixin } from "@smithy/core/serde";
-import { RuntimeTransport } from "../src/runtime-transport";
+import { RuntimeTransport } from "../src/runtime/transport";
 
 const arn =
   "arn:aws:bedrock-agentcore:us-east-1:502055890667:runtime/test_runtime";

@@ -39,7 +39,7 @@ export interface ProfileStore {
   clear(): void;
 }
 
-// Same id handling as platform/src/documents.ts idCandidates.
+// Same id handling as platform/src/persistence/configuration-documents.ts idCandidates.
 const idFilter = (id: string) => ({
   _id: { $in: ObjectId.isValid(id) ? [id, new ObjectId(id)] : [id] },
 });

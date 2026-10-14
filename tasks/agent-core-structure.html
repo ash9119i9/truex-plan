@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>agent-core restructuring plan</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: var(--foreground, #202329);
+        font-family: var(--font-sans, system-ui);
+        line-height: 1.5;
+      }
+      p {
+        margin: 0 0 16px;
+      }
+      .lead {
+        font-size: 22px;
+        font-weight: 650;
+        letter-spacing: -0.4px;
+      }
+      .muted {
+        color: var(--muted-foreground, #657080);
+      }
+      .stats {
+        display: flex;
+        gap: 24px;
+        margin: 18px 0 24px;
+        flex-wrap: wrap;
+      }
+      .stat strong {
+        display: block;
+        font-size: 26px;
+        line-height: 1.2;
+      }
+      .stat span {
+        font-size: 12px;
+        color: var(--muted-foreground, #657080);
+      }
+      .flow {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-family: var(--font-mono, monospace);
+        font-size: 12px;
+        margin: 12px 0 18px;
+      }
+      .flow span {
+        padding: 7px 10px;
+        background: var(--secondary, #eef1f4);
+        border-radius: 6px;
+      }
+      .flow b {
+        font-family: system-ui;
+        color: var(--muted-foreground, #657080);
+      }
+      .owners {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+      .owner {
+        background: var(--card, #f4f6f8);
+        border: 1px solid var(--border, #dce1e6);
+        border-radius: var(--radius, 10px);
+        padding: 16px;
+      }
+      .owner code {
+        font-size: 13px;
+        font-weight: 650;
+        color: var(--accent-foreground, #365fb7);
+      }
+      .owner p {
+        font-size: 13px;
+        margin: 6px 0 0;
+      }
+      .label {
+        font-size: 12px;
+        font-weight: 650;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--muted-foreground, #657080);
+        margin: 20px 0 10px;
+      }
+      details {
+        border-top: 1px solid var(--border, #dce1e6);
+        padding: 12px 0;
+      }
+      summary {
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        display: list-item;
+        list-style-position: inside;
+      }
+      summary:focus-visible {
+        outline: 2px solid var(--ring, #537de5);
+        outline-offset: 4px;
+        border-radius: 3px;
+      }
+      .body {
+        margin: 10px 0 2px 22px;
+        font-size: 13px;
+      }
+      .body p {
+        margin-bottom: 8px;
+      }
+      .gate {
+        font-size: 12px;
+        padding-left: 12px;
+        border-left: 3px solid var(--chart-2, #579689);
+      }
+      .guard {
+        font-size: 13px;
+        background: var(--secondary, #eef1f4);
+        border-radius: var(--radius, 10px);
+        padding: 16px;
+        margin: 20px 0 0;
+      }
+      .guard strong {
+        display: block;
+        margin-bottom: 4px;
+      }
+      code {
+        font-family: var(--font-mono, monospace);
+        overflow-wrap: anywhere;
+      }
+      @media (max-width: 480px) {
+        .owners {
+          grid-template-columns: 1fr;
+        }
+        .stats {
+          gap: 18px;
+        }
+        .lead {
+          font-size: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="lead">
+      Organize agent-core by responsibility, with a staged refactor that
+      preserves behavior.
+    </p>
+    <p class="muted">
+      The main issue is concentrated ownership in the manager and a flat source
+      directory. Keep one service and the existing runtime architecture.
+    </p>
+    <div class="stats">
+      <div class="stat">
+        <strong>18</strong><span>current source files</span>
+      </div>
+      <div class="stat">
+        <strong>2,269</strong><span>lines in manager.ts</span>
+      </div>
+      <div class="stat">
+        <strong>28</strong><span>existing test files to preserve</span>
+      </div>
+    </div>
+    <div class="label">Proposed ownership</div>
+    <div class="flow" aria-label="Request flow">
+      <span>HTTP / AgentCore</span><b>→</b><span>ThreadManager</span><b>→</b
+      ><span>BusinessRuntime</span><b>→</b><span>CodexClient</span>
+    </div>
+    <div class="owners">
+      <div class="owner">
+        <code>bootstrap/ · http/ · agentcore/</code>
+        <p>
+          Separate startup and process lifecycle from importable HTTP apps and
+          the production invocation bridge.
+        </p>
+      </div>
+      <div class="owner">
+        <code>threads/</code>
+        <p>
+          Manager coordinates lifecycle. Named owners handle approvals, helpers,
+          snapshots, events, records, SSE and turn tracking.
+        </p>
+      </div>
+      <div class="owner">
+        <code>runtime/ · protocol/</code>
+        <p>
+          Keep transport intact. Isolate runtime policy, thread markers, tenant
+          rules, history and pinned schema validation.
+        </p>
+      </div>
+      <div class="owner">
+        <code>tools/ · telemetry/</code>
+        <p>
+          Group documents, workspace and scripts. Keep filesystem protections
+          together; retain tracing and redaction.
+        </p>
+      </div>
+    </div>
+    <div class="label">Implementation order · expand a phase</div>
+    <details open>
+      <summary>1 · Establish the safety net</summary>
+      <div class="body">
+        <p>
+          Record baseline tests/builds and skips. Verify recursive discovery
+          before moving tests. Add only missing regression cases for
+          concurrency, durability, approval and restart behavior.
+        </p>
+        <p class="gate">
+          Gate: all 28 original test files remain represented; pinned-runtime
+          tests actually execute.
+        </p>
+      </div>
+    </details>
+    <details>
+      <summary>2 · Separate startup from HTTP</summary>
+      <div class="body">
+        <p>
+          Extract <code>createCoreApp(deps)</code>, bootstrap and AgentCore
+          bridge modules. Test the real app routes using isolated dependencies.
+        </p>
+        <p class="gate">
+          Gate: imports have no startup side effects; executable paths, lazy
+          initialization, HTTP/SSE contracts and shutdown order stay compatible.
+        </p>
+      </div>
+    </details>
+    <details>
+      <summary>3 · Extract pure policy and projections</summary>
+      <div class="body">
+        <p>
+          Separate thread state types, snapshot projection, enforced runtime
+          policy and thread-marker access. Preserve the current manager and
+          runtime APIs.
+        </p>
+        <p class="gate">
+          Gate: configuration, instructions, tenant checks, snapshots and
+          persisted marker formats remain equivalent.
+        </p>
+      </div>
+    </details>
+    <details>
+      <summary>4 · Decompose the manager one owner at a time</summary>
+      <div class="body">
+        <p>
+          Extract records → event publication → SSE → helper tracking →
+          approvals → turn tracking. Simplify notification dispatch after these
+          owners exist.
+        </p>
+        <p class="gate">
+          Gate: single state ownership, write-before-broadcast, synchronous
+          reconnect handoff, exactly-once settlement and helper restrictions
+          remain intact.
+        </p>
+      </div>
+    </details>
+    <details>
+      <summary>5 · Organize tools and remaining source modules</summary>
+      <div class="body">
+        <p>
+          Separate document specifications and format processing; extract
+          workspace specifications, path safety and bounded search cautiously.
+          Move cohesive transport, schema and telemetry modules mostly intact.
+        </p>
+        <p class="gate">
+          Gate: security stress tests, quotas, mutation queues, tool schemas and
+          generated artifacts stay compatible.
+        </p>
+      </div>
+    </details>
+    <details>
+      <summary>
+        6 · Group tests, migrate consumers and document debugging
+      </summary>
+      <div class="body">
+        <p>
+          Move tests in small batches after discovery works. Update platform
+          diagnostics/imports, retire temporary compatibility files when safe,
+          and add a debugging guide.
+        </p>
+        <p class="gate">
+          Gate: repository checks and startup verification pass; remaining skips
+          or unavailable deployment smoke checks are explicit.
+        </p>
+      </div>
+    </details>
+    <div class="guard">
+      <strong>Keep stable throughout</strong>Entrypoints, API/protocol
+      contracts, on-disk records, permissions and runtime behavior. Use
+      reexports that preserve exact class identity. Each extraction is
+      independently verifiable and reversible.
+    </div>
+    <script>
+      console.log(
+        JSON.stringify({
+          phases: document.querySelectorAll("details").length,
+          owners: document.querySelectorAll(".owner").length,
+          horizontalOverflow:
+            document.documentElement.scrollWidth > window.innerWidth,
+        }),
+      );
+    </script>
+  </body>
+</html>

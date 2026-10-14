@@ -1,14 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import {
-  POLICY_VERSION,
-  PublicEventStream,
-  publicApproval,
-  withPlanFallback,
-} from "../src/public";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { POLICY_VERSION } from "../src/public/policy";
+import { PublicEventStream } from "../src/streaming/event-stream";
+import { publicApproval } from "../src/public/approvals";
+import { withPlanFallback } from "../src/public/conversation";
 import type { DomainEvent } from "../../shared/contracts";
 
 const steps = [

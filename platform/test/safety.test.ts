@@ -6,36 +6,36 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { ApiError } from "../src/errors";
+import { Store } from "../src/persistence/store";
+import { ApiError } from "../src/core/errors";
 import {
   errorHandler,
   loggablePath,
   requestIdMiddleware,
   route,
-} from "../src/http";
+} from "../src/http/handlers";
 import {
   StreamLimiter,
   revalidateMs,
   watchAccess,
   MAX_REVALIDATE_MS,
-} from "../src/streams";
+} from "../src/streaming/guards";
 import {
   assertGoogleConfig,
   googleRoutes,
   googleSettings,
   profileName,
   profilePicture,
-} from "../src/google";
+} from "../src/identity/google";
 import {
   hashToken,
   newToken,
   readSession,
   type AuthSessionDocument,
-} from "../src/auth";
-import { assertFreshDatabase, createTenant } from "../src/admin";
-import { recordAudit, requireAudit } from "../src/audit";
-import { policyOf } from "../src/tenant";
+} from "../src/identity/auth";
+import { assertFreshDatabase, createTenant } from "../src/admin/admin";
+import { recordAudit, requireAudit } from "../src/tenancy/audit";
+import { policyOf } from "../src/tenancy/tenant";
 import type { Request } from "express";
 
 const root = resolve("..");

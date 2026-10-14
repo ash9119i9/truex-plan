@@ -7,11 +7,13 @@ import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { pathToFileURL } from "node:url";
+import { resolvePlatformSource } from "../../../platform/scripts/source-paths.mjs";
 
 const repo = path.resolve(process.argv[2] ?? ".");
 const baselineRef = "d6e3f45a45e6948873b8a64d0a9453fb2c2f4307";
 process.env.PROJECT_ROOT = repo;
-const sourcePath = path.join(repo, "agent-core/src/manager.ts");
+const sourcePath = resolvePlatformSource(repo, "agent-core/src/manager.ts");
+const baselineSourcePath = path.join(repo, "agent-core/src/manager.ts");
 const beforeSource = execFileSync(
   "git",
   ["show", `${baselineRef}:agent-core/src/manager.ts`],
@@ -27,21 +29,47 @@ const beforePath = path.join(temporary, "before-manager.ts");
 const coverageRegression = process.argv.includes("--coverage-red-tests");
 // Reproduce the reviewed synchronization candidate before its coverage guard.
 // The pinned pre-protocol manager cannot expose this new marker-specific bug.
-const regressionSource = coverageRegression
-  ? afterSource.replace(
+const importOverrides = new Map();
+const importable = (source, origin) =>
+  source.replace(
+    /(from\s+)(["'])(\.{1,2}\/[^"']+)\2/g,
+    (_match, prefix, quote, relative) => {
+      const requested = path.resolve(path.dirname(origin), relative);
+      const file = /\.(?:ts|json)$/.test(requested)
+        ? requested
+        : `${requested}.ts`;
+      const canonical = resolvePlatformSource(repo, path.relative(repo, file));
+      const absolute = importOverrides.get(canonical) ?? canonical;
+      return `${prefix}${quote}${/\.(?:ts|json)$/.test(absolute) ? absolute : `${absolute}.ts`}${quote}`;
+    },
+  );
+try {
+  let regressionSource = beforeSource;
+  let regressionOrigin = baselineSourcePath;
+  if (coverageRegression) {
+    regressionOrigin = sourcePath;
+    regressionSource = afterSource.replace(
       'options.sync === "v1" && t.sourceCovered',
       'options.sync === "v1"',
-    )
-  : beforeSource;
-if (coverageRegression) assert.notEqual(regressionSource, afterSource);
-const importableBefore = regressionSource.replace(
-  /(from\s+)(["'])(\.{1,2}\/[^"']+)\2/g,
-  (_match, prefix, quote, relative) => {
-    const absolute = path.resolve(path.dirname(sourcePath), relative);
-    return `${prefix}${quote}${/\.(?:ts|json)$/.test(absolute) ? absolute : `${absolute}.ts`}${quote}`;
-  },
-);
-try {
+    );
+    if (regressionSource === afterSource) {
+      // The same coverage guard now belongs to the extracted stream module.
+      const streamPath = path.join(repo, "agent-core/src/threads/stream.ts");
+      const streamSource = await readFile(streamPath, "utf8");
+      const regressionStream = streamSource.replace(
+        'options.sync === "v1" && t.sourceCovered',
+        'options.sync === "v1"',
+      );
+      assert.notEqual(regressionStream, streamSource);
+      const temporaryStream = path.join(temporary, "before-stream.ts");
+      await writeFile(
+        temporaryStream,
+        importable(regressionStream, streamPath),
+      );
+      importOverrides.set(streamPath, temporaryStream);
+    } else assert.notEqual(regressionSource, afterSource);
+  }
+  const importableBefore = importable(regressionSource, regressionOrigin);
   await writeFile(beforePath, importableBefore);
   if (
     process.argv.includes("--red-tests") ||
@@ -54,15 +82,18 @@ try {
       path.join(
         repo,
         syncRegressions
-          ? "agent-core/test/sync-protocol.test.ts"
-          : "agent-core/test/snapshot-window.test.ts",
+          ? "agent-core/test/threads/sync-protocol.test.ts"
+          : "agent-core/test/threads/snapshot-window.test.ts",
       ),
       "utf8",
     );
     const rewritten = testSource
-      .replace('"../src/manager"', JSON.stringify(beforePath))
       .replace(
-        '"../../shared/contracts"',
+        /(["'])(?:\.\.\/src\/manager|\.\.\/\.\.\/src\/threads\/manager)\1/,
+        JSON.stringify(beforePath),
+      )
+      .replace(
+        /(["'])(?:\.\.\/){2,3}shared\/contracts\1/,
         JSON.stringify(path.join(repo, "shared/contracts.ts")),
       );
     const testPath = path.join(temporary, "snapshot-window-before.test.ts");

@@ -2,16 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import express from "express";
-import { ApiError } from "../src/errors";
-import { PlatformService } from "../src/service";
-import { PublicEventStream, publicEvent } from "../src/public";
+import { ApiError } from "../src/core/errors";
+import { PlatformService } from "../src/app/platform-service";
+import { PublicEventStream } from "../src/streaming/event-stream";
+import { publicEvent } from "../src/public/events";
 import {
   endedStream,
   errorHandler,
   failStream,
   requestIdMiddleware,
   route,
-} from "../src/http";
+} from "../src/http/handlers";
 
 const realFetch = globalThis.fetch;
 async function serve(app: express.Express) {

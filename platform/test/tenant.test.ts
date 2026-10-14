@@ -5,7 +5,7 @@ import {
   DEFAULT_TENANT_ID,
   TENANT_HEADER,
   devTenantResolver,
-} from "../src/tenant";
+} from "../src/tenancy/tenant";
 
 const req = (headers: Record<string, string> = {}) =>
   ({
