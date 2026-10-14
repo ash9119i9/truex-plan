@@ -1,3 +1,4 @@
+import { resolvePlatformSource } from "../../../platform/scripts/source-paths.mjs";
 // Matched localhost HTTP evidence. No production .env, runtime binary, or provider.
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -20,8 +21,8 @@ const { MongoClient } = require('mongodb');
 const express = coreRequire('express');
 const typescript = coreRequire('typescript');
 const executable = (statement) => typescript.transpileModule(statement, { compilerOptions: { target: typescript.ScriptTarget.ES2022, module: typescript.ModuleKind.CommonJS } }).outputText;
-const source = async (file) => readFile(join(root, file), 'utf8');
-const imported = async (file) => import(pathToFileURL(join(root, file)).href);
+const source = async (file) => readFile(resolvePlatformSource(root, file), 'utf8');
+const imported = async (file) => import(pathToFileURL(resolvePlatformSource(root, file)).href);
 const { PlatformService } = await imported('platform/src/service.ts');
 const { Store } = await imported('platform/src/store.ts');
 const { ThreadManager } = await imported('agent-core/src/manager.ts');
@@ -138,7 +139,7 @@ try {
   const env = { NODE_ENV: 'test', DEV_USER_ID: 'fixture-owner', DEV_USER_ROLE: 'user' };
   api.use('/api', tenantMiddleware(devTenantResolver(env), (id) => store.resolveTenant(id)));
   api.use('/api', userMiddleware(devUserResolver(env)));
-  const apiSource = await source('platform/src/index.ts');
+  const apiSource = await readFile(resolvePlatformSource(root, 'platform/src/conversations/routes.ts', 'platform/src/index.ts'), 'utf8');
   for (const marker of ['http.post(\n    "/api/sessions",', 'http.post(\n    "/api/sessions/:id/messages",']) {
     const statement = extractRoute(apiSource, marker, '\n  );');
     mountedRouteHashes[marker] = sha256(statement);

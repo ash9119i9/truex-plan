@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import {
   historyWindow,
   historyAnchor,
-} from "../../../platform/src/history-window.ts";
+} from "../../../platform/src/conversations/history-window.ts";
 const sessions = ["a", "b", "long"].map((name, i) => ({
   _id: `fixture-${name}`,
   agentId: "fixture-agent",

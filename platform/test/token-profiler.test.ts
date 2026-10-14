@@ -429,7 +429,7 @@ test("CLI builds from Mongo with platform service, sends the turn and writes rep
 test("document Store reuses connector selection and rejects mismatched model references", async () => {
   const { documentStore, safeError } =
     await import("../scripts/token-profiler-documents");
-  const { PlatformService } = await import("../src/service");
+  const { PlatformService } = await import("../src/app/platform-service");
   const { Redactor } = await import("../../agent-core/src/redact");
   const agent = { _id: "a", modelProfileId: "m", systemPrompt: "prompt" };
   const model = {

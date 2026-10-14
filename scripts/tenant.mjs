@@ -77,7 +77,7 @@ const dbNameFor = (id) =>
     : "truex_t_" + validId(id).replace(/-/g, "_");
 const now = () => new Date().toISOString();
 
-// Same rules as emailKey/validEmail in platform/src/auth.ts: the whole address
+// Same rules as emailKey/validEmail in platform/src/identity/auth.ts: the whole address
 // is lower-cased; Gmail (gmail.com, googlemail.com) drops dots and the +tag and
 // maps to gmail.com; every other domain keeps its dots and +tags. Only plain
 // ASCII addresses are accepted. platform/test covers both with shared vectors.
@@ -107,7 +107,7 @@ const INVITE_LIFETIME_MS = 7 * 86_400_000;
 const inviteLink = (token) =>
   `${(process.env.APP_PUBLIC_URL || process.env.FRONTEND_ORIGIN || "http://localhost:3000").replace(/\/+$/, "")}/invite/${token}`;
 
-// Same definitions as agentIndexes()/tenantIndexes() in platform/src/store.ts.
+// Same definitions as agentIndexes()/tenantIndexes() in platform/src/persistence/store.ts.
 // A private tenant keys agent handles by creator and never gets the
 // workspace-wide handle index.
 async function tenantIndexes(db, creatorHandles = false) {
@@ -143,7 +143,7 @@ async function tenantIndexes(db, creatorHandles = false) {
     ...mcpIndexes(db),
   ]);
 }
-// Same definitions as mcpIndexes() in platform/src/store.ts.
+// Same definitions as mcpIndexes() in platform/src/persistence/store.ts.
 function mcpIndexes(db) {
   const mcp = db.collection("truex_mcp");
   return [
@@ -176,7 +176,7 @@ async function catalogIndexes(catalog) {
 }
 
 // The single effective privacy value of a registry record, as in
-// effectivePrivacy() in platform/src/tenant.ts: the canonical isUserSpecific
+// effectivePrivacy() in platform/src/tenancy/tenant.ts: the canonical isUserSpecific
 // and the legacy chatVisibility alias must agree when both are present.
 const effectivePrivate = (doc) => {
   const canonicalPresent = doc.isUserSpecific !== undefined;

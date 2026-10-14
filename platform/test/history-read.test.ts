@@ -1,15 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import { POLICY_VERSION } from "../src/public";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { POLICY_VERSION } from "../src/public/policy";
 import { orderConversation } from "../../shared/command-history";
-import { historyAnchor, historyWindow } from "../src/history-window";
-import { readHistoryWindow, SMALL_HISTORY_LIMIT } from "../src/history-read";
+import {
+  historyAnchor,
+  historyWindow,
+} from "../src/conversations/history-window";
+import {
+  readHistoryWindow,
+  SMALL_HISTORY_LIMIT,
+} from "../src/conversations/history-read";
 import type { Message } from "../../shared/contracts";
-import { tenantContext } from "../src/tenant";
-import { userContext } from "../src/user";
+import { tenantContext } from "../src/tenancy/tenant";
+import { userContext } from "../src/identity/user";
 
 test("recent history bounds payload reads and preserves complete authoritative pages", async (t) => {
   const mongo = await MongoMemoryServer.create();

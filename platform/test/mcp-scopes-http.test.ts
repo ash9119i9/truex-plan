@@ -4,12 +4,12 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer as httpServer } from "node:http";
 import { createServer } from "node:net";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Store } from "../src/store";
-import { tenantDbName } from "../src/tenant";
-import { ROLE_HEADER, USER_HEADER } from "../src/user";
+import { Store } from "../src/persistence/store";
+import { tenantDbName } from "../src/tenancy/tenant";
+import { ROLE_HEADER, USER_HEADER } from "../src/identity/user";
 import { insertFixtures } from "./fixtures";
+import { createSourceAudit, readPlatformSources } from "./source-guards";
 
 const root = resolve("..");
 
@@ -40,12 +40,29 @@ async function stop(child: ChildProcess) {
   });
 }
 
-// Every MCP route index.ts registers, so a new one cannot skip these checks.
+// Discover registrations in real source modules after route extraction.
 function mcpRoutes() {
-  const index = readFileSync(resolve("src/index.ts"), "utf8");
-  return [...index.matchAll(/http\.(get|post|patch|delete)\(\s*"([^"]+)"/g)]
-    .map((m) => ({ method: m[1].toUpperCase(), path: m[2] }))
-    .filter((r) => /\/mcp|tenant-mcp/.test(r.path));
+  const routes = createSourceAudit(readPlatformSources()).routes.filter((route) =>
+    /\/mcp|tenant-mcp/.test(route.path),
+  );
+  assert.deepEqual(
+    routes.map((route) => route.key).sort(),
+    [
+      "DELETE /api/mcp/:id",
+      "DELETE /api/tenant/mcp/:id",
+      "GET /api/agents/:id/mcp",
+      "GET /api/agents/:id/tenant-mcp",
+      "GET /api/mcp",
+      "GET /api/tenant/mcp",
+      "PATCH /api/mcp/:id",
+      "PATCH /api/tenant/mcp/:id",
+      "POST /api/agents/:id/mcp",
+      "POST /api/agents/:id/tenant-mcp",
+      "POST /api/mcp",
+      "POST /api/tenant/mcp",
+    ],
+  );
+  return routes;
 }
 
 test(

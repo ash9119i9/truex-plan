@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { BusinessRuntime } from "../../agent-core/src/business-runtime";
 import { Redactor } from "../../agent-core/src/redact";
-import { attachedMcpInstructions } from "../src/mcp";
+import { attachedMcpInstructions } from "../src/mcp/profiles";
 
 const sha = (value: unknown) =>
   createHash("sha256")

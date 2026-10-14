@@ -1,13 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import { POLICY_VERSION } from "../src/public";
-import { verifyGatewayToken } from "../src/model-route";
-import { DEFAULT_TENANT_ID, tenantDbName, type TenantRef } from "../src/tenant";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { POLICY_VERSION } from "../src/public/policy";
+import { verifyGatewayToken } from "../src/runtime/model-route";
+import {
+  DEFAULT_TENANT_ID,
+  tenantDbName,
+  type TenantRef,
+} from "../src/tenancy/tenant";
 import type { Session } from "../../shared/contracts";
-import { userContext } from "../src/user";
+import { userContext } from "../src/identity/user";
 
 const HOST = "http://core";
 

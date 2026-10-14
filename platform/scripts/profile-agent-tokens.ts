@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { randomUUID, randomBytes } from "node:crypto";
 import dotenv from "dotenv";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import { resolveRoute } from "../src/model-route";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { resolveRoute } from "../src/runtime/model-route";
 import {
   documentStore,
   readDocuments,

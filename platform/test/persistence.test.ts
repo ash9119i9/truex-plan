@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
+import { Store } from "../src/persistence/store";
 import { insertFixtures } from "./fixtures";
-import { PlatformService } from "../src/service";
+import { PlatformService } from "../src/app/platform-service";
 import type { DomainEvent } from "../../shared/contracts";
 test(
   "MongoDB: isolated fixtures, redacted summaries, idempotent final/decision/timing persistence",

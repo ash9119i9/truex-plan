@@ -4,15 +4,19 @@ import { MongoMemoryServer } from "mongodb-memory-server";
 import { spawn, execFile, ChildProcess } from "node:child_process";
 import { createServer as httpServer } from "node:http";
 import { createServer } from "node:net";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { promisify } from "node:util";
-import { Store } from "../src/store";
+import {
+  createSourceAudit,
+  readPlatformSources,
+  assertSessionRouteAccess,
+} from "./source-guards";
+import { Store } from "../src/persistence/store";
 import { insertFixtures } from "./fixtures";
-import { decide } from "../src/access";
-import { POLICY_VERSION } from "../src/public";
-import { tenantDbName, type TenantRef } from "../src/tenant";
-import { ROLE_HEADER, USER_HEADER } from "../src/user";
+import { decide } from "../src/tenancy/access";
+import { POLICY_VERSION } from "../src/public/policy";
+import { tenantDbName, type TenantRef } from "../src/tenancy/tenant";
+import { ROLE_HEADER, USER_HEADER } from "../src/identity/user";
 
 const root = resolve("..");
 
@@ -79,38 +83,6 @@ test("access rules: owner, admin, other user, ownerless", () => {
 // Every /api/sessions/:id route must reach sessionFor before touching the
 // session: directly, or through a service method that calls it.
 test("route coverage: every /api/sessions/:id route goes through sessionFor", () => {
-  const index = readFileSync(resolve("src/index.ts"), "utf8");
-  const service = readFileSync(resolve("src/service.ts"), "utf8");
-  // Service methods that enforce access: they call sessionFor, or call one
-  // that does.
-  const bodies = new Map<string, string>();
-  const heads = [...service.matchAll(/^  (?:async )?(\w+)\(/gm)];
-  heads.forEach((m, i) =>
-    bodies.set(m[1], service.slice(m.index!, heads[i + 1]?.index)),
-  );
-  const enforcing = new Set(["sessionFor"]);
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (const [name, body] of bodies)
-      if (
-        !enforcing.has(name) &&
-        [...enforcing].some((e) => body.includes(`this.${e}(`))
-      ) {
-        enforcing.add(name);
-        changed = true;
-      }
-  }
-  // session() itself is not an access check.
-  assert.equal(enforcing.has("session"), false);
-
-  const starts = [...index.matchAll(/http\.(get|post|delete|put|patch)\(\s*"([^"]+)"/g)];
-  const routes = starts
-    .map((m, i) => ({
-      key: `${m[1].toUpperCase()} ${m[2]}`,
-      path: m[2],
-      body: index.slice(m.index!, starts[i + 1]?.index ?? index.length),
-    }))
-    .filter((r) => r.path.startsWith("/api/sessions/:id"));
   // The plan's read/write table. Routes enforced inside a service method list
   // the mode that method uses; "method" means it depends on the capability.
   const expected: Record<string, "read" | "write" | "method"> = {
@@ -135,34 +107,7 @@ test("route coverage: every /api/sessions/:id route goes through sessionFor", ()
     "POST /api/sessions/:id/documents": "write",
     "POST /api/sessions/:id/goal/review": "write",
   };
-  assert.deepEqual(routes.map((r) => r.key).sort(), Object.keys(expected).sort());
-  for (const r of routes) {
-    const direct = [...r.body.matchAll(/service\.sessionFor\([^,]+,\s*"(\w+)"\)/g)];
-    const via = [...r.body.matchAll(/service\.(\w+)\(/g)]
-      .map((m) => m[1])
-      .filter((name) => name !== "sessionFor" && enforcing.has(name));
-    assert.ok(direct.length || via.length, `${r.key} skips sessionFor`);
-    // A bare session() load must only ever follow the access check.
-    const bare = r.body.indexOf("service.session(");
-    if (bare >= 0)
-      assert.ok(
-        direct.length && direct[0].index! < bare,
-        `${r.key} loads the session before checking access`,
-      );
-    const mode = expected[r.key];
-    if (direct.length)
-      assert.ok(
-        direct.every((m) => m[1] === mode),
-        `${r.key} should check "${mode}"`,
-      );
-    else if (mode !== "method")
-      for (const name of via)
-        assert.match(
-          bodies.get(name)!,
-          new RegExp(`this\\.sessionFor\\(\\w+, "${mode}"\\)`),
-          `${r.key}: ${name} should check "${mode}"`,
-        );
-  }
+  assertSessionRouteAccess(createSourceAudit(readPlatformSources()), expected);
 });
 
 test("tenant CLI: chat-visibility, including the implicit default tenant", { timeout: 60000 }, async (t) => {

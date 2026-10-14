@@ -1,3 +1,4 @@
+import { resolvePlatformSource } from "../platform/scripts/source-paths.mjs";
 // Run with the existing platform tsx loader; see docs/performance/t3-chat/README.md.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -29,10 +30,10 @@ const require = createRequire(
 );
 const { MongoMemoryServer } = require("mongodb-memory-server");
 const { PlatformService } = await import(
-  pathToFileURL(resolve(repo, "platform/src/service.ts"))
+  pathToFileURL(resolvePlatformSource(repo, "platform/src/service.ts"))
 );
 const { Store } = await import(
-  pathToFileURL(resolve(repo, "platform/src/store.ts"))
+  pathToFileURL(resolvePlatformSource(repo, "platform/src/store.ts"))
 );
 const mongo = await MongoMemoryServer.create();
 const store = new Store(mongo.getUri(), "chat_benchmark", "chat_benchmark");

@@ -4,7 +4,7 @@
 //
 // hash-password reads the password from stdin (never argv, so it stays out
 // of shell history) and prints the ADMIN_PASSWORD_HASH value:
-// scrypt$N$r$p$<saltB64>$<hashB64>, checked by platform/src/admin.ts.
+// scrypt$N$r$p$<saltB64>$<hashB64>, checked by platform/src/admin/admin.ts.
 import { randomBytes, scrypt } from "node:crypto";
 import { promisify } from "node:util";
 

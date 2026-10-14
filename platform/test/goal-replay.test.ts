@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService, staleGoal } from "../src/service";
-import { POLICY_VERSION } from "../src/public";
+import { Store } from "../src/persistence/store";
+import { PlatformService, staleGoal } from "../src/app/platform-service";
+import { POLICY_VERSION } from "../src/public/policy";
 
 const goal = {
   objective: "Board deck",

@@ -8,10 +8,10 @@ import { createServer, type Server, type ServerResponse } from "node:http";
 import { generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { resolve } from "node:path";
 import assert from "node:assert/strict";
-import { Store } from "../src/store";
-import { hashToken, newToken, emailKey } from "../src/auth";
-import { createTenant } from "../src/admin";
-import type { UserRole } from "../src/user";
+import { Store } from "../src/persistence/store";
+import { hashToken, newToken, emailKey } from "../src/identity/auth";
+import { createTenant } from "../src/admin/admin";
+import type { UserRole } from "../src/identity/user";
 
 export const root = resolve("..");
 export const FRONTEND = "http://localhost:3000";

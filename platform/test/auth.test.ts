@@ -5,19 +5,9 @@ import { spawn, ChildProcess } from "node:child_process";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
 import type { Request, Response } from "express";
-import { Store } from "../src/store";
-import { tenantDbName } from "../src/tenant";
-import {
-  cookieSpec,
-  emailKey,
-  hashToken,
-  isGmail,
-  newToken,
-  parseCookies,
-  rateLimit,
-  revokeSessions,
-  validEmail,
-} from "../src/auth";
+import { Store } from "../src/persistence/store";
+import { tenantDbName } from "../src/tenancy/tenant";
+import { cookieSpec, emailKey, hashToken, isGmail, newToken, parseCookies, rateLimit, revokeSessions, validEmail, } from "../src/identity/auth";
 import { BAD_EMAILS, EMAIL_VECTORS } from "./email-vectors";
 
 const root = resolve("..");

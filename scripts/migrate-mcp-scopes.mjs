@@ -7,11 +7,11 @@
 //
 // - profiles without an owner get scope "tenant" (with an owner: "user")
 // - agent.mcpProfileIds attachments are added to each profile's agentIds
-// - the scope indexes are created (same as platform/src/store.ts)
+// - the scope indexes are created (same as platform/src/persistence/store.ts)
 //
 // Stored credentials are never read, decrypted, encrypted, moved or removed:
 // apiKey, apikey and legacy apiKeyEnc keep their field names and values, and
-// the platform reads each as it does today (platform/src/mcp.ts, secrets.ts).
+// the platform reads each as it does today (platform/src/mcp/profiles.ts, secrets.ts).
 // Encrypting plain keys is not part of this migration, because the platform
 // no longer has an encryption path to do it with.
 //
@@ -58,7 +58,7 @@ const dryRun = !confirmed;
 const prefix = dryRun ? "[dry run] " : "";
 const would = (done, pending) => (dryRun ? pending : done);
 
-// Same candidates as idCandidates() in platform/src/documents.ts.
+// Same candidates as idCandidates() in platform/src/persistence/configuration-documents.ts.
 const idCandidates = (id) => {
   const text = String(id);
   return ObjectId.isValid(text) ? [text, new ObjectId(text)] : [text];
@@ -71,7 +71,7 @@ const hasCredentialField = {
   ],
 };
 
-// Same definitions as mcpIndexes() in platform/src/store.ts.
+// Same definitions as mcpIndexes() in platform/src/persistence/store.ts.
 const INDEXES = [
   [
     { scope: 1, name: 1 },

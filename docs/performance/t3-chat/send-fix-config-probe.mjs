@@ -1,3 +1,4 @@
+import { resolvePlatformSource } from "../../../platform/scripts/source-paths.mjs";
 // Actual configuration() + isolated Mongo. Synthetic DB/DNS delays only.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -10,11 +11,11 @@ import { pathToFileURL } from 'node:url';
 const root = resolve(process.argv[2] || new URL('../../../', import.meta.url).pathname);
 const require = createRequire(resolve(root, 'platform/package.json'));
 const { MongoMemoryServer } = require('mongodb-memory-server');
-const { PlatformService } = await import(pathToFileURL(resolve(root, 'platform/src/service.ts')));
-const { Store } = await import(pathToFileURL(resolve(root, 'platform/src/store.ts')));
+const { PlatformService } = await import(pathToFileURL(resolvePlatformSource(root, 'platform/src/service.ts')));
+const { Store } = await import(pathToFileURL(resolvePlatformSource(root, 'platform/src/store.ts')));
 const { insertFixtures } = await import(pathToFileURL(resolve(root, 'platform/test/fixtures.ts')));
-const { mcpNetwork } = await import(pathToFileURL(resolve(root, 'platform/src/mcp.ts')));
-const source = await readFile(resolve(root, 'platform/src/service.ts'), 'utf8');
+const { mcpNetwork } = await import(pathToFileURL(resolvePlatformSource(root, 'platform/src/mcp.ts')));
+const source = await readFile(resolvePlatformSource(root, 'platform/src/runtime/configuration.ts', 'platform/src/service.ts'), 'utf8');
 const configurationSource = source.slice(source.indexOf('  async configuration('), source.indexOf('  // Catalog skills'));
 const configurationSha256 = createHash('sha256').update(configurationSource).digest('hex');
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));

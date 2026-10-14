@@ -5,11 +5,11 @@ import { spawn, ChildProcess } from "node:child_process";
 import { createServer as netServer } from "node:net";
 import { createServer as httpServer, type IncomingHttpHeaders } from "node:http";
 import { resolve } from "node:path";
-import { Store } from "../src/store";
-import { tenantDbName } from "../src/tenant";
-import { emailKey, hashToken, newToken } from "../src/auth";
-import { parsePasswordHash, verifyPassword } from "../src/admin";
-import { inviteMailer, lookupInvite } from "../src/invites";
+import { Store } from "../src/persistence/store";
+import { tenantDbName } from "../src/tenancy/tenant";
+import { emailKey, hashToken, newToken } from "../src/identity/auth";
+import { parsePasswordHash, verifyPassword } from "../src/admin/admin";
+import { inviteMailer, lookupInvite } from "../src/identity/invites";
 import { insertFixtures } from "./fixtures";
 import { BAD_EMAILS, EMAIL_VECTORS } from "./email-vectors";
 

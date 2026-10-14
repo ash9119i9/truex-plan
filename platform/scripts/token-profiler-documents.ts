@@ -1,8 +1,8 @@
 import ts from "typescript";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { Store } from "../src/store";
-import { tenantContext, tenantId } from "../src/tenant";
+import { Store } from "../src/persistence/store";
+import { tenantContext, tenantId } from "../src/tenancy/tenant";
 import { Redactor } from "../../agent-core/src/redact";
 
 function normalize(value: any): any {

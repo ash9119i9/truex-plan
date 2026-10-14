@@ -8,9 +8,9 @@ import {
   authMode,
   currentUser,
   devUserResolver,
-} from "../src/user";
-import { route, userMiddleware } from "../src/http";
-import { currentTenant } from "../src/tenant";
+} from "../src/identity/user";
+import { route, userMiddleware } from "../src/http/handlers";
+import { currentTenant } from "../src/tenancy/tenant";
 
 const req = (headers: Record<string, string> = {}) =>
   ({

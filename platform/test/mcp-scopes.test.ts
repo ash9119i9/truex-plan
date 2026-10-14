@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import { tenantDbName, type TenantRef } from "../src/tenant";
-import type { UserRef } from "../src/user";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { tenantDbName, type TenantRef } from "../src/tenancy/tenant";
+import type { UserRef } from "../src/identity/user";
 import { admin, ashok, asUser, dharun, insertFixtures } from "./fixtures";
 
 function tenantDoc(id: string) {

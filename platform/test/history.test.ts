@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService, ApiError } from "../src/service";
-import { POLICY_VERSION } from "../src/public";
-import { tenantContext, type TenantRef } from "../src/tenant";
+import { Store } from "../src/persistence/store";
+import { PlatformService, ApiError } from "../src/app/platform-service";
+import { POLICY_VERSION } from "../src/public/policy";
+import { tenantContext, type TenantRef } from "../src/tenancy/tenant";
 import { asUser, ashok, dharun, admin } from "./fixtures";
 import { orderConversation } from "../../shared/command-history";
 import type { Message, Session } from "../../shared/contracts";

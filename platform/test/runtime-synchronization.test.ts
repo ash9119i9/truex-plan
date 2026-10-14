@@ -14,8 +14,8 @@ import {
   runtimeWindowQuery,
   runtimeSyncOption,
 } from "../../shared/runtime-read-options";
-import { RuntimeTransport } from "../src/runtime-transport";
-import { publicEvent } from "../src/public";
+import { RuntimeTransport } from "../src/runtime/transport";
+import { publicEvent } from "../src/public/events";
 import {
   advanceSourceSync,
   beginSourceSync,

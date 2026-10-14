@@ -1,10 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import { approvalModesConfig } from "../src/features";
-import { publicApproval, publicSession, POLICY_VERSION } from "../src/public";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { approvalModesConfig } from "../src/core/features";
+import { publicApproval } from "../src/public/approvals";
+import { publicSession } from "../src/public/conversation";
+import { POLICY_VERSION } from "../src/public/policy";
 import { ALLOW_FOR_CHAT } from "../../shared/contracts";
 import type { ApprovalModesConfig } from "../../shared/contracts";
 import { admin, asUser, insertFixtures } from "./fixtures";

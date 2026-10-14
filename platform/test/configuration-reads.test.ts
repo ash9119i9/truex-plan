@@ -1,17 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers/promises";
-import { PlatformService } from "../src/service";
-import { Store } from "../src/store";
+import { PlatformService } from "../src/app/platform-service";
+import { Store } from "../src/persistence/store";
 import type {
   AgentDocument,
   McpDocument,
   ModelDocument,
-} from "../src/documents";
-import { mcpNetwork } from "../src/mcp";
+} from "../src/persistence/configuration-documents";
+import { mcpNetwork } from "../src/mcp/profiles";
 import "./fixtures";
-import { tenantContext } from "../src/tenant";
-import { userContext } from "../src/user";
+import { tenantContext } from "../src/tenancy/tenant";
+import { userContext } from "../src/identity/user";
 
 const model: ModelDocument = {
   _id: "model",
