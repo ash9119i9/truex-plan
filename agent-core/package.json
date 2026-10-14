@@ -9,7 +9,7 @@
     "start:agentcore": "node dist/agent-core/src/agentcore.js",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean && tsc",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test \"test/**/*.test.ts\""
   },
   "dependencies": {
     "ajv": "^8.17.1",
