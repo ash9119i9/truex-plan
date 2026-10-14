@@ -4,8 +4,8 @@ import { createServer, type Server } from "node:http";
 import { existsSync, mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { BusinessRuntime } from "../../src/business-runtime";
-import { ThreadManager } from "../../src/manager";
+import { BusinessRuntime } from "../../src/runtime/business-runtime";
+import { ThreadManager } from "../../src/threads/manager";
 const binary = resolve("../vendor/codex/codex-rs/target/debug/codex");
 
 const serverInstructions = "Use get_order for SAP order lookups.";

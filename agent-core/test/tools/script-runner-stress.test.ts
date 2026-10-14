@@ -25,7 +25,7 @@ import {
   type ScriptResult,
   type ScriptRunOptions,
   type SpawnFn,
-} from "../../src/script-runner";
+} from "../../src/tools/scripts";
 
 const IMAGE = "stress:1";
 const PYTHON = "/usr/bin/python3";

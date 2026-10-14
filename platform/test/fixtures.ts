@@ -1,6 +1,6 @@
-import { Store } from "../src/store";
-import { mcpNetwork } from "../src/mcp";
-import { userContext, type UserRef } from "../src/user";
+import { Store } from "../src/persistence/store";
+import { mcpNetwork } from "../src/mcp/profiles";
+import { userContext, type UserRef } from "../src/identity/user";
 
 // The plan's test people in tenant t1: two users and a tenant admin.
 export const ashok: UserRef = {

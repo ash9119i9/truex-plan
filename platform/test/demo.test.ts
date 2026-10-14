@@ -1,14 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryReplSet } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { createTenant } from "../src/admin";
-import { cacheMs, demoConfig, demoReadiness } from "../src/demo";
-import { revalidateMs, streamLimit } from "../src/streams";
-import { auditRetentionMs } from "../src/audit";
-import { emailKey } from "../src/auth";
-import { issueInvite } from "../src/invites";
-import { effectivePrivacy } from "../src/tenant";
+import { Store } from "../src/persistence/store";
+import { createTenant } from "../src/admin/admin";
+import { cacheMs, demoConfig, demoReadiness } from "../src/demo/demo";
+import { revalidateMs, streamLimit } from "../src/streaming/guards";
+import { auditRetentionMs } from "../src/tenancy/audit";
+import { emailKey } from "../src/identity/auth";
+import { issueInvite } from "../src/identity/invites";
+import { effectivePrivacy } from "../src/tenancy/tenant";
 import { startPlatform, type Claims, FRONTEND } from "./harness";
 
 const claims = (name: string, extra: Partial<Claims> = {}): Claims => ({

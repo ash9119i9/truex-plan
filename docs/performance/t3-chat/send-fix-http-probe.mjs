@@ -1,3 +1,4 @@
+import { resolvePlatformSource } from "../../../platform/scripts/source-paths.mjs";
 // Matched localhost HTTP evidence. No production .env, runtime binary, or provider.
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
@@ -5,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { resolve, join } from 'node:path';
+import { resolve, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
 
@@ -20,8 +21,7 @@ const { MongoClient } = require('mongodb');
 const express = coreRequire('express');
 const typescript = coreRequire('typescript');
 const executable = (statement) => typescript.transpileModule(statement, { compilerOptions: { target: typescript.ScriptTarget.ES2022, module: typescript.ModuleKind.CommonJS } }).outputText;
-const source = async (file) => readFile(join(root, file), 'utf8');
-const imported = async (file) => import(pathToFileURL(join(root, file)).href);
+const imported = async (file) => import(pathToFileURL(resolvePlatformSource(root, file)).href);
 const { PlatformService } = await imported('platform/src/service.ts');
 const { Store } = await imported('platform/src/store.ts');
 const { ThreadManager } = await imported('agent-core/src/manager.ts');
@@ -31,7 +31,12 @@ const { devUserResolver } = await imported('platform/src/user.ts');
 const { devTenantResolver } = await imported('platform/src/tenant.ts');
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const sources = {};
-for (const file of ['platform/src/service.ts', 'platform/src/store.ts', 'platform/src/runtime-transport.ts', 'platform/src/http.ts', 'platform/src/index.ts', 'agent-core/src/manager.ts', 'agent-core/src/index.ts', 'shared/runtime-read-options.ts']) sources[file] = sha256(await source(file));
+const coreRoutesPath = resolvePlatformSource(root, 'agent-core/src/http/routes/threads.ts', 'agent-core/src/index.ts');
+for (const file of ['platform/src/service.ts', 'platform/src/store.ts', 'platform/src/runtime-transport.ts', 'platform/src/http.ts', 'platform/src/index.ts', 'agent-core/src/manager.ts', 'agent-core/src/index.ts', 'shared/runtime-read-options.ts']) {
+  const actual = resolvePlatformSource(root, file);
+  sources[relative(root, actual)] = sha256(await readFile(actual, 'utf8'));
+}
+sources[relative(root, coreRoutesPath)] = sha256(await readFile(coreRoutesPath, 'utf8'));
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const temporary = await mkdtemp(join(tmpdir(), 'truex-send-http-'));
 let mongo, store, coreServer, apiServer, manager;
@@ -113,10 +118,11 @@ try {
     }
     next();
   });
-  const coreSource = await source('agent-core/src/index.ts');
+  const coreSource = await readFile(coreRoutesPath, 'utf8');
+  const coreRouteEnding = coreRoutesPath.endsWith('/http/routes/threads.ts') ? '\n  );' : '\n);';
   const mountedRouteHashes = {};
   for (const marker of ['app.post("/threads",', 'app.post("/threads/:id/resume",', 'app.post("/threads/:id/turns",']) {
-    const statement = extractRoute(coreSource, marker, '\n);');
+    const statement = extractRoute(coreSource, marker, coreRouteEnding);
     mountedRouteHashes[marker] = sha256(statement);
     new Function('app', 'manager', 'client', executable(statement))(core, manager, { spawnMs: 0, initializeMs: 0 });
   }
@@ -138,7 +144,7 @@ try {
   const env = { NODE_ENV: 'test', DEV_USER_ID: 'fixture-owner', DEV_USER_ROLE: 'user' };
   api.use('/api', tenantMiddleware(devTenantResolver(env), (id) => store.resolveTenant(id)));
   api.use('/api', userMiddleware(devUserResolver(env)));
-  const apiSource = await source('platform/src/index.ts');
+  const apiSource = await readFile(resolvePlatformSource(root, 'platform/src/conversations/routes.ts', 'platform/src/index.ts'), 'utf8');
   for (const marker of ['http.post(\n    "/api/sessions",', 'http.post(\n    "/api/sessions/:id/messages",']) {
     const statement = extractRoute(apiSource, marker, '\n  );');
     mountedRouteHashes[marker] = sha256(statement);

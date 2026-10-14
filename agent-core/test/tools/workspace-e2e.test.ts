@@ -8,13 +8,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
-import { BusinessRuntime } from "../../src/business-runtime";
-import { ThreadManager } from "../../src/manager";
+import { BusinessRuntime } from "../../src/runtime/business-runtime";
+import { ThreadManager } from "../../src/threads/manager";
 import type {
   ScriptResult,
   ScriptRunOptions,
   ScriptRunner,
-} from "../../src/script-runner";
+} from "../../src/tools/scripts";
 
 const binary = resolve("../vendor/codex/codex-rs/target/debug/codex");
 const skip = !existsSync(binary);

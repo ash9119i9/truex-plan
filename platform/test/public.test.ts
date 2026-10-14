@@ -1,14 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  publicEvent,
-  publicGoal,
-  publicSession,
-  PublicEventStream,
-  toolAction,
-  publicApproval,
-} from "../src/public";
-import { subAgentOptions } from "../src/service";
+import { publicEvent } from "../src/public/events";
+import { publicGoal, publicSession } from "../src/public/conversation";
+import { PublicEventStream } from "../src/streaming/event-stream";
+import { toolAction, publicApproval } from "../src/public/approvals";
+import { subAgentOptions } from "../src/app/platform-service";
 
 test("web, documents and collaboration emit public activity without raw arguments", () => {
   for (const type of [
@@ -243,7 +239,7 @@ test("goal projection keeps only public fields and normalizes status", () => {
 });
 test("relay keeps a healthy stream open when a frame exceeds the socket buffer", async (t) => {
   const { createServer } = await import("node:http");
-  const { relay } = await import("../src/public");
+  const { relay } = await import("../src/streaming/relay");
   const frame = (seq: number, text: string) =>
     new TextEncoder().encode(
       `id: g:${seq}\ndata: ${JSON.stringify({ type: "message.final", seq, cursor: `g:${seq}`, turnId: "turn", itemId: "answer", data: { text, messageIndex: 0 } })}\n\n`,

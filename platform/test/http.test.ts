@@ -7,7 +7,7 @@ import { createServer } from "node:net";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { Store } from "../src/store";
+import { Store } from "../src/persistence/store";
 import { insertFixtures } from "./fixtures";
 const root = resolve("..");
 async function port() {

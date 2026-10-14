@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import { newAgent } from "../src/agents";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { newAgent } from "../src/agents/agents";
 import { insertFixtures } from "./fixtures";
 
 test("agent validation rejects bad input and server-owned fields", () => {

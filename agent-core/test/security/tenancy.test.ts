@@ -14,17 +14,17 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { CodexClient } from "../../src/client";
-import { BusinessRuntime } from "../../src/business-runtime";
-import { ThreadManager } from "../../src/manager";
-import { sweepWorkspaces } from "../../src/workspace-sweeper";
+import { CodexClient } from "../../src/runtime/client";
+import { BusinessRuntime } from "../../src/runtime/business-runtime";
+import { ThreadManager } from "../../src/threads/manager";
+import { sweepWorkspaces } from "../../src/tools/workspace/sweeper";
 import {
   SKILL_LIMITS,
   skillInstructions,
   skillSet,
   tenantId,
   tenantWorkspaces,
-} from "../../src/tenancy";
+} from "../../src/runtime/tenancy";
 
 const DAY = 86_400_000;
 const skill = (name: string, extra: any = {}) => ({

@@ -7,8 +7,8 @@ import {
   type Claims,
   type Platform,
 } from "./harness";
-import { POLICY_VERSION } from "../src/public";
-import { hashToken } from "../src/auth";
+import { POLICY_VERSION } from "../src/public/policy";
+import { hashToken } from "../src/identity/auth";
 
 const claims = (name: string, extra: Partial<Claims> = {}): Claims => ({
   sub: `sub-${name}`,

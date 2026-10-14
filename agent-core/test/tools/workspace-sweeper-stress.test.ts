@@ -19,7 +19,7 @@ import { join } from "node:path";
 import {
   startWorkspaceSweeper,
   sweepWorkspaces,
-} from "../../src/workspace-sweeper";
+} from "../../src/tools/workspace/sweeper";
 
 const DAY = 86_400_000;
 const id = (n: number) =>

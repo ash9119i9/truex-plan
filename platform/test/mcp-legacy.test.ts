@@ -2,8 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { ObjectId } from "mongodb";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
 import { insertFixtures } from "./fixtures";
 
 test("legacy MCP attachments require migration instead of silently starting without tools", async (t) => {

@@ -14,7 +14,8 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { WorkspaceFiles, workspaceLimits } from "../../src/workspace-tools";
+import { WorkspaceFiles } from "../../src/tools/workspace/files";
+import { workspaceLimits } from "../../src/tools/workspace/specs";
 
 // Worst-case and hostile inputs for the workspace tools. Timings are logged so
 // docs/WORKSPACE_TOOLS_TESTING.md can quote them.

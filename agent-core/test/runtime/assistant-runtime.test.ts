@@ -4,8 +4,8 @@ import { createServer } from "node:http";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { BusinessRuntime } from "../../src/business-runtime";
-import { ThreadManager } from "../../src/manager";
+import { BusinessRuntime } from "../../src/runtime/business-runtime";
+import { ThreadManager } from "../../src/threads/manager";
 const binary = resolve("../vendor/codex/codex-rs/target/debug/codex");
 async function until(predicate: () => boolean) {
   const deadline = Date.now() + 15000;

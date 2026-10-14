@@ -12,7 +12,7 @@ const imported = async (file, name) => { const m = await import(pathToFileURL(fi
 const Manager = await imported(path.join(frozen, 'agent-core/src/manager.ts'), 'ThreadManager');
 const Business = await imported(path.join(frozen, 'agent-core/src/business-runtime.ts'), 'BusinessRuntime');
 const OldClient = await imported(path.join(frozen, 'agent-core/src/client.ts'), 'CodexClient');
-const Client = await imported(path.join(repo, 'agent-core/src/client.ts'), 'CodexClient');
+const Client = await imported(path.join(repo, 'agent-core/src/runtime/client.ts'), 'CodexClient');
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'truex-prepare-compat-'));
 const productionHome = path.join(temporary, 'business');
 const original = OldClient.prototype.request;

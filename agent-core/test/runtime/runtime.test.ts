@@ -1,13 +1,13 @@
-import { BusinessRuntime } from "../../src/business-runtime";
+import { BusinessRuntime } from "../../src/runtime/business-runtime";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { mkdtempSync, rmSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { CodexClient } from "../../src/client";
-import { readItems } from "../../src/history";
-import { ThreadManager } from "../../src/manager";
+import { CodexClient } from "../../src/runtime/client";
+import { readItems } from "../../src/runtime/history";
+import { ThreadManager } from "../../src/threads/manager";
 const binary = resolve("../vendor/codex/codex-rs/target/debug/codex");
 async function until(predicate: () => boolean, timeout = 15000) {
   const start = Date.now();

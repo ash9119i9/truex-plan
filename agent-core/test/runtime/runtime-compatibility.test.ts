@@ -3,51 +3,20 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as legacyClient from "../../src/client";
-import * as runtimeClient from "../../src/runtime/client";
-import * as legacyRuntime from "../../src/business-runtime";
-import * as runtime from "../../src/runtime/business-runtime";
-import * as legacyTenancy from "../../src/tenancy";
-import * as tenancy from "../../src/runtime/tenancy";
-import * as legacyHistory from "../../src/history";
-import * as history from "../../src/runtime/history";
-import * as legacySchema from "../../src/schema";
-import * as schema from "../../src/protocol/schema";
-import * as legacyRequests from "../../src/requests";
-import * as requests from "../../src/protocol/requests";
-import * as legacyTrace from "../../src/trace";
-import * as trace from "../../src/telemetry/trace";
-import * as legacyRedact from "../../src/redact";
-import * as redact from "../../src/telemetry/redact";
+import { CodexClient } from "../../src/runtime/client";
+import { BusinessRuntime } from "../../src/runtime/business-runtime";
 
-test("legacy imports preserve exports and constructor identity", () => {
-  for (const [legacy, current] of [
-    [legacyClient, runtimeClient],
-    [legacyRuntime, runtime],
-    [legacyTenancy, tenancy],
-    [legacyHistory, history],
-    [legacySchema, schema],
-    [legacyRequests, requests],
-    [legacyTrace, trace],
-    [legacyRedact, redact],
-  ]) {
-    assert.deepEqual(Object.keys(legacy).sort(), Object.keys(current).sort());
-    for (const key of Object.keys(legacy))
-      assert.equal(
-        (legacy as Record<string, unknown>)[key],
-        (current as Record<string, unknown>)[key],
-      );
-  }
+test("business runtime inherits the canonical client prototype", () => {
   assert.equal(
-    Object.getPrototypeOf(runtime.BusinessRuntime.prototype),
-    legacyClient.CodexClient.prototype,
+    Object.getPrototypeOf(BusinessRuntime.prototype),
+    CodexClient.prototype,
   );
 });
 
 test("missing, invalid and corrupt markers preserve availability and resume errors", async (t) => {
   const home = mkdtempSync(join(tmpdir(), "runtime-compatibility-"));
   t.after(() => rmSync(home, { recursive: true, force: true }));
-  const client = new legacyRuntime.BusinessRuntime("unused-codex", home);
+  const client = new BusinessRuntime("unused-codex", home);
   mkdirSync(join(home, "business-threads"));
   writeFileSync(join(home, "business-threads", "corrupt.json"), "{");
   for (const id of ["missing", "../invalid", "corrupt"]) {

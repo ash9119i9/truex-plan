@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ApiError } from "../src/errors";
+import { ApiError } from "../src/core/errors";
 import { httpError, runtimeError } from "../../shared/errors";
-import { publicEvent } from "../src/public";
-import { PlatformService } from "../src/service";
+import { publicEvent } from "../src/public/events";
+import { PlatformService } from "../src/app/platform-service";
 
 test("expected errors preserve actionable detail at both HTTP boundaries", () => {
   for (const layer of ["platform", "agent-core"] as const) {

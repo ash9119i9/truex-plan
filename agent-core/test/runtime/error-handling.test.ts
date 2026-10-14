@@ -4,10 +4,10 @@ import { EventEmitter } from "node:events";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CodexClient, rpcError } from "../../src/client";
+import { CodexClient, rpcError } from "../../src/runtime/client";
 import { RpcError } from "../../src/errors";
-import { readItems } from "../../src/history";
-import { ThreadManager } from "../../src/manager";
+import { readItems } from "../../src/runtime/history";
+import { ThreadManager } from "../../src/threads/manager";
 // A stand-in app-server: answers initialize, then acts on test methods.
 const fakeCodex = `#!/usr/bin/env node
 process.stderr.write("booting with Bearer sk-secret-123\\n");

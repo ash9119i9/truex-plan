@@ -7,7 +7,7 @@ import {
   sectionLimit,
   stepLimit,
   stepOf,
-} from "../../src/trace";
+} from "../../src/telemetry/trace";
 
 const main = { agent: "main", agentThreadId: "thread_1" };
 const helper = { agent: "Scout", agentThreadId: "child_1" };

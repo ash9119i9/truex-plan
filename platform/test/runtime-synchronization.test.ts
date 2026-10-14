@@ -8,14 +8,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sdkStreamMixin } from "@smithy/core/serde";
-import { ThreadManager } from "../../agent-core/src/manager";
-import { createAgentCoreApp } from "../../agent-core/src/agentcore";
+import { ThreadManager } from "../../agent-core/src/threads/manager";
+import { createAgentCoreApp } from "../../agent-core/src/agentcore/app";
 import {
   runtimeWindowQuery,
   runtimeSyncOption,
 } from "../../shared/runtime-read-options";
-import { RuntimeTransport } from "../src/runtime-transport";
-import { publicEvent } from "../src/public";
+import { RuntimeTransport } from "../src/runtime/transport";
+import { publicEvent } from "../src/public/events";
 import {
   advanceSourceSync,
   beginSourceSync,

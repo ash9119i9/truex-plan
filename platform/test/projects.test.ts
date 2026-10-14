@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
+import { Store } from "../src/persistence/store";
 import { insertFixtures } from "./fixtures";
-import { PlatformService } from "../src/service";
-import { publicSession, POLICY_VERSION } from "../src/public";
+import { PlatformService } from "../src/app/platform-service";
+import { publicSession } from "../src/public/conversation";
+import { POLICY_VERSION } from "../src/public/policy";
 import type { Session } from "../../shared/contracts";
 
 const HOST = "http://core";

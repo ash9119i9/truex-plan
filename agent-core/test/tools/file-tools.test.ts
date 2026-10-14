@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { unzipSync, strFromU8 } from "fflate";
-import { ConversationFiles } from "../../src/file-tools";
+import { ConversationFiles } from "../../src/tools/documents/files";
 
 test("visualizations retain source, revisions and fork history without crossing conversation boundaries", async (t) => {
   const files = await fixture(t);

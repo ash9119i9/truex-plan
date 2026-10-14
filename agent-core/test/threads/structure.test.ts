@@ -6,10 +6,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Response } from "express";
 import { ThreadManager } from "../../src/threads/manager";
-import * as managerExports from "../../src/threads/manager";
-import * as legacyManagerExports from "../../src/manager";
-import * as approvalExports from "../../src/threads/approval-policy";
-import * as legacyApprovalExports from "../../src/approval-modes";
 
 class Fake extends EventEmitter {
   calls: string[] = [];
@@ -128,18 +124,4 @@ test("completion before the start response keeps the thread idle without a later
     events.some((event) => event.data?.code === "TURN_STALLED"),
     false,
   );
-});
-
-test("manager and approval policy legacy imports preserve exact export identity", () => {
-  for (const [legacy, current] of [
-    [legacyManagerExports, managerExports],
-    [legacyApprovalExports, approvalExports],
-  ]) {
-    assert.deepEqual(Object.keys(legacy).sort(), Object.keys(current).sort());
-    for (const key of Object.keys(legacy))
-      assert.equal(
-        (legacy as Record<string, unknown>)[key],
-        (current as Record<string, unknown>)[key],
-      );
-  }
 });

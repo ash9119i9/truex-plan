@@ -3,15 +3,10 @@ import assert from "node:assert/strict";
 import { createCipheriv, randomBytes } from "node:crypto";
 import { MongoMemoryServer } from "mongodb-memory-server";
 import { ObjectId } from "mongodb";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import {
-  checkMcpUrl,
-  mcpConfig,
-  mcpProfileUpdate,
-  newMcpProfile,
-} from "../src/mcp";
-import { decryptSecret } from "../src/secrets";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { checkMcpUrl, mcpConfig, mcpProfileUpdate, newMcpProfile, } from "../src/mcp/profiles";
+import { decryptSecret } from "../src/mcp/secrets";
 import {
   admin,
   asUser,

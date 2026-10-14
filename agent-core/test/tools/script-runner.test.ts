@@ -12,7 +12,7 @@ import {
   scriptTools,
   type ScriptRunOptions,
   type SpawnFn,
-} from "../../src/script-runner";
+} from "../../src/tools/scripts";
 
 async function workspace(t: any) {
   const root = await mkdtemp(join(tmpdir(), "script-runner-"));

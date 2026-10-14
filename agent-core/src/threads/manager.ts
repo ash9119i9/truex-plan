@@ -48,7 +48,6 @@ import {
   watch,
   unwatch,
 } from "./turn-tracker";
-export { goalTokenDelta } from "./turn-tracker";
 const defaultStallMs = 15 * 60_000;
 const stalledMessage =
   "The assistant stopped responding, so this response was ended. Check the conversation for a partial answer and send your message again.";

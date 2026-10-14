@@ -36,7 +36,7 @@ The executable paths remain `dist/agent-core/src/index.js` and `dist/agent-core/
 | Script runner and script tool adapter                                            | `tools/scripts.ts`                                                      |
 | Trace representation and secret redaction                                        | `telemetry/`                                                            |
 
-The remaining root-level modules such as `manager.ts`, `client.ts`, `business-runtime.ts` and `file-tools.ts` are compatibility reexports. Existing platform scripts/tests can keep using those paths. New implementation imports use the owning module directly. Reexports preserve the exact same constructor objects: `instanceof BusinessRuntime` and existing prototype interception must continue to work. Do not replace these facades with wrapper subclasses or copied implementations.
+Implementation imports use the owning module directly. The former root-level compatibility reexports have been removed after migrating repository consumers. `src/index.ts` and `src/agentcore.ts` remain executable entry points; `src/errors.ts` owns the shared HTTP/runtime error classes. Runtime consumers use the same constructor objects, so `instanceof BusinessRuntime` and existing prototype interception continue to work.
 
 ## Request and event flow
 
@@ -87,3 +87,5 @@ Tests are grouped under `test/{agentcore,http,runtime,security,telemetry,threads
 Runtime integration tests use the project-pinned binary with local model/MCP fixtures and temporary homes. A missing binary can skip those tests; report skips separately from passes. The structural characterization tests exercise durable storage failure and completion before the start response, and also pass against the original implementation.
 
 This restructuring preserves the existing APIs, logic, policy, limits, persisted formats and deployment commands. Optimization and changes to runtime behavior are separate work.
+
+The [combined restructuring report](../verification-reports/combined-restructure-2026-10-14.md) records platform integration, canonical import cleanup, regression results and existing check failures.

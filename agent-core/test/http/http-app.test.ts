@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { createCoreApp } from "../../src/http/app";
 import type { CoreDependencies } from "../../src/http/dependencies";
 import { HttpError } from "../../src/errors";
-import { Redactor } from "../../src/redact";
+import { Redactor } from "../../src/telemetry/redact";
 
 async function fixture(t: TestContext) {
   const home = mkdtempSync(join(tmpdir(), "truex-http-"));

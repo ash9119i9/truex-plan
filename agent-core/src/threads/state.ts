@@ -32,7 +32,7 @@ export interface ModeState {
   // server -> tool -> read-only, from mcpServerStatus/list.
   tools?: Promise<ToolIndex>;
 }
-export interface Clock {
+interface Clock {
   start: number;
   accept: number | null;
   first: number | null;
@@ -104,7 +104,7 @@ export interface Child {
   nameTries?: number;
 }
 
-export interface GoalTokens {
+interface GoalTokens {
   key: string | null;
   observed: number;
   turns: string[];

@@ -1,6 +1,6 @@
 # Truex agent platform
 
-A TypeScript platform around a **project-local, source-pinned Codex app-server**. Next.js frontend, NestJS platform, Express adapter, MongoDB persistence and SSE streaming. No authentication or multi-tenancy is implemented; use an internal development environment.
+A TypeScript platform around a **project-local, source-pinned Codex app-server**. Next.js frontend, NestJS platform, Express adapter, MongoDB persistence and SSE streaming. The platform supports POC/development identity and Google authentication with tenant-scoped access. See the [platform source map and debugging guide](platform/README.md) for module ownership, request flows and verification commands.
 
 ## Truex runtime
 

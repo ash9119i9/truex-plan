@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CodexClient } from "../../src/client";
+import { CodexClient } from "../../src/runtime/client";
 import {
   BusinessRuntime,
   defaultPersona,
   personaOptions,
-} from "../../src/business-runtime";
+} from "../../src/runtime/business-runtime";
 
 // Captures what the business runtime sends to Codex without starting it.
 function runtime(t: any) {

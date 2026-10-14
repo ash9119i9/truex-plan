@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { Redactor } from "../../src/redact";
+import { Redactor } from "../../src/telemetry/redact";
 
 test("flags under sensitive-looking keys survive; values that can hold secrets do not", () => {
   const redactor = new Redactor();

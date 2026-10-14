@@ -4,9 +4,9 @@ import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { MongoClient, ObjectId } from "mongodb";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { tenantDbName } from "../src/tenant";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
+import { tenantDbName } from "../src/tenancy/tenant";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
 import { insertFixtures } from "./fixtures";
 
 const script = resolve(__dirname, "../../scripts/migrate-mcp-scopes.mjs");

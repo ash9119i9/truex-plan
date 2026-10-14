@@ -4,9 +4,9 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { startPlatform, type Platform } from "./harness";
-import { defaultSignupSettings } from "../src/google";
-import { workspaceInviteView } from "../src/workspaces";
-import { issueInvite } from "../src/invites";
+import { defaultSignupSettings } from "../src/identity/google";
+import { workspaceInviteView } from "../src/identity/workspaces";
+import { issueInvite } from "../src/identity/invites";
 
 const exec = promisify(execFile);
 async function provision(p: Platform, args: string[] = []) {

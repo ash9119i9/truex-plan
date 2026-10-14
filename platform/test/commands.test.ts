@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { PlatformService, ApiError } from "../src/service";
+import { Store } from "../src/persistence/store";
+import { PlatformService, ApiError } from "../src/app/platform-service";
 import { orderConversation } from "../../shared/command-history";
 import type { Message } from "../../shared/contracts";
 

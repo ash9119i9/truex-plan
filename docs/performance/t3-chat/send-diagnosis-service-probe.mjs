@@ -1,3 +1,4 @@
+import { resolvePlatformSource } from "../../../platform/scripts/source-paths.mjs";
 // Read-only production source; isolated actual PlatformService/Store with fake runtime/DNS.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -9,10 +10,10 @@ const root = resolve(new URL('../../../', import.meta.url).pathname);
 const require = createRequire(resolve(root, 'platform/package.json'));
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { MongoClient } = require('mongodb');
-const { PlatformService } = await import(pathToFileURL(resolve(root, 'platform/src/service.ts')));
-const { Store } = await import(pathToFileURL(resolve(root, 'platform/src/store.ts')));
+const { PlatformService } = await import(pathToFileURL(resolvePlatformSource(root, 'platform/src/service.ts')));
+const { Store } = await import(pathToFileURL(resolvePlatformSource(root, 'platform/src/store.ts')));
 const { insertFixtures } = await import(pathToFileURL(resolve(root, 'platform/test/fixtures.ts')));
-const { mcpNetwork } = await import(pathToFileURL(resolve(root, 'platform/src/mcp.ts')));
+const { mcpNetwork } = await import(pathToFileURL(resolvePlatformSource(root, 'platform/src/mcp.ts')));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const mongo = await MongoMemoryServer.create();
 const store = new Store(mongo.getUri(), 'send_diagnosis', 'send_diagnosis');

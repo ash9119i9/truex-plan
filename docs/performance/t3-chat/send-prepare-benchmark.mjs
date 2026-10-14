@@ -6,11 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { performance } from 'node:perf_hooks';
+import { resolvePlatformSource } from '../../../platform/scripts/source-paths.mjs';
 
 const repo = path.resolve(process.argv[2] ?? '.');
 process.env.PROJECT_ROOT = repo;
 const evidence = path.join(repo, 'docs/performance/t3-chat');
-const sourcePath = path.join(repo, 'agent-core/src/manager.ts');
+const sourcePath = resolvePlatformSource(repo, 'agent-core/src/manager.ts');
+const baselineSourcePath = path.join(repo, 'agent-core/src/manager.ts');
 const frozenPath = path.join(evidence, 'send-prepare-manager-baseline.txt');
 const hash = source => createHash('sha256').update(source).digest('hex');
 if (process.argv.includes('--freeze')) {
@@ -23,7 +25,9 @@ if (process.argv.includes('--freeze')) {
   const after = await readFile(sourcePath, 'utf8');
   const baselinePath = path.join(temporary, 'manager-baseline.ts');
   const rewritten = before.replace(/(from\s+)(["'])(\.{1,2}\/[^"']+)\2/g, (_m, prefix, quote, relative) => {
-    const absolute = path.resolve(path.dirname(sourcePath), relative);
+    const requested = path.resolve(path.dirname(baselineSourcePath), relative);
+    const file = /\.(?:ts|json)$/.test(requested) ? requested : `${requested}.ts`;
+    const absolute = resolvePlatformSource(repo, path.relative(repo, file));
     return `${prefix}${quote}${/\.(?:ts|json)$/.test(absolute) ? absolute : `${absolute}.ts`}${quote}`;
   });
   await writeFile(baselinePath, rewritten);

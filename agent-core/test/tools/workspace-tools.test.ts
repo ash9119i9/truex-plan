@@ -11,11 +11,11 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { WorkspaceFiles } from "../../src/tools/workspace/files";
 import {
-  WorkspaceFiles,
   workspaceLimits,
   workspaceTools,
-} from "../../src/workspace-tools";
+} from "../../src/tools/workspace/specs";
 
 async function fixture(t: any) {
   const base = await mkdtemp(join(tmpdir(), "truex-workspace-"));

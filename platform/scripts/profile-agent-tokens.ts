@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { randomUUID, randomBytes } from "node:crypto";
 import dotenv from "dotenv";
-import { Store } from "../src/store";
-import { PlatformService } from "../src/service";
-import { resolveRoute } from "../src/model-route";
+import { Store } from "../src/persistence/store";
+import { PlatformService } from "../src/app/platform-service";
+import { resolveRoute } from "../src/runtime/model-route";
 import {
   documentStore,
   readDocuments,
@@ -19,8 +19,8 @@ import {
   isToolQuestion,
   parseToolQuestion,
   toolCandidates,
-} from "../../agent-core/src/approval-modes";
-import { Redactor } from "../../agent-core/src/redact";
+} from "../../agent-core/src/threads/approval-policy";
+import { Redactor } from "../../agent-core/src/telemetry/redact";
 import { maskText } from "../../shared/privacy";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

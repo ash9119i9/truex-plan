@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MongoMemoryServer } from "mongodb-memory-server";
-import { Store } from "../src/store";
-import { summariseTraces, sessionTraces } from "../src/traces";
+import { Store } from "../src/persistence/store";
+import { summariseTraces, sessionTraces } from "../src/conversations/traces";
 import type { DomainEvent, TurnTrace } from "../../shared/contracts";
 
 const usage = (input: number, output: number) => ({

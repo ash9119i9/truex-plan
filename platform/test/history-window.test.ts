@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { historyAnchor, historyWindow } from "../src/history-window";
 import {
-  publicSnapshot,
-  recentSnapshot,
-  PublicEventStream,
-} from "../src/public";
+  historyAnchor,
+  historyWindow,
+} from "../src/conversations/history-window";
+import { publicSnapshot, recentSnapshot } from "../src/public/conversation";
+import { PublicEventStream } from "../src/streaming/event-stream";
 import { orderConversation } from "../../shared/command-history";
 import type { Message } from "../../shared/contracts";
 

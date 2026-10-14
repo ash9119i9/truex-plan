@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ThreadManager } from "../../src/manager";
+import { ThreadManager } from "../../src/threads/manager";
 
 class Runtime extends EventEmitter {
   calls: { method: string; params: any }[] = [];

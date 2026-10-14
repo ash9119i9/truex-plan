@@ -4,8 +4,8 @@ import { EventEmitter } from "node:events";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ThreadManager } from "../../src/manager";
-import { validateResponse } from "../../src/requests";
+import { ThreadManager } from "../../src/threads/manager";
+import { validateResponse } from "../../src/protocol/requests";
 import {
   approvalMode,
   findTool,
@@ -14,7 +14,7 @@ import {
   parseToolQuestion,
   readOnlyName,
   withChatGrant,
-} from "../../src/approval-modes";
+} from "../../src/threads/approval-policy";
 import { ALLOW_FOR_CHAT } from "../../../shared/contracts";
 const RUI = "item/tool/requestUserInput";
 class Fake extends EventEmitter {

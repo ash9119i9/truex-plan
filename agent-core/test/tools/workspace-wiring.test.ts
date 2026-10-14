@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CodexClient } from "../../src/client";
-import { BusinessRuntime } from "../../src/business-runtime";
-import type { ScriptRunner } from "../../src/script-runner";
+import { CodexClient } from "../../src/runtime/client";
+import { BusinessRuntime } from "../../src/runtime/business-runtime";
+import type { ScriptRunner } from "../../src/tools/scripts";
 
 // Captures what the business runtime sends to Codex without starting it.
 function runtime(t: any, runner?: ScriptRunner) {

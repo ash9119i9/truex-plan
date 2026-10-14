@@ -4,8 +4,12 @@ import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ThreadManager } from "../../src/manager";
-import { AUTO_NOTE, defaults, validateResponse } from "../../src/requests";
+import { ThreadManager } from "../../src/threads/manager";
+import {
+  AUTO_NOTE,
+  defaults,
+  validateResponse,
+} from "../../src/protocol/requests";
 class Fake extends EventEmitter {
   calls: { method: string; params: any }[] = [];
   replies: any[] = [];
