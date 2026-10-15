@@ -89,6 +89,7 @@ function harness(options: Record<string, any> = {}) {
     following: { current: false },
     generation: { current: 1 },
     sessionRef: { current: null },
+    freshSession: { current: null },
     draftModeRef: { current: "readOnly" },
     composer: { current: { focus() {} } },
     commandAttempt: { current: null },
@@ -203,6 +204,77 @@ function harness(options: Record<string, any> = {}) {
   );
   return { context, calls, payloads };
 }
+
+test("first send submits its message with creation and consumes the receipt without a second POST", async () => {
+  const { context: c, calls, payloads } = harness();
+  c.api = async (path: string, payload: any) => {
+    calls.push(path);
+    payloads.push(payload);
+    return {
+      _id: "session-a",
+      approvalMode: "readOnly",
+      initialMessage: {
+        clientId: payload.initialMessage?.clientId,
+        result: { turnId: "first-turn", steer: false },
+      },
+    };
+  };
+  await c.send();
+  assert.deepEqual(calls, ["/api/sessions"]);
+  assert.equal(payloads[0].initialMessage.text, "A");
+  assert.equal(payloads[0].initialMessage.clientId, "client-a");
+  assert.equal(c.sessionRef.current._id, "session-a");
+  assert.equal(c.entries[0].delivery, "accepted");
+  assert.equal(c.entries[0].turnId, "first-turn");
+  assert.equal(c.sessionRef.current.initialMessage, undefined);
+  assert.equal(c.freshSession.current, "session-a");
+  c.setText("Next");
+  await c.send();
+  assert.deepEqual(calls, ["/api/sessions", "send"]);
+});
+
+test("failed first-message receipt keeps the created session and never sends again", async () => {
+  const { context: c, calls } = harness();
+  c.api = async (path: string) => {
+    calls.push(path);
+    return {
+      _id: "session-a",
+      approvalMode: "readOnly",
+      initialMessage: {
+        clientId: "client-a",
+        error: {
+          status: 504,
+          error: "Check before retrying",
+          code: "OWNER_TIMEOUT",
+        },
+      },
+    };
+  };
+  await c.send();
+  assert.deepEqual(calls, ["/api/sessions"]);
+  assert.equal(c.sessionRef.current._id, "session-a");
+  assert.equal(c.entries[0].delivery, "unknown");
+  assert.equal(c.error, "Check before retrying");
+});
+
+test("a mismatched first-message receipt cannot trigger another dispatch", async () => {
+  const { context: c, calls } = harness();
+  c.api = async (path: string) => {
+    calls.push(path);
+    return {
+      _id: "session-a",
+      approvalMode: "readOnly",
+      initialMessage: {
+        clientId: "other-submission",
+        result: { turnId: "turn-a", steer: false },
+      },
+    };
+  };
+  await c.send();
+  assert.deepEqual(calls, ["/api/sessions"]);
+  assert.equal(c.entries[0].delivery, "unknown");
+  assert.match(c.error, /does not match/);
+});
 
 test("first message and retry cannot run after approval confirmation fails", async () => {
   const { context: c, calls } = harness();

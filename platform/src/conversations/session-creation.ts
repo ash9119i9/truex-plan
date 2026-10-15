@@ -1,9 +1,37 @@
 import type {
   ApprovalMode,
   ApprovalModesConfig,
+  InitialMessage,
 } from "../../../shared/contracts";
+import { messageTextError } from "../../../shared/message-input";
 import { approvalMode } from "../core/features";
 import { ApiError } from "../core/errors";
+
+export function messageInput(text: unknown, clientId: unknown): InitialMessage {
+  const inputError = messageTextError(text);
+  if (inputError) throw new ApiError(400, inputError, "INVALID_INPUT");
+  if (typeof clientId !== "string" || !/^[-\w]{1,100}$/.test(clientId))
+    throw new ApiError(
+      400,
+      "A valid clientId is required for idempotency",
+      "INVALID_INPUT",
+    );
+  return { text: text as string, clientId };
+}
+
+export function initialMessageInput(
+  value: unknown,
+): InitialMessage | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new ApiError(
+      400,
+      "A valid initialMessage is required",
+      "INVALID_INPUT",
+    );
+  const input = value as Record<string, unknown>;
+  return messageInput(input.text, input.clientId);
+}
 
 export type CreationApprovalOptions = {
   approvalMode?: ApprovalMode;

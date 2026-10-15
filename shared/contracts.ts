@@ -402,6 +402,36 @@ export type PublicSession = Pick<
   | "approvalMode"
 >;
 
+export interface InitialMessage {
+  text: string;
+  clientId: string;
+}
+
+export interface MessageAcceptance {
+  turnId: string;
+  steer: boolean;
+  duplicate?: boolean;
+  platformRoundTripMs?: number;
+  platformTiming?: MessageAcceptanceTiming;
+}
+
+// Creation succeeds independently of first-message delivery. An error receipt
+// keeps the created conversation available without inviting another dispatch.
+export type InitialMessageReceipt = { clientId: string } & (
+  | { result: MessageAcceptance }
+  | {
+      error: {
+        status: number;
+        error: string;
+        code: string;
+        requestId?: string;
+      };
+    }
+);
+export type SessionCreationResult = PublicSession & {
+  initialMessage?: InitialMessageReceipt;
+};
+
 // A named folder that groups sessions. A session belongs to at most one.
 export interface Project {
   _id: string; // "proj_" + uuid

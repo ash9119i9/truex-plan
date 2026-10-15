@@ -2,6 +2,7 @@
 // wrappers so the sidebar component stays declarative and testable.
 import type {
   ApprovalMode,
+  InitialMessage,
   Project,
   PublicSession,
 } from "../../shared/contracts";
@@ -72,17 +73,20 @@ export function createSessionBody<T>(
   subAgents: T,
   projectId?: string | null,
   approvalMode?: ApprovalMode,
+  initialMessage?: InitialMessage,
 ): {
   agentId: string;
   subAgents: T;
   projectId?: string;
   approvalMode?: ApprovalMode;
+  initialMessage?: InitialMessage;
 } {
   return {
     agentId,
     subAgents,
     ...(projectId ? { projectId } : {}),
     ...(approvalMode ? { approvalMode } : {}),
+    ...(initialMessage ? { initialMessage } : {}),
   };
 }
 

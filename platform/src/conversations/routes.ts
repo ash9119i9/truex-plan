@@ -23,6 +23,7 @@ export function registerSessionCollectionRoutes(
             req.body.subAgents,
             req.body.projectId,
             req.body.approvalMode,
+            req.body.initialMessage,
           ),
         ),
     ),

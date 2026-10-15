@@ -46,6 +46,7 @@ export function registerEventRoutes(
   http.get(
     "/api/sessions/:id/events",
     route(async (req, res) => {
+      console.log("Inside streaming");
       if (
         (req.query.window !== undefined && req.query.window !== "1") ||
         (req.query.sync !== undefined && req.query.sync !== "v1")

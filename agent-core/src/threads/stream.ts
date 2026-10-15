@@ -24,6 +24,23 @@ export function frame(event: DomainEvent) {
 export class ThreadStream {
   constructor(private readonly view: StreamView) {}
 
+  /**
+   * Opens an SSE connection for an existing thread. Sends its current snapshot
+   * or retained events first, then registers the response for future events
+   * published by ThreadEvents.emit(). Earlier generated text comes from the
+   * thread's stored projection; subscribing does not start a new Codex turn.
+   *
+   * @param t Thread state containing messages, replay events and subscribers.
+   * @param res Express response kept open to write SSE frames to the caller.
+   * @param cursor Optional last applied "generation:sequence" cursor for replay.
+   * @param options Read settings: window selects recent turns in snapshots;
+   * sync: "v1" uses snapshot/replay plus sync.completed when sourceCovered is true.
+   * @returns Nothing (void). Output is written to res, not returned as JSON.
+   * Returns after initial delivery and listener setup, without waiting for the
+   * turn to finish. Heartbeats run every 15 seconds; closing the connection
+   * removes its subscriber and timer. Excess buffered output closes the stream.
+   * Keep initial delivery and subscriber registration synchronous to avoid gaps.
+   */
   subscribe(
     t: Thread,
     res: Response,

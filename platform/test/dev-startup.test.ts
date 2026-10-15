@@ -64,6 +64,8 @@ for (const scenario of [
   "no-gateway",
   "cancel",
   "backend-exit",
+  "occupied-gateway",
+  "stubborn-descendant",
 ]) {
   const remote = scenario === "remote",
     quoted = scenario === "quoted";
@@ -78,6 +80,8 @@ for (const scenario of [
     const launcher =
       process.env.TRUEX_DEV_SCRIPT_UNDER_TEST || resolve("../scripts/dev.mjs");
     const marker = resolve(root, "frontend-result.json");
+    const descendantPort = await freePort();
+    const occupied = createServer();
     let child: ReturnType<typeof spawn> | undefined;
     try {
       for (const [name, port] of Object.entries(ports)) {
@@ -97,7 +101,7 @@ for (const scenario of [
             ? `PORT="${port}"\nHOST=127.0.0.1 # local listener\n`
             : `PORT=${port}\n`,
         );
-        const script =
+        let script =
           name === "platform" && scenario === "cancel"
             ? "setInterval(() => {}, 1000);"
             : name === "platform" && scenario === "backend-exit"
@@ -105,8 +109,16 @@ for (const scenario of [
               : name === "frontend"
                 ? `import{writeFileSync}from'node:fs';import{createServer}from'node:http';let status=0,gatewayStatus=0;try{status=(await fetch('http://127.0.0.1:${ports.platform}/api/agents')).status;gatewayStatus=(await fetch('http://127.0.0.1:${ports["model-gateway"]}/')).status}catch{}writeFileSync(${JSON.stringify(marker)},JSON.stringify({status,gatewayStatus,port:process.env.PORT}));if(status!==200)process.exit(1);createServer((q,r)=>r.end('frontend')).listen(Number(process.env.PORT)||${port},'127.0.0.1');`
                 : `import{createServer}from'node:http';setTimeout(()=>createServer((q,r)=>r.end('[]')).listen(${port},'127.0.0.1'),${name === "platform" ? 1500 : 0});`;
+        if (scenario === "stubborn-descendant" && name === "frontend") {
+          const descendant = `process.on('SIGTERM',()=>{});require('node:net').createServer().listen(${descendantPort},'127.0.0.1');`;
+          script += `process.on('SIGTERM',()=>{});const {spawn}=await import('node:child_process');spawn(process.execPath,['-e',${JSON.stringify(descendant)}],{stdio:'inherit'});`;
+        }
         await writeFile(resolve(dir, "index.mjs"), script);
       }
+      if (scenario === "occupied-gateway")
+        await new Promise<void>((done) =>
+          occupied.listen(ports["model-gateway"], "127.0.0.1", done),
+        );
       const environment = {
         ...process.env,
         AGENTCORE_RUNTIME_ARN: remote ? "fixture-runtime" : "",
@@ -128,6 +140,17 @@ for (const scenario of [
       child.stderr?.on("data", (data) => {
         logs += data;
       });
+      if (scenario === "occupied-gateway") {
+        // A failed preflight must happen before starting any of the services.
+        await Promise.race([exited, pause(3000)]);
+        assert.notEqual(child.exitCode, null, logs);
+        assert.notEqual(child.exitCode, 0, logs);
+        assert.match(logs, /model-gateway: port .* is in use/);
+        await assert.rejects(readFile(marker), { code: "ENOENT" });
+        for (const name of ["platform", "agent-core", "frontend"] as const)
+          await assert.rejects(waitForPort(ports[name], { timeoutMs: 100 }));
+        return;
+      }
       if (scenario === "cancel" || scenario === "backend-exit") {
         if (scenario === "cancel") {
           await waitForPort(ports["agent-core"], { timeoutMs: 3000 });
@@ -171,6 +194,12 @@ for (const scenario of [
           waitForPort(ports["agent-core"], { timeoutMs: 100 }),
           /did not start/,
         );
+      if (scenario === "stubborn-descendant")
+        await waitForPort(descendantPort, { timeoutMs: 3000 });
+      child.kill("SIGINT");
+      assert.equal(await exited, 0);
+      for (const port of [...Object.values(ports), descendantPort])
+        await assert.rejects(waitForPort(port, { timeoutMs: 100 }));
     } finally {
       if (child && child.exitCode === null && child.signalCode === null) {
         const exited = new Promise<void>((done) =>
@@ -183,6 +212,7 @@ for (const scenario of [
           await exited;
         }
       }
+      await new Promise<void>((done) => occupied.close(() => done()));
       await rm(root, { recursive: true, force: true });
     }
   });

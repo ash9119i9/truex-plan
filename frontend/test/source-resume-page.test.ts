@@ -17,6 +17,7 @@ import {
   SynchronizationWaiter,
 } from "../lib/source-sync.ts";
 import { ApiRequestError } from "../lib/api.ts";
+import { coalesceChatEvents } from "../lib/chat-batch.ts";
 
 // Execute the actual page callbacks, including cache ownership and the recovery
 // return value. The stream boundary uses the real source reducer; no provider,
@@ -39,9 +40,16 @@ const names = new Set([
   "recover",
   "requestSourceHandoff",
   "open",
+  "streamEffect",
 ]);
 const handlers: string[] = [];
 function collect(node: ts.Node) {
+  if (
+    ts.isCallExpression(node) &&
+    node.expression.getText(ast) === "useEffect" &&
+    node.arguments[0]?.getText(ast).includes("transport.subscribe(")
+  )
+    handlers.push(`const streamEffect = ${node.arguments[0].getText(ast)};`);
   if (ts.isVariableDeclaration(node) && names.has(node.name.getText(ast)))
     handlers.push(
       `const ${node.name.getText(ast)} = ${node.initializer!.getText(ast)};`,
@@ -66,6 +74,7 @@ function harness(recoveryError: string | null = null) {
     useCallback: (fn: any) => fn,
     ApiRequestError,
     beginSourceSync,
+    advanceSourceSync,
     overlaySourceEntries,
     applyChatEvent,
     mergeHistoryWindow,
@@ -92,6 +101,7 @@ function harness(recoveryError: string | null = null) {
     recoveryStarts: ref(new WeakMap()),
     preparation: ref({ reset() {} }),
     openingSession: ref(false),
+    freshSession: ref(null),
     timelineSettling: ref(false),
     expandedHistory: ref(false),
     olderFlight: ref(false),
@@ -110,6 +120,18 @@ function harness(recoveryError: string | null = null) {
     warnFailure() {},
     rehydrate: (old: any) => old,
     applyObservabilityEvent: (old: any) => old,
+    applySubAgentEvent: (old: any) => old,
+    applyPlanEvent: (old: any) => old,
+    coalesceChatEvents,
+    follow: { reset() {}, onEvent() {} },
+    actions: { recheck() {} },
+    syncSessionGoal() {},
+    transport: {
+      subscribe(_id: string, _event: unknown, _status: unknown, handlers: any) {
+        c.streamHandlers = handlers;
+        return () => {};
+      },
+    },
     reportError: (e: Error) => {
       c.error = e.message;
     },
@@ -302,4 +324,57 @@ test("an independent source pair does not paint orphan AI rows before durable hi
   assert.equal(entriesWrites[0].length, 0);
   assert.equal(c.entries[0].role, "user");
   assert.equal(c.entries.at(-1).role, "assistant");
+});
+
+test("a fresh session takes its first source snapshot without a full history recovery", async () => {
+  const { c, calls } = harness();
+  c.session = { _id: "public-session", agentId: "agent" };
+  c.sessionRef.current = c.session;
+  c.entries = [];
+  c.timings = [];
+  c.freshSession.current = c.session._id;
+  const stop = c.streamEffect();
+  const snapshot = {
+    type: "snapshot",
+    threadId: c.session._id,
+    seq: 1,
+    cursor: "fixture:1",
+    at: "",
+    data: {
+      cursor: "fixture:1",
+      state: { kind: "idle" },
+      pending: [],
+      messages: [
+        { id: "a", turnId: "turn", text: "early answer", final: true },
+      ],
+      thinking: [],
+      plan: [],
+    },
+  };
+  c.streamHandlers.onBatch([snapshot]);
+  c.streamHandlers.onBatch([
+    {
+      type: "sync.completed",
+      threadId: c.session._id,
+      seq: 1,
+      cursor: "fixture:1",
+      at: "",
+      data: {
+        protocol: 1,
+        mode: "snapshot",
+        fromCursor: null,
+        highWaterCursor: "fixture:1",
+        snapshot: { ...snapshot.data, messages: [] },
+      },
+    },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(calls.full, 0);
+  assert.equal(calls.handoff, 1);
+  assert.equal(c.sourceSync.current.phase, "ready");
+  assert.equal(
+    c.entries.filter((entry: any) => entry.role === "assistant").length,
+    1,
+  );
+  stop();
 });

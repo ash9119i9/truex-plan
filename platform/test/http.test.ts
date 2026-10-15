@@ -258,7 +258,13 @@ test(
       }),
     });
     assert.equal(local.status, 422);
-    const session = await call("/api/sessions", { agentId: "assistant" });
+    const message = { text: "Hello", clientId: "http-message-1" };
+    const session = await call("/api/sessions", {
+      agentId: "assistant",
+      initialMessage: message,
+    });
+    assert.equal(session.initialMessage.clientId, message.clientId);
+    assert.ok(session.initialMessage.result.turnId);
     const capabilities = await call("/api/assistant-capabilities");
     assert.deepEqual(
       capabilities.map((c: any) => c.id),
@@ -302,8 +308,7 @@ test(
       (await inaccessible.json()).error,
       "File not found in this conversation",
     );
-    const message = { text: "Hello", clientId: "http-message-1" };
-    const first = await call(`/api/sessions/${session._id}/messages`, message);
+    const first = session.initialMessage.result;
     const duplicate = await call(
       `/api/sessions/${session._id}/messages`,
       message,

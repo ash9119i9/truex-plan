@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import type { Response } from "express";
@@ -49,6 +50,10 @@ import {
   unwatch,
 } from "./turn-tracker";
 const defaultStallMs = 15 * 60_000;
+const notificationDebugFile = join(
+  tmpdir(),
+  "truex-notification-debug.jsonl",
+);
 const stalledMessage =
   "The assistant stopped responding, so this response was ended. Check the conversation for a partial answer and send your message again.";
 const helperQuestionAnswer =
@@ -291,7 +296,7 @@ export class ThreadManager {
   }
   async serial<T>(id: string, action: () => Promise<T>): Promise<T> {
     const prior = this.locks.get(id) || Promise.resolve();
-    const next = prior.catch(() => {}).then(action);
+    const next = prior.catch(() => { }).then(action);
     this.locks.set(id, next);
     try {
       return await next;
@@ -304,7 +309,7 @@ export class ThreadManager {
       throw new HttpError(503, "Agent core is draining", "DRAINING");
     if (
       [...this.threads.values()].filter((t) => t.loaded).length +
-        this.reservations >=
+      this.reservations >=
       this.capacity
     )
       throw new HttpError(503, "Thread capacity reached", "CAPACITY");
@@ -645,6 +650,7 @@ export class ThreadManager {
     cursor?: string,
     options: RuntimeReadOptions = {},
   ) {
+    console.log("Subscribing the Thread Events:: ", id,cursor,options);
     return this.stream.subscribe(this.thread(id), res, cursor, options);
   }
 
@@ -676,9 +682,40 @@ export class ThreadManager {
     return this.events.emit(t, type, data, turnId, itemId);
   }
 
+  /**
+   * Applies a one-way Codex notification received through CodexClient.dispatch().
+   * @param method Native event name, e.g. item/agentMessage/delta or turn/completed.
+   * @param p Native notification params: thread/turn/item IDs plus event data
+   * such as delta text, a completed item, token usage, plan or goal state.
+   * @returns No response payload. Updates manager-owned state and emits domain
+   * events; ThreadEvents handles replay retention, selected durable records and
+   * writes to registered SSE subscribers. No browser connection is required to
+   * receive Codex output or update the thread's message projection.
+   *
+   * Account-wide events and helper events take separate paths below. Root events
+   * update the matching thread before publication, so a later snapshot sees the
+   * generated text even if it arrived before the first SSE subscription.
+   * Debug with method + threadId + turnId + itemId. Check early-return branches
+   * when an event is received here but does not reach the root SSE publisher.
+   */
   private notification(method: string, p: any) {
+    // Measure local handling time and redact the payload used by state/events.
     const begin = performance.now();
     p = this.redactor.clean(p);
+    try {
+      const entry = JSON.stringify({
+        ts: new Date().toISOString(),
+        method,
+        params: p,
+      });
+      appendFileSync(
+        notificationDebugFile,
+        `${entry}\n`,
+        { encoding: "utf8", mode: 0o600 },
+      );
+    } catch (error) {
+      log("warn", "notification debug file write failed", errorFields(error));
+    }
     // A connector's URL path or query can carry a secret, so it is not logged.
     if (method === "mcpServer/startupStatus/updated" && p.status === "failed")
       log("warn", "mcp server failed to start", {
@@ -690,12 +727,17 @@ export class ThreadManager {
             ? p.error.replace(/https?:\/\/\S+/gi, "[url]").slice(0, 500)
             : undefined,
       });
+    // Protocol drift is counted and logged; unknown methods still continue
+    // through routing and can be published as the generic runtime.event type.
     if (!inventory.notifications.some((n) => n.method === method)) {
       this.unknownMethods++;
       log("warn", "unknown runtime notification", { method });
     }
+    // Codex supplies thread identity either directly or inside a thread object.
     const id = p.threadId || p.thread?.id;
     if (!id) {
+      // No thread ID: broadcast to loaded roots. Account rate-limit updates also
+      // refresh shared limits, active traces and the derived limits.updated event.
       const limits =
         method === "account/rateLimits/updated" && p.rateLimits
           ? (this.rateLimits = rateLimitView(p.rateLimits, this.rateLimits))
@@ -710,12 +752,15 @@ export class ThreadManager {
         }
       return;
     }
+    // Helper notifications belong to their root's helper projection, not a new
+    // public conversation. Dropped helpers and buffered early events exit here.
     if (typeof id === "string") {
       const helper = this.helpers.get(id);
       if (helper) return this.helpers.childNotification(helper, method, p);
       if (this.helpers.isDropped(id)) return;
       const spawn =
         method === "thread/started" ? this.helpers.spawnSource(p) : undefined;
+      console.log("SPAWN SOURCE:: ", spawn);
       if (
         spawn &&
         this.helpers.child(id, spawn.parent_thread_id, {
@@ -730,9 +775,13 @@ export class ThreadManager {
       // events instead of creating a thread record no client observes.
       if (!spawn && this.helpers.holdEarly(id, method, p)) return;
     }
+    // Root path: retrieve the shared Thread object also used by subscribe().
+    // Resolve IDs from either direct fields or their nested native objects.
     const t = this.thread(id),
       turnId = p.turnId || p.turn?.id,
       itemId = p.itemId || p.item?.id;
+    // A start notification can race the RPC acknowledgment. Only move an idle
+    // or starting thread into running; also initialize turn ordering and tracing.
     if (method === "thread/started") t.loaded = true;
     if (method === "turn/started") {
       if (t.state.kind === "idle" || t.state.kind === "starting")
@@ -743,10 +792,15 @@ export class ThreadManager {
     }
     // Any activity on the thread shows the running turn is alive.
     this.watch(t);
+    // The watchdog already reported this turn as failed; ignore its late finish
+    // rather than publishing a second completion for the same stalled turn.
     if (method === "turn/completed" && turnId && t.stalledTurn === turnId) {
       t.stalledTurn = undefined;
       return;
     }
+    // Assistant deltas append to t.messages; completed items replace their text
+    // with the final answer and emit message.final. Reasoning is projected too.
+    // This runs before the generic event publication at the end of this method.
     p = projectMessages(t, method, p, turnId, itemId, begin, this.events);
     if (method === "turn/plan/updated") {
       // A replayed or late update from an older turn must not replace a newer plan.
@@ -754,6 +808,8 @@ export class ThreadManager {
       t.plan = p.plan;
       t.planTurnId = turnId ?? t.planTurnId;
     }
+    // Track which turns contribute to a goal and preserve its observed usage
+    // separately from the runtime's reported goal object.
     if (method === "turn/started" && turnId) trackGoalTurn(t, turnId);
     if (method === "thread/goal/updated") {
       setGoal(t, p.goal ?? null);
@@ -765,6 +821,8 @@ export class ThreadManager {
       p = { ...p, goalCreatedAt: (t.goal as any)?.createdAt ?? null };
       setGoal(t, null);
     }
+    // Usage has its own derived events. Return after processing it so the raw
+    // token notification is not also published by the generic event path.
     if (method === "thread/tokenUsage/updated") {
       if (turnId && t.goalTokens.turns.includes(turnId)) {
         const delta = goalTokenDelta(p.tokenUsage?.last);
@@ -778,6 +836,8 @@ export class ThreadManager {
       if (usage) this.emit(t, "usage.updated", { usage }, turnId);
       return;
     }
+    // Retain the latest diff for snapshots. A runtime-resolved approval is
+    // removed locally without sending a second response back to Codex.
     if (method === "turn/diff/updated") t.diff = p.diff;
     if (method === "serverRequest/resolved") {
       const request = [...t.pending.values()].find(
@@ -786,6 +846,8 @@ export class ThreadManager {
       if (request)
         this.approvals.settle(t, request, undefined, "runtime-resolved", false);
     }
+    // Tool/item lifecycle contributes helper relationships and trace steps;
+    // assistant message text was already handled by projectMessages() above.
     if (method === "item/started" || method === "item/completed") {
       this.helpers.collab(t.id, p.item);
       this.builder(t, turnId)?.onItem(
@@ -795,6 +857,8 @@ export class ThreadManager {
         { agent: "main", agentThreadId: t.id },
       );
     }
+    // Complete reasoning, timings and traces. Only the currently matching turn
+    // may make the thread idle, stop its watchdog and settle pending requests.
     let data = { method, ...p };
     if (method === "turn/completed") {
       for (const r of t.thinking) if (r.turnId === turnId) r.done = true;
@@ -814,13 +878,17 @@ export class ThreadManager {
           );
       }
     }
+    // An archived/deleted/closed thread is no longer loaded for execution.
     if (
       ["thread/deleted", "thread/archived", "thread/closed"].includes(method)
     ) {
       t.loaded = false;
       this.unwatch(t);
     }
+    // Publish after projecting state: e.g. native item/agentMessage/delta maps
+    // to message.delta. ThreadEvents.emit() writes the frame to t.subscribers.
     this.emit(t, mappings[method] || "runtime.event", data, turnId, itemId);
+    // Attribute this handler's elapsed time to the live turn's stream metrics.
     if (t.clock?.first !== null && t.clock)
       t.clock.handler += performance.now() - begin;
   }

@@ -31,6 +31,8 @@ import type { RuntimeResumeOptions } from "../../../shared/runtime-resume-option
 import {
   creationApprovalOptions,
   confirmRuntimeApproval,
+  messageInput,
+  initialMessageInput,
 } from "../conversations/session-creation";
 import { isDeepStrictEqual } from "node:util";
 import type { AnyBulkWriteOperation } from "mongodb";
@@ -44,6 +46,9 @@ import type {
   AgentSummary,
   AgentDetails,
   ModelOption,
+  InitialMessage,
+  SessionCreationResult,
+  InitialMessageReceipt,
 } from "../../../shared/contracts";
 import { ApiError } from "../core/errors";
 import { currentRequestId } from "../http/handlers";
@@ -388,36 +393,63 @@ export class PlatformService {
   async deleteUserMcps(ownerId: string) {
     return this.connectorService.deleteUserMcps(ownerId);
   }
+  /**
+   * Creates a runtime thread, stores its platform session, and optionally submits
+   * the first message. Called by POST /api/sessions; runtime creation uses POST /threads.
+   * @param agentId - Agent whose model, instructions and connectors configure the chat.
+   * @param subAgents - Optional helper settings: mode and maxConcurrent (1 to 5).
+   * @param projectId - Optional project to attach; the creator must have write access.
+   * @param requestedApprovalMode - Optional mode; validated against feature settings.
+   * @param requestedInitialMessage - Optional { text, clientId }; clientId identifies submission.
+   * @returns Public session fields plus a first-message result/error receipt when requested.
+   * Rejects on validation, access, configuration, provisioning or session-save failures.
+   * First-message failures are returned in the receipt after the session has been saved.
+   */
   async create(
     agentId: string,
     subAgents?: unknown,
     projectId?: unknown,
     requestedApprovalMode?: unknown,
-  ) {
+    requestedInitialMessage?: unknown,
+  ): Promise<SessionCreationResult> {
+    // Validate optional input before configuration reads or creating runtime/database state.
+    // No initial message means an empty conversation; an invalid one rejects creation.
+    const initialMessage = initialMessageInput(requestedInitialMessage);
+    // Resolve the configured default or requested approval mode; feature-off returns no options.
     const creationOptions = creationApprovalOptions(
       requestedApprovalMode,
       this.approvalModes,
     );
     if (typeof agentId !== "string")
       throw new ApiError(400, "agentId is required", "INVALID_INPUT");
+    // Normalize only supported helper settings; omission/null leaves runtime defaults in place.
     const delegation = subAgentOptions(subAgents);
     // Checked before the thread exists, so a bad project needs no rollback.
     if (projectId !== undefined && projectId !== null)
       await this.project(projectId, "write");
+    // Ownership comes from authenticated context, rather than a user ID in the request body.
     const owner = currentUser()?.id;
     // A new chat belongs to its creator, so their user MCPs load.
     const config: any = await this.configuration(agentId, {
       ownerId: owner,
+      // Also check permission to use this agent while building model/MCP/skill configuration.
       use: true,
     });
+    log("debug", "Creating conversation", { agentId });
+    // Combine the validated creation choices with the server-built runtime configuration.
     if (delegation) config.subAgents = delegation;
     Object.assign(config, creationOptions);
     let host = "",
       thread: any;
+    // AWS runtime session ID, separate from the platform session ID and Codex thread ID.
+    // Generate once for this creation attempt; local HTTP transport does not use it.
     const runtimeSessionId = randomUUID();
     for (let n = 0; n < this.hosts.length; n++) {
+      // Round-robin selection spreads new conversations across configured runtime hosts.
       host = this.hosts[this.nextHost++ % this.hosts.length];
       try {
+        // call() sends POST /threads with config as JSON and returns its parsed response.
+        // On success, thread contains the new runtime threadId and any startup metadata.
         thread = await this.call(
           host,
           "/threads",
@@ -425,8 +457,11 @@ export class PlatformService {
           config,
           runtimeSessionId,
         );
+        // The runtime accepted creation; do not create another thread on a different host.
         break;
       } catch (e) {
+        // Try another host only for explicit CAPACITY refusal. A timeout may mean
+        // creation succeeded remotely, so retrying that failure could create duplicates.
         if (
           !(e instanceof ApiError && e.code === "CAPACITY") ||
           n === this.hosts.length - 1
@@ -434,22 +469,29 @@ export class PlatformService {
           throw e;
       }
     }
+    // Build the MongoDB record that maps the browser's session ID to its owning runtime.
     const session: Session = {
+      // Public conversation ID used by /api/sessions/:id; not the runtime thread ID.
       _id: "sess_" + randomUUID(),
       // Set once here and never changed.
       ...(owner ? { userId: owner } : {}),
+      // Marks compatibility with the current runtime policy for later reads/polling.
       runtimePolicyVersion: POLICY_VERSION,
       agentId,
+      // Later commands use this threadId and host to reach the same conversation.
       threadId: thread.threadId,
       agentCoreHost: host,
+      // Persist AWS's session ID for future invocations; local runtimes need no such field.
       ...(isAgentCoreRuntime(host)
         ? { agentCoreSessionId: runtimeSessionId }
         : {}),
       status: "active",
       cwd: config.cwd,
       createdAt: new Date().toISOString(),
+      // New sessions start without pending approvals or recorded turn timings.
       approvals: [],
       timings: [],
+      // Creation timings aid diagnosis; fingerprint detects connector changes on resume.
       threadStartMs: thread.threadStartMs,
       runtimeStartup: thread.runtimeStartup,
       mcpFingerprint: config.mcpFingerprint,
@@ -459,6 +501,9 @@ export class PlatformService {
       ...(typeof projectId === "string" ? { projectId } : {}),
     };
     try {
+      // Verify the runtime applied the requested approval mode before saving or dispatching.
+      // Older runtimes without an acknowledgment are confirmed via /approval-mode;
+      // a contradictory acknowledgment fails instead of silently changing the selection.
       await confirmRuntimeApproval(thread, creationOptions, (mode) =>
         this.call(
           host,
@@ -468,8 +513,11 @@ export class PlatformService {
           runtimeSessionId,
         ),
       );
+      // Runtime provisioning and MongoDB insertion are separate operations, not one transaction.
       await this.store.sessions.insertOne(session);
     } catch (e) {
+      // Approval confirmation or insertion failed after the thread existed: attempt cleanup.
+      // Cleanup is best effort; log its failure and preserve the original creation error.
       await this.call(
         host,
         `/threads/${thread.threadId}`,
@@ -485,8 +533,43 @@ export class PlatformService {
       );
       throw e;
     }
+    // Update the project's activity timestamp after the session is stored.
+    // This await is outside cleanup: if it fails, create rejects but the saved session remains.
     if (session.projectId) await this.touchProject(session.projectId);
-    return publicSession(session, this.approvalModes);
+    // A receipt lets the caller distinguish session creation from first-message acceptance.
+    let receipt: InitialMessageReceipt | undefined;
+    if (initialMessage) {
+      try {
+        // This thread was just configured and acknowledged in this request.
+        // Only this server-owned path skips existing-session preparation.
+        // submitMessage() still checks dispatch access and handles quota, persistence and delivery.
+        const result = await this.submitMessage(session, initialMessage);
+        // Acceptance result identifies the turn; the assistant's answer arrives separately.
+        receipt = { clientId: initialMessage.clientId, result };
+      } catch (error) {
+        // Keep the created conversation and return an actionable error; do not resubmit here.
+        // For a timeout, message acceptance can be unknown even though session creation succeeded.
+        log("warn", "First message submission failed", {
+          sessionId: session._id,
+          op: "create.message",
+          ...errorFields(error),
+        });
+        receipt = {
+          clientId: initialMessage.clientId,
+          error: {
+            // Convert internal failures to safe API fields, with a request ID for tracing.
+            ...httpError(error, "platform"),
+            requestId: currentRequestId(),
+          },
+        };
+      }
+    }
+    // Expose the public allowlist, omitting runtime host/thread/session IDs and configuration.
+    // Include an initialMessage receipt only when a first message was requested.
+    return {
+      ...publicSession(session, this.approvalModes),
+      ...(receipt ? { initialMessage: receipt } : {}),
+    };
   }
   // Latest 100 sessions, optionally of one project. Untitled ones are named
   // after their first user message.
@@ -711,18 +794,39 @@ export class PlatformService {
   }
   async message(id: string, text: string, clientId: string) {
     const started = performance.now();
-    const inputError = messageTextError(text);
-    if (inputError) throw new ApiError(400, inputError, "INVALID_INPUT");
-    if (typeof clientId !== "string" || !/^[-\w]{1,100}$/.test(clientId))
-      throw new ApiError(
-        400,
-        "A valid clientId is required for idempotency",
-        "INVALID_INPUT",
-      );
+    const input = messageInput(text, clientId);
     const s = await this.sessionFor(id, "write");
+    return this.submitMessage(s, input, started, () =>
+      this.resume(s, { response: "operational" }),
+    );
+  }
+  /**
+   * Records a user submission, dispatches it to the runtime and records acceptance.
+   * create() uses this for the first message; message() also passes a resume callback.
+   * @param s - Session containing the platform ID and the owning runtime's host/thread IDs.
+   * Message input is validated { text, clientId }; reuse clientId for the same submission.
+   * @param started - Timing origin; message() includes its validation/access-check time,
+   * while create() uses the default here, excluding earlier conversation provisioning.
+   * @param prepare - Optional async preparation, e.g. resume; its return value is ignored.
+   * @returns Runtime turnId/steer plus submission timings, or an existing duplicate receipt.
+   * Acceptance does not mean generation finished; assistant text arrives through SSE.
+   * Throws on setup, storage or runtime failures; this function never retries dispatch.
+   */
+  private async submitMessage(
+    s: Session,
+    { text, clientId }: InitialMessage,
+    started = performance.now(),
+    prepare?: () => Promise<unknown>,
+  ) {
+    // The platform session ID scopes database records; owned() supplies the runtime thread ID.
+    const id = s._id;
+    // Timing checkpoint, not a permission check; callers perform the initial access checks.
     const authorized = performance.now();
     // Demo turns are counted before anything is dispatched.
+    // Undefined means no new quota reservation is owned by this call (normal use or duplicate).
     const reserved = await this.reserveTurn(id, clientId);
+    // Release only this call's reservation when dispatch is prevented or refused.
+    // Release failures are logged without replacing the original submission error.
     const giveBack = () =>
       reserved
         ? this.quota!.release(reserved).catch((error) =>
@@ -733,7 +837,9 @@ export class PlatformService {
           )
         : undefined;
     try {
-      await this.resume(s, { response: "operational" });
+      // Existing conversations may need resume/configuration; a freshly created thread skips it.
+      await prepare?.();
+      // If configured, recheck account/membership/workspace access after preparation.
       await this.dispatchGuard?.();
     } catch (e) {
       // Nothing was dispatched: the person keeps the turn.
@@ -741,8 +847,11 @@ export class PlatformService {
       throw e;
     }
     const prepared = performance.now();
+    // MongoDB's unique _id prevents two requests with this submission ID from both dispatching.
+    // Example: sess_123:user:message-001. Preparation above can still run on duplicate calls.
     const key = `${id}:user:${clientId}`;
     try {
+      // Save before sending: pending means recorded locally, with no recorded acceptance yet.
       await this.store.messages.insertOne({
         _id: key,
         sessionId: id,
@@ -753,28 +862,36 @@ export class PlatformService {
         at: new Date().toISOString(),
       });
     } catch (e) {
+      // MongoDB code 11000 means duplicate key; other insertion errors stop dispatch.
       if ((e as { code?: number }).code !== 11000) {
         await giveBack();
         throw e;
       }
       const existing = await this.store.messages.findOne({ _id: key });
+      // Reuse an accepted submission's receipt rather than starting another turn.
       if (existing?.delivery === "accepted")
         return {
           turnId: existing.turnId,
           steer: existing.steer,
           duplicate: true,
         };
+      // Pending, unknown or failed duplicates require checking delivery state; do not resend.
       throw new ApiError(
         409,
         "This message was already submitted; check its delivery state before retrying",
         "DUPLICATE_MESSAGE",
       );
     }
+    // Derive a missing title from the user's text without a model call.
+    // This await is outside the dispatch catch: failure leaves the inserted message pending.
     if (!s.title) await this.titleIfUntitled(id, text);
     const begin = performance.now();
     try {
+      // POST /threads/<runtime-thread-id>/turns with { text, clientId } on the saved owner.
+      // Agent core starts a new Codex turn or steers a running one; returns { turnId, steer }.
       const result = await this.owned(s, "/turns", "POST", { text, clientId });
       const dispatched = performance.now();
+      // Link the stored user message to its accepted turn; no assistant answer is stored here.
       await this.store.messages.updateOne(
         { _id: key },
         {
@@ -786,20 +903,29 @@ export class PlatformService {
         },
       );
       const accepted = performance.now();
+      // All values are milliseconds for submission/acknowledgment, not complete LLM generation.
       const platformTiming: MessageAcceptanceTiming = {
+        // Time before this function's first checkpoint, using the caller's timing origin.
         authorizationMs: authorized - started,
+        // Quota reservation, optional preparation and the dispatch guard.
         preparationMs: prepared - authorized,
+        // Runtime dispatch/acknowledgment interval.
         dispatchMs: dispatched - begin,
+        // Pre-dispatch insertion/title work plus the post-dispatch acceptance update.
         receiptMs: begin - prepared + accepted - dispatched,
         totalMs: accepted - started,
       };
       return {
         ...result,
+        // Includes runtime acknowledgment and its database update, excluding earlier preparation.
         platformRoundTripMs: accepted - begin,
         platformTiming,
       };
     } catch (e) {
+      // Current classification treats ApiError statuses below 500 as definite refusals.
+      // A timeout/5xx or local acceptance-write error is uncertain: the runtime may be running.
       const definite = e instanceof ApiError && e.status < 500;
+      // failed = classified refusal; unknown = cannot confirm whether dispatch was accepted.
       await this.store.messages.updateOne(
         { _id: key },
         { $set: { delivery: definite ? "failed" : "unknown" } },
@@ -807,6 +933,7 @@ export class PlatformService {
       // Only a refusal proves the turn never ran. A timeout or a server error
       // may have been accepted, so its count stands.
       if (definite) await giveBack();
+      // create() turns this into an initial-message error receipt; message() propagates it to HTTP.
       throw e;
     }
   }

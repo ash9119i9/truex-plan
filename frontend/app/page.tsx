@@ -131,6 +131,8 @@ import type {
   ApprovalMode,
   ApprovalModesConfig,
   PublicSession,
+  InitialMessage,
+  SessionCreationResult,
   DomainEvent,
   Goal,
   GoalReview,
@@ -325,7 +327,8 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
     streamFlush = useRef<(() => void) | null>(null),
     heldTimeline = useRef<SavedConversation | null>(null),
     generation = useRef(0),
-    preparation = useRef(new SessionPreparation<Session>()),
+    preparation = useRef(new SessionPreparation<SessionCreationResult>()),
+    freshSession = useRef<string | null>(null),
     openingSession = useRef(false),
     sessionRef = useRef<Session | null>(null),
     seen = useRef(new Set<string>()),
@@ -991,19 +994,23 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
     if (!session) return;
     const id = session._id;
     const token = generation.current;
+    const fresh = freshSession.current === id;
+    if (fresh) freshSession.current = null;
     if (sourceOwner.current !== id) {
       sourceOwner.current = id;
       sourceSync.current = beginSourceSync(null);
       sourceRequestedCursor.current = null;
       sourceProtocol.current = true;
       sourceCapability.current = false;
-      sourceRecovered.current = false;
+      sourceRecovered.current = fresh;
     }
     const connection = sourceConnection.current;
     follow.reset();
     let active = true;
     let firstSnapshot = true;
-    const openingOwnsRecovery = openingSession.current;
+    // A just-created conversation has no older transcript to recover. Its
+    // initial source snapshot covers the first turn, including early output.
+    const openingOwnsRecovery = openingSession.current || fresh;
     const reloadTranscript = () => {
       void recover(id, token)
         .then((recovered) => {
@@ -1497,15 +1504,19 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
     invalidatePreparation();
     setDraftProjectId(projectId);
   }
-  function prepareSession(chosen: ApprovalMode | null) {
+  function prepareSession(
+    chosen: ApprovalMode | null,
+    initialMessage?: InitialMessage,
+  ) {
     return preparation.current.prepare(preparationKey, async () => {
-      const created: Session = await api(
+      const created: SessionCreationResult = await api(
         "/api/sessions",
         createSessionBody(
           agentId,
           delegation,
           draftProjectId,
           chosen ?? undefined,
+          initialMessage,
         ),
       );
       // A submitted creation that finishes after navigation stays in Recents.
@@ -1514,7 +1525,9 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
       return created;
     });
   }
-  async function ensureSession(): Promise<Session> {
+  async function ensureSession(
+    initialMessage?: InitialMessage,
+  ): Promise<SessionCreationResult> {
     if (sessionRef.current) {
       const active = sessionRef.current;
       const wanted = approvalConfirmation.current.wanted(active._id);
@@ -1527,8 +1540,8 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
     const chosen = draftModeRef.current;
     const token = generation.current;
     const projectId = draftProjectId;
-    const attempt = prepareSession(chosen);
-    let created: Session;
+    const attempt = prepareSession(chosen, initialMessage);
+    let created: SessionCreationResult;
     try {
       created = await attempt.promise;
     } catch (error) {
@@ -1547,8 +1560,10 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
       return created;
     setDraftActive(false);
     setPreparationStatus(null);
-    sessionRef.current = created;
-    setSession(created);
+    const { initialMessage: receipt, ...active } = created;
+    freshSession.current = active._id;
+    sessionRef.current = active;
+    setSession(active);
     setSelectedId(created._id);
     history.replaceState(null, "", "?session=" + created._id);
     draftModeRef.current = null;
@@ -1564,7 +1579,7 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
       projects.expand(projectId);
       projects.refreshAll();
     } else void refreshSessions();
-    return created;
+    return receipt ? { ...active, initialMessage: receipt } : active;
   }
   async function send(value = text, restoreDraft?: string) {
     if (
@@ -1597,11 +1612,29 @@ function Workspace({ me, actions }: { me: Me; actions: SessionActions }) {
       { kind: "message", id, role: "user", text: value, delivery: "pending" },
     ]);
     try {
-      const active = await ensureSession();
+      const active = await ensureSession({ text: value, clientId });
       if (token !== generation.current) return;
       setDispatchState(nextDispatch);
       dispatched = true;
-      const result = await transport.send(active._id, value, clientId);
+      // Older platforms omit the additive receipt and still need a message
+      // POST. Once a receipt exists, never dispatch this submission again.
+      const receipt = active.initialMessage;
+      if (receipt && receipt.clientId !== clientId)
+        throw new ApiRequestError(
+          "The first-message receipt does not match this submission. Refresh the conversation before retrying.",
+          502,
+          "INVALID_RESPONSE",
+        );
+      if (receipt && "error" in receipt)
+        throw new ApiRequestError(
+          receipt.error.error,
+          receipt.error.status,
+          receipt.error.code,
+          { requestId: receipt.error.requestId },
+        );
+      const result = receipt
+        ? receipt.result
+        : await transport.send(active._id, value, clientId);
       if (token !== generation.current) return;
       void refreshSessions();
       setEntries((old) =>
