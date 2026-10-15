@@ -1,7 +1,9 @@
 // What the sign-in page says, and where "Continue with Google" goes.
 
+import { AUTH_PATHS } from "./auth.ts";
+
 /** The platform starts the Google flow and sets the flow cookie. */
-export const GOOGLE_START = "/auth/google/start";
+export const GOOGLE_START = AUTH_PATHS.google;
 
 export interface LoginNotice {
   tone: "warn" | "info";
@@ -13,65 +15,35 @@ export interface LoginNotice {
 // ones the app raises itself. Unknown codes get the generic message, so a new
 // server code never shows as raw text or as nothing at all.
 const NOTICES: Record<string, LoginNotice> = {
-  session_expired: {
+  cancelled: {
+    tone: "warn",
+    lead: "Google sign-in was cancelled.",
+    rest: "Try again when you're ready.",
+  },
+  expired: {
     tone: "warn",
     lead: "That sign-in expired or was started in another tab.",
     rest: "Start again and finish in this tab.",
   },
-  google_failed: {
+  rejected: {
     tone: "warn",
     lead: "Google sign-in didn't finish.",
-    rest: "It may have been cancelled. Try again.",
-  },
-  email_unverified: {
-    tone: "warn",
-    lead: "Google couldn't confirm your email address.",
-    rest: "Use a Google account with a verified email.",
-  },
-  not_invited: {
-    tone: "warn",
-    lead: "This Google account isn't part of a workspace yet.",
-    rest: "Ask your administrator to invite you, then open the invitation link.",
-  },
-  no_tenant: {
-    tone: "warn",
-    lead: "Your account isn't a member of any workspace.",
-    rest: "Ask your administrator to invite you.",
-  },
-  account_conflict: {
-    tone: "warn",
-    lead: "This email address is linked to a different Google account.",
-    rest: "Sign in with the Google account you used before, or contact your administrator.",
+    rest: "Try again.",
   },
   account_disabled: {
     tone: "warn",
     lead: "This account has been disabled.",
     rest: "Contact your administrator.",
   },
-  access_removed: {
+  email_in_use: {
     tone: "warn",
-    lead: "Your access to this workspace has ended.",
-    rest: "Contact your administrator if you think this is a mistake.",
+    lead: "This email address is linked to a different Google account.",
+    rest: "Sign in with the Google account you used before, or contact your administrator.",
   },
-  tenant_disabled: {
+  signup_unavailable: {
     tone: "warn",
-    lead: "Your workspace is currently disabled.",
-    rest: "Contact your administrator.",
-  },
-  demo_unavailable: {
-    tone: "warn",
-    lead: "The demo isn't taking new sign-ups right now.",
-    rest: "Try again later.",
-  },
-  default_unavailable: {
-    tone: "warn",
-    lead: "The default workspace isn't ready for sign-in yet.",
+    lead: "Truex isn't taking new sign-ups right now.",
     rest: "Contact your administrator or try again later.",
-  },
-  signup_limit: {
-    tone: "warn",
-    lead: "The demo has reached today's sign-up limit.",
-    rest: "Try again tomorrow.",
   },
   unavailable: {
     tone: "warn",
@@ -89,8 +61,8 @@ const NOTICES: Record<string, LoginNotice> = {
     rest: "You're still signed in to Google.",
   },
   // The session ended somewhere else: signed out in another tab, expired, or
-  // access removed. Not the same as session_expired, which is a sign-in attempt
-  // that took too long.
+  // access removed. Not the same as expired, which is a sign-in attempt that
+  // took too long.
   session_ended: {
     tone: "info",
     lead: "Your session has ended.",

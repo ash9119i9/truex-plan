@@ -8,11 +8,11 @@ import {
   type SetStateAction,
 } from "react";
 import { AuthFrame, LoginCard, Banner } from "./login-card";
-import { ProfileNameCard } from "./profile-name-card";
 import {
   bumpIdentityGeneration,
   clearPrivateBrowserState,
   enterIdentity,
+  clearIdentityScope,
   onUnauthenticated,
 } from "@/lib/identity";
 import {
@@ -20,7 +20,6 @@ import {
   meKey,
   openTabChannel,
   signOut as endSession,
-  switchWorkspace,
   type Me,
   type MeResult,
 } from "@/lib/session";
@@ -29,8 +28,6 @@ import { loginNotice } from "@/lib/login";
 export interface SessionActions {
   /** Ends the session and clears everything private from this tab. */
   signOut: () => void;
-  /** Moves to another workspace; resolves with a message if it could not. */
-  switchTo: (tenantId: string) => Promise<string | null>;
   /** Asks the platform whether this tab still belongs to the same person. */
   recheck: () => void;
 }
@@ -54,19 +51,23 @@ const RECHECK_MS = 5_000;
  */
 export function SessionGate({
   children,
+  tenantId,
 }: {
+  tenantId?: string;
   children: (me: Me, actions: SessionActions) => ReactNode;
 }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [signingOut, setSigningOut] = useState(false);
   const current = useRef<Me | null>(null);
   const checking = useRef(false);
+  const revision = useRef(0);
+  const logoutStarted = useRef(false);
   const lastCheck = useRef(0);
   const channel = useRef<ReturnType<typeof openTabChannel> | null>(null);
 
   // Stops showing the previous person's view before anything else happens.
   const leave = useCallback((next: SetStateAction<State>) => {
-    bumpIdentityGeneration();
+    clearIdentityScope();
     clearPrivateBrowserState();
     current.current = null;
     // Nothing of the old view is left in the address bar either.
@@ -86,15 +87,11 @@ export function SessionGate({
         }
         if (!before) {
           enterIdentity(result.me.user.id, result.me.tenant.id);
-          channel.current?.post({ type: "login", key: meKey(result.me) });
+          channel.current?.post({ type: "login", key: result.me.user.id });
         }
         current.current = result.me;
         // New role or workspace list: shown without discarding the view.
         setState({ kind: "ready", me: result.me });
-      } else if (result.kind === "onboarding") {
-        bumpIdentityGeneration();
-        clearPrivateBrowserState();
-        location.replace("/onboarding");
       } else if (result.kind === "signedOut") {
         leave((previous) => {
           // No session in a fresh browser is normal. Only an established
@@ -109,8 +106,10 @@ export function SessionGate({
           };
         });
       } else if (result.kind === "blocked") {
-        // Signed in but unusable: keep the identity so Sign out is offered.
-        bumpIdentityGeneration();
+        // Keep sign-out available, but discard the unusable tenant context.
+        clearIdentityScope();
+        clearPrivateBrowserState();
+        current.current = null;
         setState({ kind: "blocked", message: result.message });
       } else if (!current.current)
         setState({ kind: "unavailable", message: result.message });
@@ -121,27 +120,36 @@ export function SessionGate({
 
   const check = useCallback(
     async (force = false) => {
-      if (checking.current) return;
+      if (checking.current || logoutStarted.current) return;
       if (!force && Date.now() - lastCheck.current < RECHECK_MS) return;
       checking.current = true;
+      const request = ++revision.current;
       lastCheck.current = Date.now();
       try {
-        apply(await fetchMe());
+        const result = await fetchMe({ tenantId });
+        if (request === revision.current) apply(result);
       } finally {
-        checking.current = false;
+        if (request === revision.current) checking.current = false;
       }
     },
-    [apply],
+    [apply, tenantId],
   );
 
   useEffect(() => {
     channel.current = openTabChannel((m) => {
-      // Another tab signed out, switched workspace or signed in as someone: the
-      // server's cookie is shared, so this tab starts over from it.
+      if (m.type === "logout") {
+        logoutStarted.current = true;
+        revision.current++;
+        checking.current = false;
+        leave({ kind: "signedOut", notice: "session_ended" });
+        return;
+      }
+      // Another tab signed in as someone: the refresh cookie is
+      // shared, so this tab starts over from it.
       if (
         m.type === "login" &&
         current.current &&
-        m.key === meKey(current.current)
+        m.key === current.current.user.id
       )
         return;
       bumpIdentityGeneration();
@@ -160,6 +168,8 @@ export function SessionGate({
     addEventListener("pageshow", shown);
     addEventListener("online", visible);
     return () => {
+      revision.current++;
+      checking.current = false;
       stop();
       document.removeEventListener("visibilitychange", visible);
       removeEventListener("pageshow", shown);
@@ -167,10 +177,14 @@ export function SessionGate({
       channel.current?.close();
       channel.current = null;
     };
-  }, [check]);
+  }, [check, leave]);
 
   const signOut = useCallback(async () => {
     if (signingOut) return;
+    logoutStarted.current = true;
+    revision.current++;
+    checking.current = false;
+    leave({ kind: "loading" });
     setSigningOut(true);
     const { confirmed } = await endSession();
     channel.current?.post({ type: "logout" });
@@ -183,45 +197,13 @@ export function SessionGate({
     });
   }, [leave, signingOut]);
 
-  const switchTo = useCallback(
-    async (tenantId: string) => {
-      const result = await switchWorkspace(tenantId);
-      if (!result.ok) {
-        if (result.signedOut)
-          leave({ kind: "signedOut", notice: "session_ended" });
-        return result.message;
-      }
-      bumpIdentityGeneration();
-      channel.current?.post({ type: "switch" });
-      // A full load: every stream is closed and every old-workspace response is
-      // gone before the new workspace is fetched.
-      location.assign("/");
-      return null;
-    },
-    [leave],
-  );
-
   const recheck = useCallback(() => void check(true), [check]);
   const actions: SessionActions = {
     signOut: () => void signOut(),
-    switchTo,
     recheck,
   };
 
-  if (state.kind === "ready") {
-    if (state.me.auth === "google" && state.me.user.nameRequired)
-      return (
-        <ProfileNameCard
-          key={state.me.user.id}
-          user={state.me.user}
-          onSaved={() => location.reload()}
-          onSessionChanged={recheck}
-          onSignOut={actions.signOut}
-          signingOut={signingOut}
-        />
-      );
-    return <>{children(state.me, actions)}</>;
-  }
+  if (state.kind === "ready") return <>{children(state.me, actions)}</>;
   if (state.kind === "signedOut")
     return (
       <LoginCard

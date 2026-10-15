@@ -25,10 +25,14 @@ export function LoginScreen() {
     void fetchMe().then((result) => {
       if (!live) return;
       // Straight in, unless this page was opened to show why sign-in failed.
-      if (result.kind === "ok" && !code) location.replace("/");
-      else if (result.kind === "onboarding" && !code)
-        location.replace("/onboarding");
-      else setReady(true);
+      if (result.kind === "ok" && !code)
+        location.replace(`/t/${result.me.tenant.id}/chat`);
+      else if (!code && result.kind === "blocked") location.replace("/");
+      else {
+        if (!code && result.kind === "unavailable")
+          setNotice({ tone: "warn", lead: result.message });
+        setReady(true);
+      }
     });
     return () => {
       live = false;

@@ -1,7 +1,8 @@
-// Same-origin forwarder for the platform's /api/* routes, including the live
-// event streams. The browser sends its session cookie here and never talks to
-// the platform directly. The platform still authenticates every request; the
-// admin API (/api/admin) is not reachable through this origin.
+// Same-origin forwarder for platform-next's /api/* routes: Google sign-in and
+// its callback, token refresh and logout, account and tenant reads. The browser
+// sends its refresh cookie and access token here and never talks to the
+// platform directly. The platform still authenticates every request; the admin
+// API (/api/admin, /api/v1/admin) is not reachable through this origin.
 import { forward, type Prefix } from "@/lib/forward";
 
 type Ctx = { params: Promise<{ path: string[] }> };

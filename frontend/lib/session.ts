@@ -1,24 +1,23 @@
-// The signed-in person, as the platform says they are (GET /api/me), and the
-// few session actions the app needs: sign out and switch workspace. The server
+// The signed-in person and the tenant this tab opens, as platform-next says
+// they are (GET /api/v1/me and /api/v1/me/tenants), plus sign-out. The server
 // is the only authority; nothing here is trusted by anything but the screen.
+
+import { auth as defaultAuth, type Auth, type Authorized } from "./auth.ts";
 
 export type Role = "user" | "admin";
 export interface WorkspaceRef {
   id: string;
   name: string;
   role: Role;
-  kind?: "personal" | "team";
 }
 export interface Me {
-  user: { id: string; email: string; name?: string; nameRequired?: boolean };
-  tenant: { id: string; name: string; isUserSpecific?: boolean };
+  user: { id: string; email: string; name: string; picture?: string };
+  /** The tenant this tab is showing, and the person's role in it. */
+  tenant: { id: string; name: string };
   role: Role;
   tenants: WorkspaceRef[];
-  /** "google" has a session to end; the dev and POC modes do not. */
-  auth: "google" | "dev" | "poc";
-  selfService?: boolean;
-  /** Presentation only; membership checks still control access. */
-  showWorkspaces?: boolean;
+  /** Sessions always come from Google sign-in and can be ended. */
+  auth: "google";
 }
 export const meKey = (me: Me) => `${me.user.id}:${me.tenant.id}`;
 
@@ -26,259 +25,200 @@ export type MeResult =
   | { kind: "ok"; me: Me }
   /** No valid session: show sign-in. */
   | { kind: "signedOut" }
-  | { kind: "onboarding" }
-  /** Signed in, but this workspace cannot be used right now. */
+  /** Signed in, but no tenant can be opened right now. */
   | { kind: "blocked"; code: string; message: string }
   /** The platform could not be asked. Not the same as signed out. */
   | { kind: "unavailable"; message: string };
+
+const WIRE_ID = /^[0-9a-f]{24}$/;
+const OUTAGE =
+  "Truex is temporarily unavailable. Your session is not affected. Try again in a moment.";
+
+// The platform lists at most 500 memberships.
+const MAX_TENANTS = 500;
 
 const text = (value: unknown, max: number): string | undefined =>
   typeof value === "string" && value.length > 0 && value.length <= max
     ? value
     : undefined;
 
-export function parseMe(data: unknown): Me | null {
+function parseUser(data: unknown): Me["user"] | null {
+  const u = (data as { user?: Record<string, unknown> } | null)?.user;
+  const id = text(u?.id, 24),
+    email = text(u?.email, 320),
+    name = typeof u?.name === "string" && u.name.length <= 200 ? u.name : null,
+    picture = text(u?.picture, 2048);
+  if (!id || !WIRE_ID.test(id) || !email || name === null) return null;
+  return { id, email, name: name || email, ...(picture ? { picture } : {}) };
+}
+
+type Entry =
+  | { outcome: "enterTenant"; tenantId: string }
+  | { outcome: "chooseTenant" }
+  | { outcome: "noTenant" };
+
+function parseTenants(
+  data: unknown,
+): { entry: Entry; tenants: WorkspaceRef[] } | null {
   const d = data as Record<string, any> | null;
-  if (!d || typeof d !== "object") return null;
-  const id = text(d.user?.id, 128),
-    email = text(d.user?.email, 320),
-    tenantId = text(d.tenant?.id, 64),
-    tenantName = text(d.tenant?.name, 200) ?? tenantId;
-  if (!id || !email || !tenantId || !tenantName) return null;
-  if (d.role !== "user" && d.role !== "admin") return null;
+  if (!d || typeof d !== "object" || !Array.isArray(d.tenants)) return null;
   const tenants: WorkspaceRef[] = [];
-  for (const t of Array.isArray(d.tenants) ? d.tenants.slice(0, 200) : []) {
-    const tid = text(t?.id, 64);
-    if (!tid || (t.role !== "user" && t.role !== "admin")) continue;
-    tenants.push({
-      id: tid,
-      name: text(t.name, 200) ?? tid,
-      role: t.role,
-      ...(t.kind === "personal" || t.kind === "team" ? { kind: t.kind } : {}),
-    });
+  // A bad entry in the list is dropped, not fatal.
+  for (const t of d.tenants.slice(0, MAX_TENANTS)) {
+    const id = text(t?.id, 24);
+    if (!id || !WIRE_ID.test(id) || (t.role !== "user" && t.role !== "admin"))
+      continue;
+    tenants.push({ id, name: text(t.name, 200) ?? id, role: t.role });
   }
-  const name = text(d.user?.name, 200);
+  const outcome = d.entry?.outcome;
+  if (outcome === "chooseTenant" || outcome === "noTenant")
+    return { entry: { outcome }, tenants };
+  const tenantId = text(d.entry?.tenantId, 24);
+  if (outcome === "enterTenant" && tenantId && WIRE_ID.test(tenantId))
+    return { entry: { outcome, tenantId }, tenants };
+  return null;
+}
+
+/** Joins the two account answers into the tab's identity, or says why not. */
+export function toMe(meBody: unknown, tenantsBody: unknown): MeResult {
+  const user = parseUser(meBody);
+  const listed = parseTenants(tenantsBody);
+  if (!user || !listed) return { kind: "unavailable", message: OUTAGE };
+  const { entry, tenants } = listed;
+  if (entry.outcome === "noTenant")
+    return {
+      kind: "blocked",
+      code: "NO_TENANT",
+      message:
+        "Your account isn't a member of any workspace. Contact your administrator.",
+    };
+  // Choosing between workspaces is on hold; nobody has several yet.
+  if (entry.outcome === "chooseTenant")
+    return {
+      kind: "blocked",
+      code: "CHOOSE_TENANT",
+      message:
+        "Your account belongs to several workspaces, and choosing between them isn't available yet. Contact your administrator.",
+    };
+  const tenant = tenants.find((t) => t.id === entry.tenantId);
+  if (!tenant) return { kind: "unavailable", message: OUTAGE };
   return {
-    user: {
-      id,
-      email,
-      ...(name ? { name } : {}),
-      ...(d.user?.nameRequired === true ? { nameRequired: true } : {}),
+    kind: "ok",
+    me: {
+      user,
+      tenant: { id: tenant.id, name: tenant.name },
+      role: tenant.role,
+      tenants,
+      auth: "google",
     },
-    tenant: {
-      id: tenantId,
-      name: tenantName,
-      ...(typeof d.tenant?.isUserSpecific === "boolean"
-        ? { isUserSpecific: d.tenant.isUserSpecific }
-        : {}),
-    },
-    role: d.role,
-    tenants,
-    auth: d.auth === "google" || d.auth === "poc" ? d.auth : "dev",
-    ...(typeof d.selfService === "boolean"
-      ? { selfService: d.selfService }
-      : {}),
-    ...(typeof d.showWorkspaces === "boolean"
-      ? { showWorkspaces: d.showWorkspaces }
-      : {}),
   };
 }
 
-const OUTAGE =
-  "Truex is temporarily unavailable. Your session is not affected. Try again in a moment.";
-
 /**
- * Asks the platform who this is. Only a real 401 means signed out: a timeout,
- * a dropped connection or a 5xx is an outage and must not look like a logout.
+ * Asks the platform who this is. Only a 401 that survives a token refresh
+ * means signed out: a timeout, a dropped connection or a 5xx is an outage and
+ * must not look like a logout.
  */
 export async function fetchMe(
-  fetchImpl: typeof fetch = fetch,
-  timeoutMs = 10_000,
+  options: { auth?: Auth; timeoutMs?: number; tenantId?: string } = {},
 ): Promise<MeResult> {
-  let res: Response;
-  try {
-    res = await fetchImpl("/api/me", {
+  const { tenantId } = options;
+  if (tenantId !== undefined && !WIRE_ID.test(tenantId))
+    return {
+      kind: "blocked",
+      code: "INVALID_TENANT",
+      message: "This workspace address is invalid.",
+    };
+  const session = options.auth ?? defaultAuth;
+  const get = (path: string): Promise<Authorized> =>
+    session.request(path, {
       cache: "no-store",
       credentials: "same-origin",
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
     });
+  let answers: Authorized[];
+  try {
+    answers = await Promise.all([
+      get("/api/v1/me"),
+      get(
+        tenantId === undefined
+          ? "/api/v1/me/tenants"
+          : `/api/v1/tenant?tenantId=${tenantId}`,
+      ),
+    ]);
   } catch {
     return { kind: "unavailable", message: OUTAGE };
   }
-  if (res.status === 401) return { kind: "signedOut" };
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    /* Handled below by status. */
-  }
-  if (res.ok) {
-    const me = parseMe(data);
-    return me ? { kind: "ok", me } : { kind: "unavailable", message: OUTAGE };
-  }
-  const code = typeof data?.code === "string" ? data.code : "";
-  if (res.status === 409 && code === "ONBOARDING_REQUIRED")
-    return { kind: "onboarding" };
-  // An admin-console cookie on the main app is not a session for it.
-  if (res.status === 403 && code === "WRONG_APP") return { kind: "signedOut" };
-  if (res.status === 403)
+  if (
+    answers.some(
+      (answer) =>
+        answer.kind === "signedOut" ||
+        (answer.kind === "response" && answer.response.status === 401),
+    )
+  )
+    return { kind: "signedOut" };
+  const tenantAnswer = answers[1];
+  if (
+    tenantId !== undefined &&
+    tenantAnswer?.kind === "response" &&
+    tenantAnswer.response.status === 403
+  )
     return {
       kind: "blocked",
-      code,
+      code: "TENANT_ACCESS_DENIED",
       message:
-        code === "TENANT_DISABLED"
-          ? "Your workspace is currently disabled. Contact your administrator."
-          : "You don't have access to this workspace. Contact your administrator.",
+        "You no longer have access to this workspace. Contact your administrator or sign in with another account.",
     };
-  return { kind: "unavailable", message: OUTAGE };
-}
-
-const post = (fetchImpl: typeof fetch, path: string, body?: unknown) =>
-  fetchImpl(path, {
-    method: "POST",
-    cache: "no-store",
-    credentials: "same-origin",
-    headers:
-      body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(15_000),
-  });
-
-/**
- * Ends this browser's session on the server. `confirmed` is false when the
- * server could not be reached or refused: the caller clears what is on screen
- * either way, but must not tell the person they are signed out.
- */
-export async function signOut(
-  fetchImpl: typeof fetch = fetch,
-): Promise<{ confirmed: boolean }> {
-  try {
-    const res = await post(fetchImpl, "/auth/logout");
-    // 401: there was no session to end, which is the same outcome.
-    return { confirmed: res.ok || res.status === 401 };
-  } catch {
-    return { confirmed: false };
+  const bodies: unknown[] = [];
+  for (const answer of answers) {
+    if (answer.kind === "signedOut") return { kind: "signedOut" };
+    if (answer.kind === "unavailable")
+      return { kind: "unavailable", message: OUTAGE };
+    if (answer.response.status === 401) return { kind: "signedOut" };
+    if (!answer.response.ok) return { kind: "unavailable", message: OUTAGE };
+    bodies.push(await answer.response.json().catch(() => null));
   }
-}
-
-export type SwitchResult =
-  { ok: true } | { ok: false; signedOut: boolean; message: string };
-
-/** Confirms a new account's name; retries never overwrite a confirmed name. */
-export async function saveProfileName(
-  userId: string,
-  name: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<SwitchResult> {
-  let res: Response;
-  try {
-    res = await post(fetchImpl, "/auth/profile/name", { userId, name });
-  } catch {
-    return {
-      ok: false,
-      signedOut: false,
-      message: "Couldn't save your name. Check your connection and try again.",
-    };
-  }
-  if (res.ok) return { ok: true };
-  const data = await res.json().catch(() => null);
-  const signedOut =
-    res.status === 401 ||
-    (res.status === 403 && data?.code === "WRONG_APP") ||
-    (res.status === 409 && data?.code === "ACCOUNT_CHANGED");
+  if (tenantId === undefined) return toMe(bodies[0], bodies[1]);
+  const user = parseUser(bodies[0]);
+  const tenant = (bodies[1] as { tenant?: WorkspaceRef } | null)?.tenant;
+  if (
+    !user ||
+    !tenant ||
+    tenant.id !== tenantId ||
+    !text(tenant.name, 200) ||
+    (tenant.role !== "user" && tenant.role !== "admin")
+  )
+    return { kind: "unavailable", message: OUTAGE };
   return {
-    ok: false,
-    signedOut,
-    message: signedOut
-      ? "Your session changed. Sign in again to continue."
-      : data?.code === "INVALID_NAME"
-        ? "Enter a name with 2 to 60 characters and at least one letter."
-        : "Couldn't save your name. Try again in a moment.",
+    kind: "ok",
+    me: {
+      user,
+      tenant: { id: tenant.id, name: tenant.name },
+      role: tenant.role,
+      tenants: [tenant],
+      auth: "google",
+    },
   };
 }
-export async function switchWorkspace(
-  tenantId: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<SwitchResult> {
-  let res: Response;
-  try {
-    res = await post(fetchImpl, "/auth/switch-tenant", { tenantId });
-  } catch {
-    return { ok: false, signedOut: false, message: OUTAGE };
-  }
-  if (res.ok) return { ok: true };
-  if (res.status === 401)
-    return {
-      ok: false,
-      signedOut: true,
-      message: "Your session has ended. Sign in again.",
-    };
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    /* Generic message below. */
-  }
-  const message =
-    res.status === 403
-      ? data?.code === "TENANT_DISABLED"
-        ? "That workspace is currently disabled."
-        : "You're not a member of that workspace."
-      : res.status >= 500
-        ? OUTAGE
-        : "Couldn't switch workspace. Try again.";
-  return { ok: false, signedOut: false, message };
-}
 
-export type TenantsResult =
-  | { kind: "ok"; tenants: WorkspaceRef[] }
-  | { kind: "signedOut" }
-  | { kind: "unavailable"; message: string };
-export async function fetchTenants(
-  fetchImpl: typeof fetch = fetch,
-): Promise<TenantsResult> {
-  try {
-    const res = await fetchImpl("/auth/tenants", {
-      cache: "no-store",
-      credentials: "same-origin",
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (res.status === 401) return { kind: "signedOut" };
-    if (!res.ok) return { kind: "unavailable", message: OUTAGE };
-    const data = await res.json();
-    const tenants = (Array.isArray(data?.tenants) ? data.tenants : [])
-      .map((t: any): WorkspaceRef | null => {
-        const id = text(t?.id, 64);
-        return id && (t.role === "user" || t.role === "admin")
-          ? {
-              id,
-              name: text(t.name, 200) ?? id,
-              role: t.role,
-              ...(t.kind === "personal" || t.kind === "team"
-                ? { kind: t.kind }
-                : {}),
-            }
-          : null;
-      })
-      .filter((t: WorkspaceRef | null): t is WorkspaceRef => !!t);
-    return { kind: "ok", tenants };
-  } catch {
-    return { kind: "unavailable", message: OUTAGE };
-  }
-}
+/**
+ * Ends the session on the server and in every tab. `confirmed` is false when
+ * the server could not be reached or refused: the caller clears what is on
+ * screen either way, but must not tell the person they are signed out.
+ */
+export const signOut = (session: Auth = defaultAuth) => session.signOut();
 
 // Messages other tabs act on. They carry no credentials and no private data;
 // the server session is what is authoritative, and a tab that hears one simply
 // asks again.
-export type TabMessage = { type: "logout" | "switch" | "login"; key?: string };
+export type TabMessage = { type: "logout" | "login"; key?: string };
 export function openTabChannel(onMessage: (m: TabMessage) => void) {
   if (typeof BroadcastChannel === "undefined") return { post() {}, close() {} };
   const channel = new BroadcastChannel("truex-session");
   channel.onmessage = (e) => {
     const m = e.data as TabMessage | null;
-    if (m && (m.type === "logout" || m.type === "switch" || m.type === "login"))
-      onMessage(m);
+    if (m && (m.type === "logout" || m.type === "login")) onMessage(m);
   };
   return {
     post: (m: TabMessage) => channel.postMessage(m),

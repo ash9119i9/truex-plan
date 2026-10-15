@@ -1,5 +1,6 @@
+import { signInForTest, USER_ID, TENANT_ID } from "./auth-fixture.ts";
 import assert from "node:assert/strict";
-import test, { type TestContext } from "node:test";
+import test, { beforeEach, type TestContext } from "node:test";
 import { createRequire } from "node:module";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -7,6 +8,10 @@ import { component } from "./next-details-runtime.ts";
 
 const { AgentsView } = component("v2/agents-view.tsx");
 const { AgentDialog } = component("v2/agent-dialog.tsx");
+beforeEach(async () => {
+  await signInForTest(component("../lib/auth.ts").auth);
+  component("../lib/identity.ts").setIdentityScope(USER_ID, TENANT_ID);
+});
 const react = createRequire(import.meta.url)("react");
 const owned = {
   id: "my-helper",
@@ -147,7 +152,8 @@ test("editing seeds all fields, preserves the model and handle, and prevents dup
     globalThis,
     "fetch",
     async (path: string, init: RequestInit) => {
-      if (path === "/api/models") return Response.json(models);
+      if (path === `/api/models?tenantId=${TENANT_ID}`)
+        return Response.json(models);
       writes.push({ path, init });
       return await new Promise<Response>((resolve) => {
         resolveSave = resolve;
@@ -180,8 +186,9 @@ test("editing seeds all fields, preserves the model and handle, and prevents dup
   );
   d.submit();
   d.submit();
+  await tick();
   assert.equal(writes.length, 1);
-  assert.equal(writes[0].path, "/api/agents/my-helper");
+  assert.equal(writes[0].path, `/api/agents/my-helper?tenantId=${TENANT_ID}`);
   assert.equal(writes[0].init.method, "POST");
   assert.deepEqual(JSON.parse(writes[0].init.body), {
     name: "Renamed Helper",
@@ -205,7 +212,8 @@ test("save failures retain edits and allow retry without accepting late response
   let attempts = 0,
     resolveSave!: (response: Response) => void;
   t.mock.method(globalThis, "fetch", async (path: string) => {
-    if (path === "/api/models") return Response.json(models);
+    if (path === `/api/models?tenantId=${TENANT_ID}`)
+      return Response.json(models);
     if (++attempts === 1)
       return Response.json(
         { error: "Try again", code: "TEMPORARY" },
@@ -229,6 +237,7 @@ test("save failures retain edits and allow retry without accepting late response
   );
   assert.ok(find(d.render(), (n) => n.props?.role === "alert"));
   d.submit();
+  await tick();
   assert.equal(attempts, 2);
   d.props.open = false;
   d.render();
@@ -240,7 +249,8 @@ test("save failures retain edits and allow retry without accepting late response
 test("unavailable models and built-in details cannot be submitted", async (t) => {
   let writes = 0;
   t.mock.method(globalThis, "fetch", async (path: string) => {
-    if (path === "/api/models") return Response.json(models.slice(0, 1));
+    if (path === `/api/models?tenantId=${TENANT_ID}`)
+      return Response.json(models.slice(0, 1));
     writes++;
     return Response.json(owned);
   });
@@ -276,7 +286,8 @@ test("creation keeps its existing validation and celebration", async (t) => {
     globalThis,
     "fetch",
     async (path: string, init: RequestInit) => {
-      if (path === "/api/models") return Response.json(models);
+      if (path === `/api/models?tenantId=${TENANT_ID}`)
+        return Response.json(models);
       writes.push({ path, body: JSON.parse(String(init.body)) });
       return Response.json(owned);
     },
@@ -307,7 +318,7 @@ test("creation keeps its existing validation and celebration", async (t) => {
   });
   d.submit();
   await tick();
-  assert.equal(writes[0].path, "/api/agents");
+  assert.equal(writes[0].path, `/api/agents?tenantId=${TENANT_ID}`);
   assert.equal(d.created.length, 1);
   assert.equal(d.updated.length, 0);
   assert.ok(find(d.render(), (n) => n.props?.className === "celebrate-stage"));
