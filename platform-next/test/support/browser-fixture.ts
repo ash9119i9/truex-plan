@@ -3,6 +3,11 @@ import { createServer } from "node:http";
 import { ObjectId } from "mongodb";
 import { createApp } from "../../src/app";
 import { OperatorService } from "../../src/modules/operator/operator.service";
+import {
+  builtinDefinition,
+  geminiDefinition,
+  modelDefinition,
+} from "./catalog-fixtures";
 import { FakeGoogle } from "./fake-google";
 import { startReplicaSet } from "./test-app";
 import {
@@ -89,6 +94,14 @@ async function main() {
       tenantId: new ObjectId("64b7f0c2a1b2c3d4e5f60719"),
       name: "Truex",
       kind: "default",
+    });
+    // Synthetic catalog: fake secret ARNs, never called by this fixture.
+    const operator = app.get(OperatorService);
+    for (const definition of [modelDefinition(), geminiDefinition()])
+      await operator.putModel({ operator: "browser-fixture", definition });
+    await operator.putBuiltinAgent({
+      operator: "browser-fixture",
+      definition: builtinDefinition(),
     });
     await new Promise<void>((resolve, reject) => {
       authorize.once("error", reject);

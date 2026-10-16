@@ -1,4 +1,5 @@
 import "reflect-metadata";
+import { readFileSync, statSync } from "node:fs";
 import { parseArgs } from "node:util";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../app.module";
@@ -13,14 +14,25 @@ import {
   type AssignRoleCommand,
   type ProvisionTenantCommand,
 } from "../modules/operator/operator.service";
+
+// A definition file is a small JSON document; anything larger is a mistake.
+const MAX_DEFINITION_BYTES = 1_000_000;
 import type { TenantKind } from "../modules/tenants/tenant";
 
 const USAGE = `Usage:
   operator provision-tenant --operator <name> --tenant <id> --name <name> --kind default|organization
   operator assign-role --operator <name> --user <id|email> --tenant <id> --role user|admin
+  operator model-put --operator <name> --file <definition.json> [--allow-dev-credentials]
+  operator model-enable|model-disable --operator <name> --slug <slug>
+  operator model-list --operator <name>
+  operator builtin-agent-put --operator <name> --file <definition.json>
+  operator builtin-agent-enable|builtin-agent-disable --operator <name> --slug <slug>
+  operator builtin-agent-list --operator <name>
 
 Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
-the same arguments is safe.`;
+the same arguments is safe. Models are never deleted: disable them instead.
+--allow-dev-credentials accepts a plaintext apiKey and an http loopback
+baseUrl, for local development only.`;
 
 // Long enough for a cold connection to a remote cluster.
 const CONNECT_TIMEOUT_MS = 30_000;
@@ -32,9 +44,26 @@ export class UsageError extends Error {
   }
 }
 
+type DefinitionCommand = {
+  operator: string;
+  file: string;
+};
+
 export type OperatorCommand =
   | ({ command: "provision-tenant" } & ProvisionTenantCommand)
-  | ({ command: "assign-role" } & AssignRoleCommand);
+  | ({ command: "assign-role" } & AssignRoleCommand)
+  | ({
+      command: "model-put";
+      allowDevCredentials: boolean;
+    } & DefinitionCommand)
+  | ({ command: "builtin-agent-put" } & DefinitionCommand)
+  | {
+      command: "model-set-enabled" | "builtin-agent-set-enabled";
+      operator: string;
+      slug: string;
+      enabled: boolean;
+    }
+  | { command: "model-list" | "builtin-agent-list"; operator: string };
 
 function required(values: Record<string, unknown>, flag: string): string {
   const value = values[flag];
@@ -64,6 +93,9 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         kind: { type: "string" },
         user: { type: "string" },
         role: { type: "string" },
+        file: { type: "string" },
+        slug: { type: "string" },
+        "allow-dev-credentials": { type: "boolean" },
       },
     });
   } catch (error) {
@@ -99,16 +131,88 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         role,
       };
     }
+    case "model-put":
+      return {
+        command: "model-put",
+        operator,
+        file: required(values, "file"),
+        allowDevCredentials: values["allow-dev-credentials"] === true,
+      };
+    case "builtin-agent-put":
+      return {
+        command: "builtin-agent-put",
+        operator,
+        file: required(values, "file"),
+      };
+    case "model-enable":
+    case "model-disable":
+      return {
+        command: "model-set-enabled",
+        operator,
+        slug: required(values, "slug"),
+        enabled: positionals[0] === "model-enable",
+      };
+    case "builtin-agent-enable":
+    case "builtin-agent-disable":
+      return {
+        command: "builtin-agent-set-enabled",
+        operator,
+        slug: required(values, "slug"),
+        enabled: positionals[0] === "builtin-agent-enable",
+      };
+    case "model-list":
+    case "builtin-agent-list":
+      return { command: positionals[0], operator };
     default:
       throw new UsageError(`Unknown command "${positionals[0]}".`);
   }
 }
 
+export function readDefinition(file: string): unknown {
+  let text: string;
+  try {
+    if (statSync(file).size > MAX_DEFINITION_BYTES)
+      throw new UsageError(`${file} is larger than 1 MB.`);
+    text = readFileSync(file, "utf8");
+  } catch (error) {
+    if (error instanceof UsageError) throw error;
+    throw new UsageError(`Cannot read ${file}.`);
+  }
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new UsageError(`${file} is not valid JSON.`);
+  }
+}
+
 // Runs one command and returns a printable summary with wire-format IDs.
+// Nothing printed ever includes a credential.
 export async function runOperatorCommand(
   operator: OperatorService,
   command: OperatorCommand,
-): Promise<Record<string, unknown>> {
+  read: (file: string) => unknown = readDefinition,
+): Promise<unknown> {
+  switch (command.command) {
+    case "model-put":
+      return operator.putModel({
+        operator: command.operator,
+        definition: read(command.file),
+        allowDevCredentials: command.allowDevCredentials,
+      });
+    case "builtin-agent-put":
+      return operator.putBuiltinAgent({
+        operator: command.operator,
+        definition: read(command.file),
+      });
+    case "model-set-enabled":
+      return operator.setModelEnabled(command);
+    case "builtin-agent-set-enabled":
+      return operator.setBuiltinAgentEnabled(command);
+    case "model-list":
+      return { models: await operator.listModels() };
+    case "builtin-agent-list":
+      return { builtinAgents: await operator.listBuiltinAgents() };
+  }
   if (command.command === "provision-tenant") {
     const tenant = await operator.provisionTenant(command);
     return {

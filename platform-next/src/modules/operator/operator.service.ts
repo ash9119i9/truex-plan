@@ -3,6 +3,11 @@ import type { ObjectId } from "mongodb";
 import { DomainError } from "../../common/domain-error";
 import { DatabaseService } from "../../database/database.service";
 import { parseWireId } from "../../database/object-id";
+import { parseBuiltinAgentSpec } from "../agents/builtin-agent";
+import {
+  BuiltinAgentsService,
+  type BuiltinListing,
+} from "../agents/builtin-agents.service";
 import type { AuditActor } from "../audit/audit";
 import { AuditService } from "../audit/audit.service";
 import {
@@ -11,6 +16,8 @@ import {
   type Role,
 } from "../memberships/membership";
 import { MembershipsService } from "../memberships/memberships.service";
+import { parseModelSpec, type ModelDoc } from "../models/model";
+import { ModelsService, type PutOutcome } from "../models/models.service";
 import type { TenantDoc, TenantKind } from "../tenants/tenant";
 import { TenantsService } from "../tenants/tenants.service";
 import { isValidEmail, type UserDoc } from "../users/user";
@@ -34,6 +41,67 @@ export interface AssignRoleCommand {
   role: Role;
 }
 
+export interface PutModelCommand {
+  operator: string;
+  // The parsed JSON definition, validated here.
+  definition: unknown;
+  allowDevCredentials?: boolean;
+}
+
+export interface PutBuiltinAgentCommand {
+  operator: string;
+  definition: unknown;
+}
+
+export interface SetEnabledCommand {
+  operator: string;
+  slug: string;
+  enabled: boolean;
+}
+
+// What an operator command prints about a model. Never its credentials.
+export interface ModelSummary {
+  id: string;
+  slug: string;
+  displayName: string;
+  wireApi: string;
+  modelName: string;
+  enabled: boolean;
+  revision: number;
+}
+
+export interface BuiltinAgentSummary {
+  id: string;
+  slug: string;
+  name: string;
+  modelId: string;
+  enabled: boolean;
+  revision: number;
+}
+
+export function modelSummary(model: ModelDoc): ModelSummary {
+  return {
+    id: model._id.toHexString(),
+    slug: model.slug,
+    displayName: model.displayName,
+    wireApi: model.wireApi,
+    modelName: model.modelName,
+    enabled: model.enabled,
+    revision: model.revision,
+  };
+}
+
+export function builtinSummary(agent: BuiltinListing): BuiltinAgentSummary {
+  return {
+    id: agent._id.toHexString(),
+    slug: agent.slug,
+    name: agent.name,
+    modelId: agent.modelId.toHexString(),
+    enabled: agent.enabled,
+    revision: agent.revision,
+  };
+}
+
 export interface AssignRoleResult {
   user: UserDoc;
   membership: MembershipDoc;
@@ -51,7 +119,169 @@ export class OperatorService {
     @Inject(MembershipsService)
     private readonly memberships: MembershipsService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(ModelsService) private readonly models: ModelsService,
+    @Inject(BuiltinAgentsService)
+    private readonly builtins: BuiltinAgentsService,
   ) {}
+
+  // Adds a model, or updates the one with the same slug. Its identity
+  // (wireApi, baseUrl, modelName) can never change.
+  async putModel(
+    command: PutModelCommand,
+  ): Promise<{ model: ModelSummary; outcome: PutOutcome }> {
+    const actor = operatorActor(command.operator);
+    const base = { action: "model.put", actor };
+    try {
+      const spec = parseModelSpec(command.definition, {
+        allowDevCredentials: command.allowDevCredentials,
+      });
+      await Promise.all([
+        this.models.ensureIndexes(),
+        this.audit.ensureIndexes(),
+      ]);
+      return await this.database.withTransaction(async (session) => {
+        const { model, outcome } = await this.models.put(
+          spec,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: {
+              slug: model.slug,
+              modelId: model._id.toHexString(),
+              outcome,
+              revision: model.revision,
+            },
+          },
+          session,
+        );
+        return { model: modelSummary(model), outcome };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  // Disabling is how a model is removed: chats keep its ID.
+  async setModelEnabled(
+    command: SetEnabledCommand,
+  ): Promise<{ model: ModelSummary; changed: boolean }> {
+    const actor = operatorActor(command.operator);
+    const base = {
+      action: command.enabled ? "model.enable" : "model.disable",
+      actor,
+      details: { slug: String(command.slug).slice(0, 64) },
+    };
+    try {
+      await this.audit.ensureIndexes();
+      return await this.database.withTransaction(async (session) => {
+        const { model, changed } = await this.models.setEnabled(
+          command.slug,
+          command.enabled,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: { ...base.details, changed, revision: model.revision },
+          },
+          session,
+        );
+        return { model: modelSummary(model), changed };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  async putBuiltinAgent(
+    command: PutBuiltinAgentCommand,
+  ): Promise<{ agent: BuiltinAgentSummary; outcome: PutOutcome }> {
+    const actor = operatorActor(command.operator);
+    const base = { action: "builtin_agent.put", actor };
+    try {
+      const spec = parseBuiltinAgentSpec(command.definition);
+      await Promise.all([
+        this.builtins.ensureIndexes(),
+        this.audit.ensureIndexes(),
+      ]);
+      return await this.database.withTransaction(async (session) => {
+        const { agent, outcome } = await this.builtins.put(
+          spec,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: {
+              slug: agent.slug,
+              agentId: agent._id.toHexString(),
+              outcome,
+              revision: agent.revision,
+            },
+          },
+          session,
+        );
+        return { agent: builtinSummary(agent), outcome };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  async setBuiltinAgentEnabled(
+    command: SetEnabledCommand,
+  ): Promise<{ agent: BuiltinAgentSummary; changed: boolean }> {
+    const actor = operatorActor(command.operator);
+    const base = {
+      action: command.enabled
+        ? "builtin_agent.enable"
+        : "builtin_agent.disable",
+      actor,
+      details: { slug: String(command.slug).slice(0, 64) },
+    };
+    try {
+      await this.audit.ensureIndexes();
+      return await this.database.withTransaction(async (session) => {
+        const { agent, changed } = await this.builtins.setEnabled(
+          command.slug,
+          command.enabled,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: { ...base.details, changed, revision: agent.revision },
+          },
+          session,
+        );
+        return { agent: builtinSummary(agent), changed };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  async listModels(): Promise<ModelSummary[]> {
+    return (await this.models.listAll()).map(modelSummary);
+  }
+
+  async listBuiltinAgents(): Promise<BuiltinAgentSummary[]> {
+    return (await this.builtins.listAll()).map(builtinSummary);
+  }
 
   async provisionTenant(command: ProvisionTenantCommand): Promise<TenantDoc> {
     const actor = operatorActor(command.operator);
@@ -155,7 +385,7 @@ export class OperatorService {
     base: {
       action: string;
       actor: AuditActor;
-      tenantId: ObjectId;
+      tenantId?: ObjectId;
       details?: Record<string, string>;
     },
     error: unknown,

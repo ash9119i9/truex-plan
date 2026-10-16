@@ -180,8 +180,10 @@ function Clip() {
 
 // Lanyard ID badge. Drag it and the strap stays pinned at the top: the lanyard pivots around its anchor
 // and the strap stretches (with rubber-band resistance) so the grabbed point follows the pointer. Springs back on release.
-export function Badge({ name, handle, look, tint, modelLabel, tag, shine = 0 }: {
+export function Badge({ name, handle, look, tint, modelLabel, tag, shine = 0, subtitle }: {
   name: string; handle: string; look: number; tint: string; modelLabel: string; tag?: string; shine?: number;
+  /** Replaces the "@handle" line, for agents that have no handle. */
+  subtitle?: string;
 }) {
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
@@ -222,7 +224,7 @@ export function Badge({ name, handle, look, tint, modelLabel, tag, shine = 0 }: 
             <div className="badge-top" style={{ background: t.bg }}><Robot look={look} size={150} /></div>
             <div className="badge-body">
               <div className={"badge-name" + (name.trim() ? "" : " is-empty")}>{name.trim() || "Unnamed"}</div>
-              <div className="badge-handle">@{handle || "handle"}{tag && ` · ${tag}`}</div>
+              <div className="badge-handle">{subtitle ?? `@${handle || "handle"}`}{tag && ` · ${tag}`}</div>
             </div>
             <div className="badge-foot"><span>{modelLabel}</span></div>
           </div>

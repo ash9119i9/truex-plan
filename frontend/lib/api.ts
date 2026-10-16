@@ -137,8 +137,13 @@ export function addressed(
   return `${path}${mark < 0 ? "?" : "&"}tenantId=${tenantId}`;
 }
 
-export async function api(path: string, body?: unknown, session: Auth = auth) {
-  const method = body === undefined ? "GET" : "POST";
+export async function api(
+  path: string,
+  body?: unknown,
+  session: Auth = auth,
+  // GET without a body and POST with one, unless named (for example PATCH).
+  method: "GET" | "POST" | "PATCH" = body === undefined ? "GET" : "POST",
+) {
   // AgentCore can cold-start on session creation or restoration. Its backend
   // invocation deadline is 150 seconds; let that response reach the browser.
   const runtimeRequest =

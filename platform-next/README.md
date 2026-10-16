@@ -34,10 +34,51 @@ npm run dev
   parameter (400 otherwise) and an active membership in an active, provisioned
   tenant. Anything else, including a tenant that does not exist, gets the
   same 403. The role always comes from the membership, never the request.
+- `GET /api/v1/models?tenantId=`: enabled models (`id, displayName,
+  shortLabel, family` only).
+- `GET /api/v1/agents?tenantId=`: enabled built-ins, the caller's personal
+  agents and the tenant's shared agents, each with `source`, `available` and
+  the caller's `canEdit/canArchive/canPromote`.
+- `POST /api/v1/agents`: `{clientRequestId, scope: "personal"|"tenant", name,
+  description, modelId, look?, tint?}`. 201 when created, 200 when a retry
+  returns the same agent, 409 when the ID was used for different content,
+  409 `LIMIT_REACHED` (50 per person, 200 shared per tenant), 422
+  `MODEL_UNAVAILABLE`.
+- `PATCH /api/v1/agents/:id`: `{revision, ...changes}`, creator only; 409
+  `STALE_REVISION` when the agent changed since it was read.
+- `POST /api/v1/agents/:id/promote` (creator; personal → tenant, one way) and
+  `POST /api/v1/agents/:id/archive` (creator, or a tenant admin for shared
+  agents). Both are safe to repeat. Another member's personal agent, another
+  tenant's agent and a malformed ID all get the same 404.
 - Authenticated responses are `Cache-Control: no-store`; a bad or expired
   token is a 401 with `WWW-Authenticate: Bearer`, a database outage a 503.
 - API routes live under `/api/v1`. Errors always use
   `{ "error": { "code", "message" }, "requestId" }`.
+
+## Models and built-in agents (product team)
+
+Both live in the catalog database and are changed only with the operator CLI;
+every command is audited. Definitions are JSON files (see
+`test/support/catalog-fixtures.ts` for complete examples).
+
+```sh
+npm run operator -- model-put --operator <you> --file claude.json
+npm run operator -- model-disable --operator <you> --slug claude-sonnet
+npm run operator -- builtin-agent-put --operator <you> --file general.json
+npm run operator -- model-list --operator <you>
+```
+
+- Models go through the model gateway (`wireApi` `anthropic`, `gemini` or
+  `chat`) and need `contextWindow` and `autoCompactTokenLimit`. Keys are
+  Secrets Manager references (`apiKeySecretArn`); a plaintext `apiKey` needs
+  `--allow-dev-credentials`. Nothing printed includes a credential.
+- A model's `wireApi`, `baseUrl` and `modelName` cannot change, because chats
+  pin its ID: add a new slug and disable the old one. Models are never deleted.
+- Re-running a put with the same file changes nothing. Members see changes
+  within 60 seconds (in-memory cache); writes that depend on a model read it
+  fresh.
+- The gateway must read this catalog: set its `CATALOG_MONGO_DB` to
+  `CATALOG_DB_NAME`.
 
 ## Configuration
 
