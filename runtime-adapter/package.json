@@ -1,0 +1,25 @@
+{
+  "name": "runtime-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chat v1 execution service around the project-pinned Codex app-server.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test --test-concurrency=1 \"test/**/*.test.ts\"",
+    "format": "prettier --write \"{src,test}/**/*.ts\"",
+    "format:check": "prettier --check \"{src,test}/**/*.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "prettier": "3.9.8",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  }
+}

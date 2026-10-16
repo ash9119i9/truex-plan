@@ -1,6 +1,6 @@
 # Plan: Chat v1 and the new runtime adapter
 
-Date: 2026-10-16. Status: proposed implementation plan; no chat or adapter implementation is started by this document.
+Date: 2026-10-16, decisions updated 2026-10-17. Status: in implementation. The adapter contract is [runtime-adapter/README.md](../runtime-adapter/README.md).
 Tasks: [chat-v1-todo.md](chat-v1-todo.md).
 
 ## Confirmed product decisions
@@ -12,7 +12,7 @@ Tasks: [chat-v1-todo.md](chat-v1-todo.md).
 - Build a new `runtime-adapter/` package around the project-pinned `vendor/codex`. Do not import implementation from legacy `agent-core/` or `platform/`.
 - Extend `platform-next/` and the existing frontend. Reuse the new identity/tenant foundation rather than rebuilding authentication.
 - Local execution keeps the full Codex home and workspace on local disk. Production packages the new adapter and pinned Codex together for AWS AgentCore Runtime.
-- Recovery after loss of the AWS runtime's ephemeral disk is deferred. Saved MongoDB history remains readable; a lost Codex thread is explicitly unavailable for further execution.
+- AgentCore persistent session storage (`/mnt/state`) makes resume the normal path after an idle session stops. If that storage is really lost, saved MongoDB history remains readable and the chat is explicitly unable to continue (`THREAD_LOST`).
 
 The final one-agent-per-chat decision supersedes the routing and agent-switching ideas explored earlier in the conversation. Those are not tasks for this release.
 
@@ -73,7 +73,7 @@ Preserve the full private home and workspace needed for resume, including Codex-
 
 ## Minimal product persistence and boundaries
 
-Use the selected tenant database for proposed collections `agents`, `model_profiles`, `chats`, `messages` and `runs`. A collection/repository is added only with its implementing slice. Internal record references use ObjectIds; external Codex thread/turn/item IDs remain opaque strings.
+Models (`truex_models`) and built-in agents (`builtin_agents`) live in the shared catalog database, managed by the product team; the model gateway reads the same `truex_models` documents. Use the selected tenant database for `agents` (personal and tenant agents), `chats`, `messages` and `runs`. A collection/repository is added only with its implementing slice. Internal record references use ObjectIds; external Codex thread/turn/item IDs remain opaque strings.
 
 - Chat: owner, agent reference, pinned configuration, runtime binding and active-run reference. Runtime availability is separate from saved-history availability.
 - Message: chat, role, text, order and stable client/runtime identity. Enforce uniqueness for submitted client IDs and completed runtime items.
@@ -94,7 +94,7 @@ The initial internal adapter contract only needs thread preparation/resume, turn
 - A lost platform/runtime response may mean work ran. Read/reconcile before any retry; never automatically resend an uncertain operation. Persisted user messages alone are not permission to replay them after a restart.
 - Interrupted generation can retain partial text, clearly marked interrupted. Process crashes and unsupported/failed provider requests produce actionable errors and settle or reconcile the active-run slot.
 - Expired/revoked sessions and removed memberships close streams after bounded revalidation and prevent future execution. An authorized history read does not restart a runtime as a side effect.
-- If the AWS ephemeral disk is gone, preserve saved MongoDB history and show that the conversation cannot continue. Never silently create a different thread or reconstruct canonical engine history from visible messages.
+- If the chat's runtime storage is gone, preserve saved MongoDB history and show that the conversation cannot continue. Never silently create a different thread or reconstruct canonical engine history from visible messages.
 
 No broker, distributed workflow engine, full event store, all-chat polling loop or automatic owner takeover is needed for this initial deployment. Add a stronger recovery mechanism only when a documented release requirement demands it.
 
@@ -142,10 +142,20 @@ Measure time to accepted request, first text and completion; process startup/res
 
 The old application and storage remain available until a separate reviewed cutover. A new deployment must not automatically adopt old databases, old runtime homes or old provider credentials. Image rollback must account for writes made by a newer engine; never test backward compatibility using a user's only runtime home.
 
+## Settled chat decisions (2026-10-17)
+
+- Chats store references only: `agent {source, id, revision}`, `model {id, revision}`. The chat pins its own model ID.
+- Prompt edits reach new chats only. The adapter never resends instructions on resume (verified: resuming with new instructions would replace the original).
+- Chat created on first Send; title is the first 60 characters. Chat actions: list, open, rename, archive. Message actions: copy. Markdown, never raw HTML.
+- A message sent while a reply streams is rejected (`CHAT_BUSY`); steer comes later. Stop carries `runId`.
+- Watchdog: 180 s to first model output, 120 s silence. Thinking display is deferred (`backlog/features/01-live-thinking.md`); `runs.usage` and `runs.timings` are saved from the start and shown as one quiet line.
+- One platform server, no warm-up. 32 000-character messages, about 20 messages per minute per user.
+- Archived agents' chats continue; a disabled model's chats are read-only.
+
 ## Decisions to settle before their implementation slice
 
-1. Who can create/edit tenant-shared agents and who maintains model profiles. Personal agents remain owner-managed; shared-agent write authority must be explicit before exposing CRUD.
-2. The first production provider/model and its credential-management path. No new live credentials or paid requests are needed for planning or the loopback prototype.
+1. Settled 2026-10-17: any member creates personal or tenant agents; only the creator edits; the creator or a tenant admin archives a tenant agent; personal → tenant promotion only. The product team maintains models and built-in agents through the operator CLI. See the agents/models slice in [chat-v1-todo.md](chat-v1-todo.md).
+2. Settled 2026-10-17: every model goes through the model gateway, starting with Claude (`anthropic`) and Gemini (`gemini`); keys are Secrets Manager references.
 3. Retention/erasure and production resource/timeout limits before public launch. Existing product history remains private irrespective of agent scope.
 
 These are draft implementation decisions, not permission requests to modify the old application. This planning task changes documentation only.

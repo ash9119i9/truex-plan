@@ -1,57 +1,64 @@
 # Chat v1 implementation tasks
 
-Plan: [chat-v1-plan.md](chat-v1-plan.md). Status: not started.
+Plan: [chat-v1-plan.md](chat-v1-plan.md). Status: in progress (slices 1–3 first).
 Implement in small batches, normally 3–5 files. Split a task further if its actual diff spans unrelated responsibilities. These tasks build the new path; they do not refactor legacy platform/agent-core.
 
 ## 1. Freeze the first-message contract
 
-- [ ] Record the confirmed text-only release boundary; settle shared-agent write permissions and initial provider support.
-- [ ] Define chat/create/send/read/stream/stop contracts, execution outcomes and the small internal adapter operations; distinguish runtime acceptance, completed output and saved output.
-- [ ] Record input limits, tenant/owner authorization, duplicate/conflicting IDs, one active turn, event attribution and subscribe/reconnect ordering as acceptance fixtures.
+- [x] Record the confirmed text-only release boundary; settle shared-agent write permissions and initial provider support.
+- [x] Define the internal adapter operations, events, errors and timeouts: [runtime-adapter/README.md](../runtime-adapter/README.md). Chat/send/stream contracts are specified with slices 6–7.
+- [x] Record input limits, duplicate/conflicting IDs, one active turn, event attribution and reconnect ordering as adapter acceptance tests (`runtime-adapter/test`).
 
 **Dependencies:** none. **Likely files:** this plan, a new chat contract document, proposed `shared/chat-runtime.ts` only when implementing. **Scope:** S/M.
 **Verify:** walk first send, duplicate send, foreign chat access, stream disconnect and timeout-after-dispatch using examples. No runtime/business implementation in this slice.
 
 ## 2. Scaffold the independent runtime adapter
 
-- [ ] Create `runtime-adapter/` with its own strict TypeScript configuration, package scripts, recursive tests and documented local storage/configuration.
-- [ ] Validate the Codex pin/binary, internal authentication/binding, private filesystem paths and startup configuration; imports have no child-process/listener side effects.
-- [ ] Add bounded HTTP parsing, health, sanitized errors and graceful shutdown; no legacy runtime or platform imports.
+- [x] Create `runtime-adapter/` with its own strict TypeScript configuration, package scripts, recursive tests and documented local storage/configuration.
+- [x] Validate the Codex pin/binary, internal authentication/binding, private filesystem paths and startup configuration; imports have no child-process/listener side effects.
+- [x] Add bounded HTTP parsing, health, sanitized errors and graceful shutdown; no legacy runtime or platform imports.
 
 **Dependencies:** 1. **Likely files:** package/config files, then `src/main.ts`, configuration and HTTP app in separate batches. **Scope:** M per batch.
 **Verify:** startup/invalid-config/oversize-input/authentication/shutdown tests; package typecheck/build/format. Refuse caller-selected binaries, arbitrary RPC methods and workspace paths.
 
 ## 3. Prove the native Codex lifecycle
 
-- [ ] Implement the child process and newline JSON-RPC client: initialize once, correlate responses, collect notifications before dispatch, and explicitly settle unsupported server requests.
-- [ ] Implement one chat's start/turn/read/interrupt lifecycle with private disk state and bounded process capacity; reject overlapping turns rather than steering them implicitly.
-- [ ] Exercise streaming/final status and same-home resume against real pinned Codex and a loopback model fixture. No real keys or old runtime homes.
+- [x] Implement the child process and newline JSON-RPC client: initialize once, correlate responses, collect notifications before dispatch, and explicitly settle unsupported server requests.
+- [x] Implement one chat's start/turn/read/interrupt lifecycle with private disk state and bounded process capacity; reject overlapping turns rather than steering them implicitly.
+- [x] Exercise streaming/final status and same-home resume against real pinned Codex and a loopback model fixture. No real keys or old runtime homes.
 
 **Dependencies:** 2. **Likely files:** `runtime-adapter/src/codex/client.ts`, thread lifecycle module and native fixture/tests, in separate batches. **Scope:** M per batch.
 **Verify:** same thread survives a local process restart, final output can precede the RPC response without being lost, malformed frames/exits/timeouts fail clearly, stop interrupts and child processes are cleaned up.
 
-### Checkpoint A — engine boundary
+### Checkpoint A — engine boundary (passed 2026-10-17: 49/49 tests against the real pin)
 
-- [ ] A clean local adapter can execute and resume text turns without platform or frontend dependencies.
-- [ ] Native event behavior and denied capability exposure are verified, not inferred from schema presence.
+- [x] A clean local adapter can execute and resume text turns without platform or frontend dependencies.
+- [x] Native event behavior and denied capability exposure are verified, not inferred from schema presence.
 
-## 4. Add the minimal model-provider registry
+## 4–5. Agents and models (decided and built 2026-10-17, ahead of the runtime slices)
 
-- [ ] Add a deliberate initial supported model/provider route and minimal controlled provisioning/selection path.
-- [ ] Validate model settings and resolve credentials through authorized references; public projections/snapshots exclude secrets.
-- [ ] Disabled, missing, foreign or unsupported profiles fail before dispatch. Rotation changes credentials without silently changing the pinned model/route.
+Models and built-in agents are product-team data in the catalog DB; users only pick them. User agents live in the tenant DB.
 
-**Dependencies:** 1; consume current platform-next database/access services. **Likely files:** `platform-next/src/modules/model-providers/` and focused tests. **Scope:** M per provisioning/read batch.
-**Verify:** tenant/scope/profile validation, redaction and credential-rotation fixtures; platform-next package checks. No arbitrary provider compatibility promise or gateway rewrite.
+| Data | Where | Written by |
+| --- | --- | --- |
+| `truex_models` | catalog | operator CLI `model-put/-enable/-disable` (soft delete only) |
+| `builtin_agents` | catalog | operator CLI `builtin-agent-put/-enable/-disable` |
+| `agents` (scope `personal` / `tenant`) | tenant DB | members through the API |
 
-## 5. Add selectable personal and tenant agents
+Acceptance criteria (each is a test):
 
-- [ ] Add validated agent name, purpose, prompt and model-profile reference, with explicit personal/tenant ownership and approved write policy.
-- [ ] Provide minimal create/edit/list paths; users only select agents they can use. A tenant agent never grants access to its users' private chats.
-- [ ] Preserve version/snapshot semantics: edits apply to new chats; unavailable configuration produces an actionable error.
+- [x] Model put validates every field, refuses unknown fields, requires `contextWindow` > `autoCompactTokenLimit`, accepts only gateway `wireApi` values (`anthropic`, `gemini`, `chat`) and a Secrets Manager ARN (plaintext `apiKey` only with an explicit dev flag). Changing `wireApi`, `baseUrl` or `modelName` of an existing slug is refused. Re-running an identical put changes nothing. Every operator command is audited.
+- [x] Built-in put references its model by slug, refuses a missing model, and never returns `instructions` to the browser.
+- [x] `GET /models` returns only enabled models with `id, displayName, shortLabel, family`; never URLs, ARNs, keys or limits.
+- [x] `GET /agents` returns enabled built-ins, the caller's personal agents and the tenant's agents, each with `source`, `available` (model enabled) and the caller's `canEdit/canArchive/canPromote`. Another member's personal agents never appear. Built-ins and models come from a 60 s in-memory cache; tenant agents are one indexed query.
+- [x] `POST /agents` needs `clientRequestId`, `scope`, `name` (1–60), `description` (1–280), `modelId` (enabled, else 422 `MODEL_UNAVAILABLE`), `look` (0–11), `tint`. Replaying the same `clientRequestId` returns the same agent; a different body is 409.
+- [x] Limits: 50 active agents per creator, 200 active tenant agents per tenant (409 `LIMIT_REACHED`), race-safe under concurrent creates.
+- [x] `PATCH /agents/:id` needs the current `revision` (409 otherwise); only the creator edits. `POST /agents/:id/promote` turns personal into tenant (creator only, counts against the tenant limit). `POST /agents/:id/archive`: creator, or a tenant admin for tenant agents; repeating it is safe.
+- [x] Another member's personal agent, another tenant's agent and malformed IDs all get the same 404.
+- [x] Create, edit, promote and archive are audited in the same transaction as the change.
+- [x] Frontend: the tenant chat page lists agents grouped Built-in / Personal / Workspace, marks unavailable ones, and opens a create/edit dialog with a Personal/Workspace choice (Personal default, with a warning on Workspace), share and archive actions. Verified in a browser with a mocked API.
 
-**Dependencies:** 4. **Likely files:** `platform-next/src/modules/agents/` and HTTP/integration tests, split by read and write capabilities. **Scope:** M per batch.
-**Verify:** owner/other-user/admin/foreign-tenant cases and invalid/missing profile references; package checks. Do not introduce MCP/skill management placeholders in the text-only scope.
+Deferred: instructions on user agents, handles/@mentions, per-tenant model allow-lists, sharing back to personal, rate limiting.
 
 ## 6. Create a private chat with a pinned configuration
 
@@ -59,7 +66,7 @@ Implement in small batches, normally 3–5 files. Split a task further if its ac
 - [ ] Add bounded owner-only list/history reads; do not contact the runtime merely to list or view saved history.
 - [ ] Refuse a different agent ID on later sends and keep the first snapshot after agent edits. Store external engine IDs as opaque strings.
 
-**Dependencies:** 5. **Likely files:** `platform-next/src/modules/chats/` documents, repository/service/controller and tests in separate batches. **Scope:** M per batch.
+**Dependencies:** 4–5. **Likely files:** `platform-next/src/modules/chats/` documents, repository/service/controller and tests in separate batches. **Scope:** M per batch.
 **Verify:** repeat create, conflicting identifiers, private chat access, snapshot stability and pagination; actual HTTP/Mongo integration tests.
 
 ## 7. Deliver the platform's first-message execution

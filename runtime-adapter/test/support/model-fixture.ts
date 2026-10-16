@@ -1,0 +1,147 @@
+import { once } from "node:events";
+import { createServer, type Server, type ServerResponse } from "node:http";
+
+// A loopback Responses API provider. Each request is answered by the next
+// scripted behavior (or the default), so tests can make the "model" stream
+// slowly, hang, fail or overflow its context. Synthetic credentials only.
+
+export type Behavior =
+  | { kind: "reply"; text: string; chunk?: number; delayMs?: number }
+  | { kind: "hangBeforeHeaders" }
+  | { kind: "hangAfterCreated" }
+  | { kind: "status"; status: number }
+  | { kind: "failed"; code: string };
+
+export interface ModelRequest {
+  readonly authorized: boolean;
+  readonly body: Record<string, unknown>;
+}
+
+export class ModelFixture {
+  readonly requests: ModelRequest[] = [];
+  readonly script: Behavior[] = [];
+  defaultBehavior: Behavior = {
+    kind: "reply",
+    text: "Hello from the fixture.",
+  };
+  private server!: Server;
+  private readonly open = new Set<ServerResponse>();
+  url = "";
+
+  constructor(readonly token = "fixture-gateway-token-0123456789abcdef") {}
+
+  async start(): Promise<void> {
+    this.server = createServer(async (req, res) => {
+      let raw = "";
+      for await (const chunk of req) raw += chunk;
+      if (!req.url?.endsWith("/responses")) return res.writeHead(404).end();
+      const body = JSON.parse(raw) as Record<string, unknown>;
+      this.requests.push({
+        authorized: req.headers.authorization === `Bearer ${this.token}`,
+        body,
+      });
+      this.open.add(res);
+      res.on("close", () => this.open.delete(res));
+      await this.respond(this.script.shift() ?? this.defaultBehavior, res);
+    });
+    this.server.listen(0, "127.0.0.1");
+    await once(this.server, "listening");
+    const address = this.server.address() as { port: number };
+    this.url = `http://127.0.0.1:${address.port}/v1`;
+  }
+
+  async close(): Promise<void> {
+    for (const res of this.open) res.destroy();
+    this.server.closeAllConnections();
+    await new Promise((resolve) => this.server.close(resolve));
+  }
+
+  lastRequest(): ModelRequest {
+    const last = this.requests.at(-1);
+    if (!last) throw new Error("no model request");
+    return last;
+  }
+
+  private async respond(
+    behavior: Behavior,
+    res: ServerResponse,
+  ): Promise<void> {
+    const n = this.requests.length;
+    const emit = (event: Record<string, unknown>) =>
+      res.write(
+        `event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`,
+      );
+    switch (behavior.kind) {
+      case "hangBeforeHeaders":
+        return;
+      case "status":
+        res
+          .writeHead(behavior.status, { "content-type": "application/json" })
+          .end('{"error":{"message":"fixture failure"}}');
+        return;
+      case "hangAfterCreated":
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        emit({ type: "response.created", response: { id: `resp_${n}` } });
+        return;
+      case "failed":
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        emit({ type: "response.created", response: { id: `resp_${n}` } });
+        emit({
+          type: "response.failed",
+          response: {
+            id: `resp_${n}`,
+            error: { code: behavior.code, message: "fixture failure" },
+          },
+        });
+        res.end();
+        return;
+      case "reply": {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        const id = `resp_${n}`;
+        const item = {
+          type: "message",
+          role: "assistant",
+          id: `msg_${n}`,
+          content: [{ type: "output_text", text: behavior.text }],
+        };
+        emit({ type: "response.created", response: { id } });
+        emit({
+          type: "response.output_item.added",
+          output_index: 0,
+          item: { ...item, content: [] },
+        });
+        const size = behavior.chunk ?? 8;
+        for (let i = 0; i < behavior.text.length; i += size) {
+          if (res.destroyed) return;
+          emit({
+            type: "response.output_text.delta",
+            item_id: item.id,
+            output_index: 0,
+            content_index: 0,
+            delta: behavior.text.slice(i, i + size),
+          });
+          if (behavior.delayMs) await sleep(behavior.delayMs);
+        }
+        if (res.destroyed) return;
+        emit({ type: "response.output_item.done", output_index: 0, item });
+        emit({
+          type: "response.completed",
+          response: {
+            id,
+            usage: {
+              input_tokens: 20,
+              input_tokens_details: { cached_tokens: 5 },
+              output_tokens: 10,
+              total_tokens: 30,
+            },
+          },
+        });
+        res.end();
+      }
+    }
+  }
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

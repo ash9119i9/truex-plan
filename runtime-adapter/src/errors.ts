@@ -1,0 +1,108 @@
+// Every failure the adapter reports has a fixed code, HTTP status, retry hint
+// and user-safe message. Raw Codex or provider text never reaches a caller.
+
+export const REQUEST_ERRORS = {
+  INVALID_REQUEST: [400, false, "The request is invalid."],
+  UNAUTHORIZED: [401, false, "Authentication is required."],
+  RUN_NOT_FOUND: [404, false, "This run is unknown or has expired."],
+  THREAD_LOST: [
+    404,
+    false,
+    "This conversation's history is no longer available, so it can't continue.",
+  ],
+  CHAT_BUSY: [409, false, "This chat is still answering. Wait or stop it."],
+  RUN_CONFLICT: [
+    409,
+    false,
+    "This run ID was already used for another request.",
+  ],
+  PAYLOAD_TOO_LARGE: [413, false, "The request is too large."],
+  RUNTIME_BUSY: [503, true, "The assistant is at capacity. Try again shortly."],
+  DRAINING: [503, true, "The assistant is restarting. Try again shortly."],
+  RUNTIME_UNAVAILABLE: [503, true, "The assistant did not respond. Try again."],
+  INTERNAL: [500, true, "Something went wrong in the assistant. Try again."],
+} as const satisfies Record<string, readonly [number, boolean, string]>;
+
+export type RequestErrorCode = keyof typeof REQUEST_ERRORS;
+
+export class AdapterError extends Error {
+  readonly status: number;
+  readonly retryable: boolean;
+
+  constructor(
+    readonly code: RequestErrorCode,
+    message?: string,
+  ) {
+    const [status, retryable, fallback] = REQUEST_ERRORS[code];
+    super(message ?? fallback);
+    this.name = "AdapterError";
+    this.status = status;
+    this.retryable = retryable;
+  }
+
+  toBody() {
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        retryable: this.retryable,
+      },
+    };
+  }
+}
+
+// Failures of a run that was admitted; reported in `run.completed.error`.
+export const RUN_ERRORS = {
+  MODEL_TIMEOUT: [true, "The model didn't respond in time. Try again."],
+  CONTEXT_FULL: [
+    false,
+    "This conversation is too long for the model. Start a new chat.",
+  ],
+  RATE_LIMITED: [
+    true,
+    "The model is rate limited right now. Try again shortly.",
+  ],
+  PROVIDER_ERROR: [true, "The model provider returned an error. Try again."],
+  RUNTIME_ERROR: [true, "The assistant stopped unexpectedly. Try again."],
+  RUNTIME_SHUTDOWN: [
+    true,
+    "The assistant restarted before finishing. Try again.",
+  ],
+  THREAD_LOST: [false, REQUEST_ERRORS.THREAD_LOST[2]],
+  THREAD_MISMATCH: [
+    false,
+    "This conversation can't continue here. Start a new chat.",
+  ],
+} as const satisfies Record<string, readonly [boolean, string]>;
+
+export type RunErrorCode = keyof typeof RUN_ERRORS;
+
+export interface RunError {
+  readonly code: RunErrorCode;
+  readonly message: string;
+  readonly retryable: boolean;
+}
+
+export function runError(code: RunErrorCode): RunError {
+  const [retryable, message] = RUN_ERRORS[code];
+  return { code, message, retryable };
+}
+
+// Maps Codex's typed error info (never its message text) to a run error.
+export function fromCodexErrorInfo(info: unknown): RunError {
+  const key =
+    typeof info === "string"
+      ? info
+      : info && typeof info === "object"
+        ? Object.keys(info)[0]
+        : undefined;
+  switch (key) {
+    case "contextWindowExceeded":
+      return runError("CONTEXT_FULL");
+    case "rateLimitExceeded":
+    case "usageLimitExceeded":
+      return runError("RATE_LIMITED");
+    default:
+      return runError("PROVIDER_ERROR");
+  }
+}
