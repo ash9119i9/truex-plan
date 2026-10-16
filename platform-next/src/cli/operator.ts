@@ -5,6 +5,7 @@ import { AppModule } from "../app.module";
 import { DomainError } from "../common/domain-error";
 import { ConfigError, loadConfig } from "../config/app-config";
 import { loadEnvFileIfPresent } from "../config/env-file";
+import { DatabaseService } from "../database/database.service";
 import { parseWireId, toWireId } from "../database/object-id";
 import { isRole } from "../modules/memberships/membership";
 import {
@@ -20,6 +21,9 @@ const USAGE = `Usage:
 
 Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
 the same arguments is safe.`;
+
+// Long enough for a cold connection to a remote cluster.
+const CONNECT_TIMEOUT_MS = 30_000;
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -134,6 +138,7 @@ async function main(): Promise<void> {
     { abortOnError: false, logger: ["error", "warn"] },
   );
   try {
+    await app.get(DatabaseService).waitUntilConnected(CONNECT_TIMEOUT_MS);
     const result = await runOperatorCommand(app.get(OperatorService), command);
     console.log(JSON.stringify(result, null, 2));
   } finally {

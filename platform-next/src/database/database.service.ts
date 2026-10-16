@@ -33,6 +33,8 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   private readonly client: MongoClient;
   private reconnectTimer?: NodeJS.Timeout;
   private shuttingDown = false;
+  private connected = false;
+  private readonly connectWaiters = new Set<() => void>();
 
   constructor(@Inject(APP_CONFIG) private readonly config: AppConfig) {
     this.client = new MongoClient(config.mongodbUri, {
@@ -50,6 +52,9 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     if (this.shuttingDown) return;
     this.client.connect().then(
       () => {
+        this.connected = true;
+        for (const wake of this.connectWaiters) wake();
+        this.connectWaiters.clear();
         if (delayMs > RECONNECT_MIN_MS)
           this.logger.log({ message: "database connected" });
       },
@@ -71,6 +76,24 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         this.reconnectTimer.unref();
       },
     );
+  }
+
+  // Resolves once the first connection succeeds. For one-shot commands: a cold
+  // connection (TLS, SRV lookup, auth) can outlast SERVER_SELECTION_TIMEOUT_MS,
+  // and an operation started before it would fail. The server never waits.
+  waitUntilConnected(timeoutMs: number): Promise<void> {
+    if (this.connected) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        this.connectWaiters.delete(wake);
+        reject(new Error(`MongoDB was not reachable within ${timeoutMs} ms.`));
+      }, timeoutMs);
+      this.connectWaiters.add(wake);
+    });
   }
 
   // The shared catalog: users, tenants and memberships.
