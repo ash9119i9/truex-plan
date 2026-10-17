@@ -23,6 +23,16 @@ In production the adapter runs inside the AgentCore microVM, so every byte cross
 
 The gain depends on the delta size the gateway actually sends for Claude and Gemini. Capture it in the deployed AgentCore test. If deltas are already sentence-sized, the saving is small: drop this item.
 
+## Claude measurement (2026-10-17)
+
+Real adapter + pinned Codex + local gateway + the catalog's Claude Sonnet 5.5 profile (dev Anthropic-compatible endpoint), scripts in `.runtime/perf-bench/real.ts`:
+
+- Gateway deltas: p50 13 chars, p95 27 chars (about one token each), 1:1 with adapter `text.delta` events.
+- ~600-word answer (≈4.3k chars): ~315 events, 42–44 KB adapter stream (≈10× text, not 19×), 62–66 KB gateway→Codex.
+- Stream rate ≈ 470 chars/s, so ≈ 3.3 KB/s on the adapter stream.
+
+Verdict so far: low value. 44 KB per long answer is negligible for `InvokeAgentRuntime`, and the platform already batches to the browser. Gemini not measured yet; keep open only for that, otherwise drop.
+
 ## Done when
 
 - Delta sizes for Claude and Gemini are recorded here.
