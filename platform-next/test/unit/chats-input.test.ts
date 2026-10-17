@@ -84,6 +84,18 @@ describe("chat input", () => {
     );
     refused(() => parseSend({ clientMessageId: id, text: "a\u0000b" }));
     refused(() => parseSend({ clientMessageId: id, text: "a\u202eb" }));
+    refused(() => parseSend({ clientMessageId: id, text: "a\u2066b" }));
+    // Emoji sequences, joiners in many scripts and direction marks are text.
+    for (const text of [
+      "👨‍💻 done",
+      "می‌خواهم",
+      "שלום\u200F!",
+      "🏴\u{E0067}\u{E007F}",
+    ]) {
+      assert.equal(parseSend({ clientMessageId: id, text }).text, text);
+      assert.equal(parseRename({ title: text }), text);
+    }
+    refused(() => parseRename({ title: "a\nb" }));
     refused(() => parseSend({ clientMessageId: "bad id!", text: "hi" }));
     refused(() => parseSend({ clientMessageId: id, text: "hi", extra: true }));
     refused(() => parseSend(null));

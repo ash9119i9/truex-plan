@@ -132,7 +132,10 @@ export function isSettled(status: RunStatus): boolean {
 }
 
 const CLIENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
-const UNSAFE = /[\p{Cc}\p{Cf}]/u;
+// Control characters and the bidi embedding/override/isolate controls, which
+// reorder what is shown. Other format characters stay: emoji sequences, many
+// scripts (ZWJ/ZWNJ) and right-to-left text (direction marks) need them.
+const UNSAFE = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
 
 function clientMessageId(value: unknown): string {
   if (typeof value !== "string" || !CLIENT_ID.test(value))
@@ -141,7 +144,7 @@ function clientMessageId(value: unknown): string {
 }
 
 // Keeps the text as typed (newlines, tabs, inner spacing) after NFC;
-// refuses other control and invisible format characters.
+// refuses other control characters and bidi overrides.
 function messageText(value: unknown): string {
   if (typeof value !== "string") invalid("text must be a string.");
   const text = value.normalize("NFC");

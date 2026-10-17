@@ -9,7 +9,9 @@ export const ID = /^[A-Za-z0-9_-]{1,64}$/;
 // Codex thread IDs are UUIDs; anything else is refused before it reaches RPC.
 const THREAD_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const UNSAFE_TEXT = /[\p{Cc}\p{Cf}]/u;
+// Control characters and the bidi embedding/override/isolate controls. Other
+// format characters stay: emoji sequences and many scripts need them.
+const UNSAFE_TEXT = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
 const MODEL_NAME = /^[A-Za-z0-9._:/@-]{1,128}$/;
 const REASONING = [
   "none",
@@ -82,8 +84,8 @@ function text(value: unknown, field: string, max: number, trim: boolean) {
   return visible;
 }
 
-// Message text keeps newlines and tabs; other control and invisible format
-// characters (bidi overrides and the like) are refused.
+// Message text keeps newlines and tabs; other control characters and bidi
+// overrides are refused.
 function messageText(value: unknown): string {
   const value_ = text(value, "input.text", MAX_TEXT, false);
   if (UNSAFE_TEXT.test(value_.replace(/[\n\r\t]/g, "")))

@@ -99,6 +99,20 @@ describe("start-run contract", () => {
       { ...valid(), input: { text: "a\u0000b", clientMessageId: "m" } },
       /control/,
     );
+    // Emoji sequences, joiners in many scripts and direction marks are text.
+    for (const text of [
+      "👨‍💻 done",
+      "می‌خواهم",
+      "שלום\u200F!",
+      "🏴\u{E0067}\u{E007F}",
+    ])
+      assert.equal(
+        parseStartRun(
+          { ...valid(), input: { text, clientMessageId: "m" } },
+          DEFAULT_LIMITS,
+        ).input.text,
+        text,
+      );
   });
 
   test("validates model settings", () => {
