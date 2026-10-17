@@ -170,6 +170,12 @@ export class BuiltinAgentsService {
     return this.enabledCache.get();
   }
 
+  // One enabled built-in with its instructions, read fresh: a chat starting
+  // with it must not use a prompt the product team has since disabled.
+  findEnabledWithInstructions(id: ObjectId): Promise<BuiltinAgentDoc | null> {
+    return this.builtins().findOne({ _id: id, enabled: true });
+  }
+
   private loadEnabled(): Promise<BuiltinListing[]> {
     return this.builtins()
       .find({ enabled: true }, { projection: NO_INSTRUCTIONS })

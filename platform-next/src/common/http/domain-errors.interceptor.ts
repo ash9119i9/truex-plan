@@ -16,6 +16,10 @@ const HTTP: Record<DomainErrorCode, { status: number; code: ErrorCode }> = {
   LIMIT_REACHED: { status: 409, code: "LIMIT_REACHED" },
   MODEL_UNAVAILABLE: { status: 422, code: "MODEL_UNAVAILABLE" },
   STALE_REVISION: { status: 409, code: "STALE_REVISION" },
+  CHAT_BUSY: { status: 409, code: "CHAT_BUSY" },
+  CHAT_READ_ONLY: { status: 409, code: "CHAT_READ_ONLY" },
+  RATE_LIMITED: { status: 429, code: "RATE_LIMITED" },
+  UNAVAILABLE: { status: 503, code: "UNAVAILABLE" },
 };
 
 export function toApiError(error: DomainError): ApiError {

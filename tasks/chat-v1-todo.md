@@ -62,21 +62,23 @@ Deferred: instructions on user agents, handles/@mentions, per-tenant model allow
 
 ## 6. Create a private chat with a pinned configuration
 
-- [ ] Implement idempotent chat creation with selected agent, owner and nonsecret configuration snapshot in the authorized tenant database.
-- [ ] Add bounded owner-only list/history reads; do not contact the runtime merely to list or view saved history.
-- [ ] Refuse a different agent ID on later sends and keep the first snapshot after agent edits. Store external engine IDs as opaque strings.
+- [x] Implement idempotent chat creation with selected agent, owner and nonsecret configuration snapshot in the authorized tenant database.
+- [x] Add bounded owner-only list/history reads; do not contact the runtime merely to list or view saved history.
+- [x] Refuse a different agent ID on later sends and keep the first snapshot after agent edits. Store external engine IDs as opaque strings.
 
 **Dependencies:** 4–5. **Likely files:** `platform-next/src/modules/chats/` documents, repository/service/controller and tests in separate batches. **Scope:** M per batch.
 **Verify:** repeat create, conflicting identifiers, private chat access, snapshot stability and pagination; actual HTTP/Mongo integration tests.
 
 ## 7. Deliver the platform's first-message execution
 
-- [ ] Durably record one submitted message/run and atomically reserve the active-turn slot before invoking the new adapter; external execution stays outside database transaction callbacks.
-- [ ] Consume the runtime stream through one platform execution reader, save completed items/outcome idempotently, and release admission only at a resolved safe boundary.
-- [ ] Preserve unknown-delivery state after ambiguous dispatch failure; repeated IDs return their receipt and never automatically start another model turn.
+- [x] Durably record one submitted message/run and atomically reserve the active-turn slot before invoking the new adapter; external execution stays outside database transaction callbacks.
+- [x] Consume the runtime stream through one platform execution reader, save completed items/outcome idempotently, and release admission only at a resolved safe boundary.
+- [x] Preserve unknown-delivery state after ambiguous dispatch failure; repeated IDs return their receipt and never automatically start another model turn.
 
 **Dependencies:** 3, 6. **Likely files:** platform chat send operation, runtime transport, event persistence and focused integration tests. **Scope:** M per batch.
 **Verify:** real platform/new-adapter/pinned-Codex loopback integration, fast completion, duplicate requests, concurrent sends, provider failure and Mongo outage. No legacy adapter is used as the proof.
+
+Done 2026-10-17 (`platform-next/src/modules/chats`, `test/integration/chats.test.ts`, 17 end-to-end tests). Stop, browser disconnect, platform restart recovery, save failure and adapter shutdown from slices 9–10 were built with it, because the send path is not safe without them. Still open from 9–10: revocation tests on a live stream, an all-chats recovery sweep (recovery is on access only), and AgentCore transport (slice 11).
 
 ## 8. Connect the first user-visible chat
 

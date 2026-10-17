@@ -10,7 +10,15 @@ export type DomainErrorCode =
   // The referenced model is missing or disabled.
   | "MODEL_UNAVAILABLE"
   // The caller edited an out-of-date copy.
-  | "STALE_REVISION";
+  | "STALE_REVISION"
+  // The chat is answering a message; wait or stop it.
+  | "CHAT_BUSY"
+  // The chat can be read but not continued.
+  | "CHAT_READ_ONLY"
+  // Too many requests in a short time.
+  | "RATE_LIMITED"
+  // A dependency is missing or down; retrying later may work.
+  | "UNAVAILABLE";
 
 export class DomainError extends Error {
   constructor(

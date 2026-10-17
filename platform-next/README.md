@@ -35,12 +35,12 @@ npm run dev
   tenant. Anything else, including a tenant that does not exist, gets the
   same 403. The role always comes from the membership, never the request.
 - `GET /api/v1/models?tenantId=`: enabled models (`id, displayName,
-  shortLabel, family` only).
+shortLabel, family` only).
 - `GET /api/v1/agents?tenantId=`: enabled built-ins, the caller's personal
   agents and the tenant's shared agents, each with `source`, `available` and
   the caller's `canEdit/canArchive/canPromote`.
 - `POST /api/v1/agents`: `{clientRequestId, scope: "personal"|"tenant", name,
-  description, modelId, look?, tint?}`. 201 when created, 200 when a retry
+description, modelId, look?, tint?}`. 201 when created, 200 when a retry
   returns the same agent, 409 when the ID was used for different content,
   409 `LIMIT_REACHED` (50 per person, 200 shared per tenant), 422
   `MODEL_UNAVAILABLE`.
@@ -50,6 +50,33 @@ npm run dev
   `POST /api/v1/agents/:id/archive` (creator, or a tenant admin for shared
   agents). Both are safe to repeat. Another member's personal agent, another
   tenant's agent and a malformed ID all get the same 404.
+- Chats (private to the member who started them; admins included). Each
+  needs the runtime adapter and gateway settings below, otherwise 503:
+  - `POST /api/v1/chats`: `{agentId, clientMessageId, text}`. The first message
+    creates the chat. 202 when saved and handed to the assistant, 200 when a
+    retry returns the same chat, message and run; 409 when the ID was used for
+    different text.
+  - `POST /api/v1/chats/:id/messages`: `{clientMessageId, text}`. 409
+    `CHAT_BUSY` while a reply runs, 409 `CHAT_READ_ONLY` when the chat's
+    history, model or built-in agent is gone, or the chat is archived; 429
+    over about 20 messages a minute. Text is 1–32 000 characters.
+  - `GET /api/v1/chats/:id/runs/:runId/stream`: server-sent events for one
+    reply: `snapshot` (text so far), `status`, `delta` (batched every 50 ms),
+    `item`, `usage`, `completed` (outcome known) and `saved` (outcome stored;
+    show the saved tick only now), or `save_failed`. `: hb` every 15 s; the
+    stream closes with `end` if the session or membership is revoked.
+    Reconnecting is always safe: the snapshot replaces what the browser has.
+  - `POST /api/v1/chats/:id/runs/:runId/stop`: 202; safe to repeat. Partial
+    text is saved as `stopped`.
+  - `GET /api/v1/chats` (newest first, `cursor`, `status=archived`),
+    `GET /api/v1/chats/:id` (latest 50 messages with their runs),
+    `GET /api/v1/chats/:id/messages?before=<seq>`, `PATCH /api/v1/chats/:id`
+    `{title}`, `POST /api/v1/chats/:id/archive`.
+  - Closing a stream never stops a reply. A reply whose platform process died
+    is recovered on the chat's next access once its 30 s lease lapses: the
+    platform reattaches to the runtime's run, or settles it from the runtime's
+    history. A message the runtime may have seen is never resent; one it has
+    no trace of is marked `NOT_SENT` for the member to resend.
 - Authenticated responses are `Cache-Control: no-store`; a bad or expired
   token is a 401 with `WWW-Authenticate: Bearer`, a database outage a 503.
 - API routes live under `/api/v1`. Errors always use
@@ -82,15 +109,21 @@ npm run operator -- model-list --operator <you>
 
 ## Configuration
 
-| Variable                                  | Meaning                                                               |
-| ----------------------------------------- | --------------------------------------------------------------------- |
-| `PORT`                                    | HTTP port (4100 locally; the old platform uses 4000).                 |
-| `MONGODB_URI`                             | MongoDB connection string.                                            |
-| `CATALOG_DB_NAME`                         | Shared catalog database; must start with `truex_next_`.               |
-| `AUTH_ISSUER`, `AUTH_AUDIENCE`            | Fixed strings checked on every access token; differ per environment.  |
-| `AUTH_SIGNING_KEY_ID`, `AUTH_SIGNING_KEY` | Ed25519 signing key from `npm run auth:generate-key`. Secret.         |
-| `AUTH_VERIFY_KEYS`                        | Previous public keys still accepted during a rotation (`id=key,...`). |
-| `AUTH_ALLOWED_ORIGINS`                    | Exact browser origins allowed to use the refresh cookie.              |
+| Variable                                       | Meaning                                                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------ |
+| `PORT`                                         | HTTP port (4100 locally; the old platform uses 4000).                          |
+| `MONGODB_URI`                                  | MongoDB connection string.                                                     |
+| `CATALOG_DB_NAME`                              | Shared catalog database; must start with `truex_next_`.                        |
+| `AUTH_ISSUER`, `AUTH_AUDIENCE`                 | Fixed strings checked on every access token; differ per environment.           |
+| `AUTH_SIGNING_KEY_ID`, `AUTH_SIGNING_KEY`      | Ed25519 signing key from `npm run auth:generate-key`. Secret.                  |
+| `AUTH_VERIFY_KEYS`                             | Previous public keys still accepted during a rotation (`id=key,...`).          |
+| `AUTH_ALLOWED_ORIGINS`                         | Exact browser origins allowed to use the refresh cookie.                       |
+| `RUNTIME_ADAPTER_URL`, `RUNTIME_ADAPTER_TOKEN` | The runtime adapter and its shared bearer token (32+ characters). Secret.      |
+| `MODEL_GATEWAY_URL`, `MODEL_GATEWAY_SECRET`    | The model gateway Codex calls, and the token-signing secret it shares. Secret. |
+
+Chat needs all four chat variables or none; with none, chat endpoints answer 503
+and everything else works. v1 runs one platform process: live replies are held
+in that process's memory.
 
 Invalid configuration stops startup and lists every problem.
 

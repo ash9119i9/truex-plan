@@ -32,6 +32,18 @@ import {
 
 export type AgentSource = "builtin" | AgentScope;
 
+// What a chat needs from its agent. Instructions only for built-ins; this
+// never leaves the server.
+export interface ChatAgent {
+  source: AgentSource;
+  id: ObjectId;
+  revision: number;
+  name: string;
+  description: string;
+  instructions?: string;
+  modelId: ObjectId;
+}
+
 // One agent as the caller sees it, with what the caller may do to it.
 export interface AgentView {
   id: string;
@@ -50,6 +62,14 @@ export interface AgentView {
   canEdit: boolean;
   canArchive: boolean;
   canPromote: boolean;
+}
+
+export interface AgentSummary {
+  name: string;
+  look: number;
+  tint: AgentTint;
+  // False for an archived agent or a disabled built-in.
+  available: boolean;
 }
 
 interface QuotaLock {
@@ -340,6 +360,79 @@ export class AgentsService {
       context,
       archived ?? (await this.findVisible(context, agentId)),
     );
+  }
+
+  // The agent a chat runs with. A new chat needs an active agent; an
+  // existing chat keeps working after its user agent is archived (it runs
+  // from its own thread). A disabled built-in stops every chat with it: that
+  // is the product team's switch for a prompt that must not run again.
+  // Returns null for anything the caller cannot use.
+  async resolveForChat(
+    context: TenantContext,
+    agentId: ObjectId,
+    options: { allowArchived: boolean },
+  ): Promise<ChatAgent | null> {
+    const [builtin, agent] = await Promise.all([
+      this.builtins.findEnabledWithInstructions(agentId),
+      this.agents(context).findOne({
+        _id: agentId,
+        ...visibleTo(context.userId),
+        ...(options.allowArchived ? {} : { status: "active" as const }),
+      }),
+    ]);
+    if (builtin)
+      return {
+        source: "builtin",
+        id: builtin._id,
+        revision: builtin.revision,
+        name: builtin.name,
+        description: builtin.description,
+        instructions: builtin.instructions,
+        modelId: builtin.modelId,
+      };
+    if (!agent) return null;
+    return {
+      source: agent.scope,
+      id: agent._id,
+      revision: agent.revision,
+      name: agent.name,
+      description: agent.description,
+      modelId: agent.modelId,
+    };
+  }
+
+  // Display fields for the agents of a page of chats, in one query. A chat
+  // shows its agent's current name and look.
+  async summariesFor(
+    context: TenantContext,
+    agentIds: readonly ObjectId[],
+  ): Promise<Map<string, AgentSummary>> {
+    const summaries = new Map<string, AgentSummary>();
+    if (agentIds.length === 0) return summaries;
+    const [builtins, agents] = await Promise.all([
+      this.builtins.listAll(),
+      this.agents(context)
+        .find(
+          { _id: { $in: [...agentIds] }, ...visibleTo(context.userId) },
+          { projection: { name: 1, look: 1, tint: 1, status: 1 } },
+        )
+        .toArray(),
+    ]);
+    for (const b of builtins)
+      summaries.set(toWireId(b._id), {
+        name: b.name,
+        look: b.look,
+        tint: b.tint,
+        available: b.enabled,
+      });
+    for (const a of agents)
+      summaries.set(toWireId(a._id), {
+        name: a.name,
+        look: a.look,
+        tint: a.tint,
+        available: a.status === "active",
+      });
+    return summaries;
   }
 
   // The agent if the caller can see it. Another member's personal agent and

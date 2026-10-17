@@ -9,6 +9,8 @@ export type ErrorCode =
   | "LIMIT_REACHED"
   | "MODEL_UNAVAILABLE"
   | "STALE_REVISION"
+  | "CHAT_BUSY"
+  | "CHAT_READ_ONLY"
   | "PAYLOAD_TOO_LARGE"
   | "RATE_LIMITED"
   | "UNAVAILABLE"
