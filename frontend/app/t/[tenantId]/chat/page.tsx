@@ -1,5 +1,5 @@
-import { TenantChatHome } from "@/components/tenant/tenant-chat-home";
+import { TenantChat } from "@/components/tenant/tenant-chat";
 
 export default function ChatPage() {
-  return <TenantChatHome />;
+  return <TenantChat />;
 }

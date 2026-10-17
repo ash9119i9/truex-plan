@@ -144,8 +144,9 @@ On `truex_planv2`, run the existing frontend with
 callback to `<frontend-origin>/api/v1/auth/google/callback`.
 The refresh cookie is set on that frontend origin by its same-origin proxy.
 `/auth/complete` discovers the account's tenant and opens `/t/<tenantId>/chat`.
-Tenant URLs are authorized independently in each tab. The chat page currently
-shows its shell; chat execution, invitations and the tenant chooser are deferred.
+Tenant URLs are authorized independently in each tab. The chat page lists the
+member's chats, starts new ones with an agent and streams replies; invitations
+and the tenant chooser are deferred.
 
 For a disposable browser fixture without Google credentials or an existing DB:
 
@@ -158,8 +159,14 @@ PLATFORM_INTERNAL_URL=http://127.0.0.1:4101 npm --prefix frontend run dev -- --p
 
 Open `http://localhost:3100` and use “Continue with Google”. The fixture uses a
 local OAuth stand-in, throwaway signing keys and a fresh MongoDB replica set.
-It binds backend/authorization ports 4101/4102 to loopback. Stop both processes
-after testing. This fixture is outside the production build.
+Chat runs on the real runtime adapter and pinned Codex (build it first with
+`npm run codex:setup` at the repository root) behind a loopback stand-in for
+the model gateway, so replies are canned. A control server scripts them:
+`POST /script` queues behaviours (`reply`, `held`, `failed`), `POST /release`
+finishes held replies, `POST /reset` clears both and `GET /requests` lists what
+the model was sent. It binds ports 4101–4103 to loopback. Stop both processes
+after testing (Ctrl-C stops the adapter and Codex too). This fixture is outside
+the production build.
 
 See [integration verification](../verification-reports/platform-next-frontend-2026-10-16.md)
 for checks and remaining release blockers.

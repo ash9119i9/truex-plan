@@ -82,17 +82,19 @@ Done 2026-10-17 (`platform-next/src/modules/chats`, `test/integration/chats.test
 
 ## 8. Connect the first user-visible chat
 
-- [ ] Extend the existing tenant chat shell with agent selection, text composer, response items and saved conversation history.
-- [ ] Use authenticated fetch streaming and the route's tenant; handle acceptance, streaming, saved, failed and interrupted states distinctly.
-- [ ] Prevent double submission, isolate state by tenant/user/chat and support keyboard/mobile behavior and meaningful loading/error/empty states.
+- [x] Extend the existing tenant chat shell with agent selection, text composer, response items and saved conversation history.
+- [x] Use authenticated fetch streaming and the route's tenant; handle acceptance, streaming, saved, failed and interrupted states distinctly.
+- [x] Prevent double submission, isolate state by tenant/user/chat and support keyboard/mobile behavior and meaningful loading/error/empty states.
 
 **Dependencies:** 7 and the current frontend auth integration. **Likely files:** frontend tenant chat route/components, API/stream helper and tests; separate UI and transport batches. **Scope:** M per batch.
 **Verify:** browser first send and refresh against the new backend, cross-tenant/stale-response probes, frontend unit/typecheck/build checks. No tokens in URLs/localStorage or global tenant state.
 
+Done 2026-10-18 (`frontend/components/tenant/{tenant-chat,chat-list,chat-transcript,chat-composer}.tsx`, `frontend/lib/tenant-chat{,-stream}.ts`). Driven in headless Chromium against the real stack: the platform-next browser fixture now runs the runtime adapter with pinned Codex behind a scripted loopback gateway. Covered: first send, streaming and saved reload; stop; refresh and a dropped connection mid-reply without duplicate text; follow-ups carrying earlier turns to the model; double submit; busy chat; provider failure; lost send responses (no second chat or model call); the 20-a-minute and 32,000-character limits; older history; rename, archive, Back/Forward, unknown and stale chats; unsafe markdown; phone drawer; dark theme; every request naming the tab's tenant, no tokens in the URL or storage. Another member's chat is a 404 in the platform tests. Fixed on the way: emoji ZWJ sequences, joiners and direction marks were refused as control characters (platform and adapter).
+
 ### Checkpoint B — complete first-message path
 
-- [ ] Select an agent, send text, see streamed output and reload the saved result through the actual new stack.
-- [ ] Configuration stays pinned and the displayed saved state agrees with MongoDB.
+- [x] Select an agent, send text, see streamed output and reload the saved result through the actual new stack.
+- [x] Configuration stays pinned and the displayed saved state agrees with MongoDB (reload shows the stored reply; pinning is covered by the platform tests).
 
 ## 9. Add continuation and stop
 
@@ -104,6 +106,8 @@ Done 2026-10-17 (`platform-next/src/modules/chats`, `test/integration/chats.test
 **Verify:** multi-turn context in actual model requests, restart/resume, stop races, repeated stop and unreadable/missing state. Missing AWS disk must not create a silent replacement thread.
 
 ## 10. Verify disconnect and failure recovery
+
+Decided 2026-10-17: add a background recovery sweep in platform-next (every 60 s, safe with one replica) instead of recovering only on access.
 
 - [ ] Browser closure leaves the platform execution reader/persistence running; reconnect uses a consistent snapshot/live handoff or explicit history fallback without duplicate text.
 - [ ] Reconcile unresolved receipts and completed items from retained runtime history after platform interruption; never blindly replay uncertain messages.
@@ -128,6 +132,8 @@ Done 2026-10-17 (`platform-next/src/modules/chats`, `test/integration/chats.test
 **Verify:** clean image build, binary pin/checksum/architecture, private paths, correct session affinity and rejection of foreign chat/session bindings. No deployment or paid calls implied by writing packaging code.
 
 ## 12. Validate the release and document cutover
+
+Deferred 2026-10-17 to [backlog/release/01-agentcore-validation.md](../backlog/release/01-agentcore-validation.md); needs an explicit go. The base prompt review is also deferred and must be settled before this slice.
 
 - [ ] Validate an isolated AWS runtime and chosen real provider with authorized test credentials, including streamed output and loss-of-disk behavior.
 - [ ] Run checks for the new adapter, platform-next and frontend; retain failures/skips as explicit blockers and perform final security/performance/diff review.

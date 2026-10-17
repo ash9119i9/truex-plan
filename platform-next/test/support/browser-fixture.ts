@@ -1,5 +1,8 @@
 // Local browser verification only: no .env, real credentials or existing DB.
-import { createServer } from "node:http";
+// Chat runs on the real stack: the runtime adapter as its own process with
+// the pinned Codex, behind a loopback stand-in for the model gateway. A
+// control server on :4103 lets a browser driver script the model's replies.
+import { createServer, type IncomingMessage } from "node:http";
 import { ObjectId } from "mongodb";
 import { createApp } from "../../src/app";
 import { OperatorService } from "../../src/modules/operator/operator.service";
@@ -8,6 +11,13 @@ import {
   geminiDefinition,
   modelDefinition,
 } from "./catalog-fixtures";
+import {
+  ADAPTER_TOKEN,
+  AdapterProcess,
+  FakeGateway,
+  GATEWAY_SECRET,
+  type Behavior,
+} from "./chat-stack";
 import { FakeGoogle } from "./fake-google";
 import { startReplicaSet } from "./test-app";
 import {
@@ -18,19 +28,19 @@ import {
 
 async function main() {
   const cleanups: (() => Promise<unknown>)[] = [];
-  let closing = false;
-  const close = async () => {
-    if (closing) return;
-    closing = true;
-    for (const cleanup of cleanups.reverse()) {
-      try {
-        await cleanup();
-      } catch (error) {
-        console.error("Fixture cleanup failed", error);
-        process.exitCode = 1;
+  // Every caller waits for the one cleanup.
+  let closing: Promise<void> | null = null;
+  const close = () =>
+    (closing ??= (async () => {
+      for (const cleanup of cleanups.reverse()) {
+        try {
+          await cleanup();
+        } catch (error) {
+          console.error("Fixture cleanup failed", error);
+          process.exitCode = 1;
+        }
       }
-    }
-  };
+    })());
   try {
     const origin = "http://localhost:3100";
     const mongo = await startReplicaSet();
@@ -38,6 +48,19 @@ async function main() {
     const google = new FakeGoogle();
     await google.start();
     cleanups.push(() => google.stop());
+    const gateway = new FakeGateway();
+    await gateway.start();
+    cleanups.push(() => gateway.close());
+    // Slow enough to watch it stream.
+    gateway.defaultBehavior = {
+      kind: "reply",
+      text: "Here is a **streamed** reply from the fixture model.\n\n- one\n- two",
+      chunk: 4,
+      delayMs: 40,
+    };
+    const adapter = new AdapterProcess();
+    await adapter.start();
+    cleanups.push(() => adapter.close());
     const authorize = createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1:4102");
       if (url.pathname !== "/authorize") {
@@ -74,6 +97,12 @@ async function main() {
         mongodbUri: mongo.getUri(),
         catalogDbName: "truex_next_browser_fixture",
         auth: testAuthConfig({ allowedOrigins: [origin] }),
+        chat: {
+          adapterUrl: adapter.url,
+          adapterToken: ADAPTER_TOKEN,
+          gatewayUrl: gateway.url,
+          gatewaySecret: GATEWAY_SECRET,
+        },
         google: {
           ...config,
           redirectUri: `${origin}/api/v1/auth/google/callback`,
@@ -113,16 +142,67 @@ async function main() {
           authorize.close((error) => (error ? reject(error) : resolve())),
         ),
     );
-    process.once("SIGINT", () => void close());
-    process.once("SIGTERM", () => void close());
+    const control = createServer((req, res) => {
+      void (async () => {
+        const reply = (status: number, body: unknown) => {
+          res.writeHead(status, { "content-type": "application/json" });
+          res.end(JSON.stringify(body));
+        };
+        if (req.method === "POST" && req.url === "/script") {
+          gateway.script.push(...((await jsonOf(req)) as Behavior[]));
+          return reply(200, { queued: gateway.script.length });
+        }
+        if (req.method === "POST" && req.url === "/release") {
+          gateway.release();
+          return reply(200, {});
+        }
+        if (req.method === "POST" && req.url === "/reset") {
+          gateway.script.length = 0;
+          gateway.release();
+          return reply(200, {});
+        }
+        if (req.method === "GET" && req.url === "/requests")
+          return reply(200, {
+            requests: gateway.requests.map((r) => ({
+              modelId: r.modelId,
+              input: JSON.stringify(r.body.input ?? null),
+            })),
+          });
+        reply(404, {});
+      })().catch((error: unknown) => {
+        res.writeHead(400);
+        res.end(String(error));
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      control.once("error", reject);
+      control.listen(4103, "127.0.0.1", resolve);
+    });
+    cleanups.push(
+      () =>
+        new Promise<void>((resolve, reject) =>
+          control.close((error) => (error ? reject(error) : resolve())),
+        ),
+    );
+    // npx and tsx relay signals, so one Ctrl-C can arrive twice; the
+    // second must not end the process before cleanup stops the adapter.
+    const stop = () => void close().finally(() => process.exit());
+    process.on("SIGINT", stop);
+    process.on("SIGTERM", stop);
     console.log(
-      "Synthetic browser fixture ready on 127.0.0.1:4101; fake Google on :4102. Frontend origin: http://localhost:3100",
+      "Synthetic browser fixture ready on 127.0.0.1:4101; fake Google on :4102; chat control on :4103. Frontend origin: http://localhost:3100",
     );
   } catch (error) {
     await close();
     throw error;
   }
 }
+async function jsonOf(req: IncomingMessage): Promise<unknown> {
+  let raw = "";
+  for await (const chunk of req) raw += chunk;
+  return JSON.parse(raw);
+}
+
 void main().catch((error: unknown) => {
   console.error(error);
   process.exitCode = 1;
