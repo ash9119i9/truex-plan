@@ -1,5 +1,25 @@
 import net from "node:net";
 
+// True when something accepts connections on the port at IPv4 or IPv6
+// loopback. A bind test misses some listeners: on macOS, binding the wildcard
+// address succeeds while another process listens on 127.0.0.1.
+export function portInUse(port, { timeoutMs = 1000 } = {}) {
+  const probe = (host) =>
+    new Promise((resolve) => {
+      const socket = net.createConnection({ port, host });
+      const finish = (busy) => {
+        socket.destroy();
+        resolve(busy);
+      };
+      socket.once("connect", () => finish(true));
+      socket.once("error", () => finish(false));
+      socket.setTimeout(timeoutMs, () => finish(false));
+    });
+  return Promise.all([probe("127.0.0.1"), probe("::1")]).then((found) =>
+    found.includes(true),
+  );
+}
+
 // The platform opens its listener only after initialization. Waiting here avoids
 // mounting the UI while its initial API requests would still be refused.
 export function waitForPort(
