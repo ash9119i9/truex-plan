@@ -13,6 +13,7 @@ import {
   withOlder,
   withSaved,
   exchangesOf,
+  exchangeKey,
   fetchChat,
   fetchChats,
   liveReply,
@@ -20,6 +21,8 @@ import {
   outcomeNote,
   parseChat,
   parseSaved,
+  pendingRunId,
+  pendingThread,
   readOnlyNote,
   sendMessage,
   sendOutcomeUnknown,
@@ -27,6 +30,7 @@ import {
   titleProblem,
   usageLine,
   withChat,
+  withPending,
   withReceipt,
   type ChatRun,
   type ChatSummary,
@@ -182,7 +186,8 @@ test("starts a chat and sends follow-ups with the message ID", async (t) => {
     clientMessageId: "client-id-1",
     text: "Hi",
   });
-  await sendMessage(CHAT, "More", "client-id-2");
+  const open = parseChat(chat())!;
+  await sendMessage(open, "More", "client-id-2");
   assert.equal(
     sent[1].url,
     `/api/v1/chats/${CHAT}/messages?tenantId=${TENANT_ID}`,
@@ -193,11 +198,35 @@ test("starts a chat and sends follow-ups with the message ID", async (t) => {
   });
 });
 
+test("a follow-up receipt without its agent keeps the chat's agent", async (t) => {
+  const { agent: _left, ...withoutAgent } = chat({ activeRunId: RUN });
+  const replies = [
+    // Left out: unchanged since this follow-up did not read it.
+    { chat: withoutAgent, message: message(3, "user"), run: run() },
+    // Sent as null: the server says the agent is gone.
+    {
+      chat: chat({ agent: null, readOnly: "AGENT_UNAVAILABLE" }),
+      message: message(3, "user"),
+      run: run(),
+    },
+  ];
+  mockFetch(t, () => Response.json(replies.shift(), { status: 202 }));
+  const open = parseChat(chat())!;
+  const receipt = await sendMessage(open, "More", "client-id-4");
+  assert.deepEqual(receipt.chat.agent, open.agent);
+  assert.equal(receipt.chat.activeRunId, RUN);
+  const gone = await sendMessage(open, "More", "client-id-4");
+  assert.equal(gone.chat.agent, null);
+});
+
 test("an unreadable receipt is an error, not a half-rendered chat", async (t) => {
   mockFetch(t, () =>
     Response.json({ chat: chat(), message: null, run: run() }),
   );
-  await assert.rejects(sendMessage(CHAT, "x", "client-id-3"), /unreadable/);
+  await assert.rejects(
+    sendMessage(parseChat(chat())!, "x", "client-id-3"),
+    /unreadable/,
+  );
 });
 
 test("stream events build the live reply; a snapshot replaces it", () => {
@@ -330,6 +359,88 @@ test("receipts start or extend the open chat; exchanges group by run", () => {
     chat: { ...receipt.chat, id: "64b7f0c2a1b2c3d4e5f60c09" },
   });
   assert.equal(other.messages.length, 1);
+});
+
+test("a pending message shows at once and keeps its row when the saved copy replaces it", () => {
+  const cmid = "5b0e5f0e-8a4c-4f3e-9d0e-1f2a3b4c5d6e";
+  const pending = {
+    key: CHAT,
+    text: "Next question",
+    clientMessageId: cmid,
+    since: Date.parse("2026-10-17T10:05:00.000Z"),
+  };
+  const before: ChatThread = {
+    chat: parseChat(chat())!,
+    messages: [message(1, "user") as never, message(2, "assistant") as never],
+    runs: {},
+    hasMore: false,
+  };
+  const shown = withPending(before, pending);
+  assert.equal(shown.messages.length, 3);
+  const added = shown.messages[2];
+  assert.equal(added.role, "user");
+  assert.equal(added.text, "Next question");
+  assert.equal(added.seq, 3);
+  assert.equal(added.runId, pendingRunId(pending));
+  assert.equal(before.messages.length, 2);
+
+  // The pending exchange and the saved one render under the same key.
+  const pendingExchange = exchangesOf(shown).at(-1)!;
+  const saved = withReceipt(before, {
+    chat: parseChat(chat({ activeRunId: RUN2 }))!,
+    message: message(3, "user", RUN2, {
+      text: "Next question",
+      clientMessageId: cmid,
+    }) as never,
+    run: run({ id: RUN2, status: "accepted" }) as unknown as ChatRun,
+  });
+  const savedExchange = exchangesOf(saved).at(-1)!;
+  assert.notEqual(pendingExchange.runId, savedExchange.runId);
+  assert.equal(exchangeKey(pendingExchange), exchangeKey(savedExchange));
+  // Older messages without a browser ID keep their run as the key.
+  assert.equal(exchangeKey(exchangesOf(shown)[0]), RUN);
+
+  // A message already saved (a resend after a lost answer) is not doubled.
+  assert.equal(withPending(saved, pending), saved);
+});
+
+test("a first message shows as the start of its chat", () => {
+  const pending = {
+    key: "new",
+    text: "Hi",
+    clientMessageId: "0f1e2d3c-4b5a-4968-8776-655443322110",
+    since: Date.parse("2026-10-17T10:05:00.000Z"),
+  };
+  const agent = {
+    id: "64b7f0c2a1b2c3d4e5f60aa1",
+    source: "builtin" as const,
+    name: "General",
+    description: "",
+    look: 3,
+    tint: "mint" as const,
+    model: null,
+    available: true,
+    revision: 1,
+    createdByMe: false,
+    status: "active" as const,
+    canEdit: false,
+    canArchive: false,
+    canPromote: false,
+  };
+  const thread = pendingThread(agent, pending);
+  assert.equal(thread.chat.title, "");
+  assert.equal(thread.chat.activeRunId, null);
+  assert.deepEqual(thread.chat.agent, {
+    id: agent.id,
+    source: "builtin",
+    name: "General",
+    look: 3,
+    tint: "mint",
+  });
+  assert.deepEqual(
+    thread.messages.map((m) => [m.seq, m.role, m.text]),
+    [[1, "user", "Hi"]],
+  );
 });
 
 test("usage line and outcome notes", () => {

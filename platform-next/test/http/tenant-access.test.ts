@@ -18,7 +18,11 @@ import {
 } from "../../src/modules/memberships/membership";
 import { MembershipsService } from "../../src/modules/memberships/memberships.service";
 import { OperatorService } from "../../src/modules/operator/operator.service";
-import { SessionsService } from "../../src/modules/sessions/sessions.service";
+import { ACCESS_TOKEN_TTL_SECONDS } from "../../src/modules/sessions/session-policy";
+import {
+  InvalidSessionError,
+  SessionsService,
+} from "../../src/modules/sessions/sessions.service";
 import {
   DEFAULT_TENANT_DB_NAME,
   TENANTS_COLLECTION,
@@ -27,6 +31,7 @@ import {
 } from "../../src/modules/tenants/tenant";
 import { UsersService } from "../../src/modules/users/users.service";
 import { resetOwnedData } from "../support/reset";
+import { TEST_ORIGIN } from "../support/test-auth";
 import {
   startApp,
   startReplicaSet,
@@ -114,6 +119,17 @@ describe("tenant-scoped requests (?tenantId=)", () => {
     });
   }
 
+  // An access token for one tenant, from a refresh that names it. Rotates
+  // the member's refresh credential.
+  async function tenantToken(
+    who: { refresh: string },
+    tenantId: ObjectId,
+  ): Promise<string> {
+    const issued = await sessions.refresh(who.refresh, new Date(), tenantId);
+    who.refresh = issued.refreshCredential;
+    return issued.accessToken;
+  }
+
   function getTenant(
     query: string,
     token?: string,
@@ -157,15 +173,23 @@ describe("tenant-scoped requests (?tenantId=)", () => {
         }
     });
 
-    test("a logged-out session stops reaching the tenant", async () => {
+    // Tenant routes check the token by signature alone, so a logged-out
+    // session's token reaches them until it expires. The account routes the
+    // app opens with, and refresh, refuse it at once.
+    test("a logged-out session's token works on tenant routes only until it expires", async () => {
       const a = await member("a");
       const query = `?tenantId=${defaultTenantId}`;
-      assert.equal((await getTenant(query, a.token)).status, 200);
       await sessions.logout(a.refresh);
-      await assertError(
-        await getTenant(query, a.token),
-        401,
-        "UNAUTHENTICATED",
+      assert.equal((await getTenant(query, a.token)).status, 200);
+      const me = await fetch(`${running.baseUrl}/api/v1/me`, {
+        headers: { authorization: `Bearer ${a.token}` },
+      });
+      await assertError(me, 401, "UNAUTHENTICATED");
+      await assert.rejects(sessions.refresh(a.refresh), InvalidSessionError);
+      const expired = new Date(Date.now() + ACCESS_TOKEN_TTL_SECONDS * 1000);
+      assert.throws(
+        () => sessions.verifyToken(a.token, expired),
+        InvalidSessionError,
       );
     });
   });
@@ -374,6 +398,196 @@ describe("tenant-scoped requests (?tenantId=)", () => {
     });
   });
 
+  describe("tenant tokens", () => {
+    // Database calls per Server-Timing step of one response: `auth` and
+    // `access` are the guard's, so these count exactly what access cost.
+    function dbCalls(res: Response): Map<string, number> {
+      const steps = new Map<string, number>();
+      for (const entry of (res.headers.get("server-timing") ?? "").split(
+        ", ",
+      )) {
+        const name = entry.split(";")[0]!;
+        const calls = /\((\d+) db calls?\)/.exec(entry)?.[1];
+        steps.set(name, calls ? Number(calls) : 0);
+      }
+      return steps;
+    }
+
+    function chats(tenantId: ObjectId, token: string): Promise<Response> {
+      return fetch(`${running.baseUrl}/api/v1/chats?tenantId=${tenantId}`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+    }
+
+    test("a token for the tenant reaches its routes with no auth or access database call", async () => {
+      const a = await member("a");
+      const res = await chats(
+        defaultTenantId,
+        await tenantToken(a, defaultTenantId),
+      );
+      assert.equal(res.status, 200);
+      const steps = dbCalls(res);
+      assert.equal(steps.get("auth"), 0);
+      assert.equal(steps.has("access"), false);
+    });
+
+    test("a token without a tenant, or for another one, is checked against the catalog", async () => {
+      const a = await member("a");
+      const b = await member("b");
+      const orgId = await provision("Acme", "organization");
+      await makeAdmin(a.userId, orgId);
+      const foreign = await provision("Foreign", "organization");
+      await makeAdmin(b.userId, foreign);
+
+      for (const token of [a.token, await tenantToken(a, orgId)]) {
+        const res = await chats(defaultTenantId, token);
+        assert.equal(res.status, 200);
+        assert.equal(dbCalls(res).get("access"), 2);
+      }
+      // A token for a tenant opens nothing else.
+      const home = await tenantToken(a, defaultTenantId);
+      await assertError(await chats(foreign, home), 403, "FORBIDDEN");
+      await assertError(
+        await getTenant(`?tenantId=${foreign}`, home),
+        403,
+        "FORBIDDEN",
+      );
+    });
+
+    test("refresh for a tenant the caller cannot use issues a token without one", async () => {
+      const a = await member("a");
+      const b = await member("b");
+      const catalog = database.catalog();
+      const foreign = await provision("Foreign", "organization");
+      await makeAdmin(b.userId, foreign);
+      const removed = await provision("Removed", "organization");
+      await makeAdmin(a.userId, removed);
+      await catalog
+        .collection<MembershipDoc>(MEMBERSHIPS_COLLECTION)
+        .updateOne(
+          { userId: a.userId, tenantId: removed },
+          { $set: { status: "removed" } },
+        );
+      const disabled = await provision("Disabled", "organization");
+      await makeAdmin(a.userId, disabled);
+      await catalog
+        .collection<TenantDoc>(TENANTS_COLLECTION)
+        .updateOne({ _id: disabled }, { $set: { status: "disabled" } });
+
+      for (const tenantId of [new ObjectId(), foreign, removed, disabled]) {
+        const issued = await sessions.refresh(a.refresh, new Date(), tenantId);
+        a.refresh = issued.refreshCredential;
+        assert.equal(issued.tenant, undefined);
+        assert.equal(
+          sessions.verifyToken(issued.accessToken).tenant,
+          undefined,
+        );
+        await assertError(
+          await chats(tenantId, issued.accessToken),
+          403,
+          "FORBIDDEN",
+        );
+        // Still signed in: the default tenant opens through the catalog.
+        assert.equal(
+          (await chats(defaultTenantId, issued.accessToken)).status,
+          200,
+        );
+      }
+    });
+
+    test("a tenant whose database does not match its kind is kept out of tokens", async () => {
+      const a = await member("a");
+      const orgId = await provision("Acme", "organization");
+      await makeAdmin(a.userId, orgId);
+      await database
+        .catalog()
+        .collection<TenantDoc>(TENANTS_COLLECTION)
+        .updateOne({ _id: orgId }, { $set: { dbName: "truex_next_t_other" } });
+      const issued = await sessions.refresh(a.refresh, new Date(), orgId);
+      assert.equal(issued.tenant, undefined);
+    });
+
+    // The trade-off of token checks, bounded by the token lifetime: entering
+    // the tenant (GET /tenant) and the next refresh see the change at once.
+    test("a removal or role change reaches tenant routes at the next refresh", async () => {
+      const a = await member("a");
+      const orgId = await provision("Acme", "organization");
+      await makeAdmin(a.userId, orgId);
+      const token = await tenantToken(a, orgId);
+      assert.equal(sessions.verifyToken(token).tenant?.role, "admin");
+
+      await operator.assignRole({
+        operator: "ops",
+        user: a.userId.toHexString(),
+        tenantId: orgId,
+        role: "user",
+      });
+      assert.equal(
+        (await tenantOf(`?tenantId=${orgId}`, token)).tenant.role,
+        "user",
+      );
+      const demoted = await tenantToken(a, orgId);
+      assert.equal(sessions.verifyToken(demoted).tenant?.role, "user");
+
+      await database
+        .catalog()
+        .collection<MembershipDoc>(MEMBERSHIPS_COLLECTION)
+        .updateOne(
+          { userId: a.userId, tenantId: orgId },
+          { $set: { status: "removed" } },
+        );
+      assert.equal((await chats(orgId, demoted)).status, 200);
+      await assertError(
+        await getTenant(`?tenantId=${orgId}`, demoted),
+        403,
+        "FORBIDDEN",
+      );
+      await assertError(
+        await chats(orgId, await tenantToken(a, orgId)),
+        403,
+        "FORBIDDEN",
+      );
+    });
+
+    test("refresh over HTTP names the tenant it granted", async () => {
+      const a = await member("a");
+      const refresh = (query: string) =>
+        fetch(`${running.baseUrl}/api/v1/auth/refresh${query}`, {
+          method: "POST",
+          headers: {
+            origin: TEST_ORIGIN,
+            cookie: `truex_refresh=${a.refresh}`,
+          },
+        });
+      const granted = async (query: string) => {
+        const res = await refresh(query);
+        assert.equal(res.status, 200);
+        const cookie = /^truex_refresh=([^;]+)/.exec(
+          res.headers.getSetCookie()[0] ?? "",
+        );
+        a.refresh = cookie![1]!;
+        return ((await res.json()) as { tenantId: string | null }).tenantId;
+      };
+      assert.equal(await granted(""), null);
+      assert.equal(
+        await granted(`?tenantId=${defaultTenantId}`),
+        defaultTenantId.toHexString(),
+      );
+      assert.equal(await granted(`?tenantId=${new ObjectId()}`), null);
+      const id = defaultTenantId.toHexString();
+      for (const query of [
+        "?tenantId=",
+        "?tenantId=x",
+        `?tenantId=${id}&tenantId=${id}`,
+        `?tenantId[$ne]=${id}`,
+        `?tenantId=${id.toUpperCase()}`,
+      ])
+        await assertError(await refresh(query), 400, "BAD_REQUEST");
+      // A refused query rotated nothing: the cookie still works.
+      assert.equal(await granted(`?tenantId=${id}`), id);
+    });
+  });
+
   describe("concurrent requests", () => {
     // Two tabs on two tenants with one session: each request keeps its own
     // tenant and role, and nothing is remembered between requests.
@@ -466,18 +680,38 @@ describe("tenant-scoped requests (?tenantId=)", () => {
         `/api/v1/tenant?tenantId=${defaultTenantId}&dbName=truex_next_t_evil`,
         a.token,
       );
+      assert.deepEqual(Object.keys(home).sort(), [
+        "dbName",
+        "role",
+        "tenantId",
+        "userId",
+      ]);
       assert.ok(home.userId.equals(a.userId));
       assert.ok(home.tenantId.equals(defaultTenantId));
       assert.equal(home.role, "user");
-      assert.deepEqual(home.tenant, {
-        name: "Truex",
-        kind: "default",
-        dbName: DEFAULT_TENANT_DB_NAME,
-      });
+      assert.equal(home.dbName, DEFAULT_TENANT_DB_NAME);
 
       const org = await contextFor(`/api/v1/tenant?tenantId=${orgId}`, a.token);
       assert.equal(org.role, "admin");
-      assert.equal(org.tenant.dbName, organizationDbName(orgId));
+      assert.equal(org.dbName, organizationDbName(orgId));
+    });
+
+    test("from a tenant token, carries the same database the catalog would", async () => {
+      const a = await member("a");
+      const orgId = await provision("Acme", "organization");
+      await makeAdmin(a.userId, orgId);
+      const home = await contextFor(
+        `/api/v1/tenant?tenantId=${defaultTenantId}&dbName=truex_next_t_evil`,
+        await tenantToken(a, defaultTenantId),
+      );
+      assert.equal(home.role, "user");
+      assert.equal(home.dbName, DEFAULT_TENANT_DB_NAME);
+      const org = await contextFor(
+        `/api/v1/tenant?tenantId=${orgId}`,
+        await tenantToken(a, orgId),
+      );
+      assert.equal(org.role, "admin");
+      assert.equal(org.dbName, organizationDbName(orgId));
     });
 
     test("is frozen", async () => {
@@ -487,7 +721,6 @@ describe("tenant-scoped requests (?tenantId=)", () => {
         a.token,
       );
       assert.ok(Object.isFrozen(context));
-      assert.ok(Object.isFrozen(context.tenant));
       assert.throws(() => {
         (context as { role: string }).role = "admin";
       }, TypeError);

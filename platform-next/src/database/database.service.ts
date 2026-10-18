@@ -5,7 +5,17 @@ import {
   OnApplicationShutdown,
   OnModuleInit,
 } from "@nestjs/common";
-import { MongoClient, type ClientSession, type Db } from "mongodb";
+import {
+  MongoClient,
+  MongoClientBulkWriteError,
+  MongoError,
+  type AnyClientBulkWriteModel,
+  type ClientBulkWriteResult,
+  type ClientSession,
+  type Db,
+  type Document,
+} from "mongodb";
+import { observeDatabase } from "../common/http/server-timing";
 import {
   APP_CONFIG,
   isOwnedDatabaseName,
@@ -40,7 +50,10 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
     this.client = new MongoClient(config.mongodbUri, {
       appName: "platform-next",
       serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
+      // Command events time each request's database work (Server-Timing).
+      monitorCommands: true,
     });
+    observeDatabase(this.client);
   }
 
   // Not awaited: startup must not wait for, or fail on, MongoDB.
@@ -122,6 +135,45 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
         writeConcern: { w: "majority" },
       }),
     );
+  }
+
+  // Writes to several collections in one round trip (MongoDB 8.0+). Inside
+  // withTransaction, pass its session: the writes then commit or abort with
+  // it. Without one, each write stands alone. Ordered: a failed write stops
+  // the rest.
+  async bulkWrite(
+    models: readonly AnyClientBulkWriteModel<Document>[],
+    session?: ClientSession,
+  ): Promise<ClientBulkWriteResult> {
+    // The same namespace guard as tenantDb.
+    for (const model of models)
+      this.tenantDb(model.namespace.slice(0, model.namespace.indexOf(".")));
+    try {
+      return await this.client.bulkWrite(models, {
+        ...(session ? { session } : {}),
+        ordered: true,
+      });
+    } catch (error) {
+      // The driver (6.21) wraps a failure of the whole command, such as a
+      // write conflict, in MongoClientBulkWriteError without its labels, so
+      // withTransaction would not retry a TransientTransactionError. The
+      // original error is what every other write would have thrown.
+      if (
+        error instanceof MongoClientBulkWriteError &&
+        error.cause instanceof MongoError
+      )
+        throw error.cause;
+      throw error;
+    }
+  }
+
+  // The server's major version, for the startup check that chat's writes
+  // can run (client bulkWrite needs MongoDB 8.0).
+  async serverMajorVersion(): Promise<number> {
+    const info = (await this.catalog().admin().command({ buildInfo: 1 })) as {
+      versionArray?: number[];
+    };
+    return info.versionArray?.[0] ?? 0;
   }
 
   async ping(): Promise<void> {

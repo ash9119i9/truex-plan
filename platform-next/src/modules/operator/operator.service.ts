@@ -41,6 +41,12 @@ export interface AssignRoleCommand {
   role: Role;
 }
 
+// One tenant, or (without tenantId) every ready tenant that is behind.
+export interface EnsureTenantIndexesCommand {
+  operator: string;
+  tenantId?: ObjectId;
+}
+
 export interface PutModelCommand {
   operator: string;
   // The parsed JSON definition, validated here.
@@ -302,6 +308,35 @@ export class OperatorService {
       await this.recordRefusal(base, error);
       throw error;
     }
+  }
+
+  // Brings one ready tenant's indexes, or every ready tenant behind this
+  // release, up to TENANT_INDEX_VERSION. One tenant at a time: index builds
+  // are a deploy step, not a race. Each tenant is audited.
+  async ensureTenantIndexes(
+    command: EnsureTenantIndexesCommand,
+  ): Promise<TenantDoc[]> {
+    const actor = operatorActor(command.operator);
+    const ids = command.tenantId
+      ? [command.tenantId]
+      : await this.tenants.staleIndexTenantIds();
+    const done: TenantDoc[] = [];
+    for (const tenantId of ids) {
+      const base = { action: "tenant.ensure_indexes", actor, tenantId };
+      try {
+        const tenant = await this.tenants.ensureIndexesOf(tenantId);
+        await this.audit.record({
+          ...base,
+          result: "success",
+          details: { indexVersion: tenant.indexVersion ?? 0 },
+        });
+        done.push(tenant);
+      } catch (error) {
+        await this.recordRefusal(base, error);
+        throw error;
+      }
+    }
+    return done;
   }
 
   // Sets an existing account's role in one exact tenant. Repeating it with

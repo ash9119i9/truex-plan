@@ -12,6 +12,7 @@ import { isRole } from "../modules/memberships/membership";
 import {
   OperatorService,
   type AssignRoleCommand,
+  type EnsureTenantIndexesCommand,
   type ProvisionTenantCommand,
 } from "../modules/operator/operator.service";
 
@@ -22,6 +23,7 @@ import type { TenantKind } from "../modules/tenants/tenant";
 const USAGE = `Usage:
   operator provision-tenant --operator <name> --tenant <id> --name <name> --kind default|organization
   operator assign-role --operator <name> --user <id|email> --tenant <id> --role user|admin
+  operator ensure-tenant-indexes --operator <name> --tenant <id> | --all
   operator model-put --operator <name> --file <definition.json> [--allow-dev-credentials]
   operator model-enable|model-disable --operator <name> --slug <slug>
   operator model-list --operator <name>
@@ -31,6 +33,8 @@ const USAGE = `Usage:
 
 Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
 the same arguments is safe. Models are never deleted: disable them instead.
+ensure-tenant-indexes --all builds the indexes of every provisioned tenant
+behind this release; run it as a deploy step after an index change.
 --allow-dev-credentials accepts a plaintext apiKey and an http loopback
 baseUrl, for local development only.`;
 
@@ -52,6 +56,7 @@ type DefinitionCommand = {
 export type OperatorCommand =
   | ({ command: "provision-tenant" } & ProvisionTenantCommand)
   | ({ command: "assign-role" } & AssignRoleCommand)
+  | ({ command: "ensure-tenant-indexes" } & EnsureTenantIndexesCommand)
   | ({
       command: "model-put";
       allowDevCredentials: boolean;
@@ -95,6 +100,7 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         role: { type: "string" },
         file: { type: "string" },
         slug: { type: "string" },
+        all: { type: "boolean" },
         "allow-dev-credentials": { type: "boolean" },
       },
     });
@@ -130,6 +136,18 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         tenantId: tenantIdOf(values),
         role,
       };
+    }
+    case "ensure-tenant-indexes": {
+      const all = values.all === true;
+      if (all === (values.tenant !== undefined))
+        throw new UsageError("Give either --tenant <id> or --all.");
+      return all
+        ? { command: "ensure-tenant-indexes", operator }
+        : {
+            command: "ensure-tenant-indexes",
+            operator,
+            tenantId: tenantIdOf(values),
+          };
     }
     case "model-put":
       return {
@@ -212,6 +230,16 @@ export async function runOperatorCommand(
       return { models: await operator.listModels() };
     case "builtin-agent-list":
       return { builtinAgents: await operator.listBuiltinAgents() };
+  }
+  if (command.command === "ensure-tenant-indexes") {
+    const tenants = await operator.ensureTenantIndexes(command);
+    return {
+      tenants: tenants.map((tenant) => ({
+        tenantId: toWireId(tenant._id),
+        dbName: tenant.dbName,
+        indexVersion: tenant.indexVersion,
+      })),
+    };
   }
   if (command.command === "provision-tenant") {
     const tenant = await operator.provisionTenant(command);

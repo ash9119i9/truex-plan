@@ -80,6 +80,9 @@ export function ChatComposer({
           autoGrow={240}
           rows={hero ? 3 : 2}
           value={value}
+          // The message being sent was taken from here and comes back if
+          // it fails, so nothing typed meanwhile could be lost.
+          readOnly={sending}
           aria-label={agentName ? `Message ${agentName}` : "Message"}
           aria-describedby="tchat-hint tchat-problem"
           aria-invalid={problem ? true : undefined}

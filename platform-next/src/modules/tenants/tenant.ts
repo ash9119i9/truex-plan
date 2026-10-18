@@ -14,6 +14,9 @@ export interface TenantDoc {
   status: TenantStatus;
   provisioningStatus: ProvisioningStatus;
   provisioningError?: string;
+  // The TENANT_INDEX_VERSION its database's indexes were last built for.
+  // Missing on tenants provisioned before indexes were built at provisioning.
+  indexVersion?: number;
   createdAt: Date;
   updatedAt: Date;
 }

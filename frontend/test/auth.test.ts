@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAuth } from "../lib/auth.ts";
-import { refreshed } from "./auth-fixture.ts";
+import { refreshed, TENANT_ID } from "./auth-fixture.ts";
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((r) => {
@@ -138,4 +138,91 @@ test("refreshing to another account never replays a mutation under that account"
   );
   assert.equal(mutations, 1);
   assert.equal(changed, 1);
+});
+
+test("a tenant request gets a token for its tenant, reused until it is old", async () => {
+  const refreshes: string[] = [];
+  const sent: string[] = [];
+  let n = 0;
+  const auth = make(async (url, init) => {
+    const path = String(url);
+    if (path.startsWith("/api/v1/auth/refresh")) {
+      refreshes.push(path);
+      return refreshed(`token-${++n}`);
+    }
+    sent.push(`${path} ${new Headers(init?.headers).get("authorization")}`);
+    return Response.json({});
+  });
+  const tenant = `/api/v1/chats?tenantId=${TENANT_ID}`;
+  await Promise.all([auth.request(tenant), auth.request(tenant)]);
+  await auth.request("/api/v1/me");
+  assert.deepEqual(refreshes, [`/api/v1/auth/refresh?tenantId=${TENANT_ID}`]);
+  assert.deepEqual(sent, [
+    `${tenant} Bearer token-1`,
+    `${tenant} Bearer token-1`,
+    "/api/v1/me Bearer token-1",
+  ]);
+});
+
+test("an account request shares the tenant's refresh instead of starting its own", async () => {
+  const refreshes: string[] = [];
+  const auth = make(async (url) => {
+    const path = String(url);
+    if (path.startsWith("/api/v1/auth/refresh")) refreshes.push(path);
+    return path.startsWith("/api/v1/auth/refresh")
+      ? refreshed()
+      : Response.json({});
+  });
+  await Promise.all([
+    auth.request(`/api/v1/tenant?tenantId=${TENANT_ID}`),
+    auth.request("/api/v1/me"),
+  ]);
+  assert.deepEqual(refreshes, [`/api/v1/auth/refresh?tenantId=${TENANT_ID}`]);
+});
+
+test("switching tenant costs one refresh; a tenant the platform left out is not asked for again", async () => {
+  const OTHER = "64b7f0c2a1b2c3d4e5f60799";
+  const refreshes: string[] = [];
+  let n = 0;
+  const auth = make(async (url) => {
+    const path = String(url);
+    if (!path.startsWith("/api/v1/auth/refresh")) return Response.json({});
+    refreshes.push(path);
+    return refreshed(`token-${++n}`);
+  });
+  await auth.request(`/api/v1/chats?tenantId=${TENANT_ID}`);
+  // Not a member there: the platform's token carries no tenant, and that
+  // tenant's routes answer 403 from the catalog. Asking again changes nothing.
+  await auth.request(`/api/v1/chats?tenantId=${OTHER}`);
+  await auth.request(`/api/v1/chats?tenantId=${OTHER}`);
+  // Account requests keep the tab's current tenant.
+  await auth.request("/api/v1/me");
+  assert.deepEqual(refreshes, [
+    `/api/v1/auth/refresh?tenantId=${TENANT_ID}`,
+    `/api/v1/auth/refresh?tenantId=${OTHER}`,
+  ]);
+});
+
+test("an old token is renewed for the tab's tenant, even by an account request", async () => {
+  let clock = 1_000_000;
+  const refreshes: string[] = [];
+  const auth = createAuth({
+    locks: null,
+    channel: null,
+    now: () => clock,
+    fetch: async (url) => {
+      const path = String(url);
+      if (!path.startsWith("/api/v1/auth/refresh")) return Response.json({});
+      refreshes.push(path);
+      return refreshed();
+    },
+  });
+  await auth.request(`/api/v1/chats?tenantId=${TENANT_ID}`);
+  // Past any lifetime the tab believes.
+  clock += 15 * 60_000;
+  await auth.request("/api/v1/me");
+  assert.deepEqual(refreshes, [
+    `/api/v1/auth/refresh?tenantId=${TENANT_ID}`,
+    `/api/v1/auth/refresh?tenantId=${TENANT_ID}`,
+  ]);
 });

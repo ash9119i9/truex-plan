@@ -2,7 +2,12 @@ import { sign, verify } from "node:crypto";
 import type { ObjectId } from "mongodb";
 import type { AuthConfig } from "../../config/auth-config";
 import { parseWireId, toWireId } from "../../database/object-id";
-import { ACCESS_TOKEN_TTL_SECONDS } from "./session-policy";
+import { isRole, type Role } from "../memberships/membership";
+import type { TenantKind } from "../tenants/tenant";
+import {
+  ACCESS_TOKEN_MAX_LIFETIME_SECONDS,
+  ACCESS_TOKEN_TTL_SECONDS,
+} from "./session-policy";
 
 // Application access tokens: compact JWS signed with Ed25519 (RFC 8037),
 // typed as access tokens (RFC 9068) and verified strictly per RFC 8725.
@@ -24,9 +29,19 @@ export class InvalidAccessTokenError extends Error {
   }
 }
 
+// The one tenant a token is for, as the catalog said when it was issued: an
+// active membership in a usable tenant. Never the database name; tenant
+// routes derive it from the kind and ID.
+export interface AccessTokenTenant {
+  tenantId: ObjectId;
+  role: Role;
+  kind: TenantKind;
+}
+
 export interface AccessTokenSubject {
   userId: ObjectId;
   sessionId: ObjectId;
+  tenant?: AccessTokenTenant;
 }
 
 export interface VerifiedAccessToken extends AccessTokenSubject {
@@ -74,6 +89,13 @@ export function signAccessToken(
     aud: auth.audience,
     sub: toWireId(subject.userId),
     sid: toWireId(subject.sessionId),
+    ...(subject.tenant
+      ? {
+          tid: toWireId(subject.tenant.tenantId),
+          role: subject.tenant.role,
+          tkind: subject.tenant.kind,
+        }
+      : {}),
     purpose: PURPOSE,
     iat,
     exp,
@@ -147,8 +169,32 @@ export function verifyAccessToken(
   if (
     exp <= nowSeconds ||
     iat > nowSeconds + CLOCK_SKEW_SECONDS ||
-    exp - iat > ACCESS_TOKEN_TTL_SECONDS
+    exp - iat > ACCESS_TOKEN_MAX_LIFETIME_SECONDS
   )
     throw new InvalidAccessTokenError();
-  return { userId, sessionId, expiresAt: new Date(exp * 1000) };
+  const tenant = tenantOf(claims);
+  return {
+    userId,
+    sessionId,
+    ...(tenant ? { tenant } : {}),
+    expiresAt: new Date(exp * 1000),
+  };
+}
+
+// All three tenant claims or none. A token with some of them, or with a value
+// out of range, was not made by signAccessToken and is refused whole.
+function tenantOf(
+  claims: Record<string, unknown>,
+): AccessTokenTenant | undefined {
+  const { tid, role, tkind } = claims;
+  if (tid === undefined && role === undefined && tkind === undefined)
+    return undefined;
+  const tenantId = parseWireId(tid);
+  if (
+    !tenantId ||
+    !isRole(role) ||
+    (tkind !== "default" && tkind !== "organization")
+  )
+    throw new InvalidAccessTokenError();
+  return { tenantId, role, kind: tkind };
 }

@@ -715,6 +715,40 @@ describe("agents and models API", () => {
       );
     });
 
+    // Tenant tokens carry the role for up to their lifetime; an admin-only
+    // write reads it now.
+    test("an admin demoted after their token was issued cannot archive", async () => {
+      const shared = await create(alice, { scope: "tenant" });
+      const user = await users.findById(carol.userId);
+      const fresh = await sessions.create(user!._id);
+      const issued = await sessions.refresh(
+        fresh.refreshCredential,
+        new Date(),
+        defaultTenantId,
+      );
+      assert.equal(issued.tenant?.role, "admin");
+      await operator.assignRole({
+        operator: "ops",
+        user: carol.userId.toHexString(),
+        tenantId: defaultTenantId,
+        role: "user",
+      });
+      const stale = { ...carol, token: issued.accessToken };
+      await fails(
+        await call(stale, "POST", `/agents/${shared.id}/archive`),
+        403,
+        "FORBIDDEN",
+      );
+      // The same token, re-promoted, archives again.
+      await operator.assignRole({
+        operator: "ops",
+        user: carol.userId.toHexString(),
+        tenantId: defaultTenantId,
+        role: "admin",
+      });
+      await ok(await call(stale, "POST", `/agents/${shared.id}/archive`));
+    });
+
     test("an ordinary member cannot archive someone else's tenant agent", async () => {
       const shared = await create(alice, { scope: "tenant" });
       await fails(

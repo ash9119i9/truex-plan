@@ -139,14 +139,14 @@ export async function fetchMe(
     });
   let answers: Authorized[];
   try {
-    answers = await Promise.all([
-      get("/api/v1/me"),
-      get(
-        tenantId === undefined
-          ? "/api/v1/me/tenants"
-          : `/api/v1/tenant?tenantId=${tenantId}`,
-      ),
-    ]);
+    // The tenant's request is sent first, so the token it refreshes is for
+    // that tenant and /me shares the same refresh.
+    const tenantAnswer = get(
+      tenantId === undefined
+        ? "/api/v1/me/tenants"
+        : `/api/v1/tenant?tenantId=${tenantId}`,
+    );
+    answers = await Promise.all([get("/api/v1/me"), tenantAnswer]);
   } catch {
     return { kind: "unavailable", message: OUTAGE };
   }

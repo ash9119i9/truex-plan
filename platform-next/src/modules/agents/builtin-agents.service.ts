@@ -19,14 +19,15 @@ const NO_INSTRUCTIONS = { instructions: 0 } as const;
 
 export type BuiltinListing = Omit<BuiltinAgentDoc, "instructions">;
 
-// Built-in agents. Writes come only from the operator CLI; members read the
-// enabled ones through a short-lived cache, so the picker usually costs no
-// catalog query.
+// Built-in agents. Writes come only from the operator CLI; members read them
+// through a short-lived cache of the whole set (at most MAX_BUILTINS, with
+// instructions), so the picker, the sidebar and starting a chat with a
+// built-in usually cost no catalog query.
 @Injectable()
 export class BuiltinAgentsService {
   private indexesReady?: Promise<void>;
-  private readonly enabledCache = new TtlCache<BuiltinListing[]>(
-    () => this.loadEnabled(),
+  private readonly cache = new TtlCache<BuiltinAgentDoc[]>(
+    () => this.loadAll(),
     BUILTIN_CACHE_TTL_MS,
   );
 
@@ -95,7 +96,7 @@ export class BuiltinAgentsService {
           "Another change to this agent ran at the same time. Run it again.",
         );
       }
-      this.enabledCache.clear();
+      this.cache.clear();
       return { agent: doc, outcome: "created" };
     }
 
@@ -122,7 +123,7 @@ export class BuiltinAgentsService {
         "CONFLICT",
         "The agent changed while saving. Run it again.",
       );
-    this.enabledCache.clear();
+    this.cache.clear();
     return { agent: updated, outcome: "updated" };
   }
 
@@ -153,10 +154,11 @@ export class BuiltinAgentsService {
         "CONFLICT",
         "The agent changed while saving. Run it again.",
       );
-    this.enabledCache.clear();
+    this.cache.clear();
     return { agent: updated, changed: true };
   }
 
+  // Every built-in without instructions, read now, for the operator listing.
   listAll(): Promise<BuiltinListing[]> {
     return this.builtins()
       .find({}, { projection: NO_INSTRUCTIONS })
@@ -165,22 +167,55 @@ export class BuiltinAgentsService {
       .toArray();
   }
 
-  // Enabled built-ins in display order, possibly up to BUILTIN_CACHE_TTL_MS old.
-  enabledAgents(): Promise<BuiltinListing[]> {
-    return this.enabledCache.get();
+  // Every built-in, enabled or not, possibly up to BUILTIN_CACHE_TTL_MS old.
+  // Display fields only.
+  async cachedListings(): Promise<BuiltinListing[]> {
+    return (await this.cache.get()).map(listingOf);
   }
 
-  // One enabled built-in with its instructions, read fresh: a chat starting
-  // with it must not use a prompt the product team has since disabled.
+  // Enabled built-ins in display order, possibly up to BUILTIN_CACHE_TTL_MS old.
+  async enabledAgents(): Promise<BuiltinListing[]> {
+    return (await this.cache.get()).filter((b) => b.enabled).map(listingOf);
+  }
+
+  // A built-in as the cache knows it, instructions included: a disabled one
+  // keeps starting chats for up to BUILTIN_CACHE_TTL_MS after the product
+  // team disables it. "unknown" when the cache has never seen the ID: a user
+  // agent, or a built-in added since the cache loaded (read it fresh then).
+  async cachedById(
+    id: ObjectId,
+  ): Promise<BuiltinAgentDoc | "disabled" | "unknown"> {
+    const builtin = (await this.cache.get()).find((b) => b._id.equals(id));
+    if (!builtin) return "unknown";
+    return builtin.enabled ? builtin : "disabled";
+  }
+
+  // One enabled built-in with its instructions, read now.
   findEnabledWithInstructions(id: ObjectId): Promise<BuiltinAgentDoc | null> {
     return this.builtins().findOne({ _id: id, enabled: true });
   }
 
-  private loadEnabled(): Promise<BuiltinListing[]> {
+  // Enabled or not, without instructions, read now: for display fields of
+  // built-ins the cache does not know yet.
+  findListings(ids: readonly ObjectId[]): Promise<BuiltinListing[]> {
+    if (ids.length === 0) return Promise.resolve([]);
     return this.builtins()
-      .find({ enabled: true }, { projection: NO_INSTRUCTIONS })
+      .find({ _id: { $in: [...ids] } }, { projection: NO_INSTRUCTIONS })
+      .limit(MAX_BUILTINS)
+      .toArray();
+  }
+
+  private loadAll(): Promise<BuiltinAgentDoc[]> {
+    return this.builtins()
+      .find({})
       .sort({ sortOrder: 1, slug: 1 })
       .limit(MAX_BUILTINS)
       .toArray();
   }
+}
+
+// The cache holds instructions; nothing outside a chat's prompt gets them.
+function listingOf(agent: BuiltinAgentDoc): BuiltinListing {
+  const { instructions: _instructions, ...listing } = agent;
+  return listing;
 }

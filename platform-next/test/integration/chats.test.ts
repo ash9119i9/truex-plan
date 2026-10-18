@@ -1,13 +1,29 @@
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import type {
+  Request as ExpressRequest,
+  Response as ExpressResponse,
+} from "express";
 import { ObjectId } from "mongodb";
 import type { MongoMemoryReplSet } from "mongodb-memory-server";
+import {
+  currentTiming,
+  serverTiming,
+  type RequestTiming,
+} from "../../src/common/http/server-timing";
 import type { AppConfig } from "../../src/config/app-config";
 import { DatabaseService } from "../../src/database/database.service";
-import { ChatStore } from "../../src/modules/chats/chat-store";
-import { CHATS_COLLECTION, type ChatDoc } from "../../src/modules/chats/chat";
+import { ChatStore, type Settlement } from "../../src/modules/chats/chat-store";
+import { BUILTIN_AGENTS_COLLECTION } from "../../src/modules/agents/builtin-agent";
+import {
+  CHATS_COLLECTION,
+  RUNS_COLLECTION,
+  type ChatDoc,
+  type RunDoc,
+} from "../../src/modules/chats/chat";
 import { RunExecutor } from "../../src/modules/chats/run-executor";
 import { MembershipsService } from "../../src/modules/memberships/memberships.service";
+import { MODELS_COLLECTION } from "../../src/modules/models/model";
 import { OperatorService } from "../../src/modules/operator/operator.service";
 import { SessionsService } from "../../src/modules/sessions/sessions.service";
 import { DEFAULT_TENANT_DB_NAME } from "../../src/modules/tenants/tenant";
@@ -123,7 +139,6 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     gateway.script.length = 0;
     gateway.requests.length = 0;
     await resetOwnedData(database);
-    running.app.get(ChatStore).forgetIndexes();
     tenantId = new ObjectId();
     otherTenantId = new ObjectId();
     await operator.provisionTenant({
@@ -169,7 +184,15 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     await running.app
       .get(MembershipsService)
       .join({ userId: user._id, tenantId: tenant, joinedVia: "signup" });
-    const issued = await running.app.get(SessionsService).create(user._id);
+    // A token for the member's tenant, as the app gets from refresh.
+    const sessions = running.app.get(SessionsService);
+    const created = await sessions.create(user._id);
+    const issued = await sessions.refresh(
+      created.refreshCredential,
+      new Date(),
+      tenant,
+    );
+    assert.ok(issued.tenant?.tenantId.equals(tenant));
     return { userId: user._id, token: issued.accessToken, tenantId: tenant };
   }
 
@@ -339,6 +362,111 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     assert.equal(gateway.refused, 0);
   });
 
+  // Server-Timing entries in order, each with its MongoDB call count. A
+  // connection the pool happened to open is left out: it depends on load.
+  function timingOf(res: Response): Array<[string, number]> {
+    const header = res.headers.get("server-timing") ?? "";
+    return header
+      .split(", ")
+      .map((entry): [string, number] => {
+        const [name = "", ...params] = entry.split(";");
+        const dur = Number(params.find((p) => p.startsWith("dur="))?.slice(4));
+        assert.ok(Number.isFinite(dur) && dur >= 0, entry);
+        const calls = /\((\d+) (?:db )?calls?\)/.exec(entry)?.[1];
+        return [name, Number(calls ?? 0)];
+      })
+      .filter(([name]) => name !== "db-connect");
+  }
+
+  test("Server-Timing shows each step with its MongoDB calls", async () => {
+    gateway.script.push(
+      { kind: "held", before: "Partial", after: " reply." },
+      { kind: "reply", text: "Second." },
+    );
+    // The picker loads the catalog cache, as the app does before a start.
+    await json(await call(alice, "GET", "/agents"), 200);
+    const started = await startChat(alice);
+    const receipt = await json<Receipt>(started, 202);
+    const start = timingOf(started);
+    // Access comes from the tenant token, the built-in and the model from
+    // the catalog cache; the chat, message and run are one write plus the
+    // commit. No index check, no retry read, no view read.
+    assert.deepEqual(start, [
+      ["auth", 0],
+      ["agent", 0],
+      ["model", 0],
+      ["save", 2],
+      ["db", 2],
+      ["total", 0],
+    ]);
+
+    // A live reply this process is reading for alice streams without a
+    // read; its reader is not counted here.
+    const live = await stream(alice, receipt.chat.id, receipt.run.id);
+    assert.deepEqual(timingOf(live), [
+      ["auth", 0],
+      ["db", 0],
+      ["total", 0],
+    ]);
+    for (let i = 0; i < 100 && gateway.requests.length === 0; i++)
+      await sleep(50);
+    gateway.release();
+    assert.equal(savedOf(await readStream(live)).run.status, "completed");
+
+    // A reply finished here is still held for late subscribers.
+    const done = await stream(alice, receipt.chat.id, receipt.run.id);
+    assert.equal(
+      savedOf(await readStream(done)).messages[0]?.text,
+      "Partial reply.",
+    );
+    assert.deepEqual(timingOf(done), [
+      ["auth", 0],
+      ["db", 0],
+      ["total", 0],
+    ]);
+
+    // A follow-up reads the chat and claims it in the save transaction.
+    const sent = await call(
+      alice,
+      "POST",
+      `/chats/${receipt.chat.id}/messages`,
+      {
+        clientMessageId: clientId(),
+        text: "And then?",
+      },
+    );
+    const next = await json<Receipt>(sent, 202);
+    // The chat is read, then claimed with the message and run in one write
+    // plus the commit.
+    assert.deepEqual(timingOf(sent), [
+      ["auth", 0],
+      ["chat", 1],
+      ["model", 0],
+      ["agent", 0],
+      ["save", 2],
+      ["db", 3],
+      ["total", 0],
+    ]);
+    await finish(alice, next);
+
+    // After a restart nothing is held here: a finished reply is answered
+    // from MongoDB, with no chat read.
+    await running.close();
+    await boot();
+    const reopened = await stream(alice, receipt.chat.id, receipt.run.id);
+    assert.equal(
+      savedOf(await readStream(reopened)).messages[0]?.text,
+      "Partial reply.",
+    );
+    assert.deepEqual(timingOf(reopened), [
+      ["auth", 0],
+      ["run", 1],
+      ["saved", 1],
+      ["db", 2],
+      ["total", 0],
+    ]);
+  });
+
   test("a follow-up continues the same conversation", async () => {
     gateway.script.push(
       { kind: "reply", text: "First answer." },
@@ -395,6 +523,57 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     assert.match(prompt, /Scout \\\\\\"Ignore rules\\\\\\"/);
   });
 
+  test("a follow-up on a user agent reads only the chat", async () => {
+    gateway.script.push(
+      { kind: "reply", text: "First." },
+      { kind: "reply", text: "Second." },
+    );
+    const agent = await json<{ agent: { id: string } }>(
+      await call(alice, "POST", "/agents", {
+        clientRequestId: `req-${Date.now()}`,
+        scope: "personal",
+        name: "Scout",
+        description: "Finds sources.",
+        modelId,
+        look: 3,
+        tint: "peach",
+      }),
+      201,
+    );
+    // The picker loads the catalog cache, as the app does before a start.
+    await json(await call(alice, "GET", "/agents"), 200);
+    const first = await json<Receipt>(
+      await startChat(alice, "hi", agent.agent.id),
+      202,
+    );
+    await finish(alice, first);
+
+    const sent = await call(alice, "POST", `/chats/${first.chat.id}/messages`, {
+      clientMessageId: clientId(),
+      text: "more",
+    });
+    const next = await json<Record<string, Record<string, unknown>>>(sent, 202);
+    // The thread already has the agent's prompt: no agent read, and no view
+    // read for its display fields, which the caller already has.
+    assert.deepEqual(timingOf(sent), [
+      ["auth", 0],
+      ["chat", 1],
+      ["model", 0],
+      ["save", 2],
+      ["db", 3],
+      ["total", 0],
+    ]);
+    assert.equal("agent" in next.chat!, false);
+    assert.equal(next.chat!.readOnly, null);
+    assert.equal(next.chat!.activeRunId, next.run!.id);
+    assert.equal(next.chat!.title, "hi");
+    await finish(alice, next as unknown as Receipt);
+
+    // Reading the chat still shows its agent.
+    const body = await getChat(alice, first.chat.id);
+    assert.equal(body.chat.agent?.name, "Scout");
+  });
+
   test("retried sends return the same receipt; conflicting reuse is refused", async () => {
     const body = {
       agentId: builtinId,
@@ -426,6 +605,175 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     );
     assert.equal(list.chats.length, 1);
     assert.equal(gateway.requests.length, 1);
+  });
+
+  test("a retried start returns its chat even after the agent is archived", async () => {
+    const agent = await json<{ agent: { id: string } }>(
+      await call(alice, "POST", "/agents", {
+        clientRequestId: `req-${Date.now()}`,
+        scope: "personal",
+        name: "Scout",
+        description: "Finds sources.",
+        modelId,
+        look: 1,
+        tint: "mint",
+      }),
+      201,
+    );
+    // The picker loads the catalog cache, as the app does before a start.
+    await json(await call(alice, "GET", "/agents"), 200);
+    const body = {
+      agentId: agent.agent.id,
+      clientMessageId: clientId(),
+      text: "find it",
+    };
+    const started = await call(alice, "POST", "/chats", body);
+    const first = await json<Receipt>(started, 202);
+    // A user agent is one tenant read; the model comes from the cache.
+    assert.deepEqual(
+      timingOf(started).filter(([name]) => name === "agent"),
+      [["agent", 1]],
+    );
+    await finish(alice, first);
+    await json(
+      await call(alice, "POST", `/agents/${agent.agent.id}/archive`),
+      200,
+    );
+    const retried = await json<Receipt>(
+      await call(alice, "POST", "/chats", body),
+      200,
+    );
+    assert.equal(retried.chat.id, first.chat.id);
+    assert.equal(retried.run.id, first.run.id);
+    // A new message with the archived agent is still refused.
+    await fails(
+      await startChat(alice, "again", agent.agent.id),
+      404,
+      "NOT_FOUND",
+    );
+    assert.equal(gateway.requests.length, 1);
+  });
+
+  test("a retried follow-up returns the same receipt, while streaming and after", async () => {
+    gateway.script.push(
+      { kind: "reply", text: "First." },
+      { kind: "held", before: "Second", after: "." },
+    );
+    const first = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, first);
+    const body = { clientMessageId: clientId(), text: "more" };
+    const path = `/chats/${first.chat.id}/messages`;
+    const sent = await json<Receipt>(
+      await call(alice, "POST", path, body),
+      202,
+    );
+    for (let i = 0; i < 100 && gateway.requests.length < 2; i++)
+      await sleep(50);
+    // While its reply streams the chat is busy, but this is the same message.
+    const during = await json<Receipt>(
+      await call(alice, "POST", path, body),
+      200,
+    );
+    assert.equal(during.run.id, sent.run.id);
+    gateway.release();
+    await finish(alice, sent);
+    // After the reply the chat is free: the save hits the unique index and
+    // is rolled back, claim included.
+    const after = await json<Receipt>(
+      await call(alice, "POST", path, body),
+      200,
+    );
+    assert.equal(after.run.id, sent.run.id);
+    assert.equal(after.message.seq, 3);
+    await fails(
+      await call(alice, "POST", path, { ...body, text: "other" }),
+      409,
+      "CONFLICT",
+    );
+    const chat = await getChat(alice, first.chat.id);
+    assert.equal(chat.chat.activeRunId, null);
+    assert.deepEqual(
+      chat.messages.map((m) => m.seq),
+      [1, 2, 3, 4],
+    );
+    // The chat still takes a new message.
+    const next = await json<Receipt>(
+      await call(alice, "POST", path, {
+        clientMessageId: clientId(),
+        text: "x",
+      }),
+      202,
+    );
+    assert.equal(next.message.seq, 5);
+    await finish(alice, next);
+    assert.equal(gateway.requests.length, 3);
+  });
+
+  test("different messages racing on an idle chat: one is taken", async () => {
+    const first = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, first);
+    const attempts = await Promise.all(
+      Array.from({ length: 4 }, (_, i) =>
+        call(alice, "POST", `/chats/${first.chat.id}/messages`, {
+          clientMessageId: clientId(),
+          text: `racer ${i}`,
+        }),
+      ),
+    );
+    const statuses = attempts.map((res) => res.status).sort();
+    assert.deepEqual(statuses, [202, 409, 409, 409]);
+    for (const res of attempts)
+      if (res.status === 409) await fails(res, 409, "CHAT_BUSY");
+    const taken = await json<Receipt>(
+      attempts.find((res) => res.status === 202)!,
+      202,
+    );
+    assert.equal(taken.message.seq, 3);
+    await finish(alice, taken);
+    const chat = await getChat(alice, first.chat.id);
+    assert.equal(
+      chat.messages.filter((m) => m.role === "user").length,
+      2,
+      "one message per accepted send",
+    );
+  });
+
+  test("a model or built-in added after the catalog cache loaded is used at once", async () => {
+    // Load the cache, then add both behind its back, as the operator CLI
+    // (another process) does.
+    await json(await call(alice, "GET", "/agents"), 200);
+    const catalog = database.catalog();
+    const model = await catalog
+      .collection(MODELS_COLLECTION)
+      .findOne({ _id: new ObjectId(modelId) });
+    const builtin = await catalog
+      .collection(BUILTIN_AGENTS_COLLECTION)
+      .findOne({ _id: new ObjectId(builtinId) });
+    assert.ok(model && builtin);
+    const newModelId = new ObjectId();
+    const newBuiltinId = new ObjectId();
+    await catalog
+      .collection(MODELS_COLLECTION)
+      .insertOne({ ...model, _id: newModelId, slug: "added-later" });
+    await catalog.collection(BUILTIN_AGENTS_COLLECTION).insertOne({
+      ...builtin,
+      _id: newBuiltinId,
+      slug: "added-later",
+      name: "Added Later",
+      modelId: newModelId,
+    });
+    const started = await startChat(alice, "hi", newBuiltinId.toHexString());
+    const receipt = await json<Receipt>(started, 202);
+    assert.equal(receipt.chat.agent?.name, "Added Later");
+    assert.equal(receipt.chat.readOnly, null);
+    await finish(alice, receipt);
+    // The sidebar names it too, before the cache reloads.
+    const list = await json<{ chats: Array<Receipt["chat"]> }>(
+      await call(alice, "GET", "/chats"),
+      200,
+    );
+    assert.equal(list.chats[0]?.agent?.name, "Added Later");
+    assert.equal(list.chats[0]?.readOnly, null);
   });
 
   test("a second message while a reply streams is refused", async () => {
@@ -582,6 +930,209 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       200,
     );
     assert.equal(bobs.chats.length, 0);
+  });
+
+  test("a live reply streams only to its owner, in its chat and tenant", async () => {
+    gateway.script.push(
+      { kind: "reply", text: "Other chat." },
+      { kind: "held", before: "Held", after: " reply." },
+    );
+    const other = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, other);
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    const { id } = receipt.chat;
+    const runPath = `/runs/${receipt.run.id}/stream`;
+    // The same user, signed in to another tenant: another database.
+    const aliceElsewhere = await member("alice", otherTenantId);
+    assert.ok(aliceElsewhere.userId.equals(alice.userId));
+    for (const [who, chatId] of [
+      [bob, id],
+      [dave, id],
+      [aliceElsewhere, id],
+      [alice, other.chat.id],
+    ] as const)
+      await fails(
+        await call(who, "GET", `/chats/${chatId}${runPath}`),
+        404,
+        "NOT_FOUND",
+      );
+    await fails(
+      await call(bob, "POST", `/chats/${id}/runs/${receipt.run.id}/stop`),
+      404,
+      "NOT_FOUND",
+    );
+    for (let i = 0; i < 100 && gateway.requests.length < 2; i++)
+      await sleep(50);
+    gateway.release();
+    assert.equal(textOf(await finish(alice, receipt)), "Held reply.");
+  });
+
+  // Runs a store call as a request would, returning its MongoDB call count.
+  async function counted<T>(
+    work: () => Promise<T>,
+  ): Promise<{ value: T; calls: number }> {
+    let timing: RequestTiming | undefined;
+    let pending!: Promise<T>;
+    const res = {
+      headersSent: false,
+      setHeader: () => res,
+      writeHead: () => res,
+    };
+    serverTiming(
+      {} as ExpressRequest,
+      res as unknown as ExpressResponse,
+      () => {
+        timing = currentTiming();
+        pending = work();
+      },
+    );
+    const value = await pending;
+    const calls = /db;dur=[\d.]+;desc="MongoDB \((\d+) calls?\)"/.exec(
+      timing?.header() ?? "",
+    )?.[1];
+    return { value, calls: Number(calls) };
+  }
+
+  // A message saved with no reader in this process, as after a crash.
+  async function unread(send: () => Promise<Response>): Promise<Receipt> {
+    const executor = running.app.get(RunExecutor);
+    const begin = executor.begin.bind(executor);
+    executor.begin = () => undefined;
+    try {
+      return await json<Receipt>(await send(), 202);
+    } finally {
+      executor.begin = begin;
+    }
+  }
+
+  test("the runtime's acceptance is saved in one call and never replaces a thread", async () => {
+    const store = running.app.get(ChatStore);
+    const db = database.tenantDb(DEFAULT_TENANT_DB_NAME);
+    const receipt = await unread(() => startChat(alice));
+    const chatId = ObjectId.createFromHexString(receipt.chat.id);
+    const runId = ObjectId.createFromHexString(receipt.run.id);
+
+    const first = await counted(() =>
+      store.markAccepted(
+        DEFAULT_TENANT_DB_NAME,
+        chatId,
+        runId,
+        "thread-1",
+        "turn-1",
+      ),
+    );
+    assert.equal(first.calls, 1);
+    const run = await db.collection<RunDoc>(RUNS_COLLECTION).findOne({
+      _id: runId,
+    });
+    assert.equal(run?.status, "running");
+    assert.equal(run?.threadId, "thread-1");
+    assert.ok(run?.timings.dispatchedAt);
+    const chats = db.collection<ChatDoc>(CHATS_COLLECTION);
+    assert.deepEqual((await chats.findOne({ _id: chatId }))?.runtime, {
+      threadId: "thread-1",
+      state: "ready",
+    });
+
+    // A repeat with another thread changes neither.
+    await store.markAccepted(
+      DEFAULT_TENANT_DB_NAME,
+      chatId,
+      runId,
+      "thread-2",
+      "turn-2",
+    );
+    assert.equal(
+      (await chats.findOne({ _id: chatId }))?.runtime.threadId,
+      "thread-1",
+    );
+  });
+
+  test("a reply is saved in one write plus the commit; a repeat or late save changes nothing", async () => {
+    const store = running.app.get(ChatStore);
+    const chats = database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<ChatDoc>(CHATS_COLLECTION);
+    const outcome: Settlement = {
+      status: "completed",
+      error: null,
+      items: [
+        { itemId: "a", text: "One." },
+        { itemId: "blank", text: "  " },
+        { itemId: "b", text: "Two." },
+      ],
+      usage: null,
+      threadId: null,
+      turnId: null,
+      threadLost: false,
+    };
+    const first = await unread(() => startChat(alice));
+    const chatId = ObjectId.createFromHexString(first.chat.id);
+    const run1 = ObjectId.createFromHexString(first.run.id);
+
+    // The run, then the chat and reply in one call, then the commit.
+    const saved = await counted(() =>
+      store.settle(DEFAULT_TENANT_DB_NAME, chatId, run1, 2, outcome),
+    );
+    assert.equal(saved.calls, 3);
+    assert.deepEqual(
+      saved.value.messages.map((m) => [m.seq, m.text]),
+      [
+        [2, "One."],
+        [3, "Two."],
+      ],
+    );
+    let chat = await chats.findOne({ _id: chatId });
+    assert.equal(chat?.nextSeq, 4);
+    assert.equal(chat?.activeRun, null);
+
+    // A repeat returns what was saved and writes nothing.
+    const again = await store.settle(DEFAULT_TENANT_DB_NAME, chatId, run1, 2, {
+      ...outcome,
+      status: "failed",
+    });
+    assert.equal(again.run.status, "completed");
+    assert.deepEqual(
+      again.messages.map((m) => m._id.toHexString()),
+      saved.value.messages.map((m) => m._id.toHexString()),
+    );
+
+    // A late save of the first run never releases the next one's claim.
+    const second = await unread(() =>
+      call(alice, "POST", `/chats/${first.chat.id}/messages`, {
+        clientMessageId: clientId(),
+        text: "Next",
+      }),
+    );
+    assert.equal(second.message.seq, 4);
+    await store.settle(DEFAULT_TENANT_DB_NAME, chatId, run1, 2, outcome);
+    chat = await chats.findOne({ _id: chatId });
+    assert.equal(chat?.activeRun?.runId.toHexString(), second.run.id);
+    assert.equal(chat?.nextSeq, 5);
+
+    // A chat not in the state its unsettled run implies (hand-edited) is
+    // still saved, after its last message, and released.
+    await chats.updateOne({ _id: chatId }, { $set: { nextSeq: 9 } });
+    const run2 = ObjectId.createFromHexString(second.run.id);
+    const moved = await store.settle(
+      DEFAULT_TENANT_DB_NAME,
+      chatId,
+      run2,
+      5,
+      outcome,
+    );
+    assert.deepEqual(
+      moved.messages.map((m) => m.seq),
+      [9, 10],
+    );
+    chat = await chats.findOne({ _id: chatId });
+    assert.equal(chat?.activeRun, null);
+    assert.equal(chat?.nextSeq, 11);
+    const body = await getChat(alice, first.chat.id);
+    assert.deepEqual(
+      body.messages.map((m) => m.seq),
+      [1, 2, 3, 4, 9, 10],
+    );
   });
 
   test("a disabled model makes its chats read-only; an archived agent does not", async () => {

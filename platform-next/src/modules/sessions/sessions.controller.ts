@@ -1,5 +1,6 @@
 import { Controller, HttpCode, Inject, Post, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
+import { optionalTenantIdOf } from "../../common/access/tenant.guard";
 import { ApiError } from "../../common/http/api-error";
 import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import { toWireId } from "../../database/object-id";
@@ -16,6 +17,9 @@ import {
 
 export interface RefreshResponse {
   userId: string;
+  // The tenant the access token is for: the one asked for with ?tenantId=
+  // when the caller may use it, otherwise null.
+  tenantId: string | null;
   accessToken: string;
   accessTokenExpiresAt: string;
 }
@@ -39,8 +43,19 @@ export class SessionsController {
     const auth = this.config.auth;
     this.requireAllowedOrigin(req);
     res.setHeader("Cache-Control", "no-store");
+    const tenantId = optionalTenantIdOf(req);
+    if (tenantId === null)
+      throw new ApiError(
+        400,
+        "BAD_REQUEST",
+        "tenantId must be one tenant ID, or left out.",
+      );
     try {
-      const issued = await this.sessions.refresh(readRefreshCookie(req, auth));
+      const issued = await this.sessions.refresh(
+        readRefreshCookie(req, auth),
+        new Date(),
+        tenantId,
+      );
       setRefreshCookie(
         res,
         auth,
@@ -49,6 +64,7 @@ export class SessionsController {
       );
       return {
         userId: toWireId(issued.userId),
+        tenantId: issued.tenant ? toWireId(issued.tenant.tenantId) : null,
         accessToken: issued.accessToken,
         accessTokenExpiresAt: issued.accessTokenExpiresAt.toISOString(),
       };

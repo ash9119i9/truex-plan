@@ -91,7 +91,7 @@ test("account discovery makes only unscoped, authenticated, uncached calls", asy
     channel: null,
     locks: null,
     fetch: (async (url: string, init?: RequestInit) => {
-      if (url.endsWith("/refresh")) return refreshed();
+      if (url.startsWith("/api/v1/auth/refresh")) return refreshed();
       paths.push(url);
       assert.equal(
         new Headers(init?.headers).get("authorization"),
@@ -103,7 +103,7 @@ test("account discovery makes only unscoped, authenticated, uncached calls", asy
     }) as typeof fetch,
   });
   assert.equal((await fetchMe({ auth })).kind, "ok");
-  assert.deepEqual(paths, ["/api/v1/me", "/api/v1/me/tenants"]);
+  assert.deepEqual(paths.sort(), ["/api/v1/me", "/api/v1/me/tenants"]);
 });
 
 test("sign-out reports honestly whether the server confirmed it", async () => {
@@ -220,7 +220,7 @@ test("a 401 asks the session gate to check; 403 and 5xx never do", async (t) => 
   const stop = onUnauthenticated(() => notified++);
   const answer = (status: number) =>
     t.mock.method(globalThis, "fetch", async (url: string) =>
-      url.endsWith("/refresh")
+      url.startsWith("/api/v1/auth/refresh")
         ? refreshed()
         : reply(status, { error: "x", code: "C" }),
     );

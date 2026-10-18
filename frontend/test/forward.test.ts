@@ -350,3 +350,47 @@ test("this branch forwards to platform-next unless told otherwise", () => {
   assert.equal(upstreamBase({}), "http://localhost:4100");
   assert.equal(upstreamBase({ PLATFORM_INTERNAL_URL: "http://next.internal:4100/" }), "http://next.internal:4100");
 });
+
+test("Server-Timing: the platform's entries pass through, followed by the forwarder's own", async (t) => {
+  const up = await upstream((req, res) => {
+    const timing =
+      req.url === "/api/timed"
+        ? {
+            "server-timing":
+              'db;dur=255.0;desc="MongoDB (1 call)", total;dur=260.4',
+          }
+        : {};
+    setTimeout(
+      () =>
+        res
+          .writeHead(200, { "content-type": "application/json", ...timing })
+          .end("{}"),
+      30,
+    );
+  });
+  t.after(up.close);
+
+  const timed = await call(up, "/api", ["timed"]);
+  await timed.text();
+  const entries = timed.headers.get("server-timing")!.split(", ");
+  assert.deepEqual(entries.slice(0, 2), [
+    'db;dur=255.0;desc="MongoDB (1 call)"',
+    "total;dur=260.4",
+  ]);
+  const forwarded =
+    /^forward;dur=(\d+\.\d);desc="forwarder incl\. platform"$/.exec(
+      entries[2] ?? "",
+    );
+  assert.ok(forwarded, entries.join(" | "));
+  assert.ok(
+    Number(forwarded[1]) >= 25,
+    "the wait for the platform is included",
+  );
+
+  const plain = await call(up, "/api", ["plain"]);
+  await plain.text();
+  assert.match(
+    plain.headers.get("server-timing")!,
+    /^forward;dur=\d+\.\d;desc="forwarder incl\. platform"$/,
+  );
+});

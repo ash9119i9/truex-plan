@@ -10,6 +10,7 @@ import {
 } from "react";
 import { tintOf } from "@/lib/agent-look";
 import {
+  exchangeKey,
   exchangesOf,
   isSettled,
   outcomeNote,
@@ -44,12 +45,15 @@ const PHASE_NOTE: Partial<Record<LiveReply["phase"], string>> = {
 export function ChatHeader({
   chat,
   busy,
+  creating = false,
   onRename,
   onArchive,
 }: {
   chat: ChatSummary;
   /** A reply is running: archiving waits for it. */
   busy: boolean;
+  /** The chat is being created by its first message: nothing to act on. */
+  creating?: boolean;
   onRename: (title: string) => Promise<string | null>;
   onArchive: () => Promise<string | null>;
 }) {
@@ -126,7 +130,7 @@ export function ChatHeader({
                 .join(" · ") || "Agent unavailable"}
             </p>
           </div>
-          {mode === "archive" ? (
+          {creating ? null : mode === "archive" ? (
             <div
               className="tchat-head-actions"
               role="group"
@@ -296,7 +300,7 @@ export const Transcript = memo(function Transcript({
         )}
         {shown.map((exchange) => (
           <Exchange
-            key={exchange.runId}
+            key={exchangeKey(exchange)}
             user={exchange.user}
             replies={exchange.replies}
             run={exchange.run}

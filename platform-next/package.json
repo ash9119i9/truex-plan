@@ -19,6 +19,11 @@
     "operator:dev": "tsx src/cli/operator.ts",
     "auth:generate-key": "tsx src/cli/generate-auth-key.ts"
   },
+  "config": {
+    "mongodbMemoryServer": {
+      "version": "8.0.14"
+    }
+  },
   "dependencies": {
     "@nestjs/common": "11.2.7",
     "@nestjs/core": "11.2.7",

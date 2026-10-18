@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -28,6 +29,8 @@ import {
   messageIds,
   outcomeNote,
   parseSaved,
+  pendingRunId,
+  pendingThread,
   readOnlyNote,
   renameChat,
   sendFailure,
@@ -36,11 +39,13 @@ import {
   stopRun,
   withChat,
   withOlder,
+  withPending,
   withReceipt,
   withSaved,
   type ChatSummary,
   type ChatThread,
   type LiveReply,
+  type PendingSend,
   type SendFailure,
 } from "@/lib/tenant-chat";
 import { followRun } from "@/lib/tenant-chat-stream";
@@ -378,6 +383,11 @@ export function TenantChat() {
   } | null>(null);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
+  // The message on its way, shown before the platform answers, and the
+  // agent a first message starts its chat with.
+  const [pending, setPending] = useState<
+    (PendingSend & { agent: TenantAgent | null }) | null
+  >(null);
   const [ids] = useState(() => messageIds());
   const draftKey = openId ?? NEW;
   const draft = drafts[draftKey] ?? "";
@@ -395,16 +405,19 @@ export function TenantChat() {
     setFailure(null);
     const target = openId ?? `new:${agent!.id}`;
     const clientMessageId = ids.for(target, text);
+    const since = Date.now();
+    // The message leaves the composer and shows in the chat at once. The
+    // composer is read-only meanwhile; a failure puts the text back.
+    setPending({ key, text, clientMessageId, since, agent });
+    setDrafts((all) => {
+      const { [key]: _sent, ...rest } = all;
+      return rest;
+    });
     try {
       const receipt = openId
-        ? await sendMessage(openId, text, clientMessageId)
+        ? await sendMessage(chat!, text, clientMessageId)
         : await startChat(agent!.id, text, clientMessageId);
       ids.reset();
-      setDrafts((all) => {
-        if (all[key] !== text) return all;
-        const { [key]: _sent, ...rest } = all;
-        return rest;
-      });
       setChats((list) => withChat(list, receipt.chat));
       // The person moved to another chat meanwhile: the reply runs anyway
       // and the list shows it.
@@ -416,16 +429,18 @@ export function TenantChat() {
       );
       setOpened({ state: "ready" });
       if (receipt.chat.activeRunId === receipt.run.id)
-        setLive({ chatId, reply: liveReply(receipt.run.id) });
+        setLive({ chatId, reply: liveReply(receipt.run.id, since) });
       // A repeat of a message answered meanwhile: show what was saved.
       else void load(chatId, true);
     } catch (error) {
+      setDrafts((all) => (all[key] ? all : { ...all, [key]: text }));
       const failed = sendFailure(error);
       if (openRef.current === openId) {
         setFailure({ key, failure: failed });
         if (failed.reload && openId) void load(openId, true);
       }
     } finally {
+      setPending(null);
       sendingRef.current = false;
       setSending(false);
     }
@@ -524,8 +539,29 @@ export function TenantChat() {
     if (shownFailure && !shownFailure.unknown) setFailure(null);
   };
 
+  // A message on its way shows in the chat it was sent from: added to the
+  // open chat, or as the start of the chat a first message creates.
+  // Memoized: the transcript re-renders only when these change.
+  const pendingHere = pending?.key === draftKey ? pending : null;
+  const shownThread = useMemo(() => {
+    if (!pendingHere) return openThread;
+    if (openThread) return withPending(openThread, pendingHere);
+    return !openId && pendingHere.agent
+      ? pendingThread(pendingHere.agent, pendingHere)
+      : null;
+  }, [openThread, openId, pendingHere]);
+  const pendingLive = useMemo(
+    () =>
+      pendingHere
+        ? liveReply(pendingRunId(pendingHere), pendingHere.since)
+        : null,
+    [pendingHere],
+  );
+  const shownLive = openLive ?? pendingLive;
+  const creating = !openId && !!shownThread;
+
   let stage: ReactNode;
-  if (!openId) {
+  if (!openId && !creating) {
     stage = (
       <section className="workspace-empty tchat-new" aria-label="New chat">
         <Hero agentHue={selected ? tintOf(selected.tint).dot : undefined}>
@@ -574,8 +610,8 @@ export function TenantChat() {
         </Hero>
       </section>
     );
-  } else if (openThread) {
-    const chat = openThread.chat;
+  } else if (shownThread) {
+    const chat = shownThread.chat;
     const note = readOnlyNote(chat);
     const busy = !!chat.activeRunId;
     stage = (
@@ -583,12 +619,13 @@ export function TenantChat() {
         <ChatHeader
           chat={chat}
           busy={busy}
+          creating={creating}
           onRename={rename}
           onArchive={archive}
         />
         <Transcript
-          thread={openThread}
-          live={openLive}
+          thread={shownThread}
+          live={shownLive}
           connection={connection}
           loadingOlder={olderFor === chat.id}
           olderError={olderError}
@@ -650,7 +687,9 @@ export function TenantChat() {
             <button
               type="button"
               className="btn-soft"
-              onClick={() => void load(openId)}
+              onClick={() => {
+                if (openId) void load(openId);
+              }}
             >
               Try again
             </button>

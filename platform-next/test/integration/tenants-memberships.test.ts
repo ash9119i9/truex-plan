@@ -4,12 +4,18 @@ import { ObjectId } from "mongodb";
 import type { MongoMemoryReplSet } from "mongodb-memory-server";
 import { DomainError } from "../../src/common/domain-error";
 import { DatabaseService } from "../../src/database/database.service";
+import { parseOperatorCommand, UsageError } from "../../src/cli/operator";
+import { AGENT_INDEXES } from "../../src/modules/agents/agent";
+import { AUDIT_COLLECTION } from "../../src/modules/audit/audit";
+import { CHAT_INDEXES } from "../../src/modules/chats/chat";
 import { MembershipsService } from "../../src/modules/memberships/memberships.service";
+import { OperatorService } from "../../src/modules/operator/operator.service";
 import {
   DEFAULT_TENANT_DB_NAME,
   normalizeTenantName,
   organizationDbName,
 } from "../../src/modules/tenants/tenant";
+import { TENANT_INDEX_VERSION } from "../../src/modules/tenants/tenant-indexes";
 import { TenantsService } from "../../src/modules/tenants/tenants.service";
 import { resetOwnedData } from "../support/reset";
 import {
@@ -49,6 +55,134 @@ describe("tenants and memberships", () => {
   });
 
   beforeEach(() => resetOwnedData(database));
+
+  describe("tenant indexes", () => {
+    const expected = { ...CHAT_INDEXES, ...AGENT_INDEXES };
+
+    // Index names per collection of a tenant database, _id_ left out.
+    async function indexNames(dbName: string) {
+      const db = database.tenantDb(dbName);
+      const names: Record<string, string[]> = {};
+      for (const collection of Object.keys(expected))
+        names[collection] = (await db.collection(collection).indexes())
+          .map((index) => String(index.name))
+          .filter((name) => name !== "_id_")
+          .sort();
+      return names;
+    }
+
+    const expectedNames = Object.fromEntries(
+      Object.entries(expected).map(([collection, indexes]) => [
+        collection,
+        indexes.map((index) => String(index.name)).sort(),
+      ]),
+    );
+
+    test("provisioning builds every tenant index before the tenant is ready", async () => {
+      const tenant = await tenants.provision({
+        tenantId: new ObjectId(),
+        name: "Org",
+        kind: "organization",
+      });
+      assert.equal(tenant.provisioningStatus, "ready");
+      assert.equal(tenant.indexVersion, TENANT_INDEX_VERSION);
+      assert.deepEqual(await indexNames(tenant.dbName), expectedNames);
+      assert.equal(await tenants.countStaleIndexes(), 0);
+    });
+
+    test("ensure-tenant-indexes brings an older tenant up to date, once", async () => {
+      const operator = running.app.get(OperatorService);
+      const fresh = await tenants.provision({
+        tenantId: new ObjectId(),
+        name: "Fresh",
+        kind: "organization",
+      });
+      // Provisioned before indexes were built at provisioning.
+      const legacy = await tenants.provision({
+        tenantId: new ObjectId(),
+        name: "Legacy",
+        kind: "default",
+      });
+      const db = database.tenantDb(legacy.dbName);
+      for (const collection of Object.keys(expected))
+        await db.collection(collection).dropIndexes();
+      await database
+        .catalog()
+        .collection("tenants")
+        .updateOne({ _id: legacy._id }, { $unset: { indexVersion: "" } });
+      assert.equal(await tenants.countStaleIndexes(), 1);
+
+      const done = await operator.ensureTenantIndexes({ operator: "ops" });
+      assert.deepEqual(
+        done.map((t) => [t._id.toHexString(), t.indexVersion]),
+        [[legacy._id.toHexString(), TENANT_INDEX_VERSION]],
+      );
+      assert.deepEqual(await indexNames(legacy.dbName), expectedNames);
+      assert.equal(await tenants.countStaleIndexes(), 0);
+      assert.equal(
+        await database.catalog().collection(AUDIT_COLLECTION).countDocuments({
+          action: "tenant.ensure_indexes",
+          tenantId: legacy._id,
+          result: "success",
+        }),
+        1,
+      );
+      // Nothing is behind now; a named tenant can still be rebuilt.
+      assert.deepEqual(
+        await operator.ensureTenantIndexes({ operator: "ops" }),
+        [],
+      );
+      const again = await operator.ensureTenantIndexes({
+        operator: "ops",
+        tenantId: fresh._id,
+      });
+      assert.equal(again[0]?.indexVersion, TENANT_INDEX_VERSION);
+    });
+
+    test("never lowers a newer release's version and refuses unprovisioned tenants", async () => {
+      const tenant = await tenants.provision({
+        tenantId: new ObjectId(),
+        name: "Org",
+        kind: "organization",
+      });
+      await database
+        .catalog()
+        .collection("tenants")
+        .updateOne(
+          { _id: tenant._id },
+          { $set: { indexVersion: TENANT_INDEX_VERSION + 5 } },
+        );
+      assert.equal(
+        (await tenants.ensureIndexesOf(tenant._id)).indexVersion,
+        TENANT_INDEX_VERSION + 5,
+      );
+      await rejectsWith(tenants.ensureIndexesOf(new ObjectId()), "NOT_FOUND");
+    });
+
+    test("the command takes one tenant or --all", () => {
+      const id = new ObjectId();
+      const base = ["ensure-tenant-indexes", "--operator", "ops"];
+      assert.deepEqual(
+        parseOperatorCommand([...base, "--tenant", id.toHexString()]),
+        { command: "ensure-tenant-indexes", operator: "ops", tenantId: id },
+      );
+      assert.deepEqual(parseOperatorCommand([...base, "--all"]), {
+        command: "ensure-tenant-indexes",
+        operator: "ops",
+      });
+      assert.throws(() => parseOperatorCommand(base), UsageError);
+      assert.throws(
+        () =>
+          parseOperatorCommand([
+            ...base,
+            "--all",
+            "--tenant",
+            id.toHexString(),
+          ]),
+        UsageError,
+      );
+    });
+  });
 
   describe("provisioning", () => {
     test("creates a ready default tenant on the shared default database", async () => {

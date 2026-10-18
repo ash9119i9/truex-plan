@@ -10,6 +10,16 @@ import {
   type TenantDoc,
   type TenantKind,
 } from "./tenant";
+import { createTenantIndexes, TENANT_INDEX_VERSION } from "./tenant-indexes";
+
+// Ready tenants whose indexes were built for an older release, or never
+// recorded (provisioned before indexes were built at provisioning).
+function staleIndexes() {
+  return {
+    provisioningStatus: "ready" as const,
+    indexVersion: { $not: { $gte: TENANT_INDEX_VERSION } },
+  };
+}
 
 // Each tenant database holds one ownership marker naming the tenant that owns
 // it. Provisioning refuses to adopt a database owned by anyone else.
@@ -83,12 +93,16 @@ export class TenantsService {
       if (error instanceof DomainError) await this.markFailed(tenant, error);
       throw error;
     }
+    // Before it is marked ready: a tenant anyone can enter always has its
+    // indexes. A failure leaves it pending, and the next run retries.
+    await createTenantIndexes(this.database.tenantDb(tenant.dbName));
 
     const now = new Date();
     const ready = await this.tenants().findOneAndUpdate(
       { _id: tenant._id },
       {
         $set: { provisioningStatus: "ready", updatedAt: now },
+        $max: { indexVersion: TENANT_INDEX_VERSION },
         $unset: { provisioningError: "" },
       },
       { returnDocument: "after" },
@@ -100,6 +114,44 @@ export class TenantsService {
       kind: tenant.kind,
     });
     return ready;
+  }
+
+  // Builds a ready tenant's indexes and records the version. For tenants
+  // provisioned before an index change (provision returns early for those).
+  // Safe to repeat; never lowers a version a newer release recorded.
+  async ensureIndexesOf(tenantId: ObjectId): Promise<TenantDoc> {
+    const tenant = await this.tenants().findOne({
+      _id: tenantId,
+      provisioningStatus: "ready",
+    });
+    if (!tenant)
+      throw new DomainError(
+        "NOT_FOUND",
+        "No provisioned tenant has this ID. Provision it instead.",
+      );
+    await createTenantIndexes(this.database.tenantDb(tenant.dbName));
+    const updated = await this.tenants().findOneAndUpdate(
+      { _id: tenant._id },
+      { $max: { indexVersion: TENANT_INDEX_VERSION } },
+      { returnDocument: "after" },
+    );
+    if (!updated) throw new Error("Tenant record vanished during the update.");
+    return updated;
+  }
+
+  // IDs of ready tenants whose indexes are behind this release, oldest
+  // first. Bounded by the number of tenants; read once per command.
+  async staleIndexTenantIds(): Promise<ObjectId[]> {
+    const stale = await this.tenants()
+      .find(staleIndexes(), { projection: { _id: 1 } })
+      .sort({ _id: 1 })
+      .toArray();
+    return stale.map((t) => t._id);
+  }
+
+  // One query at startup, whatever the number of tenants.
+  countStaleIndexes(): Promise<number> {
+    return this.tenants().countDocuments(staleIndexes());
   }
 
   // Inserts the registry record as pending, or returns the existing one when

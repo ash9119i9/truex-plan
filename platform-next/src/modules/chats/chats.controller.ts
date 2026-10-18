@@ -30,14 +30,8 @@ import {
   InvalidSessionError,
   SessionsService,
 } from "../sessions/sessions.service";
-import {
-  isSettled,
-  parseRename,
-  parseSend,
-  parseStartChat,
-  type MessageDoc,
-  type RunDoc,
-} from "./chat";
+import { parseRename, parseSend, parseStartChat } from "./chat";
+import type { SettleResult } from "./chat-store";
 import {
   ChatsService,
   messageView,
@@ -195,8 +189,8 @@ export class ChatsController {
 
   // One reply as server-sent events: a snapshot of the text so far, then
   // live events, ending with `saved` once the outcome is in MongoDB. A
-  // finished reply is answered from MongoDB. Reconnecting is always safe: the
-  // snapshot replaces what the browser has.
+  // finished reply is answered with its saved outcome. Reconnecting is always
+  // safe: the snapshot replaces what the browser has.
   @Get(":id/runs/:runId/stream")
   async stream(
     @CurrentTenant() context: TenantContext,
@@ -207,11 +201,7 @@ export class ChatsController {
   ): Promise<void> {
     const chatId = idOf(id, "chat");
     const runId = idOf(runIdParam, "reply");
-    const { run, messages } = await this.chats.runForStream(
-      context,
-      chatId,
-      runId,
-    );
+    const { saved } = await this.chats.runForStream(context, chatId, runId);
 
     res.writeHead(200, {
       "content-type": "text/event-stream; charset=utf-8",
@@ -244,7 +234,7 @@ export class ChatsController {
         `event: ${event.type}\ndata: ${JSON.stringify(present(event))}\n\n`,
       );
 
-    const savedReply = (saved: { run: RunDoc; messages: MessageDoc[] }) => {
+    const savedReply = (saved: SettleResult) => {
       send({
         type: "snapshot",
         data: {
@@ -261,7 +251,7 @@ export class ChatsController {
       finish();
       res.end();
     };
-    if (isSettled(run.status)) return savedReply({ run, messages });
+    if (saved) return savedReply(saved);
 
     heartbeat = setInterval(() => {
       write(": hb\n\n");
@@ -287,7 +277,7 @@ export class ChatsController {
     // Not live here and could not be recovered (runtime not configured, or
     // settled in the meantime): answer from MongoDB.
     const fresh = await this.chats.runForStream(context, chatId, runId);
-    if (isSettled(fresh.run.status)) return savedReply(fresh);
+    if (fresh.saved) return savedReply(fresh.saved);
     send({ type: "end", data: { reason: "unavailable" } });
     finish();
     res.end();

@@ -5,6 +5,7 @@ import {
   OnApplicationShutdown,
 } from "@nestjs/common";
 import type { ObjectId } from "mongodb";
+import { detached } from "../../common/http/server-timing";
 import { toWireId } from "../../database/object-id";
 import type { RunErrorInfo, RunUsage } from "./chat";
 import {
@@ -30,6 +31,10 @@ export interface Dispatch {
   readonly dbName: string;
   readonly chatId: ObjectId;
   readonly runId: ObjectId;
+  // The chat's owner: a stream proves its caller against this, not MongoDB.
+  readonly ownerId: ObjectId;
+  // The seq of the reply's first message: the one after the member's.
+  readonly replySeq: number;
   readonly ref: ChatRef;
   readonly body: StartRunBody;
   // start: post the run. recover: reattach first; post only when the
@@ -127,6 +132,9 @@ class LiveRun {
   turnId: string | null = null;
   stopRequested = false;
   accepted = false;
+  // The runtime's acceptance being saved. Text keeps streaming meanwhile;
+  // the run's later writes wait for it so they land in order.
+  acceptedWrite: Promise<void> = Promise.resolve();
   completed: Completed | undefined;
   saved: SettleResult | undefined;
   saveFailed = false;
@@ -238,6 +246,31 @@ export class RunExecutor implements OnApplicationShutdown {
     return !!run && run.phase !== "settled";
   }
 
+  // What this process holds for a run it is reading for exactly this tenant
+  // database, chat and owner: "running", or the saved outcome. The entry was
+  // written by this server from a verified caller and a run's owner never
+  // changes, so it answers as the owner-filtered read of the run would.
+  // Null otherwise, including a run whose save failed: the caller then reads
+  // MongoDB and recovery runs as before.
+  liveFor(
+    dbName: string,
+    chatId: ObjectId,
+    runId: ObjectId,
+    ownerId: ObjectId,
+  ): "running" | SettleResult | null {
+    const run = this.live.get(toWireId(runId));
+    if (!run) return null;
+    const { dispatch } = run;
+    if (
+      dispatch.dbName !== dbName ||
+      !dispatch.chatId.equals(chatId) ||
+      !dispatch.ownerId.equals(ownerId)
+    )
+      return null;
+    if (run.saved) return run.saved;
+    return run.phase === "settled" ? null : "running";
+  }
+
   // Starts reading a run. Repeating it for a run already live here is a
   // no-op, so recovery and a fresh start can never double-read in one
   // process.
@@ -250,15 +283,19 @@ export class RunExecutor implements OnApplicationShutdown {
     this.abandoned.delete(id);
     if (dispatch.mode === "recover") run.phase = "reconnecting";
     this.live.set(id, run);
-    run.done = this.execute(run, this.client).catch((error: unknown) => {
-      this.logger.error({
-        message: "run reader failed",
-        runId: id,
-        error: error instanceof Error ? error.name : "unknown",
-      });
-      run.close();
-      this.live.delete(id);
-    });
+    const client = this.client;
+    // The reader outlives the request that started it.
+    run.done = detached(() =>
+      this.execute(run, client).catch((error: unknown) => {
+        this.logger.error({
+          message: "run reader failed",
+          runId: id,
+          error: error instanceof Error ? error.name : "unknown",
+        });
+        run.close();
+        this.live.delete(id);
+      }),
+    );
   }
 
   // Snapshot then live events, registered in one synchronous step so no
@@ -326,6 +363,8 @@ export class RunExecutor implements OnApplicationShutdown {
       }
     } finally {
       clearInterval(lease);
+      // Shutdown waits for it with the reader.
+      await run.acceptedWrite;
     }
   }
 
@@ -392,6 +431,7 @@ export class RunExecutor implements OnApplicationShutdown {
         const delay = RECONNECT_DELAYS_MS[failures++];
         if (delay === undefined) {
           this.logger.warn({ message: "runtime unreachable", runId: run.id });
+          await run.acceptedWrite;
           await this.store
             .markUncertain(dispatch.dbName, dispatch.runId)
             .catch(() => undefined);
@@ -428,16 +468,23 @@ export class RunExecutor implements OnApplicationShutdown {
         run.accepted = true;
         run.threadId = threadId;
         run.turnId = turnId;
-        if (threadId && turnId)
-          await this.store
-            .markAccepted(
-              run.dispatch.dbName,
-              run.dispatch.chatId,
-              run.dispatch.runId,
-              threadId,
-              turnId,
-            )
-            .catch(() => undefined);
+        if (threadId && turnId) {
+          const { dbName, chatId, runId } = run.dispatch;
+          // Not awaited: the reply's first text must not wait for a database
+          // round trip. A failure is logged; the run's thread and turn are
+          // saved again when it settles.
+          run.acceptedWrite = run.acceptedWrite.then(() =>
+            this.store
+              .markAccepted(dbName, chatId, runId, threadId, turnId)
+              .catch((error: unknown) =>
+                this.logger.warn({
+                  message: "saving run acceptance failed",
+                  runId: run.id,
+                  error: error instanceof Error ? error.name : "unknown",
+                }),
+              ),
+          );
+        }
         if (run.stopRequested) await this.sendStop(run).catch(() => undefined);
         return null;
       }
@@ -559,11 +606,15 @@ export class RunExecutor implements OnApplicationShutdown {
       usage: outcome.usage,
     };
     run.broadcast({ type: "completed", data: run.completed });
-    const { dbName, chatId, runId } = run.dispatch;
+    const { dbName, chatId, runId, replySeq } = run.dispatch;
+    // The chat's thread is recorded before the chat is released, so the
+    // next message continues it.
+    await run.acceptedWrite;
     const saved = await this.store.settleWithRetry(
       dbName,
       chatId,
       runId,
+      replySeq,
       outcome,
     );
     if (saved) {

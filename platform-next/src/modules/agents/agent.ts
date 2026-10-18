@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ObjectId } from "mongodb";
+import type { IndexDescription, ObjectId } from "mongodb";
 import { canonicalJson } from "../../common/canonical-json";
 import { integer, invalid, objectWith, oneOf } from "../../common/validation";
 import { parseWireId } from "../../database/object-id";
@@ -19,6 +19,22 @@ export const AGENTS_COLLECTION = "agents";
 // the relevant ones first, so concurrent creates conflict and retry instead of
 // both passing the limit check.
 export const AGENT_QUOTA_COLLECTION = "agent_quota_locks";
+
+// Built when the tenant is provisioned (see tenant-indexes.ts). The unique
+// index is what makes create idempotent.
+export const AGENT_INDEXES: Readonly<Record<string, IndexDescription[]>> = {
+  [AGENTS_COLLECTION]: [
+    {
+      key: { ownerId: 1, clientRequestId: 1 },
+      name: "owner_request_unique",
+      unique: true,
+    },
+    // The creator's agents (limit count, personal listing).
+    { key: { ownerId: 1, status: 1, scope: 1 }, name: "by_owner" },
+    // The tenant's shared agents (limit count, listing).
+    { key: { scope: 1, status: 1 }, name: "by_scope" },
+  ],
+};
 
 export const AGENT_SCOPES = ["personal", "tenant"] as const;
 export type AgentScope = (typeof AGENT_SCOPES)[number];

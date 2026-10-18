@@ -170,6 +170,7 @@ export async function forward(
   req: Request,
   options: ForwardOptions,
 ): Promise<Response> {
+  const startedAt = performance.now();
   const env = options.env ?? process.env;
   const doFetch = options.fetch ?? fetch;
   const { prefix, path } = options;
@@ -282,6 +283,13 @@ export async function forward(
   for (const cookie of upstream.headers.getSetCookie())
     out.append("set-cookie", cookie);
   if (!out.has("x-request-id")) out.set("x-request-id", requestId);
+  // After the platform's own Server-Timing entries: this hop until the
+  // platform's response headers arrived, so the network panel separates the
+  // forwarder from the platform.
+  out.append(
+    "server-timing",
+    `forward;dur=${(performance.now() - startedAt).toFixed(1)};desc="forwarder incl. platform"`,
+  );
 
   // Per-person data, auth errors and redirects are never cached by the browser
   // or anything in between. An event stream is already no-cache, no-transform.

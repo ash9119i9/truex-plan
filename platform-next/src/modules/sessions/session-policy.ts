@@ -4,8 +4,15 @@ const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 
-// Access tokens are held in browser memory and renewed by refresh.
-export const ACCESS_TOKEN_TTL_SECONDS = 10 * 60;
+// Access tokens are held in browser memory and renewed by refresh. Tenant
+// routes trust a token's tenant and role without a database read, so this is
+// also the longest a removed member, a role change, a disabled tenant or a
+// logged-out session can go unnoticed there.
+export const ACCESS_TOKEN_TTL_SECONDS = 5 * 60;
+// The longest lifetime a token may claim. Tokens issued before the lifetime
+// was cut to 5 minutes carried 10; they keep verifying for what remains of
+// it, so a rolling deploy does not bounce sessions between versions.
+export const ACCESS_TOKEN_MAX_LIFETIME_SECONDS = 10 * 60;
 
 // A session ends after this long without a refresh...
 export const SESSION_IDLE_TTL_MS = 24 * HOUR_MS;

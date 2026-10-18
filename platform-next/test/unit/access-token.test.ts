@@ -7,7 +7,10 @@ import {
   signAccessToken,
   verifyAccessToken,
 } from "../../src/modules/sessions/access-token";
-import { ACCESS_TOKEN_TTL_SECONDS } from "../../src/modules/sessions/session-policy";
+import {
+  ACCESS_TOKEN_MAX_LIFETIME_SECONDS,
+  ACCESS_TOKEN_TTL_SECONDS,
+} from "../../src/modules/sessions/session-policy";
 import { testAuthConfig } from "../support/test-auth";
 
 const auth = testAuthConfig();
@@ -148,10 +151,20 @@ describe("access tokens", () => {
       { exp: NOW_S + 0.5 },
       // Issued in the future beyond clock skew.
       { iat: NOW_S + 60, exp: NOW_S + 120 },
-      // Longer-lived than any token this app issues.
-      { exp: NOW_S + ACCESS_TOKEN_TTL_SECONDS + 1 },
+      // Longer-lived than any token this app has issued.
+      { exp: NOW_S + ACCESS_TOKEN_MAX_LIFETIME_SECONDS + 1 },
     ])
       rejects(forge(HEADER, { ...validClaims(), ...change }));
+  });
+
+  test("issues 5-minute tokens and still accepts the earlier 10-minute ones", () => {
+    assert.equal(ACCESS_TOKEN_TTL_SECONDS, 5 * 60);
+    const old = forge(HEADER, {
+      ...validClaims(),
+      exp: NOW_S + ACCESS_TOKEN_MAX_LIFETIME_SECONDS,
+    });
+    verifyAccessToken(auth, old, new Date((NOW_S + 9 * 60) * 1000));
+    rejects(old, new Date((NOW_S + 10 * 60) * 1000));
   });
 
   test("tolerates small clock skew on iat", () => {
@@ -175,5 +188,78 @@ describe("access tokens", () => {
       ]),
     });
     verifyAccessToken(rotated, token, NOW);
+  });
+
+  describe("tenant claims", () => {
+    const tenant = {
+      tenantId: new ObjectId(),
+      role: "admin" as const,
+      kind: "organization" as const,
+    };
+    const tenantClaims = {
+      tid: tenant.tenantId.toHexString(),
+      role: "admin",
+      tkind: "organization",
+    };
+
+    test("a token without a tenant verifies to no tenant", () => {
+      const { token } = signAccessToken(auth, subject, NOW);
+      assert.equal(verifyAccessToken(auth, token, NOW).tenant, undefined);
+    });
+
+    test("a token for a tenant verifies to that tenant, role and kind", () => {
+      const { token } = signAccessToken(auth, { ...subject, tenant }, NOW);
+      const verified = verifyAccessToken(auth, token, NOW);
+      assert.ok(verified.tenant?.tenantId.equals(tenant.tenantId));
+      assert.equal(verified.tenant?.role, "admin");
+      assert.equal(verified.tenant?.kind, "organization");
+      // Never the database name.
+      const payload = Buffer.from(token.split(".")[1]!, "base64url").toString();
+      assert.equal(payload.includes("truex_next_"), false);
+      assert.equal(payload.includes("dbName"), false);
+    });
+
+    test("rejects some tenant claims without the others", () => {
+      for (const partial of [
+        { tid: tenantClaims.tid },
+        { role: "admin" },
+        { tkind: "default" },
+        { tid: tenantClaims.tid, role: "admin" },
+        { role: "admin", tkind: "default" },
+        { tid: tenantClaims.tid, tkind: "default" },
+      ])
+        rejects(forge(HEADER, { ...validClaims(), ...partial }));
+    });
+
+    test("rejects out-of-range tenant claims", () => {
+      for (const change of [
+        { tid: "not-an-id" },
+        { tid: tenantClaims.tid.toUpperCase() },
+        { tid: 42 },
+        { tid: null },
+        { role: "owner" },
+        { role: "Admin" },
+        { role: ["admin"] },
+        { tkind: "personal" },
+        { tkind: null },
+      ])
+        rejects(
+          forge(HEADER, { ...validClaims(), ...tenantClaims, ...change }),
+        );
+    });
+
+    test("a tampered tenant claim breaks the signature", () => {
+      const [h, , s] = signAccessToken(
+        auth,
+        { ...subject, tenant },
+        NOW,
+      ).token.split(".");
+      const other = b64({
+        ...validClaims(),
+        ...tenantClaims,
+        tid: new ObjectId().toHexString(),
+      });
+      rejects(`${h}.${other}.${s}`);
+    });
   });
 });

@@ -10,7 +10,7 @@ export const OTHER_USER_ID = "64b7f0c2a1b2c3d4e5f6071a";
 export const refreshed = (
   accessToken = "token-1",
   userId = USER_ID,
-  lifetimeMs = 10 * 60_000,
+  lifetimeMs = 5 * 60_000,
   headers: HeadersInit = {},
 ) =>
   Response.json(
@@ -22,12 +22,12 @@ export const refreshed = (
     { headers },
   );
 
-/** Gives the tab an access token and opens the test tenant in it. */
+/** Gives the tab an access token for the test tenant and opens it. */
 export async function signInForTest(session: Auth = defaultAuth) {
   const original = globalThis.fetch;
   globalThis.fetch = (async () => refreshed()) as typeof fetch;
   try {
-    const result = await session.accessToken();
+    const result = await session.accessToken(TENANT_ID);
     if (result.kind !== "ok") throw new Error("test sign-in failed");
   } finally {
     globalThis.fetch = original;

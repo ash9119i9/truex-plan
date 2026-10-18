@@ -1,6 +1,13 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { ObjectId, type Collection, type Db } from "mongodb";
+import {
+  ObjectId,
+  type AnyClientBulkWriteModel,
+  type Collection,
+  type Db,
+  type Document,
+} from "mongodb";
 import { DatabaseService } from "../../database/database.service";
+import { isDuplicateKeyError } from "../../database/mongo-errors";
 import {
   CHATS_COLLECTION,
   MESSAGES_COLLECTION,
@@ -18,7 +25,6 @@ import {
 // renewal. The executor renews every LEASE_RENEW_MS.
 export const LEASE_MS = 30_000;
 export const LEASE_RENEW_MS = 10_000;
-const INDEX_RECHECK_MS = 10 * 60_000;
 
 export interface ChatCollections {
   readonly chats: Collection<ChatDoc>;
@@ -54,16 +60,17 @@ const MESSAGE_STATE: Record<Settlement["status"], MessageState> = {
 };
 const SETTLED: RunStatus[] = ["completed", "stopped", "failed"];
 
-// Collections, indexes and the writes of a run's lifecycle. Every write is
+// The chat is not in the state an unsettled run implies; aborts the fast
+// settle so the general one runs.
+class ClaimMoved extends Error {}
+
+// Collections and the writes of a run's lifecycle. Their indexes are built
+// when the tenant is provisioned (CHAT_INDEXES). Every write is
 // conditional on the state it expects, so a late or repeated writer (a
 // recovered run, a duplicate stream) changes nothing.
 @Injectable()
 export class ChatStore {
   private readonly logger = new Logger("Chats");
-  private readonly indexes = new Map<
-    string,
-    { ready: Promise<void>; checkedAt: number }
-  >();
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -78,61 +85,8 @@ export class ChatStore {
     };
   }
 
-  // The unique indexes are what make retried sends idempotent, so they are
-  // re-checked every INDEX_RECHECK_MS (a dropped or restored collection is
-  // repaired) rather than on every send. A failed build is retried at once.
-  ensureIndexes(dbName: string): Promise<void> {
-    const known = this.indexes.get(dbName);
-    if (known && Date.now() - known.checkedAt < INDEX_RECHECK_MS)
-      return known.ready;
-    const ready = this.createIndexes(dbName).catch((error: unknown) => {
-      this.indexes.delete(dbName);
-      throw error;
-    });
-    this.indexes.set(dbName, { ready, checkedAt: Date.now() });
-    return ready;
-  }
-
-  // Tests drop databases between cases.
-  forgetIndexes(): void {
-    this.indexes.clear();
-  }
-
-  private async createIndexes(dbName: string): Promise<void> {
-    const { chats, messages, runs } = this.collections(dbName);
-    await Promise.all([
-      chats.createIndexes([
-        // A retried first send finds the chat it created.
-        {
-          key: { ownerId: 1, createdByMessageId: 1 },
-          name: "owner_first_message_unique",
-          unique: true,
-        },
-        // The sidebar: newest first, cursor-paginated.
-        {
-          key: { ownerId: 1, status: 1, lastMessageAt: -1, _id: -1 },
-          name: "owner_recent",
-        },
-      ]),
-      messages.createIndexes([
-        { key: { chatId: 1, seq: 1 }, name: "chat_seq_unique", unique: true },
-        {
-          key: { chatId: 1, clientMessageId: 1 },
-          name: "chat_client_message_unique",
-          unique: true,
-          partialFilterExpression: { clientMessageId: { $type: "string" } },
-        },
-        {
-          key: { runId: 1, runtimeItemId: 1 },
-          name: "run_item_unique",
-          unique: true,
-          partialFilterExpression: { runtimeItemId: { $type: "string" } },
-        },
-      ]),
-      runs.createIndexes([{ key: { chatId: 1, _id: -1 }, name: "by_chat" }]),
-    ]);
-  }
-
+  // The runtime took the run: both writes in one call. Each is conditional
+  // and safe to repeat, so they need no transaction.
   async markAccepted(
     dbName: string,
     chatId: ObjectId,
@@ -142,23 +96,31 @@ export class ChatStore {
   ): Promise<void> {
     const { chats, runs } = this.collections(dbName);
     const now = new Date();
-    await runs.updateOne(
-      { _id: runId, status: { $in: ["accepted", "uncertain"] } },
+    await this.database.bulkWrite([
       {
-        $set: {
-          status: "running",
-          threadId,
-          turnId,
-          "timings.dispatchedAt": now,
-          updatedAt: now,
+        namespace: runs.namespace,
+        name: "updateOne",
+        filter: { _id: runId, status: { $in: ["accepted", "uncertain"] } },
+        update: {
+          $set: {
+            status: "running",
+            threadId,
+            turnId,
+            "timings.dispatchedAt": now,
+            updatedAt: now,
+          },
         },
       },
-    );
-    // The thread is recorded once; a different one is never overwritten.
-    await chats.updateOne(
-      { _id: chatId, "runtime.threadId": null },
-      { $set: { runtime: { threadId, state: "ready" }, updatedAt: now } },
-    );
+      {
+        namespace: chats.namespace,
+        name: "updateOne",
+        // The thread is recorded once; a different one is never overwritten.
+        filter: { _id: chatId, "runtime.threadId": null },
+        update: {
+          $set: { runtime: { threadId, state: "ready" }, updatedAt: now },
+        },
+      },
+    ]);
   }
 
   async renewLease(
@@ -188,13 +150,41 @@ export class ChatStore {
   }
 
   // Saves the outcome, the reply text and releases the chat in one
-  // transaction. A run that is already settled is returned as saved: the
-  // first writer wins and a repeat changes nothing.
+  // transaction: the run, then the chat and the reply in one call, then the
+  // commit. An unsettled run holds its chat's claim, and nothing else moves
+  // the chat's nextSeq meanwhile, so the reply starts at `replySeq`, the seq
+  // after the member's message. The chat write requires exactly that state;
+  // a chat that does not match (hand-edited data) is saved the general way.
+  // A run that is already settled is returned as saved: the first writer
+  // wins and a repeat changes nothing.
   async settle(
     dbName: string,
     chatId: ObjectId,
     runId: ObjectId,
+    replySeq: number,
     outcome: Settlement,
+  ): Promise<SettleResult> {
+    try {
+      return await this.settleOnce(dbName, chatId, runId, outcome, replySeq);
+    } catch (error) {
+      if (!(error instanceof ClaimMoved)) throw error;
+      this.logger.warn({
+        message:
+          "chat changed under an unsettled run; saved after its last message",
+        runId: runId.toHexString(),
+      });
+      return this.settleOnce(dbName, chatId, runId, outcome, null);
+    }
+  }
+
+  // replySeq null: read the chat's next seq and release the claim only if
+  // this run still holds it, whatever the chat's state.
+  private async settleOnce(
+    dbName: string,
+    chatId: ObjectId,
+    runId: ObjectId,
+    outcome: Settlement,
+    replySeq: number | null,
   ): Promise<SettleResult> {
     const { chats, messages, runs } = this.collections(dbName);
     const texts = outcome.items.filter((item) => item.text.trim().length > 0);
@@ -229,31 +219,70 @@ export class ChatStore {
             .toArray(),
         };
       }
+      const chatSet = {
+        updatedAt: now,
+        ...(texts.length ? { lastMessageAt: now } : {}),
+        ...(outcome.threadLost ? { "runtime.state": "lost" as const } : {}),
+      };
+      const replyFrom = (seq: number): MessageDoc[] =>
+        texts.map((item, index) => ({
+          _id: new ObjectId(),
+          chatId,
+          ownerId: run.ownerId,
+          seq: seq + index,
+          runId,
+          role: "assistant",
+          text: item.text,
+          state: MESSAGE_STATE[outcome.status],
+          runtimeItemId: item.itemId,
+          createdAt: now,
+        }));
+
+      if (replySeq !== null) {
+        const docs = replyFrom(replySeq);
+        let matched: number;
+        try {
+          const result = await this.database.bulkWrite(
+            [
+              {
+                namespace: chats.namespace,
+                name: "updateOne",
+                filter: {
+                  _id: chatId,
+                  "activeRun.runId": runId,
+                  nextSeq: replySeq,
+                },
+                update: {
+                  $set: { ...chatSet, activeRun: null },
+                  $inc: { nextSeq: docs.length },
+                },
+              },
+              ...docs.map((document): AnyClientBulkWriteModel<Document> => ({
+                namespace: messages.namespace,
+                name: "insertOne",
+                document,
+              })),
+            ],
+            session,
+          );
+          matched = result.matchedCount;
+        } catch (error) {
+          // A seq already taken: the chat is not in the state assumed.
+          if (isDuplicateKeyError(error)) throw new ClaimMoved();
+          throw error;
+        }
+        // Aborts the reply's inserts with it.
+        if (matched !== 1) throw new ClaimMoved();
+        return { run, messages: docs };
+      }
+
       const chat = await chats.findOneAndUpdate(
         { _id: chatId },
-        {
-          $inc: { nextSeq: texts.length },
-          $set: {
-            updatedAt: now,
-            ...(texts.length ? { lastMessageAt: now } : {}),
-            ...(outcome.threadLost ? { "runtime.state": "lost" } : {}),
-          },
-        },
+        { $inc: { nextSeq: texts.length }, $set: chatSet },
         { returnDocument: "before", session },
       );
       if (!chat) throw new Error("settling a run whose chat does not exist");
-      const docs: MessageDoc[] = texts.map((item, index) => ({
-        _id: new ObjectId(),
-        chatId,
-        ownerId: run.ownerId,
-        seq: chat.nextSeq + index,
-        runId,
-        role: "assistant",
-        text: item.text,
-        state: MESSAGE_STATE[outcome.status],
-        runtimeItemId: item.itemId,
-        createdAt: now,
-      }));
+      const docs = replyFrom(chat.nextSeq);
       if (docs.length) await messages.insertMany(docs, { session });
       // Only this run's claim is released; a newer run is never unlocked.
       await chats.updateOne(
@@ -284,12 +313,13 @@ export class ChatStore {
     dbName: string,
     chatId: ObjectId,
     runId: ObjectId,
+    replySeq: number,
     outcome: Settlement,
   ): Promise<SettleResult | null> {
     const delaysMs = this.settleRetryDelaysMs;
     for (let attempt = 0; ; attempt++) {
       try {
-        return await this.settle(dbName, chatId, runId, outcome);
+        return await this.settle(dbName, chatId, runId, replySeq, outcome);
       } catch (error) {
         const delay = delaysMs[attempt];
         this.logger.warn({

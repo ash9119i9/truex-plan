@@ -3,7 +3,12 @@
 // the components only render. Every request names this tab's tenant through
 // api(); the live reply stream is in tenant-chat-stream.ts.
 import { api } from "./api.ts";
-import type { AgentSource, AgentTint, TenantModel } from "./tenant-agents.ts";
+import type {
+  AgentSource,
+  AgentTint,
+  TenantAgent,
+  TenantModel,
+} from "./tenant-agents.ts";
 
 // Kept in step with platform-next/src/modules/chats/chat.ts.
 export const MAX_MESSAGE_CHARS = 32_000;
@@ -271,9 +276,16 @@ function unreadable(): never {
   throw new Error("The platform returned an unreadable chat.");
 }
 
-function receiptOf(data: unknown): SendReceipt {
+// A follow-up's receipt may leave the agent out: it has not changed, and
+// the chat it was sent in already has it.
+function receiptOf(data: unknown, sentIn?: ChatSummary): SendReceipt {
   const d = record(data);
-  const chat = parseChat(d?.chat);
+  const raw = record(d?.chat);
+  const parsed = parseChat(raw);
+  const chat =
+    parsed && raw && !("agent" in raw) && sentIn?.id === parsed.id
+      ? { ...parsed, agent: sentIn.agent }
+      : parsed;
   const message = parseMessage(d?.message);
   const run = parseRun(d?.run);
   if (!chat || !message || !run) unreadable();
@@ -333,12 +345,13 @@ export const startChat = async (
   receiptOf(await api("/api/v1/chats", { agentId, clientMessageId, text }));
 
 export const sendMessage = async (
-  chatId: string,
+  chat: ChatSummary,
   text: string,
   clientMessageId: string,
 ): Promise<SendReceipt> =>
   receiptOf(
-    await api(chatPath(chatId, "/messages"), { clientMessageId, text }),
+    await api(chatPath(chat.id, "/messages"), { clientMessageId, text }),
+    chat,
   );
 
 export async function stopRun(chatId: string, runId: string): Promise<void> {
@@ -400,6 +413,72 @@ export function withReceipt(
       ? { ...thread, chat: receipt.chat }
       : { chat: receipt.chat, messages: [], runs: {}, hasMore: false };
   return withRun(withMessages(base, [receipt.message]), receipt.run);
+}
+
+// ---- A message on its way ----
+
+// A message shown the moment it is sent, before the platform answers. The
+// saved message has the same clientMessageId and takes its place.
+export interface PendingSend {
+  // The draft it came from: a chat's ID, or "new" for a first message.
+  key: string;
+  text: string;
+  clientMessageId: string;
+  since: number;
+}
+
+// The run a pending message is shown under until the real run is known.
+export const pendingRunId = (pending: PendingSend) =>
+  `pending:${pending.clientMessageId}`;
+
+// The open chat with the pending message after its last message. A repeat
+// of a message already saved adds nothing.
+export function withPending(
+  thread: ChatThread,
+  pending: PendingSend,
+): ChatThread {
+  if (
+    thread.messages.some((m) => m.clientMessageId === pending.clientMessageId)
+  )
+    return thread;
+  const runId = pendingRunId(pending);
+  const message: ChatMessage = {
+    id: runId,
+    seq: (thread.messages.at(-1)?.seq ?? 0) + 1,
+    runId,
+    role: "user",
+    text: pending.text,
+    state: "complete",
+    clientMessageId: pending.clientMessageId,
+    createdAt: new Date(pending.since).toISOString(),
+  };
+  return { ...thread, messages: [...thread.messages, message] };
+}
+
+// What a first message shows while its chat is being created.
+export function pendingThread(
+  agent: TenantAgent,
+  pending: PendingSend,
+): ChatThread {
+  const at = new Date(pending.since).toISOString();
+  const chat: ChatSummary = {
+    id: pendingRunId(pending),
+    title: "",
+    agent: {
+      id: agent.id,
+      source: agent.source,
+      name: agent.name,
+      look: agent.look,
+      tint: agent.tint,
+    },
+    model: agent.model,
+    readOnly: null,
+    activeRunId: null,
+    status: "active",
+    lastMessageAt: at,
+    createdAt: at,
+  };
+  return withPending({ chat, messages: [], runs: {}, hasMore: false }, pending);
 }
 
 // What the screen shows for one reply while it is not yet saved.
@@ -655,6 +734,14 @@ export function exchangesOf(thread: ChatThread): Exchange[] {
   }
   return exchanges;
 }
+
+// The row an exchange is rendered as: its message's browser ID when it has
+// one, so a message shown on Send keeps its row (and the reply under it)
+// when the saved copy replaces it.
+export const exchangeKey = (exchange: Exchange): string =>
+  exchange.user?.clientMessageId
+    ? `message:${exchange.user.clientMessageId}`
+    : exchange.runId;
 
 const SETTLED: readonly RunStatus[] = ["completed", "stopped", "failed"];
 export const isSettled = (status: RunStatus) => SETTLED.includes(status);

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ObjectId } from "mongodb";
+import type { IndexDescription, ObjectId } from "mongodb";
 import { invalid, objectWith } from "../../common/validation";
 import { parseWireId } from "../../database/object-id";
 
@@ -9,6 +9,40 @@ import { parseWireId } from "../../database/object-id";
 export const CHATS_COLLECTION = "chats";
 export const MESSAGES_COLLECTION = "messages";
 export const RUNS_COLLECTION = "runs";
+
+// Built when the tenant is provisioned (see tenant-indexes.ts), never during
+// a request. The unique ones are what make retried sends idempotent.
+export const CHAT_INDEXES: Readonly<Record<string, IndexDescription[]>> = {
+  [CHATS_COLLECTION]: [
+    // A retried first send finds the chat it created.
+    {
+      key: { ownerId: 1, createdByMessageId: 1 },
+      name: "owner_first_message_unique",
+      unique: true,
+    },
+    // The sidebar: newest first, cursor-paginated.
+    {
+      key: { ownerId: 1, status: 1, lastMessageAt: -1, _id: -1 },
+      name: "owner_recent",
+    },
+  ],
+  [MESSAGES_COLLECTION]: [
+    { key: { chatId: 1, seq: 1 }, name: "chat_seq_unique", unique: true },
+    {
+      key: { chatId: 1, clientMessageId: 1 },
+      name: "chat_client_message_unique",
+      unique: true,
+      partialFilterExpression: { clientMessageId: { $type: "string" } },
+    },
+    {
+      key: { runId: 1, runtimeItemId: 1 },
+      name: "run_item_unique",
+      unique: true,
+      partialFilterExpression: { runtimeItemId: { $type: "string" } },
+    },
+  ],
+  [RUNS_COLLECTION]: [{ key: { chatId: 1, _id: -1 }, name: "by_chat" }],
+};
 
 export const MAX_MESSAGE_CHARS = 32_000;
 export const TITLE_CHARS = 60;

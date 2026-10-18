@@ -7,13 +7,23 @@ Plan: [`tasks/users-tenants-plan.md`](../tasks/users-tenants-plan.md).
 
 ## Run locally
 
-Needs Node 24 and a MongoDB replica set (transactions require one).
+Needs Node 24 and a MongoDB 8.0+ replica set (transactions require a replica
+set; starting a chat and sending a message use client `bulkWrite`, new in 8.0).
+Tests download MongoDB 8.0.14 for their in-memory replica set.
 
 ```sh
 cp .env.example .env
 npm install
 npm run dev
 ```
+
+To run the whole chat stack (model-gateway, runtime-adapter, platform-next and
+the frontend), run `npm run dev:next` from the repository root. It refuses to
+start when a port is taken, a `.env` or `node_modules` is missing, or
+`RUNTIME_ADAPTER_TOKEN` / `MODEL_GATEWAY_SECRET` differ between the services'
+files. Output is labelled by service and also written to
+`.runtime/dev-next/<service>.log`; Ctrl+C stops all four. The root `npm run dev`
+still starts the old stack.
 
 - `GET /health/live`: the process is running.
 - `GET /health/ready`: the app can reach MongoDB (503 when it cannot).
@@ -22,8 +32,12 @@ npm run dev
   redirects to `/auth/complete`, or to `/login?error=<code>` with one of
   `cancelled`, `expired`, `rejected`, `unavailable`, `account_disabled`,
   `email_in_use`, `signup_unavailable`. No token is ever put in a URL.
-- `POST /api/v1/auth/refresh`: rotates the refresh cookie and returns a new
-  10-minute access token (409 when another tab refreshed first; retry).
+- `POST /api/v1/auth/refresh[?tenantId=<id>]`: rotates the refresh cookie and
+  returns a new 5-minute access token (409 when another tab refreshed first;
+  retry). With `tenantId`, the token also carries that tenant and the caller's
+  role there when they are an active member of a usable tenant; the response's
+  `tenantId` says which tenant it carries, or `null`. A malformed `tenantId`
+  is a 400.
 - `POST /api/v1/auth/logout`: ends the session; safe to repeat.
 - `GET /api/v1/me`: the caller's profile (`Authorization: Bearer <access token>`).
 - `GET /api/v1/me/tenants`: the caller's usable tenants with their role, plus
@@ -34,6 +48,12 @@ npm run dev
   parameter (400 otherwise) and an active membership in an active, provisioned
   tenant. Anything else, including a tenant that does not exist, gets the
   same 403. The role always comes from the membership, never the request.
+  When the access token carries that tenant, tenant routes trust it with no
+  MongoDB read, so a removal, role change, disabled tenant or logout reaches
+  them within the 5-minute token lifetime. Otherwise they read the membership
+  and tenant. `GET /me`, `GET /me/tenants` and `GET /tenant` always read
+  current state, archiving another member's agent re-reads the admin role, and
+  open streams re-check session and membership every 15 s.
 - `GET /api/v1/models?tenantId=`: enabled models (`id, displayName,
 shortLabel, family` only).
 - `GET /api/v1/agents?tenantId=`: enabled built-ins, the caller's personal
@@ -102,10 +122,30 @@ npm run operator -- model-list --operator <you>
 - A model's `wireApi`, `baseUrl` and `modelName` cannot change, because chats
   pin its ID: add a new slug and disable the old one. Models are never deleted.
 - Re-running a put with the same file changes nothing. Members see changes
-  within 60 seconds (in-memory cache); writes that depend on a model read it
-  fresh.
+  within 60 seconds (in-memory cache per server). That includes new chats and
+  messages: a disabled model or built-in can still start a turn for up to 60
+  seconds. A model or built-in added since the cache loaded is read directly.
+  Creating or editing an agent reads its model fresh.
 - The gateway must read this catalog: set its `CATALOG_MONGO_DB` to
   `CATALOG_DB_NAME`.
+
+## Tenant indexes
+
+Provisioning builds every index a tenant database needs before marking the
+tenant ready; requests never check or build indexes. The unique ones are what
+make retried sends idempotent, so a tenant without them can duplicate chats.
+
+```sh
+npm run operator -- ensure-tenant-indexes --operator <you> --all
+npm run operator -- ensure-tenant-indexes --operator <you> --tenant <id>
+```
+
+- Run `--all` once for tenants provisioned before this, and as a deploy step
+  whenever `TENANT_INDEX_VERSION` (`src/modules/tenants/tenant-indexes.ts`)
+  goes up, before the new code serves traffic. It only touches ready tenants
+  behind the current version; it is safe to repeat and audited per tenant.
+- At startup the server logs an error when any ready tenant is behind, or when
+  MongoDB is older than 8.0.
 
 ## Configuration
 

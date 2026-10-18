@@ -16,7 +16,7 @@ function fixture(
     locks: null,
     fetch: (async (path: string) => {
       paths.push(path);
-      if (path.endsWith("/refresh")) return refreshed();
+      if (path.startsWith("/api/v1/auth/refresh")) return refreshed();
       if (path === "/api/v1/me") return Response.json({ user });
       if (path.startsWith("/api/v1/tenant?")) return tenantReply();
       return Response.json({

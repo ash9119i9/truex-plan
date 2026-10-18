@@ -1,4 +1,5 @@
 import {
+  MongoClientBulkWriteError,
   MongoNetworkError,
   MongoServerError,
   MongoServerSelectionError,
@@ -7,7 +8,13 @@ import {
 
 const DUPLICATE_KEY = 11000;
 
+// Also true for a client bulkWrite that stopped on a duplicate key: that
+// error carries the code on its write error, not on itself.
 export function isDuplicateKeyError(error: unknown): error is MongoServerError {
+  if (error instanceof MongoClientBulkWriteError)
+    return [...error.writeErrors.values()].some(
+      (write) => write.code === DUPLICATE_KEY,
+    );
   return error instanceof MongoServerError && error.code === DUPLICATE_KEY;
 }
 

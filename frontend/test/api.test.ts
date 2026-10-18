@@ -301,7 +301,7 @@ test("an expired token is renewed once and the request repeated; a second refusa
     async (url: string, init?: RequestInit) => {
       const authorization = new Headers(init?.headers).get("authorization");
       calls.push(`${url} ${authorization ?? ""}`.trim());
-      if (url === "/api/v1/auth/refresh") return refreshed(valid);
+      if (url.startsWith("/api/v1/auth/refresh")) return refreshed(valid);
       return authorization === `Bearer ${valid}`
         ? Response.json({ ok: true })
         : Response.json(
@@ -313,14 +313,15 @@ test("an expired token is renewed once and the request repeated; a second refusa
   assert.deepEqual(await api("/api/v1/me"), { ok: true });
   assert.deepEqual(calls, [
     "/api/v1/me Bearer token-1",
-    "/api/v1/auth/refresh",
+    // An account request keeps the tab's tenant in the renewed token.
+    `/api/v1/auth/refresh?tenantId=${TENANT_ID}`,
     "/api/v1/me Bearer token-2",
   ]);
   assert.equal(notified, 0);
   // The account is gone: even a fresh token is refused.
   valid = "token-3";
   t.mock.method(globalThis, "fetch", async (url: string) =>
-    url === "/api/v1/auth/refresh"
+    url.startsWith("/api/v1/auth/refresh")
       ? refreshed("token-4")
       : Response.json(
           { error: { code: "UNAUTHENTICATED", message: "Sign in again." } },
@@ -339,7 +340,8 @@ test("a refresh that cannot reach the platform is an outage, not a sign-out", as
   let notified = 0;
   t.after(onUnauthenticated(() => notified++));
   t.mock.method(globalThis, "fetch", async (url: string) => {
-    if (url === "/api/v1/auth/refresh") throw new TypeError("fetch failed");
+    if (url.startsWith("/api/v1/auth/refresh"))
+      throw new TypeError("fetch failed");
     return Response.json(
       { error: { code: "UNAUTHENTICATED", message: "x" } },
       { status: 401 },

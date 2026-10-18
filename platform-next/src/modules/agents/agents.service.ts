@@ -11,6 +11,7 @@ import { DatabaseService } from "../../database/database.service";
 import { isDuplicateKeyError } from "../../database/mongo-errors";
 import { toWireId } from "../../database/object-id";
 import { AuditService } from "../audit/audit.service";
+import { MembershipsService } from "../memberships/memberships.service";
 import { modelView, type ModelDoc, type ModelView } from "../models/model";
 import { ModelsService } from "../models/models.service";
 import {
@@ -25,6 +26,7 @@ import {
   type UpdateAgentInput,
 } from "./agent";
 import type { AgentTint } from "./agent-fields";
+import type { BuiltinAgentDoc } from "./builtin-agent";
 import {
   BuiltinAgentsService,
   type BuiltinListing,
@@ -42,6 +44,8 @@ export interface ChatAgent {
   description: string;
   instructions?: string;
   modelId: ObjectId;
+  look: number;
+  tint: AgentTint;
 }
 
 // One agent as the caller sees it, with what the caller may do to it.
@@ -101,10 +105,12 @@ export class AgentsService {
     @Inject(BuiltinAgentsService)
     private readonly builtins: BuiltinAgentsService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(MembershipsService)
+    private readonly memberships: MembershipsService,
   ) {}
 
   private db(context: TenantContext): Db {
-    return this.database.tenantDb(context.tenant.dbName);
+    return this.database.tenantDb(context.dbName);
   }
 
   private agents(context: TenantContext): Collection<AgentDoc> {
@@ -115,26 +121,11 @@ export class AgentsService {
     return this.db(context).collection<QuotaLock>(AGENT_QUOTA_COLLECTION);
   }
 
-  // Agent writes are rare and human-paced, so the indexes are checked on
-  // every write (a no-op round trip when they exist) rather than remembered
-  // per process: the unique index is what makes create idempotent, and a
-  // remembered "ready" would outlive a dropped or restored collection.
-  // Index builds cannot run inside the write transactions.
-  private async ensureIndexes(context: TenantContext): Promise<void> {
-    await Promise.all([
-      this.agents(context).createIndexes([
-        {
-          key: { ownerId: 1, clientRequestId: 1 },
-          name: "owner_request_unique",
-          unique: true,
-        },
-        // The creator's agents (limit count, personal listing).
-        { key: { ownerId: 1, status: 1, scope: 1 }, name: "by_owner" },
-        // The tenant's shared agents (limit count, listing).
-        { key: { scope: 1, status: 1 }, name: "by_scope" },
-      ]),
-      this.audit.ensureIndexes(),
-    ]);
+  // The agents collection's indexes are built when the tenant is
+  // provisioned (AGENT_INDEXES). The audit trail's are built once per
+  // process, outside the write transactions that record to it.
+  private ensureIndexes(): Promise<void> {
+    return this.audit.ensureIndexes();
   }
 
   // Everything the picker shows: enabled built-ins, then the caller's
@@ -181,7 +172,7 @@ export class AgentsService {
     input: CreateAgentInput,
     requestId?: string,
   ): Promise<{ agent: AgentView; created: boolean }> {
-    await this.ensureIndexes(context);
+    await this.ensureIndexes();
     const requestHash = requestHashOf(input);
     const replay = await this.replay(context, input, requestHash);
     if (replay) return { agent: replay, created: false };
@@ -234,7 +225,7 @@ export class AgentsService {
     input: UpdateAgentInput,
     requestId?: string,
   ): Promise<AgentView> {
-    await this.ensureIndexes(context);
+    await this.ensureIndexes();
     const agent = await this.findVisible(context, agentId);
     if (!agent.ownerId.equals(context.userId))
       throw new DomainError(
@@ -287,7 +278,7 @@ export class AgentsService {
     agentId: ObjectId,
     requestId?: string,
   ): Promise<AgentView> {
-    await this.ensureIndexes(context);
+    await this.ensureIndexes();
     const agent = await this.findVisible(context, agentId);
     if (!agent.ownerId.equals(context.userId))
       throw new DomainError(
@@ -327,9 +318,9 @@ export class AgentsService {
     agentId: ObjectId,
     requestId?: string,
   ): Promise<AgentView> {
-    await this.ensureIndexes(context);
+    await this.ensureIndexes();
     const agent = await this.findVisible(context, agentId);
-    if (!mayArchive(agent, context))
+    if (!(await this.mayArchiveNow(agent, context)))
       throw new DomainError(
         "FORBIDDEN",
         "Only the agent's creator or a workspace admin can archive it.",
@@ -367,64 +358,65 @@ export class AgentsService {
   // from its own thread). A disabled built-in stops every chat with it: that
   // is the product team's switch for a prompt that must not run again.
   // Returns null for anything the caller cannot use.
+  //
+  // Built-ins come from the catalog cache (no query; a disable takes effect
+  // within BUILTIN_CACHE_TTL_MS). A user agent is one indexed tenant query.
+  // An ID neither knows is checked once more as a built-in added since the
+  // cache loaded.
   async resolveForChat(
     context: TenantContext,
     agentId: ObjectId,
     options: { allowArchived: boolean },
   ): Promise<ChatAgent | null> {
-    const [builtin, agent] = await Promise.all([
-      this.builtins.findEnabledWithInstructions(agentId),
-      this.agents(context).findOne({
-        _id: agentId,
-        ...visibleTo(context.userId),
-        ...(options.allowArchived ? {} : { status: "active" as const }),
-      }),
-    ]);
-    if (builtin)
+    const cached = await this.builtins.cachedById(agentId);
+    if (cached === "disabled") return null;
+    if (cached !== "unknown") return builtinChatAgent(cached);
+    const agent = await this.agents(context).findOne({
+      _id: agentId,
+      ...visibleTo(context.userId),
+      ...(options.allowArchived ? {} : { status: "active" as const }),
+    });
+    if (agent)
       return {
-        source: "builtin",
-        id: builtin._id,
-        revision: builtin.revision,
-        name: builtin.name,
-        description: builtin.description,
-        instructions: builtin.instructions,
-        modelId: builtin.modelId,
+        source: agent.scope,
+        id: agent._id,
+        revision: agent.revision,
+        name: agent.name,
+        description: agent.description,
+        modelId: agent.modelId,
+        look: agent.look,
+        tint: agent.tint,
       };
-    if (!agent) return null;
-    return {
-      source: agent.scope,
-      id: agent._id,
-      revision: agent.revision,
-      name: agent.name,
-      description: agent.description,
-      modelId: agent.modelId,
-    };
+    const added = await this.builtins.findEnabledWithInstructions(agentId);
+    return added ? builtinChatAgent(added) : null;
   }
 
-  // Display fields for the agents of a page of chats, in one query. A chat
-  // shows its agent's current name and look.
+  // Display fields for the agents of a page of chats. A chat shows its
+  // agent's current name and look. Built-ins come from the catalog cache;
+  // user agents take one tenant query, skipped when there are none.
   async summariesFor(
     context: TenantContext,
     agentIds: readonly ObjectId[],
   ): Promise<Map<string, AgentSummary>> {
     const summaries = new Map<string, AgentSummary>();
     if (agentIds.length === 0) return summaries;
-    const [builtins, agents] = await Promise.all([
-      this.builtins.listAll(),
-      this.agents(context)
-        .find(
-          { _id: { $in: [...agentIds] }, ...visibleTo(context.userId) },
-          { projection: { name: 1, look: 1, tint: 1, status: 1 } },
-        )
-        .toArray(),
-    ]);
-    for (const b of builtins)
+    const addBuiltin = (b: BuiltinListing) =>
       summaries.set(toWireId(b._id), {
         name: b.name,
         look: b.look,
         tint: b.tint,
         available: b.enabled,
       });
+    for (const b of await this.builtins.cachedListings())
+      if (agentIds.some((id) => id.equals(b._id))) addBuiltin(b);
+    const rest = agentIds.filter((id) => !summaries.has(toWireId(id)));
+    if (rest.length === 0) return summaries;
+    const agents = await this.agents(context)
+      .find(
+        { _id: { $in: rest }, ...visibleTo(context.userId) },
+        { projection: { name: 1, look: 1, tint: 1, status: 1 } },
+      )
+      .toArray();
     for (const a of agents)
       summaries.set(toWireId(a._id), {
         name: a.name,
@@ -432,6 +424,9 @@ export class AgentsService {
         tint: a.tint,
         available: a.status === "active",
       });
+    // Built-ins added since the cache loaded. Rare; one catalog query.
+    const missing = rest.filter((id) => !summaries.has(toWireId(id)));
+    for (const b of await this.builtins.findListings(missing)) addBuiltin(b);
     return summaries;
   }
 
@@ -565,6 +560,22 @@ export class AgentsService {
     );
   }
 
+  // mayArchive with the admin role read now: the context's role can come from
+  // an access token up to ACCESS_TOKEN_TTL_SECONDS old, and a demoted admin
+  // must not archive other people's agents in that time.
+  private async mayArchiveNow(
+    agent: AgentDoc,
+    context: TenantContext,
+  ): Promise<boolean> {
+    if (agent.ownerId.equals(context.userId)) return true;
+    if (agent.scope !== "tenant") return false;
+    const membership = await this.memberships.findActive(
+      context.userId,
+      context.tenantId,
+    );
+    return membership?.role === "admin";
+  }
+
   // One agent after a write, with its model read now rather than from cache.
   private async singleView(
     context: TenantContext,
@@ -604,6 +615,20 @@ function agentView(
     canEdit: active && mine,
     canArchive: active && mayArchive(agent, context),
     canPromote: active && mine && agent.scope === "personal",
+  };
+}
+
+function builtinChatAgent(builtin: BuiltinAgentDoc): ChatAgent {
+  return {
+    source: "builtin",
+    id: builtin._id,
+    revision: builtin.revision,
+    name: builtin.name,
+    description: builtin.description,
+    instructions: builtin.instructions,
+    modelId: builtin.modelId,
+    look: builtin.look,
+    tint: builtin.tint,
   };
 }
 

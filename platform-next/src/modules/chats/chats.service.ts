@@ -1,13 +1,24 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { ObjectId, type ClientSession } from "mongodb";
+import {
+  ObjectId,
+  type AnyClientBulkWriteModel,
+  type ClientSession,
+  type Collection,
+  type Document,
+} from "mongodb";
 import type { TenantContext } from "../../common/access/tenant.guard";
 import { DomainError } from "../../common/domain-error";
+import { timed } from "../../common/http/server-timing";
 import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import { DatabaseService } from "../../database/database.service";
 import { isDuplicateKeyError } from "../../database/mongo-errors";
 import { toWireId } from "../../database/object-id";
 import type { AgentTint } from "../agents/agent-fields";
-import { AgentsService, type ChatAgent } from "../agents/agents.service";
+import {
+  AgentsService,
+  type AgentSummary,
+  type ChatAgent,
+} from "../agents/agents.service";
 import { modelView, type ModelDoc, type ModelView } from "../models/model";
 import { ModelsService } from "../models/models.service";
 import {
@@ -30,7 +41,12 @@ import {
   type StartChatInput,
 } from "./chat";
 import { chatPrompt } from "./chat-prompt";
-import { ChatStore, LEASE_MS, type ChatCollections } from "./chat-store";
+import {
+  ChatStore,
+  LEASE_MS,
+  type ChatCollections,
+  type SettleResult,
+} from "./chat-store";
 import { signGatewayToken } from "./gateway-token";
 import { RunExecutor, type Dispatch } from "./run-executor";
 
@@ -77,8 +93,13 @@ export interface RunView {
   };
 }
 
+// A chat without its agent's display fields.
+export type ChatStateView = Omit<ChatView, "agent">;
+
 export interface SendReceipt {
-  chat: ChatView;
+  // A follow-up that did not need its agent leaves `agent` out rather than
+  // reading it: it has not changed, and the caller already shows it.
+  chat: ChatView | ChatStateView;
   message: MessageView;
   run: RunView;
   created: boolean;
@@ -111,32 +132,43 @@ export class ChatsService {
   ) {}
 
   private db(context: TenantContext): ChatCollections {
-    return this.store.collections(context.tenant.dbName);
+    return this.store.collections(context.dbName);
   }
 
   // The first send creates the chat. A retry with the same clientMessageId
   // returns the same chat, message and run.
+  //
+  // Nearly every start is new, so the retry check is not a read up front: the
+  // unique index owner_first_message_unique refuses a second chat, and the
+  // original is read then. A refusal (agent archived since, rate limit) also
+  // checks first, so a retry of a start that committed still gets its receipt.
+  // Normally two round trips: the save and its commit, plus one read for a
+  // user agent. Built-ins and models come from the catalog cache.
   async start(
     context: TenantContext,
     input: StartChatInput,
   ): Promise<SendReceipt> {
     this.requireRuntime();
-    const { dbName } = context.tenant;
-    await this.store.ensureIndexes(dbName);
-    const replay = await this.replayStart(context, input);
-    if (replay) return replay;
-
-    const agent = await this.agents.resolveForChat(context, input.agentId, {
-      allowArchived: false,
-    });
+    const agent = await timed("agent", () =>
+      this.agents.resolveForChat(context, input.agentId, {
+        allowArchived: false,
+      }),
+    );
     if (!agent)
-      throw new DomainError(
-        "NOT_FOUND",
-        "This agent does not exist or you cannot use it.",
+      return this.startRefused(
+        context,
+        input,
+        new DomainError(
+          "NOT_FOUND",
+          "This agent does not exist or you cannot use it.",
+        ),
       );
-    const model = await this.models.findEnabled(agent.modelId);
-    if (!model) throw modelUnavailable();
-    this.admitSend(context);
+    const model = await timed("model", () =>
+      this.models.enabledById(agent.modelId),
+    );
+    if (!model) return this.startRefused(context, input, modelUnavailable());
+    const refund = this.admitSend(context);
+    if (!refund) return this.startRefused(context, input, rateLimited());
 
     const now = new Date();
     const chat: ChatDoc = {
@@ -162,14 +194,26 @@ export class ChatsService {
     };
     const { chats, messages, runs } = this.db(context);
     try {
-      await this.database.withTransaction(async (session) => {
-        await chats.insertOne(chat, { session });
-        await messages.insertOne(message, { session });
-        await runs.insertOne(run, { session });
-      });
+      // The chat, its first message and run in one call, then the commit.
+      await timed("save", () =>
+        this.database.withTransaction((session) =>
+          this.database.bulkWrite(
+            [
+              insertOf(chats, chat),
+              insertOf(messages, message),
+              insertOf(runs, run),
+            ],
+            session,
+          ),
+        ),
+      );
     } catch (error) {
       if (!isDuplicateKeyError(error)) throw error;
-      const raced = await this.replayStart(context, input);
+      // A retry, or the same send racing itself: not a new message.
+      refund();
+      const raced = await timed("replay", () =>
+        this.replayStart(context, input),
+      );
       if (!raced) throw error;
       return raced;
     }
@@ -177,103 +221,128 @@ export class ChatsService {
       this.dispatchOf(context, chat, run, message, agent, model, "start"),
     );
     return {
-      chat: await this.view(context, chat),
+      chat: chatView(chat, summaryOf(agent), model),
       message: messageView(message),
       run: runView(run),
       created: true,
     };
   }
 
+  // The same approach as start: the retry check runs only when the save hits
+  // the unique index chat_client_message_unique, or before any refusal. The
+  // claim, the message and the run are one call; the claim also requires the
+  // chat to be as it was read, and matching nothing aborts the transaction.
   async send(
     context: TenantContext,
     chatId: ObjectId,
     input: SendInput,
   ): Promise<SendReceipt> {
     this.requireRuntime();
-    await this.store.ensureIndexes(context.tenant.dbName);
-    let chat = await this.findOwned(context, chatId);
-    const replay = await this.replaySend(context, chat, input);
-    if (replay) return replay;
+    const chat = await timed("chat", () => this.findOwned(context, chatId));
+    const refuse = (error: DomainError) =>
+      this.sendRefused(context, chat, input, error);
 
     if (chat.status !== "active")
-      throw new DomainError(
-        "CHAT_READ_ONLY",
-        "This chat is archived. Start a new chat.",
+      return refuse(
+        new DomainError(
+          "CHAT_READ_ONLY",
+          "This chat is archived. Start a new chat.",
+        ),
       );
-    if (chat.runtime.state === "lost") throw threadLost();
+    if (chat.runtime.state === "lost") return refuse(threadLost());
     if (chat.activeRun) {
-      await this.recoverIfOrphaned(context, chat);
+      // Most likely this very message, retried while its reply streams.
+      const replay = await timed("replay", () =>
+        this.replaySend(context, chat, input),
+      );
+      if (replay) return replay;
+      await timed("recover", () => this.recoverIfOrphaned(context, chat));
       throw chatBusy();
     }
-    const model = await this.models.findEnabled(chat.model.id);
+    const model = await timed("model", () =>
+      this.models.enabledById(chat.model.id),
+    );
     if (!model)
-      throw new DomainError(
-        "CHAT_READ_ONLY",
-        "This chat's model is no longer available. Start a new chat.",
+      return refuse(
+        new DomainError(
+          "CHAT_READ_ONLY",
+          "This chat's model is no longer available. Start a new chat.",
+        ),
       );
     // A built-in the product team disabled stops its chats; an archived
     // user agent does not. The prompt is needed only before the thread
     // exists.
-    const agent =
-      chat.agent.source === "builtin" || !chat.runtime.threadId
-        ? await this.agents.resolveForChat(context, chat.agent.id, {
+    const needsAgent =
+      chat.agent.source === "builtin" || !chat.runtime.threadId;
+    const agent = needsAgent
+      ? await timed("agent", () =>
+          this.agents.resolveForChat(context, chat.agent.id, {
             allowArchived: true,
-          })
-        : null;
-    if ((chat.agent.source === "builtin" || !chat.runtime.threadId) && !agent)
-      throw new DomainError(
-        "CHAT_READ_ONLY",
-        "This chat's agent is no longer available. Start a new chat.",
+          }),
+        )
+      : null;
+    if (needsAgent && !agent)
+      return refuse(
+        new DomainError(
+          "CHAT_READ_ONLY",
+          "This chat's agent is no longer available. Start a new chat.",
+        ),
       );
-    this.admitSend(context);
+    const refund = this.admitSend(context);
+    if (!refund) return refuse(rateLimited());
 
     const now = new Date();
     const runId = new ObjectId();
+    const turn = this.newTurn(context, chat, chat.nextSeq, input, now, runId);
+    const activeRun = {
+      runId,
+      leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+    };
     const { chats, messages, runs } = this.db(context);
-    let turn: ReturnType<ChatsService["newTurn"]>;
     try {
-      turn = await this.database.withTransaction(async (session) => {
-        // Claims the chat only if no run holds it; also takes the seq.
-        const claimed = await chats.findOneAndUpdate(
-          {
-            _id: chat._id,
-            ownerId: context.userId,
-            status: "active",
-            activeRun: null,
-            "runtime.state": { $ne: "lost" },
-          },
-          {
-            $set: {
-              activeRun: {
-                runId,
-                leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+      await timed("save", () =>
+        this.database.withTransaction(async (session) => {
+          const result = await this.database.bulkWrite(
+            [
+              {
+                namespace: chats.namespace,
+                name: "updateOne",
+                // Only if no run holds it and it is unchanged since the
+                // read: the seq and thread used below are the ones read.
+                filter: {
+                  _id: chat._id,
+                  ownerId: context.userId,
+                  status: "active",
+                  activeRun: null,
+                  nextSeq: chat.nextSeq,
+                  "runtime.threadId": chat.runtime.threadId,
+                  "runtime.state": { $ne: "lost" },
+                },
+                update: {
+                  $set: { activeRun, lastMessageAt: now, updatedAt: now },
+                  $inc: { nextSeq: 1 },
+                },
               },
-              lastMessageAt: now,
-              updatedAt: now,
-            },
-            $inc: { nextSeq: 1 },
-          },
-          { returnDocument: "before", session },
-        );
-        if (!claimed) throw chatBusy();
-        chat = claimed;
-        const next = this.newTurn(
-          context,
-          claimed,
-          claimed.nextSeq,
-          input,
-          now,
-          runId,
-        );
-        await messages.insertOne(next.message, { session });
-        await runs.insertOne(next.run, { session });
-        return next;
-      });
+              insertOf(messages, turn.message),
+              insertOf(runs, turn.run),
+            ],
+            session,
+          );
+          // Aborts the inserts with it.
+          if (result.matchedCount !== 1) throw chatBusy();
+        }),
+      );
     } catch (error) {
-      if (!isDuplicateKeyError(error)) throw error;
-      const raced = await this.replaySend(context, chat, input);
-      if (!raced) throw error;
-      return raced;
+      const busy = error instanceof DomainError && error.code === "CHAT_BUSY";
+      if (!busy && !isDuplicateKeyError(error)) throw error;
+      refund();
+      const raced = await timed("replay", () =>
+        this.replaySend(context, chat, input),
+      );
+      if (raced) return raced;
+      // Not this message: the chat moved on since it was read (its seq was
+      // taken, or a run claimed it).
+      throw chatBusy();
     }
     this.executor.begin(
       this.dispatchOf(
@@ -286,13 +355,48 @@ export class ChatsService {
         "start",
       ),
     );
-    const latest = { ...chat, activeRun: { runId, leaseExpiresAt: now } };
+    const latest: ChatDoc = {
+      ...chat,
+      activeRun,
+      nextSeq: chat.nextSeq + 1,
+      lastMessageAt: now,
+      updatedAt: now,
+    };
     return {
-      chat: await this.view(context, latest),
+      chat: agent
+        ? chatView(latest, summaryOf(agent), model)
+        : chatState(latest, model, false),
       message: messageView(turn.message),
       run: runView(turn.run),
       created: true,
     };
+  }
+
+  // A start that cannot go ahead. A retry of one that already committed
+  // gets its receipt instead: the agent may have been archived since.
+  private async startRefused(
+    context: TenantContext,
+    input: StartChatInput,
+    refusal: DomainError,
+  ): Promise<SendReceipt> {
+    const replay = await timed("replay", () =>
+      this.replayStart(context, input),
+    );
+    if (replay) return replay;
+    throw refusal;
+  }
+
+  private async sendRefused(
+    context: TenantContext,
+    chat: ChatDoc,
+    input: SendInput,
+    refusal: DomainError,
+  ): Promise<SendReceipt> {
+    const replay = await timed("replay", () =>
+      this.replaySend(context, chat, input),
+    );
+    if (replay) return replay;
+    throw refusal;
   }
 
   async list(
@@ -380,30 +484,44 @@ export class ChatsService {
     return this.view(context, chat);
   }
 
-  // The run, if it belongs to this caller's chat. Ensures an unsettled run
-  // has a reader in this process, so a browser can always subscribe.
+  // The reply's saved outcome, or null while it is answering. Only for the
+  // caller's own run in this chat; anything else is NOT_FOUND. A reply this
+  // process is reading for the caller needs no read; an unsettled one no
+  // process is reading gets a reader here, so a browser can always
+  // subscribe.
   async runForStream(
     context: TenantContext,
     chatId: ObjectId,
     runId: ObjectId,
-  ): Promise<{ run: RunDoc; messages: MessageDoc[] }> {
-    const chat = await this.findOwned(context, chatId);
-    const { runs, messages } = this.db(context);
-    const run = await runs.findOne({
-      _id: runId,
+  ): Promise<{ saved: SettleResult | null }> {
+    const here = this.executor.liveFor(
+      context.dbName,
       chatId,
-      ownerId: context.userId,
-    });
+      runId,
+      context.userId,
+    );
+    if (here) return { saved: here === "running" ? null : here };
+    const { runs, messages } = this.db(context);
+    const run = await timed("run", () =>
+      runs.findOne({ _id: runId, chatId, ownerId: context.userId }),
+    );
     if (!run) throw new DomainError("NOT_FOUND", "This reply does not exist.");
-    if (!isSettled(run.status) && chat.activeRun?.runId.equals(runId))
-      await this.recoverIfOrphaned(context, chat);
-    const saved = isSettled(run.status)
-      ? await messages
-          .find({ runId, role: "assistant" })
-          .sort({ seq: 1 })
-          .toArray()
-      : [];
-    return { run, messages: saved };
+    if (isSettled(run.status))
+      return {
+        saved: {
+          run,
+          messages: await timed("saved", () =>
+            messages
+              .find({ runId, role: "assistant" })
+              .sort({ seq: 1 })
+              .toArray(),
+          ),
+        },
+      };
+    const chat = await timed("chat", () => this.findOwned(context, chatId));
+    if (chat.activeRun?.runId.equals(runId))
+      await timed("recover", () => this.recoverIfOrphaned(context, chat));
+    return { saved: null };
   }
 
   async stop(
@@ -411,9 +529,9 @@ export class ChatsService {
     chatId: ObjectId,
     runId: ObjectId,
   ): Promise<{ status: "stopping" | RunStatus }> {
-    const { run } = await this.runForStream(context, chatId, runId);
-    if (isSettled(run.status)) return { status: run.status };
-    await this.store.markStopRequested(context.tenant.dbName, runId);
+    const { saved } = await this.runForStream(context, chatId, runId);
+    if (saved) return { status: saved.run.status };
+    await this.store.markStopRequested(context.dbName, runId);
     try {
       await this.executor.stop(runId);
     } catch {
@@ -491,9 +609,11 @@ export class ChatsService {
       ? chatPrompt(agent)
       : "This chat's agent is no longer available.";
     return {
-      dbName: context.tenant.dbName,
+      dbName: context.dbName,
       chatId: chat._id,
       runId: run._id,
+      ownerId: chat.ownerId,
+      replySeq: message.seq + 1,
       ref: { tenantId, chatId },
       mode,
       ...(notBefore ? { notBefore } : {}),
@@ -642,8 +762,8 @@ export class ChatsService {
     return view!;
   }
 
-  // Current agent names and models for a page of chats: one agent query and
-  // usually no model query (cached).
+  // Current agent names and models for a page of chats: at most one agent
+  // query (none when every agent is a built-in) and usually no model query.
   private async views(
     context: TenantContext,
     chats: readonly ChatDoc[],
@@ -663,38 +783,13 @@ export class ChatsService {
       for (const model of await this.models.findEnabledMany(unknown))
         models.set(toWireId(model._id), model);
 
-    return chats.map((chat) => {
-      const summary = summaries.get(toWireId(chat.agent.id));
-      const model = models.get(toWireId(chat.model.id));
-      const agentGone =
-        !summary || (chat.agent.source === "builtin" && !summary.available);
-      return {
-        id: toWireId(chat._id),
-        title: chat.title,
-        agent: summary
-          ? {
-              id: toWireId(chat.agent.id),
-              source: chat.agent.source,
-              name: summary.name,
-              look: summary.look,
-              tint: summary.tint,
-            }
-          : null,
-        model: model ? modelView(model) : null,
-        readOnly:
-          chat.runtime.state === "lost"
-            ? "THREAD_LOST"
-            : !model
-              ? "MODEL_UNAVAILABLE"
-              : agentGone
-                ? "AGENT_UNAVAILABLE"
-                : null,
-        activeRunId: chat.activeRun ? toWireId(chat.activeRun.runId) : null,
-        status: chat.status,
-        lastMessageAt: chat.lastMessageAt.toISOString(),
-        createdAt: chat.createdAt.toISOString(),
-      };
-    });
+    return chats.map((chat) =>
+      chatView(
+        chat,
+        summaries.get(toWireId(chat.agent.id)),
+        models.get(toWireId(chat.model.id)),
+      ),
+    );
   }
 
   private requireRuntime(): void {
@@ -711,8 +806,10 @@ export class ChatsService {
   }
 
   // About 20 new messages a minute per member, across chats. One platform
-  // process in v1, so memory is the right place; replays are not counted.
-  private admitSend(context: TenantContext): void {
+  // process in v1, so memory is the right place. Returns null when over the
+  // limit; otherwise a refund for a save that turns out to be a retry, so
+  // replays are not counted.
+  private admitSend(context: TenantContext): (() => void) | null {
     const key = `${toWireId(context.tenantId)}:${toWireId(context.userId)}`;
     const now = Date.now();
     const recent = (this.recentSends.get(key) ?? []).filter(
@@ -720,10 +817,7 @@ export class ChatsService {
     );
     if (recent.length >= SENDS_PER_MINUTE) {
       this.recentSends.set(key, recent);
-      throw new DomainError(
-        "RATE_LIMITED",
-        "You're sending messages quickly. Wait a moment and try again.",
-      );
+      return null;
     }
     recent.push(now);
     this.recentSends.set(key, recent);
@@ -731,7 +825,78 @@ export class ChatsService {
       for (const [k, times] of this.recentSends)
         if (times.every((at) => now - at >= RATE_WINDOW_MS))
           this.recentSends.delete(k);
+    return () => {
+      const times = this.recentSends.get(key);
+      const at = times?.lastIndexOf(now) ?? -1;
+      if (at >= 0) times!.splice(at, 1);
+    };
   }
+}
+
+// A chat as its owner sees it, from its agent's current display fields and
+// its model (either missing when gone or unavailable).
+function chatView(
+  chat: ChatDoc,
+  summary: AgentSummary | undefined,
+  model: ModelDoc | undefined,
+): ChatView {
+  const agentGone =
+    !summary || (chat.agent.source === "builtin" && !summary.available);
+  return {
+    ...chatState(chat, model, agentGone),
+    agent: summary
+      ? {
+          id: toWireId(chat.agent.id),
+          source: chat.agent.source,
+          name: summary.name,
+          look: summary.look,
+          tint: summary.tint,
+        }
+      : null,
+  };
+}
+
+// Everything in a chat's view but its agent.
+function chatState(
+  chat: ChatDoc,
+  model: ModelDoc | undefined,
+  agentGone: boolean,
+): ChatStateView {
+  return {
+    id: toWireId(chat._id),
+    title: chat.title,
+    model: model ? modelView(model) : null,
+    readOnly:
+      chat.runtime.state === "lost"
+        ? "THREAD_LOST"
+        : !model
+          ? "MODEL_UNAVAILABLE"
+          : agentGone
+            ? "AGENT_UNAVAILABLE"
+            : null,
+    activeRunId: chat.activeRun ? toWireId(chat.activeRun.runId) : null,
+    status: chat.status,
+    lastMessageAt: chat.lastMessageAt.toISOString(),
+    createdAt: chat.createdAt.toISOString(),
+  };
+}
+
+// The agent a turn was just admitted with: usable by definition. An archived
+// user agent still runs its existing chats, so this is not `available`.
+function summaryOf(agent: ChatAgent): AgentSummary {
+  return {
+    name: agent.name,
+    look: agent.look,
+    tint: agent.tint,
+    available: true,
+  };
+}
+
+function insertOf<T extends Document>(
+  collection: Collection<T>,
+  document: T,
+): AnyClientBulkWriteModel<Document> {
+  return { namespace: collection.namespace, name: "insertOne", document };
 }
 
 export function messageView(message: MessageDoc): MessageView {
@@ -776,6 +941,13 @@ function threadLost(): DomainError {
   return new DomainError(
     "CHAT_READ_ONLY",
     "This conversation's history is no longer available, so it can't continue. Start a new chat.",
+  );
+}
+
+function rateLimited(): DomainError {
+  return new DomainError(
+    "RATE_LIMITED",
+    "You're sending messages quickly. Wait a moment and try again.",
   );
 }
 

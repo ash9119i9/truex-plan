@@ -210,6 +210,16 @@ export class ModelsService {
     return this.enabledCache.get();
   }
 
+  // An enabled model, for starting a turn: from the cache, so a model the
+  // product team disables keeps starting turns for up to MODEL_CACHE_TTL_MS.
+  // One the cache does not know (added since it loaded) is read now.
+  async enabledById(modelId: ObjectId): Promise<ModelDoc | null> {
+    const cached = (await this.enabledModels()).find((model) =>
+      model._id.equals(modelId),
+    );
+    return cached ?? this.findEnabled(modelId);
+  }
+
   // An enabled model read now, for writes that must not use a stale answer.
   findEnabled(
     modelId: ObjectId,
