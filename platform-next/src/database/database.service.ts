@@ -140,10 +140,12 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
   // Writes to several collections in one round trip (MongoDB 8.0+). Inside
   // withTransaction, pass its session: the writes then commit or abort with
   // it. Without one, each write stands alone. Ordered: a failed write stops
-  // the rest.
+  // the rest. `verbose` adds each write's own result (updateResults by
+  // index), for callers that check one write among several.
   async bulkWrite(
     models: readonly AnyClientBulkWriteModel<Document>[],
     session?: ClientSession,
+    verbose = false,
   ): Promise<ClientBulkWriteResult> {
     // The same namespace guard as tenantDb.
     for (const model of models)
@@ -152,6 +154,7 @@ export class DatabaseService implements OnModuleInit, OnApplicationShutdown {
       return await this.client.bulkWrite(models, {
         ...(session ? { session } : {}),
         ordered: true,
+        ...(verbose ? { verboseResults: true } : {}),
       });
     } catch (error) {
       // The driver (6.21) wraps a failure of the whole command, such as a

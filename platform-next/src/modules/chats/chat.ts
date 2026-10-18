@@ -25,6 +25,15 @@ export const CHAT_INDEXES: Readonly<Record<string, IndexDescription[]>> = {
       key: { ownerId: 1, status: 1, lastMessageAt: -1, _id: -1 },
       name: "owner_recent",
     },
+    // The recovery sweep: chats whose run's lease lapsed. Only answering
+    // chats are in it, so it stays small however many chats there are.
+    {
+      key: { "activeRun.leaseExpiresAt": 1 },
+      name: "active_lease",
+      partialFilterExpression: {
+        "activeRun.leaseExpiresAt": { $type: "date" },
+      },
+    },
   ],
   [MESSAGES_COLLECTION]: [
     { key: { chatId: 1, seq: 1 }, name: "chat_seq_unique", unique: true },
@@ -66,7 +75,8 @@ export type RuntimeState = "none" | "ready" | "lost";
 export interface ActiveRun {
   runId: ObjectId;
   // Pushed forward while a platform process streams the run. A run past its
-  // lease that no process holds is recovered on the next access.
+  // lease that no process holds is recovered on the next access or by the
+  // recovery sweep.
   leaseExpiresAt: Date;
 }
 

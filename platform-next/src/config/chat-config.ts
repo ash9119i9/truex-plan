@@ -9,6 +9,10 @@ export interface ChatConfig {
   // Base URL Codex calls for a model: `${gatewayUrl}/p/<modelId>/v1`.
   readonly gatewayUrl: string;
   readonly gatewaySecret: string;
+  // Not read from the environment: tests shorten them. Defaults are
+  // RECOVERY_SWEEP_MS (0 turns the sweep off) and STREAM_HEARTBEAT_MS.
+  readonly recoverySweepMs?: number;
+  readonly streamHeartbeatMs?: number;
 }
 
 type Env = Readonly<Record<string, string | undefined>>;

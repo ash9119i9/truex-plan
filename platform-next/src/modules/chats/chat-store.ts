@@ -135,6 +135,39 @@ export class ChatStore {
     return result.matchedCount === 1;
   }
 
+  // Takes over a run's claim from a reader that stopped renewing it: only if
+  // the lease is still the one read, so of two processes recovering the same
+  // run, one wins and the other leaves it.
+  async takeOverLease(
+    dbName: string,
+    chatId: ObjectId,
+    runId: ObjectId,
+    seen: Date,
+  ): Promise<boolean> {
+    const result = await this.collections(dbName).chats.updateOne(
+      {
+        _id: chatId,
+        "activeRun.runId": runId,
+        "activeRun.leaseExpiresAt": seen,
+      },
+      { $set: { "activeRun.leaseExpiresAt": new Date(Date.now() + LEASE_MS) } },
+    );
+    return result.matchedCount === 1;
+  }
+
+  // Chats in this tenant database whose run's lease lapsed before `now`:
+  // the reading process stopped (a crash or restart) or gave the run up.
+  // Uses active_lease; at most `limit`, oldest lapse first.
+  lapsedChats(dbName: string, now: Date, limit: number): Promise<ChatDoc[]> {
+    return this.collections(dbName)
+      .chats.find({
+        "activeRun.leaseExpiresAt": { $type: "date", $lte: now },
+      })
+      .sort({ "activeRun.leaseExpiresAt": 1 })
+      .limit(limit)
+      .toArray();
+  }
+
   async markUncertain(dbName: string, runId: ObjectId): Promise<void> {
     await this.collections(dbName).runs.updateOne(
       { _id: runId, status: { $in: ["accepted", "running"] } },
@@ -224,6 +257,29 @@ export class ChatStore {
         ...(texts.length ? { lastMessageAt: now } : {}),
         ...(outcome.threadLost ? { "runtime.state": "lost" as const } : {}),
       };
+      // The thread the runtime ran this turn on, recorded on a chat that has
+      // none yet: normally markAccepted did it, but that write may have
+      // failed. Without it the next message would ask the runtime for a new
+      // thread, and a runtime that lost its disk would silently start one.
+      const recordThread: AnyClientBulkWriteModel<Document>[] =
+        outcome.threadId && !outcome.threadLost
+          ? [
+              {
+                namespace: chats.namespace,
+                name: "updateOne",
+                filter: {
+                  _id: chatId,
+                  "runtime.threadId": null,
+                  "runtime.state": { $ne: "lost" },
+                },
+                update: {
+                  $set: {
+                    runtime: { threadId: outcome.threadId, state: "ready" },
+                  },
+                },
+              },
+            ]
+          : [];
       const replyFrom = (seq: number): MessageDoc[] =>
         texts.map((item, index) => ({
           _id: new ObjectId(),
@@ -257,6 +313,7 @@ export class ChatStore {
                   $inc: { nextSeq: docs.length },
                 },
               },
+              ...recordThread,
               ...docs.map((document): AnyClientBulkWriteModel<Document> => ({
                 namespace: messages.namespace,
                 name: "insertOne",
@@ -264,8 +321,10 @@ export class ChatStore {
               })),
             ],
             session,
+            true,
           );
-          matched = result.matchedCount;
+          // The claim's own result: recordThread may match too.
+          matched = result.updateResults?.get(0)?.matchedCount ?? 0;
         } catch (error) {
           // A seq already taken: the chat is not in the state assumed.
           if (isDuplicateKeyError(error)) throw new ClaimMoved();
@@ -284,6 +343,8 @@ export class ChatStore {
       if (!chat) throw new Error("settling a run whose chat does not exist");
       const docs = replyFrom(chat.nextSeq);
       if (docs.length) await messages.insertMany(docs, { session });
+      if (recordThread.length)
+        await this.database.bulkWrite(recordThread, session);
       // Only this run's claim is released; a newer run is never unlocked.
       await chats.updateOne(
         { _id: chatId, "activeRun.runId": runId },
@@ -308,7 +369,7 @@ export class ChatStore {
 
   // Retries a settle with backoff. Returns null when every attempt failed;
   // the run then stays claimed until recovery settles it from the runtime's
-  // history on the chat's next access.
+  // history: on the chat's next access, or by the recovery sweep.
   async settleWithRetry(
     dbName: string,
     chatId: ObjectId,

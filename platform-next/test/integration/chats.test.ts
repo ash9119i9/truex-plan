@@ -1,5 +1,7 @@
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type {
   Request as ExpressRequest,
   Response as ExpressResponse,
@@ -21,10 +23,13 @@ import {
   type ChatDoc,
   type RunDoc,
 } from "../../src/modules/chats/chat";
+import { RecoverySweep } from "../../src/modules/chats/recovery-sweep";
 import { RunExecutor } from "../../src/modules/chats/run-executor";
+import { MEMBERSHIPS_COLLECTION } from "../../src/modules/memberships/membership";
 import { MembershipsService } from "../../src/modules/memberships/memberships.service";
 import { MODELS_COLLECTION } from "../../src/modules/models/model";
 import { OperatorService } from "../../src/modules/operator/operator.service";
+import { SESSIONS_COLLECTION } from "../../src/modules/sessions/session";
 import { SessionsService } from "../../src/modules/sessions/sessions.service";
 import { DEFAULT_TENANT_DB_NAME } from "../../src/modules/tenants/tenant";
 import { UsersService } from "../../src/modules/users/users.service";
@@ -53,6 +58,8 @@ interface Member {
   userId: ObjectId;
   token: string;
   tenantId: ObjectId;
+  sessionId: ObjectId;
+  refreshCredential: string;
 }
 
 interface Receipt {
@@ -105,7 +112,12 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
   // One signing key across restarts, so sessions survive a reboot.
   const auth: AppConfig["auth"] = testAuthConfig();
 
-  async function boot(): Promise<void> {
+  // The recovery sweep is off unless a test asks for it (tests run it with
+  // RecoverySweep.runOnce); the stream heartbeat, which re-checks access,
+  // is short so revocation shows within a test.
+  async function boot(
+    chat: { recoverySweepMs?: number; streamHeartbeatMs?: number } = {},
+  ): Promise<void> {
     running = await startApp({
       mongodbUri: mongo.getUri(),
       auth,
@@ -114,6 +126,9 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
         adapterToken: ADAPTER_TOKEN,
         gatewayUrl: gateway.url,
         gatewaySecret: GATEWAY_SECRET,
+        recoverySweepMs: 0,
+        streamHeartbeatMs: 300,
+        ...chat,
       },
     });
     database = running.app.get(DatabaseService);
@@ -138,6 +153,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     gateway.release();
     gateway.script.length = 0;
     gateway.requests.length = 0;
+    gateway.defaultBehavior = { kind: "reply", text: "Hello from the model." };
     await resetOwnedData(database);
     tenantId = new ObjectId();
     otherTenantId = new ObjectId();
@@ -193,7 +209,13 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       tenant,
     );
     assert.ok(issued.tenant?.tenantId.equals(tenant));
-    return { userId: user._id, token: issued.accessToken, tenantId: tenant };
+    return {
+      userId: user._id,
+      token: issued.accessToken,
+      tenantId: tenant,
+      sessionId: issued.sessionId,
+      refreshCredential: issued.refreshCredential,
+    };
   }
 
   function call(
@@ -1435,6 +1457,443 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       "completed",
     );
     assert.match(JSON.stringify(gateway.requests.at(-1)!.body), /FIRST/);
+  });
+
+  // ---- Slices 9–10: continuation, stop, revocation and recovery ----
+
+  async function until(
+    what: string,
+    check: () => boolean | Promise<boolean>,
+    ms = 15_000,
+  ): Promise<void> {
+    const deadline = Date.now() + ms;
+    while (!(await check())) {
+      if (Date.now() > deadline) throw new Error(`timed out: ${what}`);
+      await sleep(50);
+    }
+  }
+
+  const chatsCollection = () =>
+    database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<ChatDoc>(CHATS_COLLECTION);
+  const chatDoc = (id: string) =>
+    chatsCollection().findOne({ _id: ObjectId.createFromHexString(id) });
+  const lapse = (id: string) =>
+    chatsCollection().updateOne(
+      { _id: ObjectId.createFromHexString(id) },
+      { $set: { "activeRun.leaseExpiresAt": new Date(0) } },
+    );
+  const chatFolder = (receipt: Receipt) =>
+    join(adapter.stateDir, "t", tenantId.toHexString(), "c", receipt.chat.id);
+  const followUp = (who: Member, chatId: string, text: string) =>
+    call(who, "POST", `/chats/${chatId}/messages`, {
+      clientMessageId: clientId(),
+      text,
+    });
+
+  test("a follow-up after the runtime restarts resumes the same thread from its saved home", async () => {
+    gateway.script.push(
+      { kind: "reply", text: "REMEMBER_42 noted." },
+      { kind: "reply", text: "It was 42." },
+    );
+    const first = await json<Receipt>(
+      await startChat(alice, "Remember the number REMEMBER_42"),
+      202,
+    );
+    await finish(alice, first);
+    const threadId = (await chatDoc(first.chat.id))?.runtime.threadId;
+    assert.ok(threadId);
+
+    // The runtime process dies with nothing in memory; its disk stays.
+    await adapter.stop(true);
+    await adapter.start();
+    const second = await json<Receipt>(
+      await followUp(alice, first.chat.id, "Which number?"),
+      202,
+    );
+    assert.equal(savedOf(await finish(alice, second)).run.status, "completed");
+    const context = JSON.stringify(gateway.requests[1]!.body);
+    assert.match(context, /REMEMBER_42 noted\./);
+    assert.match(context, /Which number\?/);
+    assert.equal((await chatDoc(first.chat.id))?.runtime.threadId, threadId);
+  });
+
+  test("lost runtime state makes the chat read-only and never starts a replacement thread", async () => {
+    const first = await json<Receipt>(await startChat(alice, "Keep this"), 202);
+    await finish(alice, first);
+    await adapter.stop(true);
+    await rm(chatFolder(first), { recursive: true, force: true });
+    await adapter.start();
+
+    const lost = await json<Receipt>(
+      await followUp(alice, first.chat.id, "Still there?"),
+      202,
+    );
+    const saved = savedOf(await finish(alice, lost));
+    assert.equal(saved.run.status, "failed");
+    assert.equal(saved.run.error?.code, "THREAD_LOST");
+    assert.equal(gateway.requests.length, 1, "no new thread was asked for");
+    await fails(
+      await followUp(alice, first.chat.id, "Again?"),
+      409,
+      "CHAT_READ_ONLY",
+    );
+    // The saved history is still there to read.
+    const body = await getChat(alice, first.chat.id);
+    assert.equal(body.chat.readOnly, "THREAD_LOST");
+    assert.deepEqual(body.messages.map((m) => [m.role, m.text]).slice(0, 3), [
+      ["user", "Keep this"],
+      ["assistant", "Hello from the model."],
+      ["user", "Still there?"],
+    ]);
+  });
+
+  test("an unreadable thread record fails the reply without replacing the thread", async () => {
+    const first = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, first);
+    const threadId = (await chatDoc(first.chat.id))?.runtime.threadId;
+    await adapter.stop(true);
+    await writeFile(join(chatFolder(first), "chat.json"), "{not json");
+    await adapter.start();
+    const next = await json<Receipt>(
+      await followUp(alice, first.chat.id, "hello?"),
+      202,
+    );
+    const saved = savedOf(await finish(alice, next));
+    assert.equal(saved.run.status, "failed");
+    assert.ok(saved.run.error?.message);
+    assert.equal(gateway.requests.length, 1);
+    const chat = await chatDoc(first.chat.id);
+    assert.equal(chat?.activeRun, null);
+    assert.equal(chat?.runtime.threadId, threadId);
+    assert.notEqual(chat?.runtime.state, "lost");
+  });
+
+  test("a reply whose acceptance write failed still records the chat's thread", async () => {
+    const store = running.app.get(ChatStore);
+    const markAccepted = store.markAccepted.bind(store);
+    store.markAccepted = () => Promise.reject(new Error("simulated failure"));
+    let receipt: Receipt;
+    try {
+      receipt = await json<Receipt>(await startChat(alice), 202);
+      assert.equal(
+        savedOf(await finish(alice, receipt)).run.status,
+        "completed",
+      );
+    } finally {
+      store.markAccepted = markAccepted;
+    }
+    const chat = await chatDoc(receipt.chat.id);
+    assert.ok(chat?.runtime.threadId, "the settle recorded the thread");
+    assert.equal(chat?.runtime.state, "ready");
+    const run = await database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<RunDoc>(RUNS_COLLECTION)
+      .findOne({ _id: ObjectId.createFromHexString(receipt.run.id) });
+    assert.equal(chat?.runtime.threadId, run?.threadId);
+  });
+
+  test("stop before any text settles as stopped with nothing saved, and the chat goes on", async () => {
+    gateway.script.push({ kind: "stall", text: "too late" });
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    await until("the model was called", () => gateway.requests.length === 1);
+    const res = await stream(alice, receipt.chat.id, receipt.run.id);
+    const stopped = await call(
+      alice,
+      "POST",
+      `/chats/${receipt.chat.id}/runs/${receipt.run.id}/stop`,
+    );
+    assert.equal(stopped.status, 202);
+    const events = await readStream(res);
+    const saved = savedOf(events);
+    assert.equal(saved.run.status, "stopped");
+    assert.equal(saved.messages.length, 0);
+    assert.equal(textOf(events), "");
+    gateway.release();
+    const next = await json<Receipt>(
+      await followUp(alice, receipt.chat.id, "try again"),
+      202,
+    );
+    assert.equal(savedOf(await finish(alice, next)).run.status, "completed");
+  });
+
+  test("a disabled built-in stops new replies in its chats; history stays readable", async () => {
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, receipt);
+    await operator.setBuiltinAgentEnabled({
+      operator: "ops",
+      slug: "general",
+      enabled: false,
+    });
+    await fails(
+      await followUp(alice, receipt.chat.id, "more?"),
+      409,
+      "CHAT_READ_ONLY",
+    );
+    await fails(await startChat(alice), 404, "NOT_FOUND");
+    const body = await getChat(alice, receipt.chat.id);
+    assert.equal(body.chat.readOnly, "AGENT_UNAVAILABLE");
+    assert.equal(body.messages.length, 2);
+    assert.equal(gateway.requests.length, 1);
+  });
+
+  test("removed access blocks new replies and reads; the saved chat is kept for its owner", async () => {
+    const receipt = await json<Receipt>(await startChat(alice, "PRIVATE"), 202);
+    await finish(alice, receipt);
+    const memberships = database.catalog().collection(MEMBERSHIPS_COLLECTION);
+    await memberships.updateOne(
+      { userId: alice.userId, tenantId },
+      { $set: { status: "removed" } },
+    );
+    // The next token the app gets carries no tenant, so the guard checks
+    // the membership itself.
+    const sessions = running.app.get(SessionsService);
+    const renewed = await sessions.refresh(
+      alice.refreshCredential,
+      new Date(),
+      tenantId,
+    );
+    assert.equal(renewed.tenant, undefined);
+    const removed: Member = {
+      ...alice,
+      token: renewed.accessToken,
+      refreshCredential: renewed.refreshCredential,
+    };
+    await fails(
+      await followUp(removed, receipt.chat.id, "hi"),
+      403,
+      "FORBIDDEN",
+    );
+    await fails(await startChat(removed), 403, "FORBIDDEN");
+    const read = await call(removed, "GET", `/chats/${receipt.chat.id}`);
+    assert.equal(read.status, 403);
+    assert.doesNotMatch(await read.text(), /PRIVATE/);
+    assert.equal(gateway.requests.length, 1);
+
+    // Nothing was erased: restored access shows the same history.
+    await memberships.updateOne(
+      { userId: alice.userId, tenantId },
+      { $set: { status: "active" } },
+    );
+    const restored = await sessions.refresh(
+      removed.refreshCredential,
+      new Date(),
+      tenantId,
+    );
+    const body = await getChat(
+      { ...alice, token: restored.accessToken },
+      receipt.chat.id,
+    );
+    assert.equal(body.messages[0]?.text, "PRIVATE");
+    assert.equal(body.messages.length, 2);
+  });
+
+  test("closing the browser before text, during text or after completion loses and repeats nothing", async () => {
+    const points = ["before-text", "during-text", "after-completed"] as const;
+    for (const point of points) {
+      gateway.script.push(
+        point === "before-text"
+          ? { kind: "stall", text: "Whole reply, once." }
+          : { kind: "held", before: "Whole reply,", after: " once." },
+      );
+      const receipt = await json<Receipt>(await startChat(alice, point), 202);
+      await until(
+        "the model was called",
+        () => gateway.requests.length > points.indexOf(point),
+      );
+      const abort = new AbortController();
+      const res = await stream(
+        alice,
+        receipt.chat.id,
+        receipt.run.id,
+        abort.signal,
+      );
+      if (point === "before-text") {
+        abort.abort();
+        gateway.release();
+      } else
+        await readStream(res, (event) => {
+          // Text arrives as a delta, or already in the snapshot when the
+          // stream opens after the first delta reached the platform.
+          const text =
+            event.type === "delta" ||
+            (event.type === "snapshot" &&
+              (event.data.items as unknown[]).length > 0);
+          if (point === "during-text" && text) abort.abort();
+          if (point === "after-completed" && event.type === "completed")
+            abort.abort();
+          if (point === "after-completed" && text) gateway.release();
+        }).catch(() => undefined);
+      gateway.release();
+      const events = await finish(alice, receipt);
+      assert.equal(events[0]?.type, "snapshot", point);
+      assert.equal(textOf(events), "Whole reply, once.", point);
+      const body = await getChat(alice, receipt.chat.id);
+      assert.deepEqual(
+        body.messages.map((m) => m.text),
+        [point, "Whole reply, once."],
+        point,
+      );
+    }
+  });
+
+  test("the recovery sweep saves a reply whose process died, without anyone opening the chat", async () => {
+    gateway.script.push({
+      kind: "held",
+      before: "Started before the crash",
+      after: ", saved by the sweep.",
+    });
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    await until("the model was called", () => gateway.requests.length === 1);
+    await sleep(300);
+    await running.app.get(RunExecutor).drain(0);
+    await running.close();
+    await boot({ recoverySweepMs: 200 });
+    // Still within its lease: the sweep leaves it to its holder.
+    await running.app.get(RecoverySweep).runOnce();
+    assert.equal(
+      running.app
+        .get(RunExecutor)
+        .isLive(ObjectId.createFromHexString(receipt.run.id)),
+      false,
+    );
+
+    await lapse(receipt.chat.id);
+    gateway.release();
+    // The scheduled sweep finds it; nobody calls the API.
+    await until(
+      "the sweep saved the reply",
+      async () => (await chatDoc(receipt.chat.id))?.activeRun === null,
+    );
+    const body = await getChat(alice, receipt.chat.id);
+    assert.equal(
+      body.messages[1]?.text,
+      "Started before the crash, saved by the sweep.",
+    );
+    assert.equal(gateway.requests.length, 1, "not resent");
+    await running.close();
+    await boot();
+  });
+
+  test("a lapsed claim is taken over by one recoverer only", async () => {
+    const store = running.app.get(ChatStore);
+    const receipt = await unread(() => startChat(alice));
+    const chatId = ObjectId.createFromHexString(receipt.chat.id);
+    const runId = ObjectId.createFromHexString(receipt.run.id);
+    const seen = (await chatDoc(receipt.chat.id))!.activeRun!.leaseExpiresAt;
+    const takes = await Promise.all(
+      [1, 2, 3].map(() =>
+        store.takeOverLease(DEFAULT_TENANT_DB_NAME, chatId, runId, seen),
+      ),
+    );
+    assert.deepEqual(takes.filter(Boolean).length, 1, JSON.stringify(takes));
+    // The sweep then finds nothing lapsed for it.
+    assert.equal(
+      (await store.lapsedChats(DEFAULT_TENANT_DB_NAME, new Date(), 10)).length,
+      0,
+    );
+    await lapse(receipt.chat.id);
+    await running.app.get(RecoverySweep).runOnce();
+    const saved = savedOf(await finish(alice, receipt));
+    assert.equal(saved.run.status, "failed");
+    assert.equal(saved.run.error?.code, "NOT_SENT");
+  });
+
+  test("a completion the platform never saw is recovered from the runtime's history", async () => {
+    gateway.script.push({
+      kind: "held",
+      before: "Finished while",
+      after: " the platform was down.",
+    });
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    await until("the model was called", () => gateway.requests.length === 1);
+    await sleep(300);
+    // The platform goes away; the turn finishes in the runtime unobserved.
+    await running.app.get(RunExecutor).drain(0);
+    await running.close();
+    gateway.release();
+    const history = async () => {
+      const res = await fetch(
+        `${adapter.url}/v1/chats/${receipt.chat.id}/history?tenantId=${tenantId.toHexString()}`,
+        { headers: { authorization: `Bearer ${ADAPTER_TOKEN}` } },
+      );
+      return ((await res.json()) as { turns: Array<{ status: string }> }).turns;
+    };
+    await until("the turn completed in the runtime", async () =>
+      (await history()).some((t) => t.status === "completed"),
+    );
+    // The runtime restarts too, so the run's events are gone: only its
+    // saved history knows the outcome.
+    await adapter.stop();
+    await adapter.start();
+    await boot();
+    await lapse(receipt.chat.id);
+    await running.app.get(RecoverySweep).runOnce();
+    await until(
+      "recovery saved the reply",
+      async () => (await chatDoc(receipt.chat.id))?.activeRun === null,
+    );
+    const body = await getChat(alice, receipt.chat.id);
+    assert.equal(body.runs[0]?.status, "completed");
+    assert.equal(
+      body.messages[1]?.text,
+      "Finished while the platform was down.",
+    );
+    assert.equal(gateway.requests.length, 1, "not resent");
+  });
+
+  test("a revoked session or removed membership closes a live stream; the reply is still saved", async () => {
+    for (const revoke of ["session", "membership"] as const) {
+      const who = await member(`carol-${revoke}`, tenantId);
+      gateway.script.push({ kind: "held", before: "Secret", after: " rest." });
+      const receipt = await json<Receipt>(await startChat(who), 202);
+      const res = await stream(who, receipt.chat.id, receipt.run.id);
+      const events = await readStream(res, async (event) => {
+        if (event.type !== "delta") return;
+        if (revoke === "session")
+          await database
+            .catalog()
+            .collection(SESSIONS_COLLECTION)
+            .updateOne(
+              { _id: who.sessionId },
+              { $set: { revokedAt: new Date(), revokedReason: "logout" } },
+            );
+        else
+          await database
+            .catalog()
+            .collection(MEMBERSHIPS_COLLECTION)
+            .updateOne(
+              { userId: who.userId, tenantId },
+              { $set: { status: "removed" } },
+            );
+      });
+      assert.deepEqual(events.at(-1), {
+        type: "end",
+        data: { reason: "reauthenticate" },
+      });
+      assert.equal(textOf(events), "Secret", revoke);
+      gateway.release();
+      await until(
+        "the reply was saved",
+        async () => (await chatDoc(receipt.chat.id))?.activeRun === null,
+      );
+    }
+  });
+
+  test("shutdown lets a reply in flight finish and turns new messages away", async () => {
+    gateway.script.push({ kind: "held", before: "Draining", after: " done." });
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    await until("the model was called", () => gateway.requests.length === 1);
+    const drained = running.app.get(RunExecutor).drain(10_000);
+    await fails(await startChat(alice), 503, "UNAVAILABLE");
+    gateway.release();
+    await drained;
+    const body = await getChat(alice, receipt.chat.id);
+    assert.equal(body.chat.activeRunId, null);
+    assert.equal(body.messages[1]?.text, "Draining done.");
+    await running.close();
+    await boot();
   });
 });
 

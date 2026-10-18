@@ -62,6 +62,13 @@ describe("chat lifecycle (real Codex)", () => {
       "the model is offered no tools",
     );
     assert.ok(JSON.stringify(request.body).includes("AGENT_PROMPT_MARKER"));
+    // The app-server copies its system skills into each chat's home; none
+    // may be advertised to the model, nor any plugin or connector.
+    assert.doesNotMatch(
+      JSON.stringify(request.body),
+      /SKILL\.md|skills_instructions|plugins?_instructions|\bmcp__/i,
+      "the prompt advertises no skills, plugins or connectors",
+    );
   });
 
   test("a follow-up uses the same thread and carries the conversation", async () => {

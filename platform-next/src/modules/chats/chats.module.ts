@@ -9,6 +9,7 @@ import { TenantsModule } from "../tenants/tenants.module";
 import { ChatStore } from "./chat-store";
 import { ChatsController } from "./chats.controller";
 import { ChatsService } from "./chats.service";
+import { RecoverySweep } from "./recovery-sweep";
 import { RUNTIME_CLIENT, RunExecutor } from "./run-executor";
 import { RuntimeClient } from "./runtime-client";
 
@@ -34,6 +35,7 @@ import { RuntimeClient } from "./runtime-client";
     ChatStore,
     RunExecutor,
     ChatsService,
+    RecoverySweep,
     TenantGuard,
   ],
 })

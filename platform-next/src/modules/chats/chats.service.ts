@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import {
   ObjectId,
   type AnyClientBulkWriteModel,
@@ -114,12 +114,20 @@ export interface HistoryPage {
 
 const NOT_FOUND = "This chat does not exist or you cannot see it.";
 const RATE_WINDOW_MS = 60_000;
+// Orphaned chats one sweep takes per tenant; the rest wait a sweep.
+const RECOVERY_BATCH = 100;
+const RECOVERY_FAILED: RunErrorInfo = {
+  code: "RUNTIME_ERROR",
+  message: "The assistant couldn't run this message. Try again.",
+  retryable: true,
+};
 
 // Private chats with one agent each. Every read and write filters by the
 // caller's tenant database and ownerId; another member's chat and a missing
 // one are the same 404.
 @Injectable()
 export class ChatsService {
+  private readonly logger = new Logger("Chats");
   private readonly recentSends = new Map<string, number[]>();
 
   constructor(
@@ -543,6 +551,33 @@ export class ChatsService {
     return { status: "stopping" };
   }
 
+  // The recovery sweep's work for one tenant: every chat whose run's lease
+  // lapsed gets a reader, as opening it would. Recovery reattaches or reads
+  // the runtime's history and never posts a message again, so it runs
+  // whatever the owner's access is now. Returns how many it looked at.
+  async recoverOrphans(
+    tenant: { tenantId: ObjectId; dbName: string },
+    limit = RECOVERY_BATCH,
+  ): Promise<number> {
+    if (!this.executor.configured || this.executor.isDraining) return 0;
+    const lapsed = await this.store.lapsedChats(
+      tenant.dbName,
+      new Date(),
+      limit,
+    );
+    for (const chat of lapsed) {
+      if (this.executor.isDraining) break;
+      const context: TenantContext = {
+        userId: chat.ownerId,
+        tenantId: tenant.tenantId,
+        role: "user",
+        dbName: tenant.dbName,
+      };
+      await this.recoverIfOrphaned(context, chat);
+    }
+    return lapsed.length;
+  }
+
   // A chat claimed by a run that no process here is reading. Once the lease
   // lapses (the reading process stopped renewing it), this process takes
   // over: it reattaches to the runtime's run, or settles from the runtime's
@@ -556,18 +591,39 @@ export class ChatsService {
     if (this.executor.isLive(active.runId)) return;
     const { runs, messages } = this.db(context);
     const run = await runs.findOne({ _id: active.runId, chatId: chat._id });
-    if (!run) return;
-    if (isSettled(run.status)) {
-      // Settled but not released (crash between writes is impossible in one
-      // transaction; this guards hand-edited data). Release it.
+    if (!run || isSettled(run.status)) {
+      // Settled but not released, or claimed by a run that does not exist.
+      // Neither happens in one transaction; this guards hand-edited data,
+      // which would otherwise lock the chat and be swept every minute.
       await this.db(context).chats.updateOne(
-        { _id: chat._id, "activeRun.runId": run._id },
+        { _id: chat._id, "activeRun.runId": active.runId },
         { $set: { activeRun: null } },
       );
+      if (!run)
+        this.logger.warn({
+          message: "released a chat claimed by a missing run",
+          chatId: toWireId(chat._id),
+        });
       return;
     }
     const message = await messages.findOne({ _id: run.userMessageId });
-    if (!message) return;
+    if (!message) {
+      // Nothing to recover from: saved as failed, so the chat goes on.
+      await this.store.settle(context.dbName, chat._id, run._id, chat.nextSeq, {
+        status: "failed",
+        error: RECOVERY_FAILED,
+        items: [],
+        usage: null,
+        threadId: null,
+        turnId: null,
+        threadLost: false,
+      });
+      this.logger.warn({
+        message: "settled a run whose message is missing",
+        runId: toWireId(run._id),
+      });
+      return;
+    }
     const model = await this.models.findEnabled(chat.model.id);
     const agent = await this.agents.resolveForChat(context, chat.agent.id, {
       allowArchived: true,
@@ -575,6 +631,18 @@ export class ChatsService {
     const lapsed =
       active.leaseExpiresAt.getTime() <= Date.now() ||
       this.executor.abandonedHere(active.runId);
+    // A lapsed claim is taken over first; losing that race means another
+    // reader has it now.
+    if (
+      lapsed &&
+      !(await this.store.takeOverLease(
+        context.dbName,
+        chat._id,
+        active.runId,
+        active.leaseExpiresAt,
+      ))
+    )
+      return;
     this.executor.begin(
       this.dispatchOf(
         context,

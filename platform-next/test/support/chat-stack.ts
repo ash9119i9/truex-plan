@@ -25,6 +25,8 @@ export type Behavior =
   | { kind: "reply"; text: string; chunk?: number; delayMs?: number }
   // Streams `before`, then waits for release() before the rest.
   | { kind: "held"; before: string; after: string }
+  // Sends nothing, not even headers, until release(); then replies `text`.
+  | { kind: "stall"; text: string }
   | { kind: "failed"; code: string };
 
 export interface GatewayRequest {
@@ -87,8 +89,16 @@ export class FakeGateway {
     await this.respond(this.script.shift() ?? this.defaultBehavior, res);
   }
 
-  private async respond(behavior: Behavior, res: ServerResponse) {
+  private async respond(
+    behavior: Behavior,
+    res: ServerResponse,
+  ): Promise<void> {
     const n = this.requests.length;
+    if (behavior.kind === "stall") {
+      await new Promise<void>((resume) => this.releases.push(resume));
+      if (res.destroyed) return;
+      return this.respond({ kind: "reply", text: behavior.text }, res);
+    }
     const emit = (event: Record<string, unknown>) =>
       !res.destroyed &&
       res.write(

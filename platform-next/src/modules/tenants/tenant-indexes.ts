@@ -9,7 +9,10 @@ import { CHAT_INDEXES } from "../chats/chat";
 // run `operator ensure-tenant-indexes --all` as a deploy step before the code
 // that relies on it. A server logs an error at startup while any ready tenant
 // is behind.
-export const TENANT_INDEX_VERSION = 1;
+//
+// 2: active_lease on chats, for the recovery sweep. A tenant still at 1 is
+// swept correctly, by a collection scan.
+export const TENANT_INDEX_VERSION = 2;
 
 const TENANT_INDEXES = { ...CHAT_INDEXES, ...AGENT_INDEXES };
 

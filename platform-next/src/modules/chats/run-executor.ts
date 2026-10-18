@@ -212,7 +212,8 @@ class LiveRun {
 // and fans live text out to any number of browser subscribers.
 //
 // v1 runs one platform process (tasks/chat-v1-plan.md). A run whose process
-// died is recovered on the next access after its lease lapses.
+// died is recovered once its lease lapses: by the next access to its chat, or
+// by the RecoverySweep within a minute.
 @Injectable()
 export class RunExecutor implements OnApplicationShutdown {
   private readonly logger = new Logger("RunExecutor");
@@ -341,24 +342,37 @@ export class RunExecutor implements OnApplicationShutdown {
 
   private async execute(run: LiveRun, client: RuntimeClient): Promise<void> {
     const { dispatch } = run;
-    const lease = setInterval(() => {
-      this.store
-        .renewLease(dispatch.dbName, dispatch.chatId, dispatch.runId)
-        .catch(() => undefined);
-    }, LEASE_RENEW_MS);
-    lease.unref();
+    let lease: NodeJS.Timeout | undefined;
     try {
       if (dispatch.notBefore) {
         const wait = dispatch.notBefore.getTime() - Date.now();
         if (wait > 0) await sleep(wait, run.abort.signal);
+        if (run.abort.signal.aborted) return this.release(run);
+        // Its holder may have renewed the lease meanwhile: then it is still
+        // reading, and this process lets go.
+        if (
+          !(await this.store.takeOverLease(
+            dispatch.dbName,
+            dispatch.chatId,
+            dispatch.runId,
+            dispatch.notBefore,
+          ))
+        )
+          return this.release(run);
       }
+      // Renewed only once the run is this process's to read.
+      lease = setInterval(() => {
+        this.store
+          .renewLease(dispatch.dbName, dispatch.chatId, dispatch.runId)
+          .catch(() => undefined);
+      }, LEASE_RENEW_MS);
+      lease.unref();
       const outcome = await this.read(run, client);
       if (outcome) await this.finish(run, outcome);
       else {
         // Unreachable runtime or shutdown: let go of the run so the next
         // access recovers it once the lease lapses. Browsers reconnect.
-        run.close();
-        if (this.live.get(run.id) === run) this.live.delete(run.id);
+        this.release(run);
         if (!this.draining) this.abandoned.add(run.id);
       }
     } finally {
@@ -366,6 +380,12 @@ export class RunExecutor implements OnApplicationShutdown {
       // Shutdown waits for it with the reader.
       await run.acceptedWrite;
     }
+  }
+
+  // Stops holding a run without settling it; browsers reconnect.
+  private release(run: LiveRun): void {
+    run.close();
+    if (this.live.get(run.id) === run) this.live.delete(run.id);
   }
 
   // Reads the run to its outcome, reconnecting through drops. Returns null

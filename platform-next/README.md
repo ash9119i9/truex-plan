@@ -93,10 +93,13 @@ description, modelId, look?, tint?}`. 201 when created, 200 when a retry
     `GET /api/v1/chats/:id/messages?before=<seq>`, `PATCH /api/v1/chats/:id`
     `{title}`, `POST /api/v1/chats/:id/archive`.
   - Closing a stream never stops a reply. A reply whose platform process died
-    is recovered on the chat's next access once its 30 s lease lapses: the
-    platform reattaches to the runtime's run, or settles it from the runtime's
-    history. A message the runtime may have seen is never resent; one it has
-    no trace of is marked `NOT_SENT` for the member to resend.
+    is recovered once its 30 s lease lapses, by the chat's next access or by
+    the recovery sweep (every 60 s, all ready tenants): the platform takes
+    over the lease (one process wins), then reattaches to the runtime's run
+    or settles it from the runtime's history. A message the runtime may have
+    seen is never resent; one it has no trace of is marked `NOT_SENT` for the
+    member to resend. Operations, limits and rollback:
+    [docs/CHAT_V1_OPERATIONS.md](docs/CHAT_V1_OPERATIONS.md).
 - Authenticated responses are `Cache-Control: no-store`; a bad or expired
   token is a 401 with `WWW-Authenticate: Bearer`, a database outage a 503.
 - API routes live under `/api/v1`. Errors always use

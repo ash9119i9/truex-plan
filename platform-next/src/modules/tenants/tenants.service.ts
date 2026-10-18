@@ -154,6 +154,18 @@ export class TenantsService {
     return this.tenants().countDocuments(staleIndexes());
   }
 
+  // Every tenant whose database exists, for the chat recovery sweep. A
+  // disabled tenant is included: its replies in flight still get saved.
+  async listReady(): Promise<Array<Pick<TenantDoc, "_id" | "dbName">>> {
+    return this.tenants()
+      .find(
+        { provisioningStatus: "ready" },
+        { projection: { _id: 1, dbName: 1 } },
+      )
+      .sort({ _id: 1 })
+      .toArray();
+  }
+
   // Inserts the registry record as pending, or returns the existing one when
   // it matches. Settings that decide storage can never change on a re-run.
   private async registerPending(

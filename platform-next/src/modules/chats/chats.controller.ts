@@ -24,6 +24,7 @@ import {
 } from "../../common/access/tenant.guard";
 import { DomainError } from "../../common/domain-error";
 import { DomainErrorsInterceptor } from "../../common/http/domain-errors.interceptor";
+import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import { parseWireId, toWireId } from "../../database/object-id";
 import { MembershipsService } from "../memberships/memberships.service";
 import {
@@ -80,14 +81,18 @@ function seqOf(value: unknown): number {
 @UseInterceptors(DomainErrorsInterceptor)
 export class ChatsController {
   private readonly logger = new Logger("ChatStream");
+  private readonly heartbeatMs: number;
 
   constructor(
+    @Inject(APP_CONFIG) config: AppConfig,
     @Inject(ChatsService) private readonly chats: ChatsService,
     @Inject(RunExecutor) private readonly executor: RunExecutor,
     @Inject(SessionsService) private readonly sessions: SessionsService,
     @Inject(MembershipsService)
     private readonly memberships: MembershipsService,
-  ) {}
+  ) {
+    this.heartbeatMs = config.chat?.streamHeartbeatMs ?? STREAM_HEARTBEAT_MS;
+  }
 
   @Get()
   list(
@@ -261,7 +266,7 @@ export class ChatsController {
         finish();
         res.end();
       });
-    }, STREAM_HEARTBEAT_MS);
+    }, this.heartbeatMs);
 
     const subscribed = this.executor.subscribe(runId, {
       send,

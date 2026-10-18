@@ -98,29 +98,35 @@ Done 2026-10-18 (`frontend/components/tenant/{tenant-chat,chat-list,chat-transcr
 
 ## 9. Add continuation and stop
 
-- [ ] Follow-up messages use the same live thread, agent and snapshot; local restart resumes from the complete retained home before the next turn.
-- [ ] Explicit stop calls native interrupt and preserves a clear terminal outcome/partial output; it is separate from browser disconnect.
-- [ ] Agent/profile disablement and current access revocation prevent new execution without exposing or erasing private saved history.
+- [x] Follow-up messages use the same live thread, agent and snapshot; local restart resumes from the complete retained home before the next turn.
+- [x] Explicit stop calls native interrupt and preserves a clear terminal outcome/partial output; it is separate from browser disconnect.
+- [x] Agent/profile disablement and current access revocation prevent new execution without exposing or erasing private saved history.
 
 **Dependencies:** 8. **Likely files:** adapter resume/interrupt operations, platform continuation and frontend stop control with focused tests, in separate batches. **Scope:** M per batch.
 **Verify:** multi-turn context in actual model requests, restart/resume, stop races, repeated stop and unreadable/missing state. Missing AWS disk must not create a silent replacement thread.
+
+Done 2026-10-19 (`test/integration/chats.test.ts`): a follow-up after an adapter restart resumes the same thread from its saved home and carries earlier turns to the model; a deleted runtime folder makes the chat read-only (`THREAD_LOST`) with no new thread and history readable; an unreadable `chat.json` fails the reply without replacing the thread; stop before any text, stop with partial text, repeated stop and a stop racing completion; a disabled model or built-in, an archived agent, and removed access. Fixed on the way: a failed acceptance write could leave the chat without its thread, so the next message would have asked for a new one; settle now records it. Proven on AWS storage only in slice 12.
 
 ## 10. Verify disconnect and failure recovery
 
 Decided 2026-10-17: add a background recovery sweep in platform-next (every 60 s, safe with one replica) instead of recovering only on access.
 
-- [ ] Browser closure leaves the platform execution reader/persistence running; reconnect uses a consistent snapshot/live handoff or explicit history fallback without duplicate text.
-- [ ] Reconcile unresolved receipts and completed items from retained runtime history after platform interruption; never blindly replay uncertain messages.
-- [ ] Enforce bounded buffers/capacity, stream expiry/revocation checks, dependency timeouts and safe shutdown; report persistence failure honestly.
+- [x] Browser closure leaves the platform execution reader/persistence running; reconnect uses a consistent snapshot/live handoff or explicit history fallback without duplicate text.
+- [x] Reconcile unresolved receipts and completed items from retained runtime history after platform interruption; never blindly replay uncertain messages.
+- [x] Enforce bounded buffers/capacity, stream expiry/revocation checks, dependency timeouts and safe shutdown; report persistence failure honestly.
 
 **Dependencies:** 9. **Likely files:** stream/reconciliation lifecycle and focused fault fixtures, split by browser and process failure. **Scope:** M per batch.
 **Verify:** disconnect before first text/during text/after completion, platform crash after dispatch, lost completion response, Mongo write failure and parallel submissions. Document any unsupported recovery window instead of claiming exactly-once execution.
 
+Done 2026-10-19: `RecoverySweep` (`platform-next/src/modules/chats/recovery-sweep.ts`) every 60 s over ready tenants, using the new `active_lease` index (`TENANT_INDEX_VERSION` 2). A lapsed lease is taken over by compare-and-set (`ChatStore.takeOverLease`), so two recoverers never both read a run, and a delayed recoverer lets go if the holder renewed meanwhile. Hand-edited claims (missing run or message) are released instead of locking the chat forever. Tests: browser closed before text, during text and after completion; sweep saving a reply whose process died; one recoverer only; a lost completion recovered from history; a revoked session and a removed membership closing a live stream while the reply is still saved; shutdown. Recovery windows: [platform-next/docs/CHAT_V1_OPERATIONS.md](../platform-next/docs/CHAT_V1_OPERATIONS.md).
+
 ### Checkpoint C — usable local v1
 
-- [ ] All included functional, authorization, concurrency and recovery criteria pass with isolated data.
-- [ ] Record startup/first-text/completion timings, process memory and cleanup behavior at representative local concurrency; set capacity from evidence.
-- [ ] Confirm the text-only policy exposes no MCP, skill, shell or delegation execution; deferred capabilities do not enter the release checklist.
+- [x] All included functional, authorization, concurrency and recovery criteria pass with isolated data.
+- [ ] Record startup/first-text/completion timings, process memory and cleanup behavior at representative local concurrency; set capacity from evidence. Dropped locally 2026-10-19 (production is AgentCore, one microVM per session); measured on AWS in slice 12.
+
+2026-10-19: platform-next 293/293, runtime adapter 49/49, frontend 453/453. The adapter's lifecycle test checks the real model request from pinned Codex: no tools, and no skill, plugin or connector listing in the prompt.
+- [x] Confirm the text-only policy exposes no MCP, skill, shell or delegation execution; deferred capabilities do not enter the release checklist.
 
 ## 11. Package the new runtime for AWS
 
@@ -136,8 +142,8 @@ Decided 2026-10-17: add a background recovery sweep in platform-next (every 60 s
 Deferred 2026-10-17 to [backlog/release/01-agentcore-validation.md](../backlog/release/01-agentcore-validation.md); needs an explicit go. The base prompt review is also deferred and must be settled before this slice.
 
 - [ ] Validate an isolated AWS runtime and chosen real provider with authorized test credentials, including streamed output and loss-of-disk behavior.
-- [ ] Run checks for the new adapter, platform-next and frontend; retain failures/skips as explicit blockers and perform final security/performance/diff review.
-- [ ] Record observability, operational limits, history retention decisions, rollback and the separate product cutover procedure. No old-data adoption or destructive migration.
+- [x] Run checks for the new adapter, platform-next and frontend; retain failures/skips as explicit blockers and perform final security/performance/diff review.
+- [x] Record observability, operational limits, history retention decisions, rollback and the separate product cutover procedure. No old-data adoption or destructive migration.
 
 **Dependencies:** 11. **Likely files:** validation report and release/runbook docs. **Scope:** S/M.
 **Verify:** actual staging evidence for first message/follow-up/stop/read-after-runtime-loss, healthy error/latency/resource observations, and reversible deployment rehearsal. Local fixtures alone do not certify production readiness.
