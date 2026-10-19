@@ -69,6 +69,17 @@ describe("chat lifecycle (real Codex)", () => {
       /SKILL\.md|skills_instructions|plugins?_instructions|\bmcp__/i,
       "the prompt advertises no skills, plugins or connectors",
     );
+    // Codex's own permissions and environment blocks contradict the
+    // no-tools prompt and expose host paths, shell and timezone.
+    assert.doesNotMatch(
+      JSON.stringify(request.body.input),
+      /permissions instructions|sandbox_mode|environment_context/i,
+      "Codex adds no permissions or environment block",
+    );
+    assert.ok(
+      !JSON.stringify(request.body).includes(h.stateDir),
+      "no host path reaches the model",
+    );
   });
 
   test("a follow-up uses the same thread and carries the conversation", async () => {

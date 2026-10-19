@@ -674,7 +674,7 @@ export class ChatsService {
     // Recovery without a model or agent can still reattach or read history;
     // posting then fails validation in the adapter and settles as failed.
     const prompt = agent
-      ? chatPrompt(agent)
+      ? chatPrompt(agent, chat)
       : "This chat's agent is no longer available.";
     return {
       dbName: context.dbName,

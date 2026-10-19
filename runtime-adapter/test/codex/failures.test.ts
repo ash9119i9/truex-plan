@@ -181,6 +181,12 @@ describe("restart, crash and storage", () => {
       "a new prompt is never applied on resume",
     );
     assert.ok(sent.includes("Hello from the fixture."), "history kept");
+    assert.doesNotMatch(
+      JSON.stringify(h.model.lastRequest().body.input),
+      /permissions instructions|sandbox_mode|environment_context/i,
+      "Codex adds no permissions or environment block on resume",
+    );
+    assert.ok(!sent.includes(h.stateDir), "no host path reaches the model");
   });
 
   test("history after a restart reads the thread without resuming it", async () => {

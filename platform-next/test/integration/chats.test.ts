@@ -381,6 +381,18 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     assert.equal(request.modelId, modelId);
     assert.equal(request.tenantId, tenantId.toHexString());
     assert.match(JSON.stringify(request.body), /BUILTIN_MARKER/);
+    const chat = await database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<ChatDoc>(CHATS_COLLECTION)
+      .findOne({ _id: new ObjectId(receipt.chat.id) });
+    assert.ok(chat);
+    assert.equal(chat.platformInstructionsVersion, "v2");
+    assert.ok(
+      JSON.stringify(request.body).includes(
+        `This chat started on ${chat.createdAt.toISOString().slice(0, 10)} (UTC).`,
+      ),
+      "the thread uses the persisted chat date",
+    );
     assert.equal(gateway.refused, 0);
   });
 
@@ -1507,6 +1519,11 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
 
     // The runtime process dies with nothing in memory; its disk stays.
     await adapter.stop(true);
+    await assert.rejects(
+      fetch(`${adapter.url}/health`, { signal: AbortSignal.timeout(2_000) }),
+      TypeError,
+      "a hard stop ends the adapter rather than just its launcher",
+    );
     await adapter.start();
     const second = await json<Receipt>(
       await followUp(alice, first.chat.id, "Which number?"),

@@ -203,23 +203,19 @@ export class AdapterProcess {
       stateDir ?? (await mkdtemp(join(tmpdir(), "platform-chat-test-")));
     this.port ||= await freePort();
     this.url = `http://127.0.0.1:${this.port}`;
-    this.child = spawn(
-      join(ADAPTER_DIR, "node_modules/.bin/tsx"),
-      ["src/main.ts"],
-      {
-        cwd: ADAPTER_DIR,
-        env: {
-          PATH: process.env.PATH,
-          HOME: process.env.HOME,
-          RUNTIME_ADAPTER_TOKEN: ADAPTER_TOKEN,
-          RUNTIME_STATE_DIR: this.stateDir,
-          HOST: "127.0.0.1",
-          PORT: String(this.port),
-          RUNTIME_DRAIN_MS: "1000",
-        },
-        stdio: "ignore",
+    this.child = spawn(process.execPath, ["--import", "tsx", "src/main.ts"], {
+      cwd: ADAPTER_DIR,
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        RUNTIME_ADAPTER_TOKEN: ADAPTER_TOKEN,
+        RUNTIME_STATE_DIR: this.stateDir,
+        HOST: "127.0.0.1",
+        PORT: String(this.port),
+        RUNTIME_DRAIN_MS: "1000",
       },
-    );
+      stdio: "ignore",
+    });
     const deadline = Date.now() + 20_000;
     for (;;) {
       try {

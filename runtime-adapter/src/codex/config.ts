@@ -6,8 +6,8 @@ import type { ModelSettings } from "../contract";
 
 const PROVIDER = "truex_gateway";
 
-// Verified against the pin (test/codex/lockdown.test.ts): with these settings
-// the model is offered zero tools.
+// Verified against the pin (test/codex/lifecycle.test.ts): with these settings
+// the model is offered zero tools and no Codex context blocks.
 const TEXT_ONLY = {
   "features.shell_tool": false,
   "features.unified_exec": false,
@@ -19,6 +19,11 @@ const TEXT_ONLY = {
   "skills.bundled.enabled": false,
   web_search: "disabled",
   project_doc_max_bytes: 0,
+  // Codex's own context blocks: the permissions block contradicts the
+  // no-tools prompt, and the environment block exposes the host's paths
+  // (tenant and chat IDs), shell and timezone. The prompt carries the date.
+  include_permissions_instructions: false,
+  include_environment_context: false,
 } as const;
 
 function sessionSettings(model: ModelSettings, workspace: string) {

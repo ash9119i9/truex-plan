@@ -61,7 +61,7 @@ export const CHAT_LIST_PAGE = 30;
 // Sends per member per minute, across their chats.
 export const SENDS_PER_MINUTE = 20;
 // The base prompt version every user agent's prompt is built from.
-export const PLATFORM_INSTRUCTIONS_VERSION = "v1";
+export const PLATFORM_INSTRUCTIONS_VERSION = "v2";
 
 export type AgentSource = "builtin" | "personal" | "tenant";
 
