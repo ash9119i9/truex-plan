@@ -70,12 +70,19 @@ run), `event: <type>` and JSON `data`. A `: hb` comment is written every 15 s.
 | --- | --- | --- |
 | `run.accepted` | `{threadId, turnId, resumed}` | Codex accepted the turn. Save `threadId`. |
 | `text.delta` | `{itemId, delta}` | Streamed assistant text. |
-| `item.completed` | `{itemId, text}` | A finished assistant message. `itemId` is unique within the run only. |
+| `item.completed` | `{itemId, text}` | A finished assistant message. `itemId` is unique within the run only. A reply cut off by a steer never gets this. |
+| `input.accepted` | `{clientMessageId}` | A steer entered the running turn (Codex's `userMessage` item for it completed). Once per steer, in stream order; it marks where the steer landed. |
 | `compaction` | `{itemId}` | Codex summarized older context. |
 | `retrying` | `{code}` | The provider stream failed and Codex is retrying. |
 | `usage` | `{last, total, contextWindow}` | Token counts (`TokenUsageBreakdown`). |
 | `run.snapshot` | `{status, threadId, turnId, items}` | Only on reconnect when the cursor is older than the buffer. |
-| `run.completed` | `{status, error, delivery, threadId, turnId, items, usage, timings}` | Always last. `status` is `completed`, `stopped` or `failed`. `items` holds every item's text, including partial text. `delivery` is `none` (nothing ran; safe to resend), `accepted` or `unknown` (a turn request went out and its answer was lost; reconcile with history, never resend). |
+| `run.completed` | `{status, error, delivery, threadId, turnId, items, usage, timings}` | Always last. `status` is `completed`, `stopped` or `failed`. `delivery` is `none` (nothing ran; safe to resend), `accepted` or `unknown` (a turn request went out and its answer was lost; reconcile with history, never resend). |
+
+Both `run.snapshot.items` and `run.completed.items` are an **ordered** list, in
+the order Codex produced them — a reply `{type: "reply", itemId, text,
+completed}` or a steer input `{type: "input", clientMessageId}`. A reply appears
+once it has any text (empty replies never appear), and `text` includes partial
+text Codex drops after a stop. The run's own first input is **not** in the list.
 
 Rules:
 
@@ -115,6 +122,29 @@ stays reconnectable for 5 minutes, then `404 RUN_NOT_FOUND`.
 
 Body `{tenantId, chatId}`. Returns `202 {status: "stopping"}` or, for a finished
 run, `200 {status}`. Repeating it is safe and never sends a second interrupt.
+
+### `POST /v1/runs/:runId/steer` — add a message to the running turn
+
+Body `{tenantId, chatId, input: {text, clientMessageId}}`, validated exactly
+like a run's start input. The message joins the turn that is already answering
+(`instant_interrupt` is pinned on, so the reply being written is cut off and the
+model answers again with the steer in context); `input.accepted` marks where it
+entered and the cut reply never completes.
+
+| Answer | Meaning |
+| --- | --- |
+| `202 {status: "queued"}` | Codex took the message into the running turn. |
+| `404 RUN_NOT_FOUND` | Unknown or expired run, or one belonging to another chat. |
+| `409 RUN_ENDED` | The run finished, is stopping, or Codex reports no active turn / a newer turn. Nothing was delivered; send it as a new run after `run.completed`. |
+| `409 RUN_CONFLICT` | Same `clientMessageId` with a different text, or equal to the run's own input. |
+| `409 STEER_LIMIT` | More than 20 steers on one run (a safety cap; the platform caps far lower). |
+| `503 STEER_UNKNOWN` | `turn/steer` went out and its answer was lost (RPC timeout, process exit). Never resend; `run.completed.items` shows whether it was used. |
+
+- **Idempotent per run on `clientMessageId`.** A repeat with the same text gets
+  the same answer, waiting on the first if it is still in flight.
+- **Before acceptance.** A steer that arrives while the run is `starting` waits
+  for acceptance, then steers; if the run finishes first it is `RUN_ENDED`.
+- Steers on one run are sent to Codex one at a time, in arrival order.
 
 ### `GET /v1/chats/:chatId/history?tenantId` — recovery read
 

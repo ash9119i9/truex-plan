@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import type { AdapterConfig } from "../config";
-import type { ChatRef, StartRunRequest } from "../contract";
+import type { ChatRef, SteerRequest, StartRunRequest } from "../contract";
 import { AdapterError } from "../errors";
-import { ChatRuntime, type HistoryTurn } from "./chat";
+import { ChatRuntime, type HistoryTurn, type SteerResult } from "./chat";
 import { isFinished, Run } from "./run";
 
 // Admission and bookkeeping for every chat this adapter serves: one active
@@ -63,6 +63,7 @@ export class RuntimeManager {
       request.chatId,
       hash,
       this.config.limits.bufferEvents,
+      request.input.clientMessageId,
     );
     this.runs.set(run.runId, run);
     const execution = chat.execute(run, request);
@@ -83,6 +84,17 @@ export class RuntimeManager {
     const run = this.getRun(runId, ref);
     if (!isFinished(run.status)) this.chats.get(key(ref))?.interrupt("stopped");
     return run;
+  }
+
+  // Sends a message into a run's running turn. The run must exist and belong
+  // to this chat (else RUN_NOT_FOUND); a finished run, or one with no active
+  // turn, is RUN_ENDED. Validation, idempotency and serialization live in the
+  // chat.
+  steerRun(runId: string, input: SteerRequest): Promise<SteerResult> {
+    const run = this.getRun(runId, input);
+    const chat = this.chats.get(key(input));
+    if (!chat || chat.activeRun !== run) throw new AdapterError("RUN_ENDED");
+    return chat.steer(input.input);
   }
 
   async history(ref: ChatRef): Promise<HistoryTurn[]> {

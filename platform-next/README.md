@@ -76,8 +76,11 @@ description, modelId, look?, tint?}`. 201 when created, 200 when a retry
     creates the chat. 202 when saved and handed to the assistant, 200 when a
     retry returns the same chat, message and run; 409 when the ID was used for
     different text.
-  - `POST /api/v1/chats/:id/messages`: `{clientMessageId, text}`. 409
-    `CHAT_BUSY` while a reply runs, 409 `CHAT_READ_ONLY` when the chat's
+  - `POST /api/v1/chats/:id/messages`: `{clientMessageId, text}`. Sent while
+    a reply runs, the message joins that reply (a steer): 202 with `steer`
+    and no `message`; the reply being written is cut short and the assistant
+    answers again. 409 `STEER_LIMIT` past 5 per reply, 409 `CHAT_BUSY` when
+    it could not be added, 409 `CHAT_READ_ONLY` when the chat's
     history, model or built-in agent is gone, or the chat is archived; 429
     over about 20 messages a minute. Text is 1–32 000 characters.
   - `GET /api/v1/chats/:id/runs/:runId/stream`: server-sent events for one

@@ -7,11 +7,18 @@ import {
   canSendDraft,
   chatParam,
   draftProblem,
+  dropSteer,
   MAX_MESSAGE_CHARS,
+  messageStateNote,
+  replyItems,
   sendFailure,
   sendsOnEnter,
+  steerText,
+  withLiveSteer,
+  isCutShort,
   withOlder,
   withSaved,
+  withSteer,
   exchangesOf,
   exchangeKey,
   fetchChat,
@@ -20,7 +27,9 @@ import {
   messageIds,
   outcomeNote,
   parseChat,
+  parseRun,
   parseSaved,
+  parseSteer,
   pendingRunId,
   pendingThread,
   readOnlyNote,
@@ -32,9 +41,12 @@ import {
   withChat,
   withPending,
   withReceipt,
+  type ChatMessage,
   type ChatRun,
   type ChatSummary,
   type ChatThread,
+  replyEnded,
+  sentSteerId,
 } from "../lib/tenant-chat.ts";
 
 const CHAT = "64b7f0c2a1b2c3d4e5f60c01";
@@ -213,10 +225,11 @@ test("a follow-up receipt without its agent keeps the chat's agent", async (t) =
   mockFetch(t, () => Response.json(replies.shift(), { status: 202 }));
   const open = parseChat(chat())!;
   const receipt = await sendMessage(open, "More", "client-id-4");
-  assert.deepEqual(receipt.chat.agent, open.agent);
-  assert.equal(receipt.chat.activeRunId, RUN);
+  assert.equal(receipt.kind, "send");
+  assert.deepEqual(receipt.receipt.chat.agent, open.agent);
+  assert.equal(receipt.receipt.chat.activeRunId, RUN);
   const gone = await sendMessage(open, "More", "client-id-4");
-  assert.equal(gone.chat.agent, null);
+  assert.equal(gone.kind === "send" && gone.receipt.chat.agent, null);
 });
 
 test("an unreadable receipt is an error, not a half-rendered chat", async (t) => {
@@ -351,8 +364,14 @@ test("receipts start or extend the open chat; exchanges group by run", () => {
   });
   const exchanges = exchangesOf(thread);
   assert.equal(exchanges.length, 2);
-  assert.equal(exchanges[0].replies[0].text, "assistant 2");
-  assert.equal(exchanges[1].user?.text, "user 3");
+  assert.equal(
+    exchanges[0].messages.find((m) => m.role === "assistant")?.text,
+    "assistant 2",
+  );
+  assert.equal(
+    exchanges[1].messages.find((m) => m.role === "user")?.text,
+    "user 3",
+  );
   // A receipt for another chat starts fresh rather than mixing transcripts.
   const other = withReceipt(thread, {
     ...receipt,
@@ -618,7 +637,10 @@ test("send failures say whether the message may have arrived", () => {
   assert.equal(lost.unknown, true);
   assert.match(lost.message, /won't be sent twice/);
   const busy = sendFailure(new ApiRequestError("x", 409, "CHAT_BUSY"));
-  assert.deepEqual([busy.unknown, busy.reload], [false, true]);
+  assert.deepEqual(
+    [busy.unknown, busy.reload, busy.untilReplyEnds],
+    [false, true, true],
+  );
   const limited = sendFailure(
     new ApiRequestError("Slow down.", 429, "RATE_LIMITED"),
   );
@@ -626,9 +648,376 @@ test("send failures say whether the message may have arrived", () => {
     message: "Slow down.",
     unknown: false,
     reload: false,
+    untilReplyEnds: false,
   });
+  // A message that may have arrived keeps its warning until it is resent.
+  assert.equal(lost.untilReplyEnds, false);
   assert.equal(
     sendFailure(new ApiRequestError("Archived.", 409, "CHAT_READ_ONLY")).reload,
     true,
   );
+});
+
+// ---- Steer while busy ----
+
+const CMID = "5b0e5f0e-8a4c-4f3e-9d0e-1f2a3b4c5d6e";
+
+test("a steer receipt is told apart from a send by its shape", async (t) => {
+  const steer = {
+    chat: chat({ activeRunId: RUN }),
+    run: run({
+      status: "running",
+      steers: [
+        {
+          clientMessageId: CMID,
+          text: "Also cover costs",
+          createdAt: "2026-10-19T10:00:01.000Z",
+        },
+      ],
+    }),
+    steer: {
+      clientMessageId: CMID,
+      text: "Also cover costs",
+      createdAt: "2026-10-19T10:00:01.000Z",
+    },
+    created: true,
+  };
+  mockFetch(t, () => Response.json(steer, { status: 202 }));
+  const open = parseChat(chat({ activeRunId: RUN }))!;
+  const receipt = await sendMessage(open, "Also cover costs", CMID);
+  assert.equal(receipt.kind, "steer");
+  if (receipt.kind !== "steer") throw new Error("unreachable");
+  assert.equal(receipt.receipt.steer.text, "Also cover costs");
+  assert.equal(receipt.receipt.run.steers?.[0].clientMessageId, CMID);
+});
+
+test("a steer receipt missing its run or steer is unreadable", async (t) => {
+  mockFetch(t, () =>
+    Response.json({ chat: chat(), steer: { clientMessageId: CMID } }),
+  );
+  await assert.rejects(
+    sendMessage(parseChat(chat())!, "x", CMID),
+    /unreadable/,
+  );
+});
+
+test("parseRun reads the steers it is carrying; absent once settled", () => {
+  const withSteers = parseRun(
+    run({
+      steers: [
+        {
+          clientMessageId: CMID,
+          text: "Steer",
+          createdAt: "2026-10-19T10:00:01.000Z",
+        },
+        { clientMessageId: "bad" },
+      ],
+    }),
+  )!;
+  assert.equal(withSteers.steers?.length, 1);
+  assert.equal(withSteers.steers?.[0].text, "Steer");
+  // No steers array (a settled run / an older platform) leaves the field off.
+  assert.equal("steers" in parseRun(run())!, false);
+});
+
+test("a steer joins the run on the open chat; a foreign one is ignored", () => {
+  const open: ChatThread = {
+    chat: parseChat(chat({ activeRunId: RUN }))!,
+    messages: [message(1, "user") as never],
+    runs: { [RUN]: parseRun(run({ status: "running" })) as never },
+    hasMore: false,
+  };
+  const receipt = {
+    chat: parseChat(chat({ activeRunId: RUN }))!,
+    run: parseRun(
+      run({
+        status: "running",
+        steers: [
+          {
+            clientMessageId: CMID,
+            text: "Steer",
+            createdAt: "2026-10-19T10:00:01.000Z",
+          },
+        ],
+      }),
+    )!,
+    steer: {
+      clientMessageId: CMID,
+      text: "Steer",
+      createdAt: "2026-10-19T10:00:01.000Z",
+    },
+  };
+  const next = withSteer(open, receipt)!;
+  assert.equal(next.runs[RUN]?.steers?.[0].clientMessageId, CMID);
+  // No new message is saved yet: the bubble is shown live until settle.
+  assert.deepEqual(
+    next.messages.map((m) => m.seq),
+    [1],
+  );
+  // A steer for a different chat leaves the thread unchanged.
+  assert.equal(
+    withSteer(open, { ...receipt, chat: { ...receipt.chat, id: RUN2 } }),
+    open,
+  );
+  assert.equal(withSteer(null, receipt), null);
+});
+
+test("the stream places a steer in order; the input event fixes it", () => {
+  let reply = liveReply(RUN, 0);
+  reply = applyStreamEvent(reply, {
+    type: "delta",
+    data: { itemId: "a", text: "First" },
+  });
+  // Optimistic: the bubble shows at the bottom before the input event.
+  reply = withLiveSteer(reply, { clientMessageId: CMID, text: "Steer me" });
+  assert.deepEqual(
+    reply.items.map((i) => i.type),
+    ["reply", "input"],
+  );
+  const optimistic = reply.items[1];
+  assert.equal(optimistic.type === "input" && optimistic.text, "Steer me");
+  // Not cut short yet: Codex has not read the steer, and it may be refused.
+  assert.equal(isCutShort(reply, 0), false);
+  // Adding the same steer twice changes nothing.
+  assert.equal(
+    withLiveSteer(reply, { clientMessageId: CMID, text: "Steer me" }),
+    reply,
+  );
+  // The input event fixes the steer at this point and keeps its text.
+  reply = applyStreamEvent(reply, {
+    type: "input",
+    data: { clientMessageId: CMID },
+  });
+  const fixed = reply.items[1];
+  assert.equal(fixed.type === "input" && fixed.clientMessageId, CMID);
+  assert.equal(fixed.type === "input" && fixed.text, "Steer me");
+  assert.equal(reply.items.length, 2);
+  // Codex read it, so the unfinished reply above was cut short.
+  assert.equal(isCutShort(reply, 0), true);
+  // The next reply streams below the steer.
+  reply = applyStreamEvent(reply, {
+    type: "delta",
+    data: { itemId: "b", text: "Second" },
+  });
+  assert.deepEqual(
+    reply.items.map((i) => i.type),
+    ["reply", "input", "reply"],
+  );
+  assert.equal(replyItems(reply).at(-1)?.text, "Second");
+});
+
+test("a follow-up just sent is the one the transcript scrolls to", () => {
+  let reply = liveReply(RUN, 0);
+  assert.equal(sentSteerId(null), null);
+  assert.equal(sentSteerId(reply), null);
+  reply = applyStreamEvent(reply, {
+    type: "delta",
+    data: { itemId: "a", text: "First" },
+  });
+  reply = withLiveSteer(reply, { clientMessageId: CMID, text: "Steer me" });
+  assert.equal(sentSteerId(reply), CMID);
+  // A second one sent before Codex reads the first is the newest.
+  const second = "6c1f6f1f-9b5d-4f4f-8e1f-2a3b4c5d6e7f";
+  const both = withLiveSteer(reply, { clientMessageId: second, text: "And" });
+  assert.equal(sentSteerId(both), second);
+  // Once Codex reads it, nothing is waiting to be scrolled to.
+  reply = applyStreamEvent(reply, {
+    type: "input",
+    data: { clientMessageId: CMID },
+  });
+  assert.equal(sentSteerId(reply), null);
+});
+
+test("an input event with no optimistic bubble still places the steer", () => {
+  let reply = liveReply(RUN, 0);
+  reply = applyStreamEvent(reply, {
+    type: "input",
+    data: { clientMessageId: CMID },
+  });
+  const item = reply.items[0];
+  assert.equal(item.type === "input" && item.clientMessageId, CMID);
+  // Its text is read from the run's steers when rendered.
+  assert.equal(item.type === "input" && item.text, null);
+  // A malformed input event changes nothing.
+  assert.equal(applyStreamEvent(reply, { type: "input", data: {} }), reply);
+});
+
+test("a snapshot rebuilds ordered reply and input items", () => {
+  let reply = liveReply(RUN, 0);
+  reply = applyStreamEvent(reply, {
+    type: "snapshot",
+    data: {
+      runId: RUN,
+      phase: "streaming",
+      items: [
+        { type: "reply", itemId: "a", text: "Cut text", completed: false },
+        { type: "input", clientMessageId: CMID },
+        { type: "reply", itemId: "b", text: "New answer", completed: true },
+        { type: "input", clientMessageId: "x" },
+      ],
+      usage: null,
+    },
+  });
+  assert.deepEqual(
+    reply.items.map((i) => i.type),
+    ["reply", "input", "reply", "input"],
+  );
+  const [cut, steer, answer] = reply.items;
+  assert.equal(cut.type === "reply" && cut.completed, false);
+  assert.equal(steer.type === "input" && steer.clientMessageId, CMID);
+  assert.equal(answer.type === "reply" && answer.completed, true);
+});
+
+test("completed items keep their reply/input order and completion", () => {
+  let reply = liveReply(RUN, 0);
+  reply = applyStreamEvent(reply, {
+    type: "completed",
+    data: {
+      status: "completed",
+      error: null,
+      items: [
+        { type: "reply", itemId: "a", text: "A", completed: true },
+        { type: "input", clientMessageId: CMID },
+        { type: "reply", itemId: "b", text: "B", completed: true },
+      ],
+      usage: null,
+    },
+  });
+  assert.equal(reply.phase, "settled");
+  assert.deepEqual(
+    replyItems(reply).map((r) => r.text),
+    ["A", "B"],
+  );
+});
+
+test("steerText reads a steer's text off its run", () => {
+  const r = parseRun(
+    run({
+      steers: [
+        {
+          clientMessageId: CMID,
+          text: "From the run",
+          createdAt: "2026-10-19T10:00:01.000Z",
+        },
+      ],
+    }),
+  )!;
+  assert.equal(steerText(r, CMID), "From the run");
+  assert.equal(steerText(r, "missing"), null);
+  assert.equal(steerText(null, CMID), null);
+});
+
+test("dropSteer removes only an optimistic steer, by id", () => {
+  let reply = liveReply(RUN, 0);
+  reply = withLiveSteer(reply, { clientMessageId: CMID, text: "Steer" });
+  assert.equal(reply.items.length, 1);
+  const dropped = dropSteer(reply, CMID);
+  assert.equal(dropped.items.length, 0);
+  // Dropping an id that is not there returns the same reply.
+  assert.equal(dropSteer(reply, "other"), reply);
+});
+
+test("message state notes label interrupted replies and not-sent steers", () => {
+  const interrupted = message(2, "assistant", RUN, { state: "interrupted" });
+  assert.equal(
+    messageStateNote(interrupted as unknown as ChatMessage),
+    "Cut short by your next message",
+  );
+  const notSent = message(3, "user", RUN, { state: "not_sent" });
+  assert.equal(messageStateNote(notSent as unknown as ChatMessage), "Not sent");
+  // A plain complete message has no note; states are role-specific.
+  assert.equal(
+    messageStateNote(message(1, "user") as unknown as ChatMessage),
+    null,
+  );
+  assert.equal(
+    messageStateNote(
+      message(2, "assistant", RUN, {
+        state: "not_sent",
+      }) as unknown as ChatMessage,
+    ),
+    null,
+  );
+});
+
+test("a run renders all its saved messages in seq order", () => {
+  const thread: ChatThread = {
+    chat: parseChat(chat())!,
+    messages: [
+      message(1, "user", RUN, { text: "First question" }) as never,
+      message(2, "assistant", RUN, {
+        state: "interrupted",
+        text: "Cut",
+      }) as never,
+      message(3, "user", RUN, { text: "Steer", state: "complete" }) as never,
+      message(4, "assistant", RUN, { text: "Answer" }) as never,
+      message(5, "user", RUN, {
+        text: "Never read",
+        state: "not_sent",
+      }) as never,
+    ],
+    runs: { [RUN]: parseRun(run()) as never },
+    hasMore: false,
+  };
+  const exchanges = exchangesOf(thread);
+  assert.equal(exchanges.length, 1);
+  assert.deepEqual(
+    exchanges[0].messages.map((m) => [m.seq, m.role, m.state]),
+    [
+      [1, "user", "complete"],
+      [2, "assistant", "interrupted"],
+      [3, "user", "complete"],
+      [4, "assistant", "complete"],
+      [5, "user", "not_sent"],
+    ],
+  );
+});
+
+test("STEER_LIMIT keeps the draft and does not reload", () => {
+  const limit = sendFailure(
+    new ApiRequestError(
+      "Too many follow-ups on this reply.",
+      409,
+      "STEER_LIMIT",
+    ),
+  );
+  assert.deepEqual(limit, {
+    message: "Too many follow-ups on this reply.",
+    unknown: false,
+    reload: false,
+    untilReplyEnds: true,
+  });
+  // A code-less STEER_LIMIT still gets a sensible default message.
+  const bare = sendFailure(new ApiRequestError("", 409, "STEER_LIMIT"));
+  assert.match(bare.message, /too many follow-ups/i);
+  assert.equal(bare.reload, false);
+});
+
+test("a refusal about the running reply ends with that reply", () => {
+  const busy = { chatId: CHAT, runId: RUN };
+  // The reply was saved, or the next one replaced it.
+  assert.equal(replyEnded(busy, { chatId: CHAT, runId: null }), true);
+  assert.equal(replyEnded(busy, { chatId: CHAT, runId: "run-2" }), true);
+  // Still the same reply.
+  assert.equal(replyEnded(busy, { chatId: CHAT, runId: RUN }), false);
+  // A stale idle copy that a reload shows as busy is not an ending.
+  assert.equal(
+    replyEnded({ chatId: CHAT, runId: null }, { chatId: CHAT, runId: RUN }),
+    false,
+  );
+  // Opening another chat, or none, ends nothing in this one.
+  assert.equal(replyEnded(busy, { chatId: "other", runId: null }), false);
+  assert.equal(replyEnded(busy, null), false);
+  assert.equal(replyEnded(null, { chatId: CHAT, runId: null }), false);
+});
+
+test("a resend reuses no earlier intent, minting a new id", () => {
+  let n = 0;
+  const ids = messageIds(() => `id-${++n}`);
+  // The original send of this text.
+  assert.equal(ids.for(CHAT, "Try again"), "id-1");
+  // A resend: a fresh intent (a distinct target key), so a new id.
+  ids.reset();
+  assert.equal(ids.for(`resend:${CHAT}:1`, "Try again"), "id-2");
+  assert.notEqual("id-1", "id-2");
 });

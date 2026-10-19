@@ -58,8 +58,10 @@ export const TITLE_CHARS = 60;
 export const MAX_TITLE_CHARS = 120;
 export const HISTORY_PAGE = 50;
 export const CHAT_LIST_PAGE = 30;
-// Sends per member per minute, across their chats.
+// Sends per member per minute, across their chats. Steers count too.
 export const SENDS_PER_MINUTE = 20;
+// Messages a member can add to one reply while it is being written.
+export const STEERS_PER_RUN = 5;
 // The base prompt version every user agent's prompt is built from.
 export const PLATFORM_INSTRUCTIONS_VERSION = "v2";
 
@@ -106,7 +108,12 @@ export interface ChatDoc {
 export type MessageRole = "user" | "assistant";
 // complete: saved in full; stopped: the user stopped the reply, partial text
 // kept; failed: the reply failed, partial text (if any) kept.
-export type MessageState = "complete" | "stopped" | "failed";
+// interrupted: a reply cut short by the member's next message (a steer); the
+// partial text is kept but the model never saw it.
+// not_sent: a message the member added to a reply (a steer) that the
+// assistant never read.
+export type MessageState =
+  "complete" | "stopped" | "failed" | "interrupted" | "not_sent";
 
 export interface MessageDoc {
   _id: ObjectId;
@@ -154,6 +161,16 @@ export interface RunTimings {
   completedAt?: Date;
 }
 
+// A message the member added to a reply while it was being written. Saved on
+// the run before it goes to the runtime; settle turns it into a message, in
+// the place the runtime used it, or `not_sent`.
+export interface SteerDoc {
+  clientMessageId: string;
+  text: string;
+  textHash: string;
+  createdAt: Date;
+}
+
 export interface RunDoc {
   _id: ObjectId;
   chatId: ObjectId;
@@ -167,6 +184,8 @@ export interface RunDoc {
   usage?: RunUsage;
   timings: RunTimings;
   stopRequested?: boolean;
+  // At most STEERS_PER_RUN, in arrival order.
+  steers?: SteerDoc[];
   createdAt: Date;
   updatedAt: Date;
 }

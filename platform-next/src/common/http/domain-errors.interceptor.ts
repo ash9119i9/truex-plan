@@ -17,6 +17,7 @@ const HTTP: Record<DomainErrorCode, { status: number; code: ErrorCode }> = {
   MODEL_UNAVAILABLE: { status: 422, code: "MODEL_UNAVAILABLE" },
   STALE_REVISION: { status: 409, code: "STALE_REVISION" },
   CHAT_BUSY: { status: 409, code: "CHAT_BUSY" },
+  STEER_LIMIT: { status: 409, code: "STEER_LIMIT" },
   CHAT_READ_ONLY: { status: 409, code: "CHAT_READ_ONLY" },
   RATE_LIMITED: { status: 429, code: "RATE_LIMITED" },
   UNAVAILABLE: { status: 503, code: "UNAVAILABLE" },

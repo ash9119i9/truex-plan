@@ -63,7 +63,14 @@ export class Harness {
     await this.stopServer();
     await this.model.close();
     if (this.ownsState)
-      await rm(this.stateDir, { recursive: true, force: true });
+      // Retried: a git child Codex spawned (plugin sync) can still be
+      // writing under the home directory for a moment after Codex exits.
+      await rm(this.stateDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
   }
 
   body(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -108,6 +115,14 @@ export class Harness {
 
   stop(runId: string, chat = { tenantId: "tenant1", chatId: "chat1" }) {
     return this.post(`/v1/runs/${runId}/stop`, chat);
+  }
+
+  steer(
+    runId: string,
+    input: { text: string; clientMessageId: string },
+    chat = { tenantId: "tenant1", chatId: "chat1" },
+  ) {
+    return this.post(`/v1/runs/${runId}/steer`, { ...chat, input });
   }
 
   private async listen(): Promise<void> {

@@ -6,7 +6,7 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { RuntimeLimits } from "./config";
-import { id, parseChatRef, parseStartRun } from "./contract";
+import { id, parseChatRef, parseSteer, parseStartRun } from "./contract";
 import { AdapterError } from "./errors";
 import type { Logger, RuntimeManager } from "./runtime/manager";
 import type { Run, RunEvent } from "./runtime/run";
@@ -77,6 +77,13 @@ export function createAdapterServer(options: ServerOptions): Server {
         return sendJson(res, finished ? 200 : 202, {
           status: finished ? run.status : "stopping",
         });
+      }
+      if (req.method === "POST" && parts[3] === "steer") {
+        const result = await options.manager.steerRun(
+          runId,
+          parseSteer(await readJson(req)),
+        );
+        return sendJson(res, 202, result);
       }
     }
     if (

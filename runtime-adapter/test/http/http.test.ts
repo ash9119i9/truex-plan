@@ -85,4 +85,43 @@ describe("HTTP boundary", () => {
     const stop = await h.stop("nope", { tenantId: "t", chatId: "c" });
     assert.equal(stop.status, 404);
   });
+
+  test("steering validates its body like a start input", async () => {
+    const needsAuth = await h.fetch("/v1/runs/nope/steer", {
+      method: "POST",
+      headers: { authorization: "Bearer wrong" },
+      body: JSON.stringify({
+        tenantId: "t",
+        chatId: "c",
+        input: { text: "hi", clientMessageId: "m" },
+      }),
+    });
+    assert.equal(needsAuth.status, 401);
+    // Unknown field, then blank text: both refused before any Codex process.
+    const unknown = await h.post("/v1/runs/nope/steer", {
+      tenantId: "t",
+      chatId: "c",
+      input: { text: "hi", clientMessageId: "m" },
+      runId: "x",
+    });
+    assert.equal(unknown.status, 400);
+    assert.equal(await code(unknown), "INVALID_REQUEST");
+    const blank = await h.post("/v1/runs/nope/steer", {
+      tenantId: "t",
+      chatId: "c",
+      input: { text: "   ", clientMessageId: "m" },
+    });
+    assert.equal(blank.status, 400);
+    assert.equal(h.manager.stats.processes, 0);
+  });
+
+  test("steering an unknown or another chat's run is RUN_NOT_FOUND", async () => {
+    const res = await h.steer(
+      "nope",
+      { text: "hi", clientMessageId: "m" },
+      { tenantId: "t", chatId: "c" },
+    );
+    assert.equal(res.status, 404);
+    assert.equal(await code(res), "RUN_NOT_FOUND");
+  });
 });

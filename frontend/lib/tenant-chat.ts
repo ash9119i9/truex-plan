@@ -18,7 +18,11 @@ export const SLOW_REPLY_MS = 15_000;
 
 export type ReadOnlyReason =
   "THREAD_LOST" | "MODEL_UNAVAILABLE" | "AGENT_UNAVAILABLE";
-export type MessageState = "complete" | "stopped" | "failed";
+// "interrupted": an assistant reply cut short by the member's next message
+// (its partial text is kept but the model never saw it). "not_sent": a user
+// message added to a reply that the assistant never read.
+export type MessageState =
+  "complete" | "stopped" | "failed" | "interrupted" | "not_sent";
 export type RunStatus =
   "accepted" | "running" | "completed" | "stopped" | "failed" | "uncertain";
 export type Phase =
@@ -72,6 +76,14 @@ export interface RunUsage {
   reasoning: number;
 }
 
+// A message the member added to a running reply (a steer). Present on a run
+// only while it is unsettled, so a reload shows the steers it is carrying.
+export interface SteerView {
+  clientMessageId: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface ChatRun {
   id: string;
   status: RunStatus;
@@ -83,6 +95,8 @@ export interface ChatRun {
     firstTextAt?: string;
     completedAt?: string;
   };
+  // The steers queued on this run, in arrival order; absent once settled.
+  steers?: SteerView[];
 }
 
 // One open chat: its summary and the loaded, contiguous tail of messages.
@@ -99,6 +113,22 @@ export interface SendReceipt {
   run: ChatRun;
 }
 
+// The answer to a message sent to a chat that is still replying: the steer
+// joined the running turn rather than starting a new one. It has `steer` and
+// no `message`, and its run is the one already active.
+export interface SteerReceipt {
+  chat: ChatSummary;
+  run: ChatRun;
+  steer: SteerView;
+}
+
+// A POST to a busy chat answers with either: a steer joined the active run,
+// or a normal send that started a new run (the platform's fallback when the
+// reply had just ended).
+export type MessageReceipt =
+  | { kind: "steer"; receipt: SteerReceipt }
+  | { kind: "send"; receipt: SendReceipt };
+
 const WIRE_ID = /^[0-9a-f]{24}$/;
 const SOURCES: readonly AgentSource[] = ["builtin", "personal", "tenant"];
 const TINTS: readonly AgentTint[] = ["ice", "mint", "butter", "peach", "lilac"];
@@ -107,7 +137,13 @@ const READ_ONLY: readonly ReadOnlyReason[] = [
   "MODEL_UNAVAILABLE",
   "AGENT_UNAVAILABLE",
 ];
-const STATES: readonly MessageState[] = ["complete", "stopped", "failed"];
+const STATES: readonly MessageState[] = [
+  "complete",
+  "stopped",
+  "failed",
+  "interrupted",
+  "not_sent",
+];
 const RUN_STATUSES: readonly RunStatus[] = [
   "accepted",
   "running",
@@ -239,6 +275,15 @@ export function parseRunError(value: unknown): RunError | null {
   return { code, message, retryable: e.retryable === true };
 }
 
+export function parseSteer(value: unknown): SteerView | null {
+  const s = record(value);
+  const clientMessageId = str(s?.clientMessageId, 64);
+  const text = str(s?.text, 1_000_000);
+  const createdAt = date(s?.createdAt);
+  if (!s || !clientMessageId || text === null || !createdAt) return null;
+  return { clientMessageId, text, createdAt };
+}
+
 export function parseRun(value: unknown): ChatRun | null {
   const r = record(value);
   const runId = id(r?.id);
@@ -251,12 +296,21 @@ export function parseRun(value: unknown): ChatRun | null {
     const at = date(t[key]);
     if (at) timings[key] = at;
   }
+  // `steers` is present only while the run is unsettled; a missing array (a
+  // settled run, an older platform) leaves the field off rather than empty.
+  const steers = Array.isArray(r.steers)
+    ? r.steers.flatMap((s) => {
+        const parsed = parseSteer(s);
+        return parsed ? [parsed] : [];
+      })
+    : null;
   return {
     id: runId,
     status,
     error: parseRunError(r.error),
     usage: parseUsage(r.usage),
     timings,
+    ...(steers ? { steers } : {}),
   };
 }
 
@@ -278,18 +332,39 @@ function unreadable(): never {
 
 // A follow-up's receipt may leave the agent out: it has not changed, and
 // the chat it was sent in already has it.
-function receiptOf(data: unknown, sentIn?: ChatSummary): SendReceipt {
-  const d = record(data);
-  const raw = record(d?.chat);
+function receiptChat(data: Raw | null, sentIn?: ChatSummary): ChatSummary {
+  const raw = record(data?.chat);
   const parsed = parseChat(raw);
   const chat =
     parsed && raw && !("agent" in raw) && sentIn?.id === parsed.id
       ? { ...parsed, agent: sentIn.agent }
       : parsed;
+  if (!chat) unreadable();
+  return chat;
+}
+
+function receiptOf(data: unknown, sentIn?: ChatSummary): SendReceipt {
+  const d = record(data);
+  const chat = receiptChat(d, sentIn);
   const message = parseMessage(d?.message);
   const run = parseRun(d?.run);
-  if (!chat || !message || !run) unreadable();
+  if (!message || !run) unreadable();
   return { chat, message, run };
+}
+
+// A message sent to a busy chat: a steer receipt (has `steer`, no `message`)
+// or a normal send for a new run. The two are told apart by the shape the
+// platform returned, not by status, so a replay (200) is read the same way.
+function messageReceiptOf(data: unknown, sentIn?: ChatSummary): MessageReceipt {
+  const d = record(data);
+  if (d && record(d.steer)) {
+    const chat = receiptChat(d, sentIn);
+    const run = parseRun(d.run);
+    const steer = parseSteer(d.steer);
+    if (!run || !steer) unreadable();
+    return { kind: "steer", receipt: { chat, run, steer } };
+  }
+  return { kind: "send", receipt: receiptOf(data, sentIn) };
 }
 
 const chatPath = (chatId: string, rest = "") =>
@@ -344,12 +419,14 @@ export const startChat = async (
 ): Promise<SendReceipt> =>
   receiptOf(await api("/api/v1/chats", { agentId, clientMessageId, text }));
 
+// A message to an open chat. The platform decides whether it starts a new
+// run or steers the one still replying, so the receipt is one or the other.
 export const sendMessage = async (
   chat: ChatSummary,
   text: string,
   clientMessageId: string,
-): Promise<SendReceipt> =>
-  receiptOf(
+): Promise<MessageReceipt> =>
+  messageReceiptOf(
     await api(chatPath(chat.id, "/messages"), { clientMessageId, text }),
     chat,
   );
@@ -413,6 +490,18 @@ export function withReceipt(
       ? { ...thread, chat: receipt.chat }
       : { chat: receipt.chat, messages: [], runs: {}, hasMore: false };
   return withRun(withMessages(base, [receipt.message]), receipt.run);
+}
+
+// A steer receipt applied to the open chat: the run gains the steer (so a
+// reload still shows it), but no message is saved yet — the steer bubble is
+// shown from the live reply until the run settles. A steer for a chat not
+// open here is ignored.
+export function withSteer(
+  thread: ChatThread | null,
+  receipt: SteerReceipt,
+): ChatThread | null {
+  if (!thread || thread.chat.id !== receipt.chat.id) return thread;
+  return withRun({ ...thread, chat: receipt.chat }, receipt.run);
 }
 
 // ---- A message on its way ----
@@ -481,11 +570,49 @@ export function pendingThread(
   return withPending({ chat, messages: [], runs: {}, hasMore: false }, pending);
 }
 
+// One ordered entry of a live reply, in the order Codex produced it: a
+// reply's text, or a steer the member slipped into the running turn. A
+// steer carries the draft text it was sent with so its bubble shows at once
+// (optimistic); once the `input` event fixes its place `text` is the same,
+// and after a reconnect it is rebuilt from the run's `steers` (`text: null`,
+// looked up by clientMessageId when rendered). `placed` is false only for
+// the optimistic bubble: Codex has not read that steer yet.
+export type LiveReplyItem =
+  | { type: "reply"; itemId: string; text: string; completed: boolean }
+  | {
+      type: "input";
+      clientMessageId: string;
+      text: string | null;
+      placed: boolean;
+    };
+
+// Only the reply items of a live reply, in order.
+export const replyItems = (
+  reply: LiveReply,
+): Array<{ itemId: string; text: string; completed: boolean }> =>
+  reply.items.flatMap((i) => (i.type === "reply" ? [i] : []));
+
+// The follow-up this tab just sent into the reply, until Codex reads it:
+// the transcript scrolls to it as it does to a sent message.
+export const sentSteerId = (reply: LiveReply | null): string | null => {
+  const sent = reply?.items.findLast((i) => i.type === "input" && !i.placed);
+  return sent?.type === "input" ? sent.clientMessageId : null;
+};
+
+// A steer's text, read from the run it was queued on. An input item placed
+// by the stream (or rebuilt from a snapshot) carries no text of its own, so
+// its bubble is filled from the run's `steers`.
+export const steerText = (
+  run: ChatRun | null,
+  clientMessageId: string,
+): string | null =>
+  run?.steers?.find((s) => s.clientMessageId === clientMessageId)?.text ?? null;
+
 // What the screen shows for one reply while it is not yet saved.
 export interface LiveReply {
   runId: string;
   phase: Phase;
-  items: Array<{ itemId: string; text: string }>;
+  items: LiveReplyItem[];
   usage: RunUsage | null;
   // The outcome is known (completed event) but not yet saved.
   outcome: { status: RunStatus; error: RunError | null } | null;
@@ -506,13 +633,79 @@ export function liveReply(runId: string, now = Date.now()): LiveReply {
   };
 }
 
-function parseItems(value: unknown): LiveReply["items"] {
+// snapshot/completed items are an ordered list of replies and inputs; a
+// malformed entry is dropped. An input placed by the stream has no text
+// here (it is read from the run's steers when rendered).
+function parseItems(value: unknown): LiveReplyItem[] {
   return list(value, (v) => {
     const item = record(v);
-    const itemId = str(item?.itemId, 200);
-    const text = str(item?.text, 1_000_000);
-    return item && itemId && text !== null ? { itemId, text } : null;
+    if (!item) return null;
+    if (item.type === "input") {
+      const clientMessageId = str(item.clientMessageId, 64);
+      return clientMessageId
+        ? { type: "input", clientMessageId, text: null, placed: true }
+        : null;
+    }
+    const itemId = str(item.itemId, 200);
+    const text = str(item.text, 1_000_000);
+    if (!itemId || text === null) return null;
+    return { type: "reply", itemId, text, completed: item.completed === true };
   });
+}
+
+// A steer shown at the bottom of the running reply the moment it is sent,
+// before the stream reports where Codex placed it. If the stream already
+// has an entry for this clientMessageId (a reconnect) nothing is added.
+export function withLiveSteer(
+  reply: LiveReply,
+  steer: { clientMessageId: string; text: string },
+): LiveReply {
+  if (
+    reply.items.some(
+      (i) => i.type === "input" && i.clientMessageId === steer.clientMessageId,
+    )
+  )
+    return reply;
+  return {
+    ...reply,
+    items: [
+      ...reply.items,
+      {
+        type: "input",
+        clientMessageId: steer.clientMessageId,
+        text: steer.text,
+        placed: false,
+      },
+    ],
+  };
+}
+
+// The reply at `index` was cut short by a steer: it never completed and a
+// steer Codex read came after it. An optimistic steer cuts nothing yet; it
+// may still be refused.
+export function isCutShort(reply: LiveReply, index: number): boolean {
+  const item = reply.items[index];
+  return (
+    item?.type === "reply" &&
+    !item.completed &&
+    item.text.length > 0 &&
+    reply.items
+      .slice(index + 1)
+      .some((later) => later.type === "input" && later.placed)
+  );
+}
+
+// Removes an optimistic steer from a live reply: used when the steer failed
+// to reach the running turn, or the platform turned it into a new run, so
+// its bubble does not linger.
+export function dropSteer(
+  reply: LiveReply,
+  clientMessageId: string,
+): LiveReply {
+  const items = reply.items.filter(
+    (i) => !(i.type === "input" && i.clientMessageId === clientMessageId),
+  );
+  return items.length === reply.items.length ? reply : { ...reply, items };
 }
 
 export type StreamEvent =
@@ -520,6 +713,7 @@ export type StreamEvent =
   | { type: "status"; data: unknown }
   | { type: "delta"; data: unknown }
   | { type: "item"; data: unknown }
+  | { type: "input"; data: unknown }
   | { type: "usage"; data: unknown }
   | { type: "completed"; data: unknown }
   | { type: "save_failed"; data: unknown };
@@ -552,17 +746,59 @@ export function applyStreamEvent(
       const itemId = str(data?.itemId, 200);
       const text = str(data?.text, 1_000_000);
       if (!itemId || text === null) return reply;
-      const index = reply.items.findIndex((i) => i.itemId === itemId);
+      const index = reply.items.findIndex(
+        (i) => i.type === "reply" && i.itemId === itemId,
+      );
       const items = [...reply.items];
-      if (index < 0) items.push({ itemId, text });
-      else
-        items[index] = {
+      if (index < 0)
+        items.push({
+          type: "reply",
           itemId,
-          text: event.type === "delta" ? items[index].text + text : text,
+          text,
+          completed: event.type === "item",
+        });
+      else {
+        const current = items[index] as Extract<
+          LiveReplyItem,
+          { type: "reply" }
+        >;
+        items[index] = {
+          type: "reply",
+          itemId,
+          text: event.type === "delta" ? current.text + text : text,
+          // `item` means that reply completed; a `delta` never un-completes it.
+          completed: event.type === "item" || current.completed,
         };
+      }
       return {
         ...reply,
         items,
+        phase: reply.phase === "waiting" ? "streaming" : reply.phase,
+      };
+    }
+    case "input": {
+      // A steer entered the running turn: fix it at this point in the order.
+      // An optimistic bubble for it is moved here (keeping its text); a
+      // repeat (a reconnect delivering it again) changes nothing.
+      const clientMessageId = str(data?.clientMessageId, 64);
+      if (!clientMessageId) return reply;
+      const existing = reply.items.find(
+        (i) => i.type === "input" && i.clientMessageId === clientMessageId,
+      ) as Extract<LiveReplyItem, { type: "input" }> | undefined;
+      const rest = reply.items.filter(
+        (i) => !(i.type === "input" && i.clientMessageId === clientMessageId),
+      );
+      return {
+        ...reply,
+        items: [
+          ...rest,
+          {
+            type: "input",
+            clientMessageId,
+            text: existing?.text ?? null,
+            placed: true,
+          },
+        ],
         phase: reply.phase === "waiting" ? "streaming" : reply.phase,
       };
     }
@@ -674,7 +910,28 @@ export interface SendFailure {
   unknown: boolean;
   // The chat changed underneath (busy, read-only, gone): read it again.
   reload: boolean;
+  // A refusal about the running reply (busy, too many follow-ups): it no
+  // longer applies once that reply ends, so the composer drops it then.
+  untilReplyEnds: boolean;
 }
+
+// The open chat's running reply, as last seen.
+export interface RunningReply {
+  chatId: string;
+  runId: string | null;
+}
+
+// True when the reply that was running in this chat has ended (or another
+// has replaced it). A chat that was idle, or a different chat, is not an
+// ending: a stale idle copy that a reload shows as busy must not clear a
+// "still answering" refusal.
+export const replyEnded = (
+  before: RunningReply | null,
+  after: RunningReply | null,
+): boolean =>
+  !!before?.runId &&
+  before.chatId === after?.chatId &&
+  before.runId !== after.runId;
 
 // What the composer says when a send fails.
 export function sendFailure(error: unknown): SendFailure {
@@ -684,6 +941,7 @@ export function sendFailure(error: unknown): SendFailure {
         "Your message may not have reached Truex. Send it again: if it already arrived, it won't be sent twice.",
       unknown: true,
       reload: false,
+      untilReplyEnds: false,
     };
   const e = error as { code?: unknown; message?: unknown };
   const message =
@@ -697,20 +955,35 @@ export function sendFailure(error: unknown): SendFailure {
           "This chat is still answering. Wait for the reply, or stop it.",
         unknown: false,
         reload: true,
+        untilReplyEnds: true,
       };
     case "CHAT_READ_ONLY":
     case "NOT_FOUND":
-      return { message, unknown: false, reload: true };
+      return { message, unknown: false, reload: true, untilReplyEnds: false };
+    case "STEER_LIMIT":
+      // Too many steers on one reply. The draft is kept so the member can
+      // send it as a new message once the reply ends; no reload is needed.
+      return {
+        message:
+          typeof e.message === "string" && e.message
+            ? e.message
+            : "This reply already has too many follow-ups.",
+        unknown: false,
+        reload: false,
+        untilReplyEnds: true,
+      };
     default:
-      return { message, unknown: false, reload: false };
+      return { message, unknown: false, reload: false, untilReplyEnds: false };
   }
 }
 
-// One user message and what answered it, in the order shown.
+// One run and all of its saved messages, in seq order. A run can hold more
+// than the first user message and one reply now: a steer adds another user
+// message, and a steered turn can write several replies, interleaved in the
+// order Codex produced them.
 export interface Exchange {
   runId: string;
-  user: ChatMessage | null;
-  replies: ChatMessage[];
+  messages: ChatMessage[];
   run: ChatRun | null;
 }
 
@@ -722,26 +995,26 @@ export function exchangesOf(thread: ChatThread): Exchange[] {
     if (!exchange) {
       exchange = {
         runId: message.runId,
-        user: null,
-        replies: [],
+        messages: [],
         run: thread.runs[message.runId] ?? null,
       };
       byRun.set(message.runId, exchange);
       exchanges.push(exchange);
     }
-    if (message.role === "user") exchange.user = message;
-    else exchange.replies.push(message);
+    exchange.messages.push(message);
   }
   return exchanges;
 }
 
-// The row an exchange is rendered as: its message's browser ID when it has
-// one, so a message shown on Send keeps its row (and the reply under it)
-// when the saved copy replaces it.
-export const exchangeKey = (exchange: Exchange): string =>
-  exchange.user?.clientMessageId
-    ? `message:${exchange.user.clientMessageId}`
+// The row an exchange is rendered as: its first user message's browser ID
+// when it has one, so a message shown on Send keeps its row (and the reply
+// under it) when the saved copy replaces it.
+export const exchangeKey = (exchange: Exchange): string => {
+  const firstUser = exchange.messages.find((m) => m.role === "user");
+  return firstUser?.clientMessageId
+    ? `message:${firstUser.clientMessageId}`
     : exchange.runId;
+};
 
 const SETTLED: readonly RunStatus[] = ["completed", "stopped", "failed"];
 export const isSettled = (status: RunStatus) => SETTLED.includes(status);
@@ -781,6 +1054,18 @@ export function outcomeNote(
     return error?.message ?? "This reply failed. Try again.";
   if (status === "uncertain")
     return "Checking whether this message reached the assistant…";
+  return null;
+}
+
+// The quiet label under a saved message whose state is not the plain
+// `complete`. An assistant reply `interrupted` by the member's next message
+// keeps its partial text under this note; a `not_sent` user message was
+// added to a reply the assistant never read, and offers a Resend.
+export function messageStateNote(message: ChatMessage): string | null {
+  if (message.role === "assistant" && message.state === "interrupted")
+    return "Cut short by your next message";
+  if (message.role === "user" && message.state === "not_sent")
+    return "Not sent";
   return null;
 }
 

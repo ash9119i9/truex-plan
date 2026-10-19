@@ -33,6 +33,7 @@ import {
   pendingThread,
   readOnlyNote,
   renameChat,
+  replyEnded,
   sendFailure,
   sendMessage,
   startChat,
@@ -42,10 +43,14 @@ import {
   withPending,
   withReceipt,
   withSaved,
+  withSteer,
+  withLiveSteer,
+  dropSteer,
   type ChatSummary,
   type ChatThread,
   type LiveReply,
   type PendingSend,
+  type RunningReply,
   type SendFailure,
 } from "@/lib/tenant-chat";
 import { followRun } from "@/lib/tenant-chat-stream";
@@ -392,23 +397,50 @@ export function TenantChat() {
   const draftKey = openId ?? NEW;
   const draft = drafts[draftKey] ?? "";
 
-  const send = async () => {
+  const send = () => {
     const key = openId ?? NEW;
-    const text = drafts[key] ?? "";
+    void dispatch(key, drafts[key] ?? "");
+  };
+
+  // Sends a message's text again as a brand-new message (a not-sent steer's
+  // Resend): a fresh intent, so it gets a new clientMessageId and goes
+  // through the normal send path.
+  const resend = (text: string) => {
+    ids.reset();
+    void dispatch(openId ?? NEW, text, true);
+  };
+
+  const dispatch = async (key: string, text: string, resent = false) => {
     if (sendingRef.current || !canSendDraft(text)) return;
     const chat = openThread?.chat ?? null;
-    if (openId && (!chat || chat.activeRunId || readOnlyNote(chat))) return;
+    // A reply in progress is steered, not blocked; only a read-only or
+    // missing chat refuses.
+    if (openId && (!chat || readOnlyNote(chat))) return;
     const agent = openId ? null : selected;
     if (!openId && !agent?.available) return;
     sendingRef.current = true;
     setSending(true);
     setFailure(null);
     const target = openId ?? `new:${agent!.id}`;
-    const clientMessageId = ids.for(target, text);
+    // A resend reuses no earlier intent; its id is the one just minted.
+    const clientMessageId = resent
+      ? ids.for(`resend:${target}:${Date.now()}`, text)
+      : ids.for(target, text);
     const since = Date.now();
-    // The message leaves the composer and shows in the chat at once. The
-    // composer is read-only meanwhile; a failure puts the text back.
-    setPending({ key, text, clientMessageId, since, agent });
+    // A message into a running reply shows at the bottom of that reply at
+    // once (a steer); otherwise it shows as the next message in the chat.
+    // The composer stays usable either way; a failure puts the text back.
+    const steering = !!(openId && chat?.activeRunId);
+    if (steering)
+      setLive((current) =>
+        current?.chatId === openId && current.reply.runId === chat!.activeRunId
+          ? {
+              ...current,
+              reply: withLiveSteer(current.reply, { clientMessageId, text }),
+            }
+          : current,
+      );
+    else setPending({ key, text, clientMessageId, since, agent });
     setDrafts((all) => {
       const { [key]: _sent, ...rest } = all;
       return rest;
@@ -416,24 +448,58 @@ export function TenantChat() {
     try {
       const receipt = openId
         ? await sendMessage(chat!, text, clientMessageId)
-        : await startChat(agent!.id, text, clientMessageId);
+        : {
+            kind: "send" as const,
+            receipt: await startChat(agent!.id, text, clientMessageId),
+          };
       ids.reset();
-      setChats((list) => withChat(list, receipt.chat));
+      setChats((list) => withChat(list, receipt.receipt.chat));
       // The person moved to another chat meanwhile: the reply runs anyway
       // and the list shows it.
       if (openRef.current !== openId) return;
-      const chatId = receipt.chat.id;
+      if (receipt.kind === "steer") {
+        // The steer joined the running turn: the run carries it (so a reload
+        // shows it) and the optimistic bubble stays until `input` fixes it.
+        const { chat: steerChat, run, steer } = receipt.receipt;
+        setThread((current) =>
+          withSteer(current?.chat.id === steerChat.id ? current : null, {
+            chat: steerChat,
+            run,
+            steer,
+          }),
+        );
+        setOpened({ state: "ready" });
+        return;
+      }
+      const sent = receipt.receipt;
+      const chatId = sent.chat.id;
       if (!openId) navigate(chatId, "replace");
+      // A steer the platform turned into a new run (its fallback): the
+      // optimistic steer bubble belongs to the old reply, which is settling;
+      // the saved messages will carry it, so drop it here.
+      if (steering)
+        setLive((current) =>
+          current?.chatId === openId
+            ? { ...current, reply: dropSteer(current.reply, clientMessageId) }
+            : current,
+        );
       setThread((current) =>
-        withReceipt(current?.chat.id === chatId ? current : null, receipt),
+        withReceipt(current?.chat.id === chatId ? current : null, sent),
       );
       setOpened({ state: "ready" });
-      if (receipt.chat.activeRunId === receipt.run.id)
-        setLive({ chatId, reply: liveReply(receipt.run.id, since) });
+      if (sent.chat.activeRunId === sent.run.id)
+        setLive({ chatId, reply: liveReply(sent.run.id, since) });
       // A repeat of a message answered meanwhile: show what was saved.
       else void load(chatId, true);
     } catch (error) {
       setDrafts((all) => (all[key] ? all : { ...all, [key]: text }));
+      // An optimistic steer that never reached the turn is removed.
+      if (steering)
+        setLive((current) =>
+          current?.chatId === openId
+            ? { ...current, reply: dropSteer(current.reply, clientMessageId) }
+            : current,
+        );
       const failed = sendFailure(error);
       if (openRef.current === openId) {
         setFailure({ key, failure: failed });
@@ -539,6 +605,23 @@ export function TenantChat() {
     if (shownFailure && !shownFailure.unknown) setFailure(null);
   };
 
+  // A refusal about the running reply ("still answering", too many
+  // follow-ups) is dropped when that reply ends: the draft can be sent now.
+  const openChatId = openThread?.chat.id ?? null;
+  const openRunId = openThread?.chat.activeRunId ?? null;
+  const lastRunning = useRef<RunningReply | null>(null);
+  useEffect(() => {
+    const now = openChatId ? { chatId: openChatId, runId: openRunId } : null;
+    const before = lastRunning.current;
+    lastRunning.current = now;
+    if (!now || !replyEnded(before, now)) return;
+    setFailure((current) =>
+      current?.key === now.chatId && current.failure.untilReplyEnds
+        ? null
+        : current,
+    );
+  }, [openChatId, openRunId]);
+
   // A message on its way shows in the chat it was sent from: added to the
   // open chat, or as the start of the chat a first message creates.
   // Memoized: the transcript re-renders only when these change.
@@ -569,7 +652,7 @@ export function TenantChat() {
             hero
             value={draft}
             onChange={setDraft}
-            onSend={() => void send()}
+            onSend={send}
             onStop={() => undefined}
             agentName={selected?.name ?? null}
             busy={false}
@@ -631,6 +714,7 @@ export function TenantChat() {
           olderError={olderError}
           onLoadOlder={loadOlder}
           onReconnect={reconnect}
+          onResend={resend}
         />
         <div className="bottom">
           {note && !busy ? (
@@ -648,7 +732,7 @@ export function TenantChat() {
             <ChatComposer
               value={draft}
               onChange={setDraft}
-              onSend={() => void send()}
+              onSend={send}
               onStop={() => void stop()}
               agentName={chat.agent?.name ?? null}
               busy={busy}

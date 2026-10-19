@@ -53,7 +53,10 @@ export function ChatComposer({
   const [focused, setFocused] = useState(false);
   const touch = useTouch();
   const problem = draftProblem(value);
-  const ready = canSendDraft(value) && !busy && !sending && !disabled;
+  // A reply in progress no longer blocks sending: a message sent then steers
+  // the running turn. Only an empty/too-long draft, an in-flight send, or a
+  // disabled composer stops it.
+  const ready = canSendDraft(value) && !sending && !disabled;
 
   useEffect(() => {
     // Phones keep the keyboard closed until the person taps. A composer that
@@ -135,7 +138,7 @@ export function ChatComposer({
               Sending…
             </span>
           )}
-          {busy ? (
+          {busy && (
             <button
               type="button"
               className="send is-stop"
@@ -154,16 +157,18 @@ export function ChatComposer({
             >
               <Icon name="stop" size={12} stroke={3} />
             </button>
-          ) : (
-            <button
-              type="submit"
-              className="send"
-              disabled={!ready}
-              aria-label={sending ? "Sending" : "Send"}
-            >
-              <Icon name="arrowUp" size={17} stroke={2.25} />
-            </button>
           )}
+          <button
+            type="submit"
+            className="send"
+            disabled={!ready}
+            aria-label={
+              sending ? "Sending" : busy ? "Send to this reply" : "Send"
+            }
+            title={busy ? "Send to this reply" : undefined}
+          >
+            <Icon name="arrowUp" size={17} stroke={2.25} />
+          </button>
         </div>
       </div>
       {(failure || stopError) && (

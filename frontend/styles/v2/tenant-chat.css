@@ -73,6 +73,12 @@
 .msg-foot .text-btn {
   font-size: 12px;
 }
+/* A not-sent steer's label and its Resend button, under the bubble. */
+.msg-foot.tchat-notsent {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 
 .tchat-count {
   padding-left: 4px;

@@ -53,6 +53,12 @@ export interface ChatRef {
   readonly chatId: string;
 }
 
+export interface SteerRequest {
+  readonly tenantId: string;
+  readonly chatId: string;
+  readonly input: { readonly text: string; readonly clientMessageId: string };
+}
+
 function invalid(message: string): never {
   throw new AdapterError("INVALID_REQUEST", message);
 }
@@ -242,5 +248,20 @@ export function parseChatRef(value: unknown): ChatRef {
   return {
     tenantId: id(b.tenantId, "tenantId"),
     chatId: id(b.chatId, "chatId"),
+  };
+}
+
+// A steer carries a chat reference plus one input message, validated exactly
+// like a run's start input (same text rules, `clientMessageId` an ID).
+export function parseSteer(body: unknown): SteerRequest {
+  const b = object(body, ["tenantId", "chatId", "input"], "Request body");
+  const input = object(b.input, ["text", "clientMessageId"], "input");
+  return {
+    tenantId: id(b.tenantId, "tenantId"),
+    chatId: id(b.chatId, "chatId"),
+    input: {
+      text: messageText(input.text),
+      clientMessageId: id(input.clientMessageId, "input.clientMessageId"),
+    },
   };
 }

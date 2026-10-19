@@ -7,6 +7,7 @@ import { loadConfig } from "../../src/config";
 import { threadStartParams } from "../../src/codex/config";
 import {
   CodexProcess,
+  RpcError,
   RpcTimeout,
   type Notification,
 } from "../../src/codex/rpc";
@@ -145,5 +146,130 @@ describe("pinned Codex behavior", () => {
       "pin-interrupt",
     );
     assert.equal(items.filter((i) => i.type === "agentMessage").length, 0);
+  });
+
+  const text = (s: string) => [{ type: "text", text: s, text_elements: [] }];
+
+  test("a steer mid-stream adds its userMessage item and the cut reply never completes", async () => {
+    model.script.push({
+      kind: "reply",
+      text: "alpha ".repeat(60),
+      chunk: 4,
+      delayMs: 20,
+    });
+    model.script.push({ kind: "reply", text: "beta reply to the steer" });
+    const before = completions().length;
+    const turn = await codex.request<{ turn: { id: string } }>("turn/start", {
+      threadId,
+      clientUserMessageId: "pin-steer-1",
+      input: text("first question"),
+    });
+    // Wait for the first reply to start streaming, note its item id.
+    let firstItem = "";
+    while (!firstItem) {
+      const delta = notes.find(
+        (n) =>
+          n.method === "item/agentMessage/delta" &&
+          n.params.turnId === turn.turn.id,
+      );
+      if (delta) firstItem = String(delta.params.itemId);
+      else await sleep(10);
+    }
+    const steer = await codex.request<{ turnId: string }>("turn/steer", {
+      threadId,
+      expectedTurnId: turn.turn.id,
+      clientUserMessageId: "pin-steer-2",
+      input: text("also mention cats"),
+    });
+    assert.equal(steer.turnId, turn.turn.id);
+    await waitFor(before + 1);
+    await sleep(200);
+
+    // The steer's userMessage item completed; the first reply item never did.
+    const steerCompleted = notes.some(
+      (n) =>
+        n.method === "item/completed" &&
+        (n.params.item as { type?: string; clientId?: string } | undefined)
+          ?.type === "userMessage" &&
+        (n.params.item as { clientId?: string }).clientId === "pin-steer-2",
+    );
+    assert.ok(steerCompleted, "the steer's userMessage item completed");
+    const firstReplyCompleted = notes.some(
+      (n) =>
+        n.method === "item/completed" &&
+        (n.params.item as { id?: string } | undefined)?.id === firstItem,
+    );
+    assert.ok(!firstReplyCompleted, "the cut reply never completes");
+
+    // History: user, steer, one follow-up reply — the cut text is absent.
+    const page = await codex.request<{
+      data: Array<{ id: string; items: Array<Record<string, unknown>> }>;
+    }>("thread/turns/list", { threadId, limit: 1, itemsView: "full" });
+    const types = page.data[0]!.items.map((i) => i.type);
+    assert.deepEqual(types, ["userMessage", "userMessage", "agentMessage"]);
+    model.script.length = 0;
+  });
+
+  test("steering after the turn ended, or with a stale id, is -32600", async () => {
+    model.script.push({ kind: "reply", text: "short answer" });
+    const before = completions().length;
+    const turn = await codex.request<{ turn: { id: string } }>("turn/start", {
+      threadId,
+      clientUserMessageId: "pin-steer-3",
+      input: text("question"),
+    });
+    await waitFor(before + 1);
+    await sleep(100);
+    const ended = await codex
+      .request("turn/steer", {
+        threadId,
+        expectedTurnId: turn.turn.id,
+        clientUserMessageId: "pin-steer-late",
+        input: text("too late"),
+      })
+      .then(
+        () => 0,
+        (error: unknown) => (error instanceof RpcError ? error.code : -1),
+      );
+    assert.equal(ended, -32600);
+
+    // A stale turn id while a newer turn runs is also -32600.
+    model.script.push({
+      kind: "reply",
+      text: "w ".repeat(80),
+      chunk: 2,
+      delayMs: 30,
+    });
+    const startedBefore = completions().length;
+    const next = await codex.request<{ turn: { id: string } }>("turn/start", {
+      threadId,
+      clientUserMessageId: "pin-steer-4",
+      input: text("next question"),
+    });
+    while (
+      !notes.some(
+        (n) =>
+          n.method === "item/agentMessage/delta" &&
+          n.params.turnId === next.turn.id,
+      )
+    )
+      await sleep(10);
+    const stale = await codex
+      .request("turn/steer", {
+        threadId,
+        expectedTurnId: turn.turn.id,
+        clientUserMessageId: "pin-steer-stale",
+        input: text("stale"),
+      })
+      .then(
+        () => 0,
+        (error: unknown) => (error instanceof RpcError ? error.code : -1),
+      );
+    assert.equal(stale, -32600);
+    await codex
+      .request("turn/interrupt", { threadId, turnId: next.turn.id })
+      .catch(() => undefined);
+    await waitFor(startedBefore + 1);
+    model.script.length = 0;
   });
 });

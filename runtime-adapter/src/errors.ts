@@ -16,6 +16,13 @@ export const REQUEST_ERRORS = {
     false,
     "This run ID was already used for another request.",
   ],
+  RUN_ENDED: [409, false, "This run has finished, so it can't take a message."],
+  STEER_LIMIT: [409, false, "This run has too many steers."],
+  STEER_UNKNOWN: [
+    503,
+    false,
+    "The message was sent but its outcome is unknown.",
+  ],
   PAYLOAD_TOO_LARGE: [413, false, "The request is too large."],
   RUNTIME_BUSY: [503, true, "The assistant is at capacity. Try again shortly."],
   DRAINING: [503, true, "The assistant is restarting. Try again shortly."],

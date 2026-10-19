@@ -19,6 +19,7 @@ import {
   type RunErrorInfo,
   type RunStatus,
   type RunUsage,
+  type SteerDoc,
 } from "./chat";
 
 // How long a run stays claimed by the process streaming it without a lease
@@ -32,10 +33,17 @@ export interface ChatCollections {
   readonly runs: Collection<RunDoc>;
 }
 
-export interface SettleItem {
-  readonly itemId: string;
-  readonly text: string;
-}
+// The runtime's items for a run, in the order it produced them: a reply's
+// text, or a steer entering the turn. The run's own message is not in it.
+export type SettleItem =
+  | {
+      readonly type: "reply";
+      readonly itemId: string;
+      readonly text: string;
+      // The runtime finished it; a reply cut off by a steer never is.
+      readonly completed: boolean;
+    }
+  | { readonly type: "input"; readonly clientMessageId: string };
 
 export interface Settlement {
   readonly status: "completed" | "stopped" | "failed";
@@ -59,6 +67,66 @@ const MESSAGE_STATE: Record<Settlement["status"], MessageState> = {
   failed: "failed",
 };
 const SETTLED: RunStatus[] = ["completed", "stopped", "failed"];
+
+type PlannedMessage = Pick<
+  MessageDoc,
+  "role" | "text" | "state" | "clientMessageId" | "textHash" | "runtimeItemId"
+>;
+
+// The messages a settled run writes after its own, in order: each non-empty
+// reply and each steer where the runtime used it, then the steers it never
+// read as `not_sent`. A reply followed by a steer was finished or cut off by
+// it; the replies after the last steer take the run's outcome.
+export function plannedMessages(
+  run: Pick<RunDoc, "steers">,
+  outcome: Pick<Settlement, "status" | "items">,
+  onUnknownInput: (clientMessageId: string) => void = () => undefined,
+): PlannedMessage[] {
+  const steers = new Map(
+    (run.steers ?? []).map((steer) => [steer.clientMessageId, steer]),
+  );
+  const used = new Set<string>();
+  const lastInput = outcome.items.findLastIndex(
+    (item) => item.type === "input",
+  );
+  const planned: PlannedMessage[] = [];
+  outcome.items.forEach((item, index) => {
+    if (item.type === "reply") {
+      if (item.text.trim().length === 0) return;
+      planned.push({
+        role: "assistant",
+        text: item.text,
+        state:
+          index < lastInput
+            ? item.completed
+              ? "complete"
+              : "interrupted"
+            : MESSAGE_STATE[outcome.status],
+        runtimeItemId: item.itemId,
+      });
+      return;
+    }
+    const steer = steers.get(item.clientMessageId);
+    if (!steer || used.has(steer.clientMessageId))
+      return onUnknownInput(item.clientMessageId);
+    used.add(steer.clientMessageId);
+    planned.push(userMessage(steer, "complete"));
+  });
+  for (const steer of run.steers ?? [])
+    if (!used.has(steer.clientMessageId))
+      planned.push(userMessage(steer, "not_sent"));
+  return planned;
+}
+
+function userMessage(steer: SteerDoc, state: MessageState): PlannedMessage {
+  return {
+    role: "user",
+    text: steer.text,
+    state,
+    clientMessageId: steer.clientMessageId,
+    textHash: steer.textHash,
+  };
+}
 
 // The chat is not in the state an unsettled run implies; aborts the fast
 // settle so the general one runs.
@@ -182,10 +250,11 @@ export class ChatStore {
     );
   }
 
-  // Saves the outcome, the reply text and releases the chat in one
-  // transaction: the run, then the chat and the reply in one call, then the
-  // commit. An unsettled run holds its chat's claim, and nothing else moves
-  // the chat's nextSeq meanwhile, so the reply starts at `replySeq`, the seq
+  // Saves the outcome, the reply text and the run's steers, and releases the
+  // chat in one transaction: the run, then the chat and the messages in one
+  // call, then the commit. An unsettled run holds its chat's claim, and
+  // nothing else moves the chat's nextSeq meanwhile (steers wait on the run,
+  // not in messages), so the run's messages start at `replySeq`, the seq
   // after the member's message. The chat write requires exactly that state;
   // a chat that does not match (hand-edited data) is saved the general way.
   // A run that is already settled is returned as saved: the first writer
@@ -220,7 +289,6 @@ export class ChatStore {
     replySeq: number | null,
   ): Promise<SettleResult> {
     const { chats, messages, runs } = this.collections(dbName);
-    const texts = outcome.items.filter((item) => item.text.trim().length > 0);
     return this.database.withTransaction(async (session) => {
       const now = new Date();
       const run = await runs.findOneAndUpdate(
@@ -247,14 +315,21 @@ export class ChatStore {
         return {
           run: saved,
           messages: await messages
-            .find({ runId, role: "assistant" }, { session })
+            .find({ runId, _id: { $ne: saved.userMessageId } }, { session })
             .sort({ seq: 1 })
             .toArray(),
         };
       }
+      const planned = plannedMessages(run, outcome, (clientMessageId) =>
+        this.logger.warn({
+          message: "runtime reported a steer this run does not have",
+          runId: runId.toHexString(),
+          clientMessageId,
+        }),
+      );
       const chatSet = {
         updatedAt: now,
-        ...(texts.length ? { lastMessageAt: now } : {}),
+        ...(planned.length ? { lastMessageAt: now } : {}),
         ...(outcome.threadLost ? { "runtime.state": "lost" as const } : {}),
       };
       // The thread the runtime ran this turn on, recorded on a chat that has
@@ -281,16 +356,13 @@ export class ChatStore {
             ]
           : [];
       const replyFrom = (seq: number): MessageDoc[] =>
-        texts.map((item, index) => ({
+        planned.map((message, index) => ({
           _id: new ObjectId(),
           chatId,
           ownerId: run.ownerId,
           seq: seq + index,
           runId,
-          role: "assistant",
-          text: item.text,
-          state: MESSAGE_STATE[outcome.status],
-          runtimeItemId: item.itemId,
+          ...message,
           createdAt: now,
         }));
 
@@ -337,7 +409,7 @@ export class ChatStore {
 
       const chat = await chats.findOneAndUpdate(
         { _id: chatId },
-        { $inc: { nextSeq: texts.length }, $set: chatSet },
+        { $inc: { nextSeq: planned.length }, $set: chatSet },
         { returnDocument: "before", session },
       );
       if (!chat) throw new Error("settling a run whose chat does not exist");

@@ -10,6 +10,7 @@ export type ErrorCode =
   | "MODEL_UNAVAILABLE"
   | "STALE_REVISION"
   | "CHAT_BUSY"
+  | "STEER_LIMIT"
   | "CHAT_READ_ONLY"
   | "PAYLOAD_TOO_LARGE"
   | "RATE_LIMITED"

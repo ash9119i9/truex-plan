@@ -36,7 +36,15 @@ export interface HistoryTurn {
   readonly status: string;
   readonly clientMessageId: string | null;
   readonly text: string;
+  // Codex's items in order: each userMessage (including the turn's first
+  // input) and each agentMessage reply. Lets the platform recover a steered
+  // turn's shape, not just its joined text.
+  readonly items: ReadonlyArray<HistoryItem>;
 }
+
+export type HistoryItem =
+  | { readonly type: "input"; readonly clientMessageId: string | null }
+  | { readonly type: "reply"; readonly text: string };
 
 const HISTORY_TURNS = 20;
 // JSON-RPC invalid request / method not found / invalid params.
@@ -59,7 +67,25 @@ interface Active {
   stopTimer: NodeJS.Timeout | undefined;
   early: Notification[];
   settle: () => void;
+  // Resolves once the turn is accepted (turnId known) or the run finishes, so
+  // a steer that arrives while the run is `starting` can wait for acceptance.
+  readonly accepted: Promise<void>;
+  wake: () => void;
+  // Per-run steer state: in-flight/settled outcomes keyed by clientMessageId
+  // (idempotency), a chain that sends them one at a time in arrival order, and
+  // the count enforcing the safety cap.
+  readonly steers: Map<string, { text: string; promise: Promise<SteerResult> }>;
+  steerChain: Promise<void>;
+  steerCount: number;
 }
+
+export interface SteerResult {
+  readonly status: "queued";
+}
+
+// More than this many steers on one run is refused; the platform caps far
+// lower (5). A safety net against a runaway caller.
+const STEER_LIMIT = 20;
 
 export class ChatRuntime {
   // True while this chat holds one of the manager's process slots.
@@ -103,6 +129,8 @@ export class ChatRuntime {
   async execute(run: Run, request: StartRunRequest): Promise<void> {
     let settled!: () => void;
     const done = new Promise<void>((resolve) => (settled = resolve));
+    let wake!: () => void;
+    const accepted = new Promise<void>((resolve) => (wake = resolve));
     const active: Active = {
       run,
       codex: undefined,
@@ -115,6 +143,11 @@ export class ChatRuntime {
       stopTimer: undefined,
       early: [],
       settle: settled,
+      accepted,
+      wake,
+      steers: new Map(),
+      steerChain: Promise.resolve(),
+      steerCount: 0,
     };
     this.active = active;
     try {
@@ -155,6 +188,7 @@ export class ChatRuntime {
         turnId,
         resumed: run.resumed,
       });
+      active.wake(); // release steers waiting for acceptance
       for (const n of active.early.splice(0)) this.onNotification(active, n);
       if (active.interrupting) this.sendInterrupt(active);
       await done;
@@ -162,6 +196,7 @@ export class ChatRuntime {
       this.finish(active, "failed", this.toRunError(error, active));
     } finally {
       this.clearTimers(active);
+      active.wake(); // a steer may still be waiting if the run never accepted
       if (this.active === active) this.active = undefined;
       this.lastUsedAt = Date.now();
       if (!this.hasProcess) this.host.releaseSlot(this);
@@ -180,6 +215,77 @@ export class ChatRuntime {
     if (run.status === "starting") return; // handled once the turn is accepted
     run.status = "stopping";
     this.sendInterrupt(active);
+  }
+
+  // Sends a message into the running turn. Idempotent per run on
+  // `clientMessageId`: a repeat with the same text waits on and returns the
+  // first attempt's answer; a different text, or the run's own input id, is
+  // RUN_CONFLICT. Steers are serialized in arrival order, and one that arrives
+  // while the run is still `starting` waits for acceptance. Never resolves
+  // until Codex has answered `turn/steer` (or its answer was lost).
+  steer(input: {
+    readonly text: string;
+    readonly clientMessageId: string;
+  }): Promise<SteerResult> {
+    const active = this.active;
+    if (!active || isFinished(active.run.status))
+      throw new AdapterError("RUN_ENDED");
+    const { clientMessageId: cid, text } = input;
+    const existing = active.steers.get(cid);
+    if (existing) {
+      if (existing.text !== text) throw new AdapterError("RUN_CONFLICT");
+      return existing.promise;
+    }
+    if (cid === active.run.inputClientMessageId)
+      throw new AdapterError("RUN_CONFLICT");
+    if (active.steerCount >= STEER_LIMIT) throw new AdapterError("STEER_LIMIT");
+    active.steerCount++;
+    const promise = (async () => {
+      // Wait our turn, then for acceptance, then send. Each step re-checks the
+      // run is still live so a stop or completion in between yields RUN_ENDED.
+      const prior = active.steerChain;
+      let release!: () => void;
+      active.steerChain = new Promise<void>((resolve) => (release = resolve));
+      try {
+        await prior;
+        await active.accepted;
+        return await this.sendSteer(active, cid, text);
+      } finally {
+        release();
+      }
+    })();
+    active.steers.set(cid, { text, promise });
+    return promise;
+  }
+
+  private async sendSteer(
+    active: Active,
+    clientMessageId: string,
+    text: string,
+  ): Promise<SteerResult> {
+    const run = active.run;
+    const codex = active.codex ?? this.process;
+    if (!codex || !run.turnId || isFinished(run.status) || run.stopRequested)
+      throw new AdapterError("RUN_ENDED");
+    try {
+      await codex.request("turn/steer", {
+        threadId: run.threadId,
+        expectedTurnId: run.turnId,
+        clientUserMessageId: clientMessageId,
+        input: [{ type: "text", text, text_elements: [] }],
+      });
+      return { status: "queued" };
+    } catch (error) {
+      // Codex answers -32600 when the turn just ended or a newer turn is
+      // active ("no active turn" / "expected active turn id …"): nothing was
+      // delivered, so the platform sends it as a fresh run instead.
+      if (error instanceof RpcError && error.code === -32600)
+        throw new AdapterError("RUN_ENDED");
+      // The request went out but its answer was lost (RPC timeout, process
+      // exit) — or any other RPC failure: never resend, the saved items show
+      // whether it was used.
+      throw new AdapterError("STEER_UNKNOWN");
+    }
   }
 
   async history(): Promise<HistoryTurn[]> {
@@ -335,7 +441,18 @@ export class ChatRuntime {
       case "item/started":
       case "item/completed": {
         const item = n.params.item as Record<string, unknown> | undefined;
-        if (!item || item.type === "userMessage") return;
+        if (!item) return;
+        if (item.type === "userMessage") {
+          // A userMessage that completes with a clientId is a steer entering
+          // the turn (the run's own input is filtered by the Run). It marks
+          // where the steer landed; the reply it cut off never completes.
+          if (
+            n.method === "item/completed" &&
+            typeof item.clientId === "string"
+          )
+            run.recordInput(item.clientId);
+          return;
+        }
         this.activity(active);
         if (n.method === "item/completed" && item.type === "agentMessage")
           run.completeItem(String(item.id), String(item.text ?? ""));
@@ -526,10 +643,22 @@ function toHistoryTurn(turn: Record<string, unknown>): HistoryTurn {
     .filter((item) => item.type === "agentMessage")
     .map((item) => String(item.text ?? ""))
     .join("\n\n");
+  const ordered: HistoryItem[] = [];
+  for (const item of items) {
+    if (item.type === "userMessage")
+      ordered.push({
+        type: "input",
+        clientMessageId:
+          typeof item.clientId === "string" ? item.clientId : null,
+      });
+    else if (item.type === "agentMessage")
+      ordered.push({ type: "reply", text: String(item.text ?? "") });
+  }
   return {
     turnId: String(turn.id),
     status: String(turn.status),
     clientMessageId: typeof user?.clientId === "string" ? user.clientId : null,
     text,
+    items: ordered,
   };
 }

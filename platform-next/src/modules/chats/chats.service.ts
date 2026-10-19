@@ -27,6 +27,7 @@ import {
   isSettled,
   PLATFORM_INSTRUCTIONS_VERSION,
   SENDS_PER_MINUTE,
+  STEERS_PER_RUN,
   textHashOf,
   titleOf,
   type AgentSource,
@@ -39,6 +40,7 @@ import {
   type RunUsage,
   type SendInput,
   type StartChatInput,
+  type SteerDoc,
 } from "./chat";
 import { chatPrompt } from "./chat-prompt";
 import {
@@ -80,6 +82,12 @@ export interface MessageView {
   createdAt: string;
 }
 
+export interface SteerView {
+  clientMessageId: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface RunView {
   id: string;
   status: RunStatus;
@@ -91,6 +99,9 @@ export interface RunView {
     firstTextAt?: string;
     completedAt?: string;
   };
+  // The messages added to the reply, while it is unsettled; once it is,
+  // they are saved messages.
+  steers?: SteerView[];
 }
 
 // A chat without its agent's display fields.
@@ -105,6 +116,15 @@ export interface SendReceipt {
   created: boolean;
 }
 
+// A message sent while the chat was replying joined that reply (a steer).
+// It has `steer` and no `message`; `run` is the reply it joined.
+export interface SteerReceipt {
+  chat: ChatStateView;
+  run: RunView;
+  steer: SteerView;
+  created: boolean;
+}
+
 export interface HistoryPage {
   messages: MessageView[];
   runs: RunView[];
@@ -114,6 +134,10 @@ export interface HistoryPage {
 
 const NOT_FOUND = "This chat does not exist or you cannot see it.";
 const RATE_WINDOW_MS = 60_000;
+// How long a message that arrived as a reply ended waits for that reply to be
+// saved before it is sent as the next one.
+const STEER_FALLBACK_WAIT_MS = 15_000;
+const SETTLED_STATUSES: RunStatus[] = ["completed", "stopped", "failed"];
 // Orphaned chats one sweep takes per tenant; the rest wait a sweep.
 const RECOVERY_BATCH = 100;
 const RECOVERY_FAILED: RunErrorInfo = {
@@ -240,11 +264,15 @@ export class ChatsService {
   // the unique index chat_client_message_unique, or before any refusal. The
   // claim, the message and the run are one call; the claim also requires the
   // chat to be as it was read, and matching nothing aborts the transaction.
+  // A chat that is replying takes the message into that reply (steer).
   async send(
     context: TenantContext,
     chatId: ObjectId,
     input: SendInput,
-  ): Promise<SendReceipt> {
+    // A message that arrived as the reply ended is sent as the next one,
+    // once; that second attempt does not fall back again.
+    allowFallback = true,
+  ): Promise<SendReceipt | SteerReceipt> {
     this.requireRuntime();
     const chat = await timed("chat", () => this.findOwned(context, chatId));
     const refuse = (error: DomainError) =>
@@ -259,13 +287,18 @@ export class ChatsService {
       );
     if (chat.runtime.state === "lost") return refuse(threadLost());
     if (chat.activeRun) {
-      // Most likely this very message, retried while its reply streams.
+      // A retry of a message saved already, or of one that started this run.
       const replay = await timed("replay", () =>
         this.replaySend(context, chat, input),
       );
       if (replay) return replay;
-      await timed("recover", () => this.recoverIfOrphaned(context, chat));
-      throw chatBusy();
+      return this.steer(
+        context,
+        chat,
+        chat.activeRun.runId,
+        input,
+        allowFallback,
+      );
     }
     const model = await timed("model", () =>
       this.models.enabledById(chat.model.id),
@@ -377,6 +410,156 @@ export class ChatsService {
       message: messageView(turn.message),
       run: runView(turn.run),
       created: true,
+    };
+  }
+
+  // Adds the message to the reply being written. It is saved on the run
+  // first, so settle writes it where the runtime used it, or as `not_sent`
+  // when the runtime never read it. A reply that ended meanwhile gets the
+  // message as its next one instead (fallback).
+  private async steer(
+    context: TenantContext,
+    chat: ChatDoc,
+    runId: ObjectId,
+    input: SendInput,
+    allowFallback: boolean,
+  ): Promise<SendReceipt | SteerReceipt> {
+    const { runs } = this.db(context);
+    const owned = { _id: runId, chatId: chat._id, ownerId: context.userId };
+    if (!this.executor.isLive(runId))
+      await timed("recover", () => this.recoverIfOrphaned(context, chat));
+    const textHash = textHashOf(input.text);
+    const steer: SteerDoc = {
+      clientMessageId: input.clientMessageId,
+      text: input.text,
+      textHash,
+      createdAt: new Date(),
+    };
+
+    // A retry of a steer already on the run, or why it can't take one.
+    const refused = async (): Promise<SteerReceipt | "fallback"> => {
+      const run = await timed("run", () => runs.findOne(owned));
+      if (!run) throw chatBusy();
+      const mine = run.steers?.find(
+        (s) => s.clientMessageId === input.clientMessageId,
+      );
+      if (mine) {
+        if (mine.textHash !== textHash) throw reusedMessageId();
+        return this.steerReceipt(chat, run, mine, false);
+      }
+      if (isSettled(run.status) || run.stopRequested) return "fallback";
+      if ((run.steers?.length ?? 0) >= STEERS_PER_RUN) throw steerLimit();
+      throw chatBusy();
+    };
+
+    const refund = this.admitSend(context);
+    if (!refund) {
+      const replay = await refused().catch(() => null);
+      if (replay && replay !== "fallback") return replay;
+      throw rateLimited();
+    }
+    const run = await timed("steer", () =>
+      runs.findOneAndUpdate(
+        {
+          ...owned,
+          status: { $nin: SETTLED_STATUSES },
+          stopRequested: { $ne: true },
+          "steers.clientMessageId": { $ne: input.clientMessageId },
+          [`steers.${STEERS_PER_RUN - 1}`]: { $exists: false },
+        },
+        { $push: { steers: steer }, $set: { updatedAt: steer.createdAt } },
+        { returnDocument: "after" },
+      ),
+    );
+    if (!run) {
+      refund();
+      const answer = await refused();
+      if (answer !== "fallback") return answer;
+      return this.steerFallback(context, chat, runId, input, allowFallback);
+    }
+
+    const outcome = await timed("runtime", () =>
+      this.executor.steer(
+        runId,
+        { tenantId: toWireId(context.tenantId), chatId: toWireId(chat._id) },
+        { text: input.text, clientMessageId: input.clientMessageId },
+      ),
+    );
+    // Taken, or sent with its answer lost: either way settle decides where
+    // it goes, and it is never sent again.
+    if (outcome === "queued" || outcome === "unknown")
+      return this.steerReceipt(chat, run, steer, true);
+
+    // Nothing was delivered: take it back off the run, unless the run
+    // settled with it meanwhile, or (for a reply that ended) is being
+    // stopped, when the member sees it as not sent.
+    const withdrawn = await timed("withdraw", () =>
+      runs.updateOne(
+        {
+          ...owned,
+          status: { $nin: SETTLED_STATUSES },
+          ...(outcome === "ended" ? { stopRequested: { $ne: true } } : {}),
+        },
+        {
+          $pull: { steers: { clientMessageId: input.clientMessageId } },
+          $set: { updatedAt: new Date() },
+        },
+      ),
+    );
+    if (withdrawn.modifiedCount !== 1) {
+      const current = await timed("run", () => runs.findOne(owned));
+      if (current && !isSettled(current.status))
+        return this.steerReceipt(chat, current, steer, true);
+      const saved = await timed("replay", () =>
+        this.replaySend(context, chat, input),
+      );
+      if (saved) return saved;
+      throw chatBusy();
+    }
+    refund();
+    switch (outcome) {
+      case "ended":
+        return this.steerFallback(context, chat, runId, input, allowFallback);
+      case "limit":
+        throw steerLimit();
+      case "not_found":
+        throw chatBusy();
+      default:
+        throw new DomainError(
+          "UNAVAILABLE",
+          "The assistant couldn't take this message. Try again.",
+        );
+    }
+  }
+
+  // The reply ended as the message arrived: once it is saved, the message
+  // is sent as the next one.
+  private async steerFallback(
+    context: TenantContext,
+    chat: ChatDoc,
+    runId: ObjectId,
+    input: SendInput,
+    allowFallback: boolean,
+  ): Promise<SendReceipt | SteerReceipt> {
+    if (!allowFallback) throw chatBusy();
+    await timed("wait", () =>
+      this.executor.waitClosed(runId, STEER_FALLBACK_WAIT_MS),
+    );
+    return this.send(context, chat._id, input, false);
+  }
+
+  private async steerReceipt(
+    chat: ChatDoc,
+    run: RunDoc,
+    steer: SteerDoc,
+    created: boolean,
+  ): Promise<SteerReceipt> {
+    const model = await this.models.enabledById(chat.model.id);
+    return {
+      chat: chatState(chat, model ?? undefined, false),
+      run: runView(run),
+      steer: steerView(steer),
+      created,
     };
   }
 
@@ -518,9 +701,10 @@ export class ChatsService {
       return {
         saved: {
           run,
+          // Everything the run wrote after its own message.
           messages: await timed("saved", () =>
             messages
-              .find({ runId, role: "assistant" })
+              .find({ runId, _id: { $ne: run.userMessageId } })
               .sort({ seq: 1 })
               .toArray(),
           ),
@@ -995,6 +1179,17 @@ export function runView(run: RunDoc): RunView {
       ...(t.firstTextAt ? { firstTextAt: t.firstTextAt.toISOString() } : {}),
       ...(t.completedAt ? { completedAt: t.completedAt.toISOString() } : {}),
     },
+    ...(!isSettled(run.status) && run.steers?.length
+      ? { steers: run.steers.map(steerView) }
+      : {}),
+  };
+}
+
+function steerView(steer: SteerDoc): SteerView {
+  return {
+    clientMessageId: steer.clientMessageId,
+    text: steer.text,
+    createdAt: steer.createdAt.toISOString(),
   };
 }
 
@@ -1002,6 +1197,13 @@ function chatBusy(): DomainError {
   return new DomainError(
     "CHAT_BUSY",
     "This chat is still answering. Wait for the reply or stop it.",
+  );
+}
+
+function steerLimit(): DomainError {
+  return new DomainError(
+    "STEER_LIMIT",
+    "This reply already has too many follow-ups. Send it once the reply ends.",
   );
 }
 

@@ -11,6 +11,7 @@ import type { RunErrorInfo, RunUsage } from "./chat";
 import {
   ChatStore,
   LEASE_RENEW_MS,
+  type SettleItem,
   type SettleResult,
   type Settlement,
 } from "./chat-store";
@@ -20,6 +21,7 @@ import {
   RuntimeClient,
   type AdapterEvent,
   type ChatRef,
+  type HistoryTurn,
   type StartRunBody,
 } from "./runtime-client";
 
@@ -58,24 +60,35 @@ export type LiveEvent =
   | { type: "status"; data: { phase: Phase } }
   | { type: "delta"; data: { itemId: string; text: string } }
   | { type: "item"; data: { itemId: string; text: string } }
+  | { type: "input"; data: { clientMessageId: string } }
   | { type: "usage"; data: RunUsage }
   | { type: "completed"; data: Completed }
   | { type: "saved"; data: SettleResult }
   | { type: "save_failed"; data: Record<string, never> };
 
+// Replies and steers in the runtime's order (see SettleItem).
 export interface Snapshot {
   runId: string;
   phase: Phase;
-  items: Array<{ itemId: string; text: string }>;
+  items: SettleItem[];
   usage: RunUsage | null;
 }
 
 export interface Completed {
   status: Settlement["status"];
   error: RunErrorInfo | null;
-  items: Array<{ itemId: string; text: string }>;
+  items: SettleItem[];
   usage: RunUsage | null;
 }
+
+// What became of a steer sent to the runtime.
+//   queued: the runtime took it into the running turn
+//   unknown: it went out and the answer was lost; settle shows if it was used
+//   ended: the turn had ended or was stopping; nothing was delivered
+//   not_found: the runtime does not know the run
+//   limit / refused: refused; nothing was delivered
+export type SteerOutcome =
+  "queued" | "unknown" | "ended" | "not_found" | "limit" | "refused";
 
 export interface LiveSubscriber {
   send(event: LiveEvent): void;
@@ -89,6 +102,9 @@ export const DELTA_FLUSH_MS = 50;
 const SETTLED_TTL_MS = 60_000;
 // Reconnect attempts after the adapter stream drops, and the delays between.
 const RECONNECT_DELAYS_MS = [250, 1_000, 2_000, 4_000, 8_000, 15_000];
+// How long a steer waits for the runtime to accept a run this process just
+// started, so it does not arrive before the run exists there.
+const STEER_ACCEPT_WAIT_MS = 20_000;
 // Request-level refusals that mean "not started; try again shortly".
 const RETRYABLE_START = new Set([
   "RUNTIME_BUSY",
@@ -120,10 +136,19 @@ const THREAD_LOST: RunErrorInfo = {
   retryable: false,
 };
 
+type OrderEntry =
+  | { type: "reply"; itemId: string }
+  | { type: "input"; clientMessageId: string };
+
 class LiveRun {
   phase: Phase = "waiting";
-  // Text already sent to subscribers, per item, in arrival order.
+  // Text already sent to subscribers, per reply.
   readonly items = new Map<string, string>();
+  // Replies and steers in the runtime's order. A reply is placed when its
+  // first text arrives, so an empty one never appears.
+  private readonly order: OrderEntry[] = [];
+  private readonly completedItems = new Set<string>();
+  private readonly inputs = new Set<string>();
   private readonly pending = new Map<string, string>();
   private flushTimer: NodeJS.Timeout | undefined;
   usage: RunUsage | null = null;
@@ -141,6 +166,14 @@ class LiveRun {
   readonly subscribers = new Set<LiveSubscriber>();
   readonly abort = new AbortController();
   done: Promise<void> = Promise.resolve();
+  // Resolve when the runtime accepts the run, and when this process stops
+  // holding it (settled or released).
+  private markAccepted!: () => void;
+  readonly acceptedOrClosed = new Promise<void>(
+    (resolve) => (this.markAccepted = resolve),
+  );
+  private markClosed!: () => void;
+  readonly closed = new Promise<void>((resolve) => (this.markClosed = resolve));
 
   constructor(readonly dispatch: Dispatch) {}
 
@@ -152,9 +185,53 @@ class LiveRun {
     return {
       runId: this.id,
       phase: this.phase,
-      items: [...this.items].map(([itemId, text]) => ({ itemId, text })),
+      items: this.settleItems(),
       usage: this.usage,
     };
+  }
+
+  // What was sent to subscribers, in order. Call flush() first to include
+  // pending text.
+  settleItems(): SettleItem[] {
+    return this.order.map((entry) =>
+      entry.type === "input"
+        ? entry
+        : {
+            type: "reply",
+            itemId: entry.itemId,
+            text: this.items.get(entry.itemId) ?? "",
+            completed: this.completedItems.has(entry.itemId),
+          },
+    );
+  }
+
+  hasInput(clientMessageId: string): boolean {
+    return this.inputs.has(clientMessageId);
+  }
+
+  // The last reply, when the runtime never finished it.
+  trailingPartial(): SettleItem | null {
+    const last = this.settleItems().at(-1);
+    return last?.type === "reply" && !last.completed && last.text ? last : null;
+  }
+
+  accept(): void {
+    this.accepted = true;
+    this.markAccepted();
+  }
+
+  // A steer entered the turn at this point. Once per steer.
+  addInput(clientMessageId: string): void {
+    if (this.inputs.has(clientMessageId)) return;
+    this.flush();
+    this.inputs.add(clientMessageId);
+    this.order.push({ type: "input", clientMessageId });
+    this.broadcast({ type: "input", data: { clientMessageId } });
+  }
+
+  private place(itemId: string): void {
+    if (!this.items.has(itemId) && !this.pending.has(itemId))
+      this.order.push({ type: "reply", itemId });
   }
 
   broadcast(event: LiveEvent): void {
@@ -172,6 +249,7 @@ class LiveRun {
   appendDelta(itemId: string, delta: string): void {
     this.firstTextAt ??= new Date();
     const first = !this.items.has(itemId) && !this.pending.has(itemId);
+    this.place(itemId);
     this.pending.set(itemId, (this.pending.get(itemId) ?? "") + delta);
     if (this.phase === "waiting" || this.phase === "retrying")
       this.setPhase("streaming");
@@ -179,11 +257,28 @@ class LiveRun {
     else this.flushTimer ??= setTimeout(() => this.flush(), DELTA_FLUSH_MS);
   }
 
-  // Replaces an item's text when the runtime reports it whole.
-  setItem(itemId: string, text: string): void {
+  // Replaces a reply's text when the runtime reports it: whole when
+  // completed, or so far (a reconnect snapshot).
+  setItem(itemId: string, text: string, completed = true): void {
+    if (!text && !this.items.has(itemId) && !this.pending.has(itemId)) return;
+    this.place(itemId);
     this.pending.delete(itemId);
-    if (this.items.get(itemId) === text) return;
+    const before = this.items.get(itemId);
+    const wasCompleted = this.completedItems.has(itemId);
+    if (completed) this.completedItems.add(itemId);
+    if (before === text && wasCompleted === completed) return;
     this.items.set(itemId, text);
+    // `item` tells a browser the reply is finished; text so far that only
+    // extends what it has goes out as a delta.
+    if (!completed && before !== undefined && text.startsWith(before)) {
+      if (text.length > before.length)
+        for (const subscriber of this.subscribers)
+          subscriber.send({
+            type: "delta",
+            data: { itemId, text: text.slice(before.length) },
+          });
+      return;
+    }
     this.broadcast({ type: "item", data: { itemId, text } });
   }
 
@@ -204,6 +299,8 @@ class LiveRun {
     this.flush();
     for (const subscriber of this.subscribers) subscriber.end();
     this.subscribers.clear();
+    this.markAccepted();
+    this.markClosed();
   }
 }
 
@@ -326,6 +423,62 @@ export class RunExecutor implements OnApplicationShutdown {
     run.stopRequested = true;
     run.setPhase("stopping");
     await this.sendStop(run);
+  }
+
+  // Sends a steer to the runtime. A run this process started and the
+  // runtime has not accepted yet is waited for (bounded) first, so the steer
+  // does not arrive before the run exists there. A recovered run already
+  // exists there, or never will.
+  async steer(
+    runId: ObjectId,
+    ref: ChatRef,
+    input: { text: string; clientMessageId: string },
+  ): Promise<SteerOutcome> {
+    if (!this.client) throw new Error("chat runtime is not configured");
+    const id = toWireId(runId);
+    const run = this.live.get(id);
+    if (
+      run?.dispatch.mode === "start" &&
+      !run.accepted &&
+      run.phase !== "settled"
+    )
+      await Promise.race([
+        run.acceptedOrClosed,
+        sleep(STEER_ACCEPT_WAIT_MS, run.abort.signal),
+      ]);
+    if (run?.phase === "settled") return "ended";
+    try {
+      await this.client.steer(id, ref, input);
+      return "queued";
+    } catch (error) {
+      if (error instanceof AdapterUnreachable) return "unknown";
+      if (!(error instanceof AdapterRefusal)) throw error;
+      switch (error.code) {
+        case "STEER_UNKNOWN":
+          return "unknown";
+        case "RUN_ENDED":
+          return "ended";
+        case "RUN_NOT_FOUND":
+          return "not_found";
+        case "STEER_LIMIT":
+          return "limit";
+        default:
+          this.logger.warn({
+            message: "runtime refused steer",
+            runId: id,
+            code: error.code,
+          });
+          return "refused";
+      }
+    }
+  }
+
+  // Resolves once this process stops holding the run (saved, save failed or
+  // let go), or after `ms`. At once when the run is not live here.
+  async waitClosed(runId: ObjectId, ms: number): Promise<void> {
+    const run = this.live.get(toWireId(runId));
+    if (!run) return;
+    await Promise.race([run.closed, sleep(ms)]);
   }
 
   private async sendStop(run: LiveRun): Promise<void> {
@@ -485,7 +638,7 @@ export class RunExecutor implements OnApplicationShutdown {
       case "run.accepted": {
         const threadId = str(d.threadId);
         const turnId = str(d.turnId);
-        run.accepted = true;
+        run.accept();
         run.threadId = threadId;
         run.turnId = turnId;
         if (threadId && turnId) {
@@ -519,12 +672,22 @@ export class RunExecutor implements OnApplicationShutdown {
         if (itemId && typeof d.text === "string") run.setItem(itemId, d.text);
         return null;
       }
+      case "input.accepted": {
+        const clientMessageId = str(d.clientMessageId);
+        if (clientMessageId) run.addInput(clientMessageId);
+        return null;
+      }
       case "run.snapshot":
         run.flush();
         for (const item of itemsOf(d.items))
-          run.setItem(item.itemId, item.text);
+          if (item.type === "input") run.addInput(item.clientMessageId);
+          else run.setItem(item.itemId, item.text, item.completed);
         if (str(d.threadId)) run.threadId = str(d.threadId);
-        if (str(d.turnId)) run.turnId = str(d.turnId);
+        if (str(d.turnId)) {
+          // A snapshot with a turn replaces a run.accepted no longer buffered.
+          run.turnId = str(d.turnId);
+          run.accept();
+        }
         return null;
       case "retrying":
         run.setPhase("retrying");
@@ -597,7 +760,7 @@ export class RunExecutor implements OnApplicationShutdown {
       (t) => t.clientMessageId === run.dispatch.body.input.clientMessageId,
     );
     if (!turn) return null;
-    const items = [...run.items].map(([itemId, text]) => ({ itemId, text }));
+    run.flush();
     const base = {
       usage: run.usage,
       threadId: run.threadId,
@@ -610,8 +773,16 @@ export class RunExecutor implements OnApplicationShutdown {
         ...base,
         status: "completed",
         error: null,
-        items: [{ itemId: `history:${turn.turnId}`, text: turn.text }],
+        items: historySettleItems(
+          turn,
+          run.dispatch.body.input.clientMessageId,
+        ),
       };
+    const items = unfinishedItems(
+      run,
+      turn,
+      run.dispatch.body.input.clientMessageId,
+    );
     if (turn.status === "interrupted")
       return { ...base, status: "stopped", error: null, items };
     return { ...base, status: "failed", error: RUNTIME_FAILED, items };
@@ -622,7 +793,7 @@ export class RunExecutor implements OnApplicationShutdown {
     run.completed = {
       status: outcome.status,
       error: outcome.error,
-      items: outcome.items.map(({ itemId, text }) => ({ itemId, text })),
+      items: [...outcome.items],
       usage: outcome.usage,
     };
     run.broadcast({ type: "completed", data: run.completed });
@@ -678,10 +849,11 @@ function failed(
   error: RunErrorInfo,
   threadLost = false,
 ): Settlement {
+  run.flush();
   return {
     status: "failed",
     error,
-    items: [...run.items].map(([itemId, text]) => ({ itemId, text })),
+    items: run.settleItems(),
     usage: run.usage,
     threadId: run.threadId,
     turnId: run.turnId,
@@ -696,15 +868,77 @@ function str(value: unknown): string | null {
     : null;
 }
 
-function itemsOf(value: unknown): Array<{ itemId: string; text: string }> {
+// The adapter's ordered items: replies `{type: "reply", itemId, text,
+// completed}` and steers `{type: "input", clientMessageId}`. An entry with no
+// type is a reply, as an adapter that predates steering sends it.
+function itemsOf(value: unknown): SettleItem[] {
   if (!Array.isArray(value)) return [];
-  const items: Array<{ itemId: string; text: string }> = [];
-  for (const item of value as Array<Record<string, unknown>>) {
-    const itemId = str(item?.itemId);
+  const items: SettleItem[] = [];
+  for (const item of value as Array<Record<string, unknown> | null>) {
+    if (!item) continue;
+    if (item.type === "input") {
+      const clientMessageId = str(item.clientMessageId);
+      if (clientMessageId) items.push({ type: "input", clientMessageId });
+      continue;
+    }
+    const itemId = str(item.itemId);
     if (itemId && typeof item.text === "string")
-      items.push({ itemId, text: item.text });
+      items.push({
+        type: "reply",
+        itemId,
+        text: item.text,
+        completed: item.completed === true,
+      });
   }
   return items;
+}
+
+// A finished turn's items from the runtime's saved history, without the
+// run's own message. Reply IDs are history:<turnId>:<n>.
+function historySettleItems(turn: HistoryTurn, own: string): SettleItem[] {
+  if (!turn.items)
+    return [
+      {
+        type: "reply",
+        itemId: `history:${turn.turnId}`,
+        text: turn.text,
+        completed: true,
+      },
+    ];
+  let replies = 0;
+  return turn.items.flatMap((item): SettleItem[] => {
+    if (item.type === "reply")
+      return [
+        {
+          type: "reply",
+          itemId: `history:${turn.turnId}:${replies++}`,
+          text: item.text,
+          completed: true,
+        },
+      ];
+    return item.clientMessageId && item.clientMessageId !== own
+      ? [{ type: "input", clientMessageId: item.clientMessageId }]
+      : [];
+  });
+}
+
+// A stopped or failed turn. The runtime's history drops partial text, so
+// what this process streamed is used when it saw every steer the runtime
+// used; otherwise the history, plus the reply being written when it ended.
+function unfinishedItems(
+  run: LiveRun,
+  turn: HistoryTurn,
+  own: string,
+): SettleItem[] {
+  const live = run.settleItems();
+  if (!turn.items) return live;
+  const history = historySettleItems(turn, own);
+  const sawAll = history.every(
+    (item) => item.type !== "input" || run.hasInput(item.clientMessageId),
+  );
+  if (sawAll && live.length) return live;
+  const partial = run.trailingPartial();
+  return partial ? [...history, partial] : history;
 }
 
 function count(value: unknown): number {

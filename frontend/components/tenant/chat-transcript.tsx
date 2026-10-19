@@ -13,8 +13,13 @@ import {
   exchangeKey,
   exchangesOf,
   isSettled,
+  messageStateNote,
   outcomeNote,
+  replyItems,
   SLOW_REPLY_MS,
+  isCutShort,
+  sentSteerId,
+  steerText,
   titleProblem,
   usageLine,
   type ChatMessage,
@@ -41,6 +46,15 @@ const PHASE_NOTE: Partial<Record<LiveReply["phase"], string>> = {
   reconnecting: "Reconnecting to the assistant…",
   stopping: "Stopping…",
 };
+
+// The same "Cut short by your next message" label the saved reply shows,
+// reused while the reply still streams so the cut text reads the same before
+// and after it is saved.
+const LIVE_INTERRUPTED_NOTE =
+  messageStateNote({
+    role: "assistant",
+    state: "interrupted",
+  } as ChatMessage) ?? "";
 
 export function ChatHeader({
   chat,
@@ -208,6 +222,7 @@ export const Transcript = memo(function Transcript({
   olderError,
   onLoadOlder,
   onReconnect,
+  onResend,
 }: {
   thread: ChatThread;
   live: LiveReply | null;
@@ -216,6 +231,8 @@ export const Transcript = memo(function Transcript({
   olderError: string;
   onLoadOlder: () => void;
   onReconnect: () => void;
+  // Sends a not-sent message's text again as a new message.
+  onResend: (text: string) => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -225,15 +242,16 @@ export const Transcript = memo(function Transcript({
   // exchange it becomes, so it is not remounted when its messages arrive.
   const shown =
     live && !exchanges.some((e) => e.runId === live.runId)
-      ? [
-          ...exchanges,
-          { runId: live.runId, user: null, replies: [], run: null },
-        ]
+      ? [...exchanges, { runId: live.runId, messages: [], run: null }]
       : exchanges;
   const agent = thread.chat.agent;
   const agentName = agent?.name ?? "Assistant";
   const hue = tintOf(agent?.tint).bg;
-  const liveText = live?.items.reduce((n, i) => n + i.text.length, 0) ?? 0;
+  const liveText =
+    live?.items.reduce(
+      (n, i) => n + (i.type === "reply" ? i.text.length : 0),
+      0,
+    ) ?? 0;
   const firstId = thread.messages[0]?.id;
 
   // A newly opened chat starts at its end.
@@ -247,6 +265,12 @@ export const Transcript = memo(function Transcript({
   useLayoutEffect(() => {
     if (sentId) stick.current = true;
   }, [sentId]);
+  // …and a follow-up sent into the running reply, which joins the live
+  // reply rather than the saved messages.
+  const steerId = sentSteerId(live);
+  useLayoutEffect(() => {
+    if (steerId) stick.current = true;
+  }, [steerId]);
 
   // Older history keeps what was on screen in place; otherwise new text is
   // followed while the reader is at the end.
@@ -258,7 +282,14 @@ export const Transcript = memo(function Transcript({
         anchor.current.top + (el.scrollHeight - anchor.current.height);
       anchor.current = null;
     } else if (stick.current) el.scrollTop = el.scrollHeight;
-  }, [thread.chat.id, firstId, thread.messages.length, liveText, live?.phase]);
+  }, [
+    thread.chat.id,
+    firstId,
+    thread.messages.length,
+    liveText,
+    live?.phase,
+    live?.items.length,
+  ]);
 
   const loadOlder = () => {
     const el = scroller.current;
@@ -301,14 +332,14 @@ export const Transcript = memo(function Transcript({
         {shown.map((exchange) => (
           <Exchange
             key={exchangeKey(exchange)}
-            user={exchange.user}
-            replies={exchange.replies}
+            messages={exchange.messages}
             run={exchange.run}
             live={live?.runId === exchange.runId ? live : null}
             connection={connection}
             agentName={agentName}
             hue={hue}
             onReconnect={onReconnect}
+            onResend={onResend}
           />
         ))}
       </div>
@@ -317,47 +348,170 @@ export const Transcript = memo(function Transcript({
 });
 
 function Exchange({
-  user,
-  replies,
+  messages,
   run,
   live,
   connection,
   agentName,
   hue,
   onReconnect,
+  onResend,
 }: {
-  user: ChatMessage | null;
-  replies: ChatMessage[];
+  messages: ChatMessage[];
   run: ChatRun | null;
   live: LiveReply | null;
   connection: Connection;
   agentName: string;
   hue: string;
   onReconnect: () => void;
+  onResend: (text: string) => void;
 }) {
+  // A live run shows its saved user message(s) and the reply as it streams;
+  // the replies Codex has written are in the live items, so the run's own
+  // saved assistant messages are not shown twice.
+  const userMessages = live ? messages.filter((m) => m.role === "user") : null;
   return (
     <>
-      {user && (
-        <article className="msg user" aria-label="Your message">
-          <div className="bubble-wrap">
-            <div className="bubble">{user.text}</div>
-          </div>
-        </article>
-      )}
+      {live
+        ? userMessages!.map((user) => (
+            <UserBubble key={user.id} message={user} onResend={onResend} />
+          ))
+        : null}
       {live ? (
         <AgentReply agentName={agentName} hue={hue} live={live}>
           <LiveBody
             live={live}
+            run={run}
             connection={connection}
             onReconnect={onReconnect}
           />
         </AgentReply>
       ) : (
-        hasSavedReply(replies, run) && (
-          <AgentReply agentName={agentName} hue={hue} live={null}>
-            <SavedBody replies={replies} run={run} />
+        <SavedExchange
+          messages={messages}
+          run={run}
+          agentName={agentName}
+          hue={hue}
+          onResend={onResend}
+        />
+      )}
+    </>
+  );
+}
+
+// A member's message bubble. A `not_sent` steer — one the assistant never
+// read — is labelled and offers to send the same text again.
+function UserBubble({
+  message,
+  onResend,
+}: {
+  message: ChatMessage;
+  onResend: (text: string) => void;
+}) {
+  const note = messageStateNote(message);
+  return (
+    <article className="msg user" aria-label="Your message">
+      <div className="bubble-wrap">
+        <div className="bubble">{message.text}</div>
+        {message.state === "not_sent" && (
+          <p className="msg-foot tchat-notsent">
+            {note}
+            <button
+              type="button"
+              className="text-btn"
+              onClick={() => onResend(message.text)}
+            >
+              Resend
+            </button>
+          </p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+// A steer shown inside the running reply before it is saved: the same bubble
+// as a sent message, placed where Codex read it.
+function SteerBubble({ text }: { text: string }) {
+  return (
+    <article className="msg user" aria-label="Your message">
+      <div className="bubble-wrap">
+        <div className="bubble">{text}</div>
+      </div>
+    </article>
+  );
+}
+
+// A settled run's saved messages in seq order: member bubbles and assistant
+// replies, interleaved, with the run's note and usage after the last reply.
+function SavedExchange({
+  messages,
+  run,
+  agentName,
+  hue,
+  onResend,
+}: {
+  messages: ChatMessage[];
+  run: ChatRun | null;
+  agentName: string;
+  hue: string;
+  onResend: (text: string) => void;
+}) {
+  const note = run ? outcomeNote(run.status, run.error) : null;
+  const usage = run && isSettled(run.status) ? usageLine(run) : "";
+  // Consecutive assistant messages share one reply frame (and keep their
+  // markdown memoized); the run footer rides the last reply so it sits at
+  // the end of the exchange.
+  const blocks: Array<
+    | { kind: "user"; message: ChatMessage }
+    | { kind: "replies"; messages: ChatMessage[] }
+  > = [];
+  for (const message of messages) {
+    if (message.role === "user") blocks.push({ kind: "user", message });
+    else {
+      const last = blocks.at(-1);
+      if (last?.kind === "replies") last.messages.push(message);
+      else blocks.push({ kind: "replies", messages: [message] });
+    }
+  }
+  const lastReplyIndex = blocks.map((b) => b.kind).lastIndexOf("replies");
+  const hasFooter = !!(note || usage);
+  // An empty settled run (no replies saved) still shows its footer.
+  const showLooseFooter = hasFooter && lastReplyIndex < 0;
+  return (
+    <>
+      {blocks.map((block, index) =>
+        block.kind === "user" ? (
+          <UserBubble
+            key={block.message.id}
+            message={block.message}
+            onResend={onResend}
+          />
+        ) : (
+          <AgentReply
+            key={block.messages[0].id}
+            agentName={agentName}
+            hue={hue}
+            live={null}
+          >
+            <SavedBody
+              replies={block.messages}
+              note={index === lastReplyIndex ? note : null}
+              usage={index === lastReplyIndex ? usage : ""}
+              failed={run?.status === "failed"}
+            />
           </AgentReply>
-        )
+        ),
+      )}
+      {showLooseFooter && (
+        <AgentReply agentName={agentName} hue={hue} live={null}>
+          <SavedBody
+            replies={[]}
+            note={note}
+            usage={usage}
+            failed={run?.status === "failed"}
+          />
+        </AgentReply>
       )}
     </>
   );
@@ -403,37 +557,33 @@ function AgentReply({
   );
 }
 
-function hasSavedReply(replies: ChatMessage[], run: ChatRun | null): boolean {
-  return replies.length > 0 || !!(run && outcomeNote(run.status, run.error));
-}
-
 // StreamingMarkdown is memoized on its text, so saved replies are not parsed
-// again while another reply streams.
+// again while another reply streams. The run's footer (note and usage) is
+// passed in so it sits after the last reply of the exchange.
 function SavedBody({
   replies,
-  run,
+  note,
+  usage,
+  failed,
 }: {
   replies: ChatMessage[];
-  run: ChatRun | null;
+  note: string | null;
+  usage: string;
+  failed: boolean;
 }) {
-  const note = run ? outcomeNote(run.status, run.error) : null;
-  const usage = run && isSettled(run.status) ? usageLine(run) : "";
   return (
     <>
       {replies.map((reply) => (
         <div key={reply.id} className="answer markdown">
           <StreamingMarkdown text={reply.text} streaming={false} />
+          {messageStateNote(reply) && (
+            <p className="msg-foot">{messageStateNote(reply)}</p>
+          )}
           <CopyTextButton text={reply.text} label="Copy answer" />
         </div>
       ))}
       {note && (
-        <p
-          className={
-            run?.status === "failed" ? "msg-foot tchat-failed" : "msg-foot"
-          }
-        >
-          {note}
-        </p>
+        <p className={failed ? "msg-foot tchat-failed" : "msg-foot"}>{note}</p>
       )}
       {usage && <p className="msg-foot">{usage}</p>}
     </>
@@ -442,14 +592,17 @@ function SavedBody({
 
 function LiveBody({
   live,
+  run,
   connection,
   onReconnect,
 }: {
   live: LiveReply;
+  run: ChatRun | null;
   connection: Connection;
   onReconnect: () => void;
 }) {
-  const slow = useSlow(live.since, live.items.length === 0);
+  const replies = replyItems(live);
+  const slow = useSlow(live.since, replies.length === 0);
   const streaming = live.phase !== "settled";
   const note =
     connection === "reconnecting"
@@ -460,9 +613,10 @@ function LiveBody({
   const outcome = live.outcome
     ? outcomeNote(live.outcome.status, live.outcome.error)
     : null;
+  const lastReplyId = replies.at(-1)?.itemId;
   return (
     <>
-      {!live.items.length && streaming && (
+      {!replies.length && streaming && (
         <ul className="steps" role="status">
           <li>
             <span className="spinner" aria-hidden="true" />
@@ -470,14 +624,25 @@ function LiveBody({
           </li>
         </ul>
       )}
-      {live.items.map((item, index) => (
-        <div key={item.itemId} className="answer markdown">
-          <StreamingMarkdown text={item.text} streaming={streaming} />
-          {streaming && index === live.items.length - 1 && (
-            <span className="caret" aria-hidden="true" />
-          )}
-        </div>
-      ))}
+      {live.items.map((item, index) =>
+        item.type === "reply" ? (
+          <div key={item.itemId} className="answer markdown">
+            <StreamingMarkdown text={item.text} streaming={streaming} />
+            {streaming && item.itemId === lastReplyId && (
+              <span className="caret" aria-hidden="true" />
+            )}
+            {/* Cut short by a steer Codex read; the model never saw it. */}
+            {isCutShort(live, index) && (
+              <p className="msg-foot">{LIVE_INTERRUPTED_NOTE}</p>
+            )}
+          </div>
+        ) : (
+          <SteerBubble
+            key={`input:${item.clientMessageId}`}
+            text={item.text ?? steerText(run, item.clientMessageId) ?? ""}
+          />
+        ),
+      )}
       {outcome && (
         <p
           className={

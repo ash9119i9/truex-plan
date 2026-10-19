@@ -89,6 +89,7 @@ interface ChatBody {
     error: { code: string; message: string } | null;
     usage: Record<string, number> | null;
     timings: Record<string, string>;
+    steers?: Array<{ clientMessageId: string; text: string }>;
   }>;
   hasMore: boolean;
 }
@@ -810,37 +811,266 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     assert.equal(list.chats[0]?.readOnly, null);
   });
 
-  test("a second message while a reply streams is refused", async () => {
+  interface SteerReceipt {
+    chat: Receipt["chat"];
+    run: { id: string; status: string; steers?: Array<{ text: string }> };
+    steer: { clientMessageId: string; text: string; createdAt: string };
+    message?: undefined;
+    created: boolean;
+  }
+
+  const sendTo = (
+    who: Member,
+    chatId: string,
+    clientMessageId: string,
+    text: string,
+  ) =>
+    call(who, "POST", `/chats/${chatId}/messages`, { clientMessageId, text });
+
+  // Reads a reply's stream, calling `onText` once, when its text first
+  // includes `marker`; resolves with every event.
+  async function streamUntil(
+    receipt: Receipt,
+    marker: string,
+    onText: () => Promise<void>,
+  ): Promise<StreamEvent[]> {
+    const res = await stream(alice, receipt.chat.id, receipt.run.id);
+    let fired = false;
+    return readStream(res, async (event) => {
+      const text =
+        event.type === "delta" || event.type === "item"
+          ? String(event.data.text)
+          : "";
+      if (!fired && text.includes(marker)) {
+        fired = true;
+        await onText();
+      }
+    });
+  }
+
+  test("a message sent while a reply streams steers it, saved in the runtime's order", async () => {
     gateway.script.push({ kind: "held", before: "Working on", after: " it." });
+    gateway.defaultBehavior = { kind: "reply", text: "Steered answer." };
     const first = await json<Receipt>(await startChat(alice), 202);
-    // Wait until the model has started answering.
-    for (let i = 0; i < 100 && gateway.requests.length === 0; i++)
-      await sleep(50);
-    const attempts = await Promise.all(
-      Array.from({ length: 4 }, () =>
-        call(alice, "POST", `/chats/${first.chat.id}/messages`, {
-          clientMessageId: clientId(),
-          text: "and another thing",
-        }),
-      ),
+    const steerId = clientId();
+    let steered!: SteerReceipt;
+    const events = await streamUntil(first, "Working", async () => {
+      steered = await json<SteerReceipt>(
+        await sendTo(alice, first.chat.id, steerId, "Actually, be brief."),
+        202,
+      );
+      // The same ID with other text is refused, whatever the reply's state.
+      await fails(
+        await sendTo(alice, first.chat.id, steerId, "something else"),
+        409,
+        "CONFLICT",
+      );
+      // A retry while the reply streams is the same steer, not a new one.
+      const retried = await json<SteerReceipt>(
+        await sendTo(alice, first.chat.id, steerId, "Actually, be brief."),
+        200,
+      );
+      assert.equal(retried.created, false);
+      assert.equal(retried.steer.createdAt, steered.steer.createdAt);
+      // A reload while the reply streams shows the steer on its run.
+      const reloaded = await getChat(alice, first.chat.id);
+      assert.deepEqual(
+        reloaded.runs
+          .find((r) => r.id === first.run.id)
+          ?.steers?.map((s) => s.clientMessageId),
+        [steerId],
+      );
+    });
+    assert.equal(steered.run.id, first.run.id);
+    assert.equal(steered.steer.text, "Actually, be brief.");
+    assert.equal(steered.message, undefined);
+    assert.deepEqual(
+      steered.run.steers?.map((s) => s.text),
+      ["Actually, be brief."],
     );
-    for (const res of attempts) await fails(res, 409, "CHAT_BUSY");
-    gateway.release();
-    assert.equal(
-      savedOf(await finish(alice, first)).messages[0]?.text,
-      "Working on it.",
+
+    const input = events.find((e) => e.type === "input");
+    assert.equal(input?.data.clientMessageId, steerId);
+    const saved = savedOf(events);
+    assert.equal(saved.run.status, "completed");
+    assert.deepEqual(
+      saved.messages.map((m) => [m.role, m.text, m.state]),
+      [
+        ["assistant", "Working on", "interrupted"],
+        ["user", "Actually, be brief.", "complete"],
+        ["assistant", "Steered answer.", "complete"],
+      ],
     );
-    const after = await call(
-      alice,
-      "POST",
-      `/chats/${first.chat.id}/messages`,
-      {
-        clientMessageId: clientId(),
-        text: "now it works",
-      },
-    );
-    await finish(alice, await json<Receipt>(after, 202));
+    // The model answered again with the steer, and never saw the cut text.
     assert.equal(gateway.requests.length, 2);
+    const resent = JSON.stringify(gateway.requests[1]?.body);
+    assert.match(resent, /Actually, be brief\./);
+    assert.doesNotMatch(resent, /Working on/);
+
+    const body = await getChat(alice, first.chat.id);
+    assert.equal(body.chat.activeRunId, null);
+    assert.deepEqual(
+      body.messages.map((m) => [m.seq, m.role, m.state]),
+      [
+        [1, "user", "complete"],
+        [2, "assistant", "interrupted"],
+        [3, "user", "complete"],
+        [4, "assistant", "complete"],
+      ],
+    );
+    assert.equal(body.runs[0]?.steers, undefined, "settled runs hide steers");
+    // A retry of the steer after it was saved is its saved message.
+    const replay = await json<Receipt>(
+      await sendTo(alice, first.chat.id, steerId, "Actually, be brief."),
+      200,
+    );
+    assert.equal(replay.message.seq, 3);
+
+    // The chat goes on after the steered reply.
+    const next = await json<Receipt>(
+      await sendTo(alice, first.chat.id, clientId(), "thanks"),
+      202,
+    );
+    assert.equal(next.message.seq, 5);
+    assert.equal(savedOf(await finish(alice, next)).run.status, "completed");
+  });
+
+  test("a steer sent before the reply has any text joins the turn", async () => {
+    gateway.script.push({ kind: "held", before: "Early", after: " text." });
+    gateway.defaultBehavior = { kind: "reply", text: "Both answered." };
+    const first = await json<Receipt>(await startChat(alice), 202);
+    const steered = await json<SteerReceipt>(
+      await sendTo(alice, first.chat.id, clientId(), "PS: in French"),
+      202,
+    );
+    assert.equal(steered.run.id, first.run.id);
+    // Codex may take the steer before the first model request or cut it.
+    for (let i = 0; i < 100 && gateway.requests.length < 2; i++)
+      await sleep(50);
+    if (gateway.requests.length < 2) gateway.release();
+    const saved = savedOf(await finish(alice, first));
+    assert.equal(saved.run.status, "completed");
+    const steer = saved.messages.find((m) => m.role === "user");
+    assert.equal(steer?.text, "PS: in French");
+    assert.equal(steer?.state, "complete");
+    assert.equal(saved.messages.at(-1)?.role, "assistant");
+    assert.equal(saved.messages.at(-1)?.state, "complete");
+    assert.match(
+      JSON.stringify(gateway.requests.at(-1)?.body),
+      /PS: in French/,
+    );
+  });
+
+  test("a reply takes five steers; the sixth is refused and the draft is the caller's", async () => {
+    gateway.defaultBehavior = { kind: "held", before: "Thinking", after: "." };
+    const first = await json<Receipt>(await startChat(alice), 202);
+    const sent: string[] = [];
+    await streamUntil(first, "Thinking", async () => {
+      for (let i = 1; i <= 5; i++) {
+        const text = `steer number ${i}`;
+        await json<SteerReceipt>(
+          await sendTo(alice, first.chat.id, clientId(), text),
+          202,
+        );
+        sent.push(text);
+      }
+      await fails(
+        await sendTo(alice, first.chat.id, clientId(), "one too many"),
+        409,
+        "STEER_LIMIT",
+      );
+      await json(
+        await call(
+          alice,
+          "POST",
+          `/chats/${first.chat.id}/runs/${first.run.id}/stop`,
+        ),
+        202,
+      );
+    });
+    gateway.release();
+    const body = await getChat(alice, first.chat.id);
+    assert.equal(body.chat.activeRunId, null);
+    assert.equal(body.runs[0]?.status, "stopped");
+    const steers = body.messages.filter((m) => m.role === "user").slice(1);
+    assert.deepEqual(
+      steers.map((m) => m.text),
+      sent,
+    );
+    for (const m of steers)
+      assert.ok(["complete", "not_sent"].includes(m.state), m.state);
+    // One message per seq, no gaps.
+    assert.deepEqual(
+      body.messages.map((m) => m.seq),
+      body.messages.map((_, i) => i + 1),
+    );
+    assert.ok(!body.messages.some((m) => m.text === "one too many"));
+  });
+
+  test("a message sent while a reply is stopping becomes the next message", async () => {
+    gateway.script.push({ kind: "held", before: "Long answer", after: " end" });
+    const first = await json<Receipt>(await startChat(alice), 202);
+    let next!: Receipt;
+    const events = await streamUntil(first, "Long", async () => {
+      await json(
+        await call(
+          alice,
+          "POST",
+          `/chats/${first.chat.id}/runs/${first.run.id}/stop`,
+        ),
+        202,
+      );
+      next = await json<Receipt>(
+        await sendTo(alice, first.chat.id, clientId(), "never mind, this"),
+        202,
+      );
+    });
+    const stopped = savedOf(events);
+    assert.equal(stopped.run.status, "stopped");
+    assert.ok(!stopped.messages.some((m) => m.role === "user"));
+    assert.notEqual(next.run.id, first.run.id);
+    assert.equal(next.message.text, "never mind, this");
+    assert.equal(savedOf(await finish(alice, next)).run.status, "completed");
+    assert.equal(gateway.requests.length, 2);
+  });
+
+  test("a message that arrives as a reply ends waits for it to be saved, then is sent once", async () => {
+    const store = running.app.get(ChatStore);
+    const realSettle = store.settle.bind(store);
+    store.settleRetryDelaysMs = [1_500];
+    let attempts = 0;
+    // The reply has finished in the runtime but is not saved yet.
+    store.settle = async (...args) => {
+      if (++attempts === 1) throw new Error("simulated slow save");
+      return realSettle(...args);
+    };
+    try {
+      gateway.script.push({ kind: "reply", text: "First." });
+      const first = await json<Receipt>(await startChat(alice), 202);
+      for (let i = 0; i < 100 && attempts === 0; i++) await sleep(20);
+      assert.equal(attempts, 1);
+      const late = await json<Receipt>(
+        await sendTo(alice, first.chat.id, clientId(), "late one"),
+        202,
+      );
+      assert.notEqual(late.run.id, first.run.id);
+      assert.equal(late.message.text, "late one");
+      assert.equal(savedOf(await finish(alice, late)).run.status, "completed");
+      const body = await getChat(alice, first.chat.id);
+      assert.deepEqual(
+        body.messages.map((m) => [m.seq, m.role, m.text]),
+        [
+          [1, "user", "Hello there"],
+          [2, "assistant", "First."],
+          [3, "user", "late one"],
+          [4, "assistant", "Hello from the model."],
+        ],
+      );
+      assert.equal(gateway.requests.length, 2);
+    } finally {
+      store.settle = realSettle;
+      store.settleRetryDelaysMs = [500];
+    }
   });
 
   test("stop keeps the partial text, is safe to repeat, and the chat goes on", async () => {
@@ -1091,9 +1321,9 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       status: "completed",
       error: null,
       items: [
-        { itemId: "a", text: "One." },
-        { itemId: "blank", text: "  " },
-        { itemId: "b", text: "Two." },
+        { type: "reply", itemId: "a", text: "One.", completed: true },
+        { type: "reply", itemId: "blank", text: "  ", completed: true },
+        { type: "reply", itemId: "b", text: "Two.", completed: true },
       ],
       usage: null,
       threadId: null,

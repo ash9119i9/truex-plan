@@ -241,7 +241,14 @@ export class AdapterProcess {
   async close(): Promise<void> {
     await this.stop();
     if (this.stateDir)
-      await rm(this.stateDir, { recursive: true, force: true });
+      // Retried: a git child Codex spawned (plugin sync) can still be
+      // writing under the home directory for a moment after Codex exits.
+      await rm(this.stateDir, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 100,
+      });
   }
 }
 

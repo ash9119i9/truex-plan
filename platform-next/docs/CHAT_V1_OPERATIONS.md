@@ -33,7 +33,8 @@ A normal message makes 6–7 MongoDB calls in total (new chat / follow-up).
 | Message text                         | 1–32 000 characters                        | platform-next and adapter       |
 | Agent prompt                         | 40 000 characters                          | adapter                         |
 | Sends per member                     | 20 a minute (per process)                  | `SENDS_PER_MINUTE`              |
-| Replies per chat                     | one at a time (`CHAT_BUSY`)                | platform-next and adapter       |
+| Replies per chat                     | one at a time; later messages steer it     | platform-next and adapter       |
+| Steers per reply                     | 5 (`STEER_LIMIT`; adapter caps at 20)      | `STEERS_PER_RUN`                |
 | Time to first model output           | 180 s, then `MODEL_TIMEOUT`                | adapter                         |
 | Model silence mid-reply              | 120 s, then `MODEL_TIMEOUT`                | adapter                         |
 | Codex processes per adapter          | 20 (`RUNTIME_MAX_PROCESSES`)               | idle ones stop after 10 min     |

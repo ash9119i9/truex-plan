@@ -13,6 +13,8 @@ export type DomainErrorCode =
   | "STALE_REVISION"
   // The chat is answering a message; wait or stop it.
   | "CHAT_BUSY"
+  // The reply already carries as many added messages as it can take.
+  | "STEER_LIMIT"
   // The chat can be read but not continued.
   | "CHAT_READ_ONLY"
   // Too many requests in a short time.

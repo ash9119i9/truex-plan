@@ -9,6 +9,11 @@ const PROVIDER = "truex_gateway";
 // Verified against the pin (test/codex/lifecycle.test.ts): with these settings
 // the model is offered zero tools and no Codex context blocks.
 const TEXT_ONLY = {
+  // Pinned on explicitly: a steer cuts the reply being written instead of
+  // being appended to it. It is "under development" upstream, so pinning it
+  // makes a default change fail the pin tests rather than silently alter
+  // steer behaviour.
+  "features.instant_interrupt": true,
   "features.shell_tool": false,
   "features.unified_exec": false,
   "features.multi_agent": false,

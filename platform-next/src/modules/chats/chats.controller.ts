@@ -32,7 +32,7 @@ import {
   SessionsService,
 } from "../sessions/sessions.service";
 import { parseRename, parseSend, parseStartChat } from "./chat";
-import type { SettleResult } from "./chat-store";
+import type { SettleItem, SettleResult } from "./chat-store";
 import {
   ChatsService,
   messageView,
@@ -40,6 +40,7 @@ import {
   type ChatView,
   type HistoryPage,
   type SendReceipt,
+  type SteerReceipt,
 } from "./chats.service";
 import { RunExecutor, type LiveEvent } from "./run-executor";
 
@@ -142,13 +143,15 @@ export class ChatsController {
     return this.chats.messagesBefore(context, idOf(id, "chat"), seqOf(before));
   }
 
+  // 202: saved and handed to the assistant, or added to the reply being
+  // written (a steer receipt: `steer`, no `message`); 200: a retry.
   @Post(":id/messages")
   async send(
     @CurrentTenant() context: TenantContext,
     @Param("id") id: string,
     @Body() body: unknown,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<SendReceipt> {
+  ): Promise<SendReceipt | SteerReceipt> {
     const receipt = await this.chats.send(
       context,
       idOf(id, "chat"),
@@ -245,10 +248,21 @@ export class ChatsController {
         data: {
           runId: runIdParam,
           phase: "settled",
-          items: saved.messages.map((m) => ({
-            itemId: m.runtimeItemId ?? toWireId(m._id),
-            text: m.text,
-          })),
+          // In order: the replies, and the steers the assistant read.
+          items: saved.messages.flatMap((m): SettleItem[] =>
+            m.role === "assistant"
+              ? [
+                  {
+                    type: "reply",
+                    itemId: m.runtimeItemId ?? toWireId(m._id),
+                    text: m.text,
+                    completed: m.state === "complete",
+                  },
+                ]
+              : m.state === "complete" && m.clientMessageId
+                ? [{ type: "input", clientMessageId: m.clientMessageId }]
+                : [],
+          ),
           usage: saved.run.usage ?? null,
         },
       });

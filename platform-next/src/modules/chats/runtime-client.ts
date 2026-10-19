@@ -1,6 +1,6 @@
 // The platform's side of the runtime adapter contract
 // (runtime-adapter/README.md). Plain HTTP today; the AgentCore transport wraps
-// the same four operations.
+// the same five operations.
 
 export interface AdapterEvent {
   readonly seq: number;
@@ -13,11 +13,19 @@ export interface ChatRef {
   readonly chatId: string;
 }
 
+// A turn's items in the runtime's order: every input (the turn's own first)
+// and every reply.
+export type HistoryItem =
+  | { readonly type: "input"; readonly clientMessageId: string | null }
+  | { readonly type: "reply"; readonly text: string };
+
 export interface HistoryTurn {
   readonly turnId: string;
   readonly status: string;
   readonly clientMessageId: string | null;
   readonly text: string;
+  // Absent from an adapter that predates steering.
+  readonly items?: readonly HistoryItem[];
 }
 
 export interface StartRunBody extends ChatRef {
@@ -99,6 +107,19 @@ export class RuntimeClient {
     await this.json(`/v1/runs/${encodeURIComponent(runId)}/stop`, "POST", ref);
   }
 
+  // Adds a message to the run's running turn. Resolves once the runtime took
+  // it; refusals are AdapterRefusal (RUN_ENDED, STEER_UNKNOWN, ...).
+  async steer(
+    runId: string,
+    ref: ChatRef,
+    input: { readonly text: string; readonly clientMessageId: string },
+  ): Promise<void> {
+    await this.json(`/v1/runs/${encodeURIComponent(runId)}/steer`, "POST", {
+      ...ref,
+      input,
+    });
+  }
+
   async history(ref: ChatRef): Promise<HistoryTurn[]> {
     const query = new URLSearchParams({ tenantId: ref.tenantId });
     const body = (await this.json(
@@ -107,7 +128,11 @@ export class RuntimeClient {
     )) as { turns?: unknown };
     if (!Array.isArray(body.turns))
       throw new AdapterUnreachable("invalid history response");
-    return body.turns.filter(isHistoryTurn);
+    return body.turns.filter(isHistoryTurn).map((turn) => {
+      const items = historyItems(turn.items);
+      const { turnId, status, clientMessageId, text } = turn;
+      return { turnId, status, clientMessageId, text, ...(items && { items }) };
+    });
   }
 
   private async json(path: string, method: string, body?: unknown) {
@@ -248,4 +273,22 @@ function isHistoryTurn(value: unknown): value is HistoryTurn {
     typeof turn.text === "string" &&
     (turn.clientMessageId === null || typeof turn.clientMessageId === "string")
   );
+}
+
+function historyItems(value: unknown): HistoryItem[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items: HistoryItem[] = [];
+  for (const item of value as Array<Record<string, unknown> | null>) {
+    if (item?.type === "input")
+      items.push({
+        type: "input",
+        clientMessageId:
+          typeof item.clientMessageId === "string"
+            ? item.clientMessageId
+            : null,
+      });
+    else if (item?.type === "reply" && typeof item.text === "string")
+      items.push({ type: "reply", text: item.text });
+  }
+  return items;
 }

@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { ConfigError, DEFAULT_LIMITS, loadConfig } from "../../src/config";
-import { MAX_TEXT, parseChatRef, parseStartRun } from "../../src/contract";
+import {
+  MAX_TEXT,
+  parseChatRef,
+  parseStartRun,
+  parseSteer,
+} from "../../src/contract";
 import { AdapterError, fromCodexErrorInfo } from "../../src/errors";
 import { Run, type RunEvent } from "../../src/runtime/run";
 
@@ -180,6 +185,57 @@ describe("start-run contract", () => {
   });
 });
 
+describe("steer contract", () => {
+  const valid = () => ({
+    tenantId: "t",
+    chatId: "c",
+    input: { text: "steer me", clientMessageId: "m2" },
+  });
+
+  test("accepts a valid steer, validated like start input", () => {
+    assert.deepEqual(parseSteer(valid()), {
+      tenantId: "t",
+      chatId: "c",
+      input: { text: "steer me", clientMessageId: "m2" },
+    });
+  });
+
+  function rejects(body: unknown, pattern: RegExp) {
+    assert.throws(
+      () => parseSteer(body),
+      (error: unknown) =>
+        error instanceof AdapterError &&
+        error.code === "INVALID_REQUEST" &&
+        pattern.test(error.message),
+    );
+  }
+
+  test("refuses unknown fields, bad IDs and bad text", () => {
+    rejects({ ...valid(), runId: "x" }, /Unknown field "runId"/);
+    rejects({ ...valid(), input: { ...valid().input, extra: 1 } }, /Unknown/);
+    rejects({ ...valid(), chatId: "../x" }, /chatId/);
+    rejects(
+      { ...valid(), input: { text: "   ", clientMessageId: "m" } },
+      /input.text/,
+    );
+    rejects(
+      {
+        ...valid(),
+        input: { text: "x".repeat(MAX_TEXT + 1), clientMessageId: "m" },
+      },
+      /input.text/,
+    );
+    rejects(
+      { ...valid(), input: { text: "a\u0000b", clientMessageId: "m" } },
+      /control/,
+    );
+    rejects(
+      { ...valid(), input: { text: "ok", clientMessageId: "a b" } },
+      /clientMessageId/,
+    );
+  });
+});
+
 describe("configuration", () => {
   test("lists every problem at once", () => {
     assert.throws(
@@ -265,7 +321,7 @@ describe("run buffer", () => {
     const sub = collect(run, 0);
     assert.equal(sub.events[0]!.type, "run.snapshot");
     assert.deepEqual(sub.events[0]!.data.items, [
-      { itemId: "i1", text: "abcdef", completed: false },
+      { type: "reply", itemId: "i1", text: "abcdef", completed: false },
     ]);
     run.appendText("i1", "g");
     assert.equal(sub.events.at(-1)!.seq, 7);
@@ -293,8 +349,40 @@ describe("run buffer", () => {
     run.appendText("i1", "late");
     run.completeItem("i1", "again");
     assert.deepEqual(run.itemList(), [
-      { itemId: "i1", text: "final", completed: true },
+      { type: "reply", itemId: "i1", text: "final", completed: true },
     ]);
+  });
+
+  test("items are ordered reply/input, the run's own input is excluded, and empty replies never appear", () => {
+    const run = new Run("r", "t", "c", "h", 100, "own-input");
+    // The run's own input is ignored.
+    run.recordInput("own-input");
+    // A reply, then a steer that cuts it, then the follow-up reply.
+    run.appendText("i1", "first ");
+    run.recordInput("steer-1");
+    run.appendText("i2", "second");
+    // An empty reply (started, cut before any text) is never placed.
+    run.completeItem("i3", "");
+    assert.deepEqual(run.itemList(), [
+      { type: "reply", itemId: "i1", text: "first ", completed: false },
+      { type: "input", clientMessageId: "steer-1" },
+      { type: "reply", itemId: "i2", text: "second", completed: false },
+    ]);
+  });
+
+  test("recordInput emits input.accepted once per steer, in order", () => {
+    const run = new Run("r", "t", "c", "h", 100, "own-input");
+    const sub = collect(run, 0);
+    run.recordInput("own-input"); // the run's own input: no event
+    run.recordInput("steer-1");
+    run.recordInput("steer-1"); // repeat: no second event
+    run.recordInput("steer-2");
+    assert.deepEqual(
+      sub.events
+        .filter((e) => e.type === "input.accepted")
+        .map((e) => e.data.clientMessageId),
+      ["steer-1", "steer-2"],
+    );
   });
 });
 

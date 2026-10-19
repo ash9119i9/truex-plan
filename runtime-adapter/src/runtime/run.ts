@@ -23,9 +23,19 @@ export interface Subscriber {
   readonly end: () => void;
 }
 
-interface ItemState {
+// An ordered entry of what Codex produced during the turn. A reply holds one
+// assistant message; an input marks where a steer entered the turn. The run's
+// own first input is not recorded, so the list is the steered conversation.
+export type RunItem =
+  | { type: "reply"; itemId: string; text: string; completed: boolean }
+  | { type: "input"; clientMessageId: string };
+
+interface ReplyState {
   text: string;
   completed: boolean;
+  // Index in `order`, or undefined until the reply has its first text and is
+  // placed. Empty replies are never placed, so they never appear.
+  placedAt: number | undefined;
 }
 
 export interface Timings {
@@ -51,7 +61,13 @@ export class Run {
 
   private seq = 0;
   private readonly events: RunEvent[] = [];
-  private readonly items = new Map<string, ItemState>();
+  private readonly replies = new Map<string, ReplyState>();
+  // Replies and inputs in the order Codex produced them. Replies appear only
+  // once they have text (empty ones never do); every steer input appears.
+  private readonly order: RunItem[] = [];
+  // Steer inputs already recorded, so a repeated userMessage/completed for one
+  // is placed once.
+  private readonly recordedInputs = new Set<string>();
   private readonly subscribers = new Set<Subscriber>();
 
   constructor(
@@ -60,6 +76,8 @@ export class Run {
     readonly chatId: string,
     readonly requestHash: string,
     private readonly bufferLimit: number,
+    // The run's own first input; its userMessage item is never listed.
+    readonly inputClientMessageId: string | null = null,
   ) {}
 
   get lastSeq(): number {
@@ -79,28 +97,50 @@ export class Run {
   }
 
   appendText(itemId: string, delta: string): void {
-    const item = this.item(itemId);
-    if (item.completed) return;
-    item.text += delta;
+    const reply = this.reply(itemId);
+    if (reply.completed) return;
+    reply.text += delta;
+    this.place(itemId, reply);
     this.timings.firstTextAt ??= Date.now();
     this.emit("text.delta", { itemId, delta });
   }
 
   completeItem(itemId: string, text: string): void {
-    const item = this.item(itemId);
-    if (item.completed) return;
-    item.text = text;
-    item.completed = true;
+    const reply = this.reply(itemId);
+    if (reply.completed) return;
+    reply.text = text;
+    reply.completed = true;
+    this.place(itemId, reply);
     this.timings.firstTextAt ??= Date.now();
     this.emit("item.completed", { itemId, text });
   }
 
-  itemList() {
-    return [...this.items].map(([itemId, item]) => ({
-      itemId,
-      text: item.text,
-      completed: item.completed,
-    }));
+  // A steer entered the turn: Codex's userMessage item for it completed. The
+  // run's own input is never listed; every steer is recorded once, in stream
+  // order, and emits `input.accepted`. A reply still streaming at this point
+  // was cut off by the steer and never gets `item.completed`.
+  recordInput(clientMessageId: string): void {
+    if (
+      clientMessageId === this.inputClientMessageId ||
+      this.recordedInputs.has(clientMessageId)
+    )
+      return;
+    this.recordedInputs.add(clientMessageId);
+    this.order.push({ type: "input", clientMessageId });
+    this.emit("input.accepted", { clientMessageId });
+  }
+
+  itemList(): RunItem[] {
+    return this.order.map((item) =>
+      item.type === "reply"
+        ? {
+            type: "reply" as const,
+            itemId: item.itemId,
+            text: this.replies.get(item.itemId)!.text,
+            completed: this.replies.get(item.itemId)!.completed,
+          }
+        : item,
+    );
   }
 
   // The terminal event. Everything a caller needs to save the outcome is in
@@ -160,12 +200,20 @@ export class Run {
     return () => this.subscribers.delete(subscriber);
   }
 
-  private item(itemId: string): ItemState {
-    let item = this.items.get(itemId);
-    if (!item) {
-      item = { text: "", completed: false };
-      this.items.set(itemId, item);
+  private reply(itemId: string): ReplyState {
+    let reply = this.replies.get(itemId);
+    if (!reply) {
+      reply = { text: "", completed: false, placedAt: undefined };
+      this.replies.set(itemId, reply);
     }
-    return item;
+    return reply;
+  }
+
+  // Puts a reply into the ordered list the first time it has any text, so an
+  // empty reply (started then cut off) never appears.
+  private place(itemId: string, reply: ReplyState): void {
+    if (reply.placedAt !== undefined || reply.text.length === 0) return;
+    reply.placedAt = this.order.length;
+    this.order.push({ type: "reply", itemId, text: "", completed: false });
   }
 }
