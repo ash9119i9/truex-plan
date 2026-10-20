@@ -17,7 +17,8 @@
     "format:check": "prettier --check \"{src,test}/**/*.ts\"",
     "operator": "node dist/cli/operator.js",
     "operator:dev": "tsx src/cli/operator.ts",
-    "auth:generate-key": "tsx src/cli/generate-auth-key.ts"
+    "auth:generate-key": "tsx src/cli/generate-auth-key.ts",
+    "connectors:generate-key": "tsx src/cli/generate-connectors-key.ts"
   },
   "config": {
     "mongodbMemoryServer": {
@@ -25,6 +26,7 @@
     }
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "3.1141.0",
     "@nestjs/common": "11.2.7",
     "@nestjs/core": "11.2.7",
     "@nestjs/platform-express": "11.2.7",

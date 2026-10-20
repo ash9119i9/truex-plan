@@ -18,6 +18,7 @@ export const ChatList = memo(function ChatList({
   onNew,
   onRetry,
   onMore,
+  onConnectedTools,
 }: {
   chats: ChatSummary[];
   activeId: string | null;
@@ -29,6 +30,8 @@ export const ChatList = memo(function ChatList({
   onNew: () => void;
   onRetry: () => void;
   onMore: () => void;
+  /** Opens the Connected tools page. Omitted hides the nav entry. */
+  onConnectedTools?: () => void;
 }) {
   const now = new Date(useSidebarDay());
   const today = chats.filter(
@@ -121,6 +124,16 @@ export const ChatList = memo(function ChatList({
           </button>
         )}
       </nav>
+      {onConnectedTools && (
+        <button
+          type="button"
+          className="side-link side-foot"
+          onClick={onConnectedTools}
+        >
+          <Icon name="plug" size={16} />
+          Connected tools
+        </button>
+      )}
     </>
   );
 });

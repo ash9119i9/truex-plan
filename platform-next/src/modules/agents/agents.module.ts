@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { TenantGuard } from "../../common/access/tenant.guard";
 import { AuditModule } from "../audit/audit.module";
+import { ConnectorsModule } from "../connectors/connectors.module";
 import { MembershipsModule } from "../memberships/memberships.module";
 import { ModelsModule } from "../models/models.module";
 import { SessionsModule } from "../sessions/sessions.module";
@@ -16,6 +17,7 @@ import { BuiltinAgentsService } from "./builtin-agents.service";
     TenantsModule,
     AuditModule,
     ModelsModule,
+    ConnectorsModule,
   ],
   controllers: [AgentsController],
   providers: [AgentsService, BuiltinAgentsService, TenantGuard],

@@ -27,6 +27,7 @@ async function main(): Promise<void> {
     limits: config.limits,
     manager,
     log,
+    allowLoopbackMcp: config.allowLoopbackMcp,
   });
   server.listen(config.port, config.host, () =>
     log("listening", { host: config.host, port: config.port }),

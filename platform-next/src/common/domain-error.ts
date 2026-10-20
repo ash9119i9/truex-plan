@@ -20,12 +20,26 @@ export type DomainErrorCode =
   // Too many requests in a short time.
   | "RATE_LIMITED"
   // A dependency is missing or down; retrying later may work.
-  | "UNAVAILABLE";
+  | "UNAVAILABLE"
+  // The connector token keys are not configured, so connectors are off.
+  | "CONNECTORS_NOT_CONFIGURED"
+  // The chat's agent uses a connector the member has not connected, or whose
+  // connection needs a new sign-in. Nothing was saved or started.
+  | "CONNECTION_REQUIRED"
+  // A tool approval was already answered (first answer wins).
+  | "APPROVAL_RESOLVED"
+  // A tool approval is unknown, expired, or its reply has finished.
+  | "APPROVAL_NOT_FOUND";
+
+// Safe, structured facts a client can act on (which connectors to connect).
+// Never secrets or provider text.
+export type ErrorDetails = Readonly<Record<string, unknown>>;
 
 export class DomainError extends Error {
   constructor(
     readonly code: DomainErrorCode,
     message: string,
+    readonly details?: ErrorDetails,
   ) {
     super(message);
     this.name = "DomainError";

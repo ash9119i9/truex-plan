@@ -25,6 +25,7 @@ export function ChatComposer({
   busy,
   sending,
   ending,
+  awaitingApproval = false,
   disabled,
   failure,
   stopError,
@@ -42,6 +43,9 @@ export function ChatComposer({
   /** The running reply is ending: a stop was asked for, or it finished and
    * is being saved. Either way there is nothing left to stop. */
   ending: "stopping" | "saving" | null;
+  /** The running reply is paused on a write-tool approval card the member
+   * hasn't answered. */
+  awaitingApproval?: boolean;
   /** Nothing can be sent (no agent chosen, chat still loading). */
   disabled: boolean;
   failure: SendFailure | null;
@@ -136,6 +140,11 @@ export function ChatComposer({
           {sending && (
             <span className="muted sm" role="status">
               Sending…
+            </span>
+          )}
+          {!sending && awaitingApproval && (
+            <span className="muted sm" role="status">
+              Waiting for your approval
             </span>
           )}
           {busy && (

@@ -31,7 +31,13 @@ import {
   InvalidSessionError,
   SessionsService,
 } from "../sessions/sessions.service";
-import { parseRename, parseSend, parseStartChat } from "./chat";
+import {
+  isApprovalId,
+  parseApprovalAnswer,
+  parseRename,
+  parseSend,
+  parseStartChat,
+} from "./chat";
 import type { SettleItem, SettleResult } from "./chat-store";
 import {
   ChatsService,
@@ -195,6 +201,34 @@ export class ChatsController {
     return this.chats.stop(context, idOf(id, "chat"), idOf(runId, "reply"));
   }
 
+  // The member's answer to a write-tool approval card. 200 with the decision;
+  // 409 APPROVAL_RESOLVED when it was already answered; 404
+  // APPROVAL_NOT_FOUND when it expired or the reply finished. Params are
+  // never logged.
+  @Post(":id/runs/:runId/approvals/:approvalId")
+  @HttpCode(200)
+  answerApproval(
+    @CurrentTenant() context: TenantContext,
+    @Param("id") id: string,
+    @Param("runId") runId: string,
+    @Param("approvalId") approvalId: string,
+    @Body() body: unknown,
+  ): Promise<{ decision: string }> {
+    const decision = parseApprovalAnswer(body);
+    if (!isApprovalId(approvalId))
+      throw new DomainError(
+        "APPROVAL_NOT_FOUND",
+        "This request has expired or the reply has finished.",
+      );
+    return this.chats.answerApproval(
+      context,
+      idOf(id, "chat"),
+      idOf(runId, "reply"),
+      approvalId,
+      decision,
+    );
+  }
+
   // One reply as server-sent events: a snapshot of the text so far, then
   // live events, ending with `saved` once the outcome is in MongoDB. A
   // finished reply is answered with its saved outcome. Reconnecting is always
@@ -248,22 +282,41 @@ export class ChatsController {
         data: {
           runId: runIdParam,
           phase: "settled",
-          // In order: the replies, and the steers the assistant read.
+          // In order: the replies, tool calls, and the steers the
+          // assistant read.
           items: saved.messages.flatMap((m): SettleItem[] =>
-            m.role === "assistant"
+            m.role === "tool" && m.tool && m.runtimeItemId
               ? [
                   {
-                    type: "reply",
-                    itemId: m.runtimeItemId ?? toWireId(m._id),
-                    text: m.text,
-                    completed: m.state === "complete",
+                    type: "tool",
+                    itemId: m.runtimeItemId,
+                    connector: m.tool.connector,
+                    tool: m.tool.name,
+                    status: m.tool.status,
+                    ...(m.tool.durationMs !== undefined
+                      ? { durationMs: m.tool.durationMs }
+                      : {}),
+                    ...(m.tool.errorCode
+                      ? { errorCode: m.tool.errorCode }
+                      : {}),
+                    ...(m.tool.approval ? { approval: m.tool.approval } : {}),
                   },
                 ]
-              : m.state === "complete" && m.clientMessageId
-                ? [{ type: "input", clientMessageId: m.clientMessageId }]
-                : [],
+              : m.role === "assistant"
+                ? [
+                    {
+                      type: "reply",
+                      itemId: m.runtimeItemId ?? toWireId(m._id),
+                      text: m.text,
+                      completed: m.state === "complete",
+                    },
+                  ]
+                : m.state === "complete" && m.clientMessageId
+                  ? [{ type: "input", clientMessageId: m.clientMessageId }]
+                  : [],
           ),
           usage: saved.run.usage ?? null,
+          approvals: [],
         },
       });
       send({ type: "saved", data: saved });

@@ -3,18 +3,27 @@ import {
   Injectable,
   Logger,
   OnApplicationShutdown,
+  Optional,
 } from "@nestjs/common";
 import type { ObjectId } from "mongodb";
 import { detached } from "../../common/http/server-timing";
 import { toWireId } from "../../database/object-id";
-import type { RunErrorInfo, RunUsage } from "./chat";
+import {
+  APPROVAL_DECISIONS,
+  type ApprovalAnswer,
+  type ApprovalDecision,
+  type RunErrorInfo,
+  type RunUsage,
+} from "./chat";
 import {
   ChatStore,
   LEASE_RENEW_MS,
   type SettleItem,
   type SettleResult,
   type Settlement,
+  type ToolSettleItem,
 } from "./chat-store";
+import { ConnectorsService } from "../connectors/connectors.service";
 import {
   AdapterRefusal,
   AdapterUnreachable,
@@ -26,6 +35,12 @@ import {
 } from "./runtime-client";
 
 export const RUNTIME_CLIENT = Symbol("RUNTIME_CLIENT");
+
+// What a run tells the connectors module: a connector's server refused the
+// chat owner's token, so the next run refreshes it or asks to reconnect.
+export interface ConnectorFeedback {
+  tokenRejected(dbName: string, userId: ObjectId, slug: string): Promise<void>;
+}
 
 // Everything needed to run (or recover) one turn. Built by ChatsService from
 // the saved chat; holds a gateway token, so it never leaves the server.
@@ -61,17 +76,59 @@ export type LiveEvent =
   | { type: "delta"; data: { itemId: string; text: string } }
   | { type: "item"; data: { itemId: string; text: string } }
   | { type: "input"; data: { clientMessageId: string } }
+  | { type: "tool"; data: ToolEventData }
+  | { type: "connector"; data: ConnectorEventData }
+  | { type: "approval"; data: ApprovalEventData }
   | { type: "usage"; data: RunUsage }
   | { type: "completed"; data: Completed }
   | { type: "saved"; data: SettleResult }
   | { type: "save_failed"; data: Record<string, never> };
 
-// Replies and steers in the runtime's order (see SettleItem).
+// A connector tool call starting or finishing. Never arguments or results.
+export interface ToolEventData {
+  itemId: string;
+  connector: string;
+  tool: string;
+  status: ToolSettleItem["status"];
+  durationMs?: number;
+  errorCode?: string;
+  approval?: ApprovalDecision;
+}
+
+// A write-tool call waiting for the member (`status: "pending"`, with
+// `expiresAt`), or how its approval ended (`auto` when an earlier Allow for
+// this chat answered it). `params` are what the card shows: model-written,
+// bounded by the adapter and re-bounded here, rendered as plain text.
+export interface ApprovalEventData {
+  approvalId: string;
+  itemId: string;
+  connector: string;
+  tool: string;
+  params: Array<{ name: string; value: string }>;
+  status: "pending" | ApprovalDecision;
+  expiresAt?: string;
+  auto?: boolean;
+}
+
+// What a member's answer to an approval came to.
+export type ApprovalOutcome = "answered" | "resolved" | "not_found";
+
+// A connector's server starting, ready or failed for this run.
+export interface ConnectorEventData {
+  connector: string;
+  status: "starting" | "ready" | "failed";
+  reason?: "auth" | "unreachable" | "unknown";
+}
+
+// Replies, tool calls and steers in the runtime's order (see SettleItem).
 export interface Snapshot {
   runId: string;
   phase: Phase;
   items: SettleItem[];
   usage: RunUsage | null;
+  // Approvals still waiting for the member, so a reconnecting browser shows
+  // their cards.
+  approvals: ApprovalEventData[];
 }
 
 export interface Completed {
@@ -138,7 +195,18 @@ const THREAD_LOST: RunErrorInfo = {
 
 type OrderEntry =
   | { type: "reply"; itemId: string }
+  | { type: "tool"; itemId: string }
   | { type: "input"; clientMessageId: string };
+
+// The tool error codes the adapter sends (slice 3 contract); anything else
+// is saved as UNKNOWN so no free text reaches a message.
+const TOOL_ERROR_CODES = new Set([
+  "REFUSED",
+  "DENIED",
+  "TOOL_ERROR",
+  "TIMEOUT",
+  "UNKNOWN",
+]);
 
 class LiveRun {
   phase: Phase = "waiting";
@@ -150,6 +218,14 @@ class LiveRun {
   private readonly completedItems = new Set<string>();
   private readonly inputs = new Set<string>();
   private readonly pending = new Map<string, string>();
+  // Tool calls by item, placed in `order` when first seen.
+  private readonly tools = new Map<string, ToolSettleItem>();
+  // Approvals waiting for the member, by approvalId, and the ones that ended
+  // (so a replayed request never reopens a card).
+  private readonly approvals = new Map<string, ApprovalEventData>();
+  private readonly resolvedApprovals = new Set<string>();
+  // Connectors already reported as refusing the token, once per run.
+  readonly authReported = new Set<string>();
   private flushTimer: NodeJS.Timeout | undefined;
   usage: RunUsage | null = null;
   firstTextAt: Date | undefined;
@@ -187,22 +263,23 @@ class LiveRun {
       phase: this.phase,
       items: this.settleItems(),
       usage: this.usage,
+      approvals: [...this.approvals.values()],
     };
   }
 
   // What was sent to subscribers, in order. Call flush() first to include
   // pending text.
   settleItems(): SettleItem[] {
-    return this.order.map((entry) =>
-      entry.type === "input"
-        ? entry
-        : {
-            type: "reply",
-            itemId: entry.itemId,
-            text: this.items.get(entry.itemId) ?? "",
-            completed: this.completedItems.has(entry.itemId),
-          },
-    );
+    return this.order.map((entry): SettleItem => {
+      if (entry.type === "input") return entry;
+      if (entry.type === "tool") return this.tools.get(entry.itemId)!;
+      return {
+        type: "reply",
+        itemId: entry.itemId,
+        text: this.items.get(entry.itemId) ?? "",
+        completed: this.completedItems.has(entry.itemId),
+      };
+    });
   }
 
   hasInput(clientMessageId: string): boolean {
@@ -227,6 +304,61 @@ class LiveRun {
     this.inputs.add(clientMessageId);
     this.order.push({ type: "input", clientMessageId });
     this.broadcast({ type: "input", data: { clientMessageId } });
+  }
+
+  // A tool call started or finished. Placed in stream order when first seen;
+  // a finished call never goes back to in progress (a reconnect snapshot
+  // can carry an older state).
+  setTool(item: ToolSettleItem): void {
+    const before = this.tools.get(item.itemId);
+    if (before && before.status !== "inProgress") return;
+    if (before && item.status === "inProgress") return;
+    if (!before) {
+      this.flush();
+      this.order.push({ type: "tool", itemId: item.itemId });
+    }
+    // A finished call's event does not repeat its approval; keep it.
+    const merged =
+      before?.approval && !item.approval
+        ? { ...item, approval: before.approval }
+        : item;
+    this.tools.set(item.itemId, merged);
+    const { type: _type, ...data } = merged;
+    this.broadcast({ type: "tool", data });
+  }
+
+  // A write-tool call is waiting for the member. Ignored once it ended.
+  requestApproval(approval: ApprovalEventData): void {
+    if (this.resolvedApprovals.has(approval.approvalId)) return;
+    const before = this.approvals.get(approval.approvalId);
+    this.approvals.set(approval.approvalId, approval);
+    if (!before) this.broadcast({ type: "approval", data: approval });
+  }
+
+  // An approval ended. Returns false when this run already saw it end, so
+  // its audit record and chat allow are written once per reader.
+  resolveApproval(approval: ApprovalEventData): boolean {
+    if (this.resolvedApprovals.has(approval.approvalId)) return false;
+    this.resolvedApprovals.add(approval.approvalId);
+    this.approvals.delete(approval.approvalId);
+    const tool = this.tools.get(approval.itemId);
+    if (tool && approval.status !== "pending")
+      this.tools.set(approval.itemId, { ...tool, approval: approval.status });
+    this.broadcast({ type: "approval", data: approval });
+    return true;
+  }
+
+  // Pending approvals the runtime no longer has (a reconnect snapshot
+  // replaced the event stream, so their approval.resolved was missed). Their
+  // cards close; the tool's own outcome carries how they ended. No audit
+  // record is written for these: who answered is not known here.
+  closeApprovalsNotIn(pending: ReadonlySet<string>): void {
+    for (const [approvalId, approval] of [...this.approvals]) {
+      if (pending.has(approvalId)) continue;
+      const { expiresAt: _expiresAt, ...rest } = approval;
+      const decision = this.tools.get(approval.itemId)?.approval ?? "cancelled";
+      this.resolveApproval({ ...rest, status: decision });
+    }
   }
 
   private place(itemId: string): void {
@@ -322,6 +454,9 @@ export class RunExecutor implements OnApplicationShutdown {
   constructor(
     @Inject(ChatStore) private readonly store: ChatStore,
     @Inject(RUNTIME_CLIENT) private readonly client: RuntimeClient | null,
+    @Optional()
+    @Inject(ConnectorsService)
+    private readonly connectors: ConnectorFeedback | null = null,
   ) {}
 
   get configured(): boolean {
@@ -470,6 +605,43 @@ export class RunExecutor implements OnApplicationShutdown {
           });
           return "refused";
       }
+    }
+  }
+
+  // Sends the member's answer to a pending approval. The runtime holds the
+  // approval, so this works whichever process reads the run. First answer
+  // wins: a later one is `resolved`; an unknown, expired or finished one is
+  // `not_found`. AdapterUnreachable propagates (the caller may retry).
+  async answerApproval(
+    runId: ObjectId,
+    ref: ChatRef,
+    approvalId: string,
+    decision: ApprovalAnswer,
+  ): Promise<ApprovalOutcome> {
+    if (!this.client) throw new Error("chat runtime is not configured");
+    try {
+      await this.client.answerApproval(
+        toWireId(runId),
+        approvalId,
+        ref,
+        decision,
+      );
+      return "answered";
+    } catch (error) {
+      if (!(error instanceof AdapterRefusal)) throw error;
+      if (error.code === "APPROVAL_RESOLVED") return "resolved";
+      if (
+        error.code === "APPROVAL_NOT_FOUND" ||
+        error.code === "RUN_NOT_FOUND" ||
+        error.code === "RUN_ENDED"
+      )
+        return "not_found";
+      this.logger.warn({
+        message: "runtime refused approval answer",
+        runId: toWireId(runId),
+        code: error.code,
+      });
+      throw error;
     }
   }
 
@@ -677,11 +849,52 @@ export class RunExecutor implements OnApplicationShutdown {
         if (clientMessageId) run.addInput(clientMessageId);
         return null;
       }
-      case "run.snapshot":
+      case "tool.started":
+      case "tool.completed": {
+        const item = toolOf({
+          ...d,
+          status:
+            event.type === "tool.started"
+              ? "inProgress"
+              : d.status === "completed"
+                ? "completed"
+                : "failed",
+        });
+        if (item) run.setTool(item);
+        return null;
+      }
+      case "connector.status":
+        this.connectorStatus(run, d);
+        return null;
+      case "approval.requested": {
+        const approval = approvalOf(d, "pending");
+        if (approval) run.requestApproval(approval);
+        return null;
+      }
+      case "approval.resolved": {
+        const approval = approvalOf(d, "resolved");
+        if (approval && run.resolveApproval(approval))
+          this.recordApproval(run, approval);
+        return null;
+      }
+      case "run.snapshot": {
         run.flush();
         for (const item of itemsOf(d.items))
           if (item.type === "input") run.addInput(item.clientMessageId);
+          else if (item.type === "tool") run.setTool(item);
           else run.setItem(item.itemId, item.text, item.completed);
+        const pending = new Set<string>();
+        if (Array.isArray(d.approvals))
+          for (const raw of d.approvals as unknown[]) {
+            const approval =
+              raw && typeof raw === "object"
+                ? approvalOf(raw as Record<string, unknown>, "pending")
+                : null;
+            if (!approval) continue;
+            pending.add(approval.approvalId);
+            run.requestApproval(approval);
+          }
+        run.closeApprovalsNotIn(pending);
         if (str(d.threadId)) run.threadId = str(d.threadId);
         if (str(d.turnId)) {
           // A snapshot with a turn replaces a run.accepted no longer buffered.
@@ -689,6 +902,7 @@ export class RunExecutor implements OnApplicationShutdown {
           run.accept();
         }
         return null;
+      }
       case "retrying":
         run.setPhase("retrying");
         return null;
@@ -705,6 +919,92 @@ export class RunExecutor implements OnApplicationShutdown {
       default:
         return null;
     }
+  }
+
+  // The audit record of a resolved approval and, for the member's own Allow
+  // for this chat, the chat allow that later runs send as approvedTools. Not
+  // awaited: the reply goes on; a failure is logged (params never are).
+  private recordApproval(run: LiveRun, approval: ApprovalEventData): void {
+    if (approval.status === "pending") return;
+    const { dbName, chatId, runId, ownerId } = run.dispatch;
+    const decision = approval.status;
+    const writes: Promise<void>[] = [
+      this.store.recordApproval(dbName, {
+        _id: approval.approvalId,
+        chatId,
+        runId,
+        userId: ownerId,
+        connector: approval.connector,
+        tool: approval.tool,
+        decision,
+        auto: approval.auto === true,
+        params: approval.params,
+        at: new Date(),
+      }),
+    ];
+    if (decision === "allow_for_chat" && approval.auto !== true)
+      writes.push(
+        this.store.allowToolForChat(
+          dbName,
+          chatId,
+          ownerId,
+          approval.connector,
+          approval.tool,
+        ),
+      );
+    this.logger.log({
+      message: "tool approval resolved",
+      runId: run.id,
+      connector: approval.connector,
+      tool: approval.tool,
+      decision,
+      auto: approval.auto === true,
+    });
+    void Promise.all(writes).catch((error: unknown) =>
+      this.logger.warn({
+        message: "saving a tool approval failed",
+        runId: run.id,
+        connector: approval.connector,
+        tool: approval.tool,
+        error: error instanceof Error ? error.name : "unknown",
+      }),
+    );
+  }
+
+  // Relays a connector's state to subscribers. A server that refused the
+  // owner's token marks the connection so the next run refreshes it or asks
+  // the member to reconnect. Not awaited: the reply goes on without it.
+  private connectorStatus(run: LiveRun, d: Record<string, unknown>): void {
+    const connector = str(d.connector);
+    const status =
+      d.status === "starting" || d.status === "ready" || d.status === "failed"
+        ? d.status
+        : null;
+    if (!connector || !status) return;
+    const reason =
+      status !== "failed"
+        ? undefined
+        : d.reason === "auth" || d.reason === "unreachable"
+          ? d.reason
+          : "unknown";
+    run.broadcast({
+      type: "connector",
+      data: { connector, status, ...(reason ? { reason } : {}) },
+    });
+    if (reason !== "auth" || !this.connectors) return;
+    if (run.authReported.has(connector)) return;
+    run.authReported.add(connector);
+    const { dbName, ownerId } = run.dispatch;
+    this.connectors
+      .tokenRejected(dbName, ownerId, connector)
+      .catch((error: unknown) =>
+        this.logger.warn({
+          message: "marking a rejected connector token failed",
+          runId: run.id,
+          connector,
+          error: error instanceof Error ? error.name : "unknown",
+        }),
+      );
   }
 
   private async outcomeOf(
@@ -868,14 +1168,107 @@ function str(value: unknown): string | null {
     : null;
 }
 
+// A tool call from an adapter event or item, or null when unreadable.
+function toolOf(value: Record<string, unknown>): ToolSettleItem | null {
+  const itemId = str(value.itemId);
+  const connector = str(value.connector);
+  const tool = str(value.tool);
+  const status =
+    value.status === "inProgress" ||
+    value.status === "completed" ||
+    value.status === "failed"
+      ? value.status
+      : null;
+  if (!itemId || !connector || !tool || !status) return null;
+  const durationMs =
+    typeof value.durationMs === "number" &&
+    Number.isSafeInteger(value.durationMs) &&
+    value.durationMs >= 0
+      ? value.durationMs
+      : undefined;
+  const errorCode =
+    status === "failed"
+      ? typeof value.errorCode === "string" &&
+        TOOL_ERROR_CODES.has(value.errorCode)
+        ? value.errorCode
+        : "UNKNOWN"
+      : undefined;
+  const approval = APPROVAL_DECISIONS.includes(
+    value.approval as ApprovalDecision,
+  )
+    ? (value.approval as ApprovalDecision)
+    : undefined;
+  return {
+    type: "tool",
+    itemId,
+    connector,
+    tool,
+    status,
+    ...(durationMs !== undefined ? { durationMs } : {}),
+    ...(errorCode ? { errorCode } : {}),
+    ...(approval ? { approval } : {}),
+  };
+}
+
+// At most this many card params, each value cut to this length. The adapter
+// bounds them already; this keeps the platform safe on its own.
+const MAX_APPROVAL_PARAMS = 12;
+const MAX_APPROVAL_PARAM_CHARS = 500;
+
+// An approval from an adapter event (or snapshot entry), or null when
+// unreadable. `pending` reads a request; `resolved` needs a known decision.
+function approvalOf(
+  value: Record<string, unknown>,
+  kind: "pending" | "resolved",
+): ApprovalEventData | null {
+  const approvalId = str(value.approvalId);
+  const itemId = str(value.itemId);
+  const connector = str(value.connector);
+  const tool = str(value.tool);
+  if (!approvalId || !itemId || !connector || !tool) return null;
+  const params: ApprovalEventData["params"] = [];
+  if (Array.isArray(value.params))
+    for (const raw of value.params as unknown[]) {
+      if (params.length >= MAX_APPROVAL_PARAMS) break;
+      const p = raw as { name?: unknown; value?: unknown } | null;
+      const name = typeof p?.name === "string" ? p.name.slice(0, 64) : "";
+      if (!name || typeof p?.value !== "string") continue;
+      params.push({
+        name,
+        value: p.value.slice(0, MAX_APPROVAL_PARAM_CHARS),
+      });
+    }
+  const base = { approvalId, itemId, connector, tool, params };
+  if (kind === "pending") {
+    const expiresAt =
+      typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt)
+        ? new Date(value.expiresAt).toISOString()
+        : undefined;
+    return { ...base, status: "pending", ...(expiresAt ? { expiresAt } : {}) };
+  }
+  if (!APPROVAL_DECISIONS.includes(value.decision as ApprovalDecision))
+    return null;
+  return {
+    ...base,
+    status: value.decision as ApprovalDecision,
+    auto: value.auto === true,
+  };
+}
+
 // The adapter's ordered items: replies `{type: "reply", itemId, text,
-// completed}` and steers `{type: "input", clientMessageId}`. An entry with no
-// type is a reply, as an adapter that predates steering sends it.
+// completed}`, tool calls `{type: "tool", …}` and steers `{type: "input",
+// clientMessageId}`. An entry with no type is a reply, as an adapter that
+// predates steering sends it.
 function itemsOf(value: unknown): SettleItem[] {
   if (!Array.isArray(value)) return [];
   const items: SettleItem[] = [];
   for (const item of value as Array<Record<string, unknown> | null>) {
     if (!item) continue;
+    if (item.type === "tool") {
+      const tool = toolOf(item);
+      if (tool) items.push(tool);
+      continue;
+    }
     if (item.type === "input") {
       const clientMessageId = str(item.clientMessageId);
       if (clientMessageId) items.push({ type: "input", clientMessageId });

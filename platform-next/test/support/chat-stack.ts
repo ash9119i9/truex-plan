@@ -54,6 +54,20 @@ export class FakeGateway {
     this.url = `http://127.0.0.1:${(this.server.address() as AddressInfo).port}`;
   }
 
+  // Resolves once `count` model requests have arrived. Throws on timeout, so
+  // a slow runtime fails here instead of releasing nothing and timing out
+  // the reply two minutes later.
+  async waitForRequests(count: number, timeoutMs = 30_000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.requests.length < count) {
+      if (Date.now() > deadline)
+        throw new Error(
+          `expected ${count} model request(s) within ${timeoutMs} ms, got ${this.requests.length}`,
+        );
+      await new Promise((done) => setTimeout(done, 50));
+    }
+  }
+
   // Lets every held reply finish.
   release(): void {
     const waiting = this.releases;

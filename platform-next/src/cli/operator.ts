@@ -30,6 +30,9 @@ const USAGE = `Usage:
   operator builtin-agent-put --operator <name> --file <definition.json>
   operator builtin-agent-enable|builtin-agent-disable --operator <name> --slug <slug>
   operator builtin-agent-list --operator <name>
+  operator connector-put --operator <name> --file <definition.json>
+  operator connector-enable|connector-disable --operator <name> --slug <slug>
+  operator connector-list --operator <name>
 
 Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
 the same arguments is safe. Models are never deleted: disable them instead.
@@ -62,13 +65,23 @@ export type OperatorCommand =
       allowDevCredentials: boolean;
     } & DefinitionCommand)
   | ({ command: "builtin-agent-put" } & DefinitionCommand)
+  | ({ command: "connector-put" } & DefinitionCommand)
   | {
       command: "model-set-enabled" | "builtin-agent-set-enabled";
       operator: string;
       slug: string;
       enabled: boolean;
     }
-  | { command: "model-list" | "builtin-agent-list"; operator: string };
+  | {
+      command: "connector-set-enabled";
+      operator: string;
+      slug: string;
+      enabled: boolean;
+    }
+  | {
+      command: "model-list" | "builtin-agent-list" | "connector-list";
+      operator: string;
+    };
 
 function required(values: Record<string, unknown>, flag: string): string {
   const value = values[flag];
@@ -178,8 +191,23 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         slug: required(values, "slug"),
         enabled: positionals[0] === "builtin-agent-enable",
       };
+    case "connector-put":
+      return {
+        command: "connector-put",
+        operator,
+        file: required(values, "file"),
+      };
+    case "connector-enable":
+    case "connector-disable":
+      return {
+        command: "connector-set-enabled",
+        operator,
+        slug: required(values, "slug"),
+        enabled: positionals[0] === "connector-enable",
+      };
     case "model-list":
     case "builtin-agent-list":
+    case "connector-list":
       return { command: positionals[0], operator };
     default:
       throw new UsageError(`Unknown command "${positionals[0]}".`);
@@ -230,6 +258,15 @@ export async function runOperatorCommand(
       return { models: await operator.listModels() };
     case "builtin-agent-list":
       return { builtinAgents: await operator.listBuiltinAgents() };
+    case "connector-put":
+      return operator.putConnector({
+        operator: command.operator,
+        definition: read(command.file),
+      });
+    case "connector-set-enabled":
+      return operator.setConnectorEnabled(command);
+    case "connector-list":
+      return { connectors: await operator.listConnectors() };
   }
   if (command.command === "ensure-tenant-indexes") {
     const tenants = await operator.ensureTenantIndexes(command);

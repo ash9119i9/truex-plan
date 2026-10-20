@@ -16,6 +16,7 @@ import {
   steerText,
   withLiveSteer,
   isCutShort,
+  progressFlags,
   withOlder,
   withSaved,
   withSteer,
@@ -30,6 +31,7 @@ import {
   parseRun,
   parseSaved,
   parseSteer,
+  parseMessage,
   pendingRunId,
   pendingThread,
   readOnlyNote,
@@ -47,6 +49,11 @@ import {
   type ChatThread,
   replyEnded,
   sentSteerId,
+  withApproval,
+  withApprovalRace,
+  hasPendingApproval,
+  pendingApprovalForItem,
+  approvalForItem,
 } from "../lib/tenant-chat.ts";
 
 const CHAT = "64b7f0c2a1b2c3d4e5f60c01";
@@ -253,7 +260,7 @@ test("stream events build the live reply; a snapshot replaces it", () => {
     type: "delta",
     data: { itemId: "a", text: "lo" },
   });
-  assert.equal(reply.items[0].text, "Hello");
+  assert.equal(replyItems(reply)[0]?.text, "Hello");
   // A reconnect's snapshot is the truth, even when shorter.
   reply = applyStreamEvent(reply, {
     type: "snapshot",
@@ -264,12 +271,12 @@ test("stream events build the live reply; a snapshot replaces it", () => {
       usage: null,
     },
   });
-  assert.equal(reply.items[0].text, "Hel");
+  assert.equal(replyItems(reply)[0]?.text, "Hel");
   reply = applyStreamEvent(reply, {
     type: "item",
     data: { itemId: "a", text: "Hello there" },
   });
-  assert.equal(reply.items[0].text, "Hello there");
+  assert.equal(replyItems(reply)[0]?.text, "Hello there");
   reply = applyStreamEvent(reply, {
     type: "completed",
     data: {
@@ -284,7 +291,7 @@ test("stream events build the live reply; a snapshot replaces it", () => {
     },
   });
   assert.equal(reply.phase, "settled");
-  assert.equal(reply.items[0].text, "Hello there");
+  assert.equal(replyItems(reply)[0]?.text, "Hello there");
   assert.equal(reply.outcome?.error?.message, "The model failed.");
   assert.equal(
     applyStreamEvent(reply, { type: "save_failed", data: {} }).saveFailed,
@@ -439,6 +446,7 @@ test("a first message shows as the start of its chat", () => {
     tint: "mint" as const,
     model: null,
     available: true,
+    connectors: [],
     revision: 1,
     createdByMe: false,
     status: "active" as const,
@@ -1020,4 +1028,382 @@ test("a resend reuses no earlier intent, minting a new id", () => {
   ids.reset();
   assert.equal(ids.for(`resend:${CHAT}:1`, "Try again"), "id-2");
   assert.notEqual("id-1", "id-2");
+});
+
+// ---- Connector tool calls & connector banners ----
+
+test("a tool event places a card inProgress then settles it by itemId", () => {
+  let reply = liveReply(RUN, 0);
+  reply = applyStreamEvent(reply, {
+    type: "tool",
+    data: {
+      itemId: "t1",
+      connector: "github",
+      tool: "list_issues",
+      status: "inProgress",
+    },
+  });
+  assert.equal(reply.phase, "streaming");
+  const started = reply.items[0];
+  assert.equal(started.type, "tool");
+  assert.equal(started.type === "tool" && started.status, "inProgress");
+  // The same itemId completing settles the one card, not a second one.
+  reply = applyStreamEvent(reply, {
+    type: "tool",
+    data: {
+      itemId: "t1",
+      connector: "github",
+      tool: "list_issues",
+      status: "completed",
+      durationMs: 1200,
+    },
+  });
+  assert.equal(reply.items.length, 1);
+  const done = reply.items[0];
+  assert.equal(done.type === "tool" && done.status, "completed");
+  assert.equal(done.type === "tool" && done.durationMs, 1200);
+});
+
+test("a repeat tool start after it settled is ignored", () => {
+  let reply = liveReply(RUN, 0);
+  for (const status of ["inProgress", "failed"] as const)
+    reply = applyStreamEvent(reply, {
+      type: "tool",
+      data: { itemId: "t1", connector: "github", tool: "get_issue", status },
+    });
+  const before = reply;
+  // A late duplicate start must not flip the finished card back to running.
+  reply = applyStreamEvent(reply, {
+    type: "tool",
+    data: {
+      itemId: "t1",
+      connector: "github",
+      tool: "get_issue",
+      status: "inProgress",
+    },
+  });
+  assert.equal(reply, before);
+  assert.equal(
+    reply.items[0].type === "tool" && reply.items[0].status,
+    "failed",
+  );
+});
+
+test("a snapshot keeps tool items interleaved in order", () => {
+  let reply = liveReply(RUN, 0);
+  reply = applyStreamEvent(reply, {
+    type: "snapshot",
+    data: {
+      runId: RUN,
+      phase: "streaming",
+      items: [
+        { type: "reply", itemId: "a", text: "Looking…", completed: true },
+        {
+          type: "tool",
+          itemId: "t1",
+          connector: "github",
+          tool: "search_issues",
+          status: "completed",
+          durationMs: 400,
+        },
+        { type: "reply", itemId: "b", text: "Here it is", completed: false },
+      ],
+      usage: null,
+    },
+  });
+  assert.deepEqual(
+    reply.items.map((i) => i.type),
+    ["reply", "tool", "reply"],
+  );
+  const tool = reply.items[1];
+  assert.equal(tool.type === "tool" && tool.connector, "github");
+  assert.equal(tool.type === "tool" && tool.status, "completed");
+  // The reply items alone are still readable in order.
+  assert.deepEqual(
+    replyItems(reply).map((r) => r.text),
+    ["Looking…", "Here it is"],
+  );
+});
+
+test("a connector failure is kept once per connector for its banner", () => {
+  let reply = liveReply(RUN, 0);
+  // starting/ready are not failures a member should see.
+  reply = applyStreamEvent(reply, {
+    type: "connector",
+    data: { connector: "github", status: "ready" },
+  });
+  assert.deepEqual(reply.connectorFailures, {});
+  reply = applyStreamEvent(reply, {
+    type: "connector",
+    data: { connector: "github", status: "failed", reason: "auth" },
+  });
+  assert.deepEqual(reply.connectorFailures, { github: "auth" });
+  // The same failure again changes nothing (shown once per connector/run).
+  const before = reply;
+  reply = applyStreamEvent(reply, {
+    type: "connector",
+    data: { connector: "github", status: "failed", reason: "auth" },
+  });
+  assert.equal(reply, before);
+});
+
+test("parseMessage reads a role:tool message and keeps its payload", () => {
+  const parsed = parseMessage({
+    id: "64b7f0c2a1b2c3d4e5f60e09",
+    seq: 4,
+    runId: RUN,
+    role: "tool",
+    text: "",
+    state: "complete",
+    tool: {
+      connector: "github",
+      name: "list_issues",
+      status: "completed",
+      durationMs: 1200,
+    },
+    createdAt: "2026-10-17T10:00:00.000Z",
+  });
+  assert.equal(parsed?.role, "tool");
+  assert.equal(parsed?.tool?.connector, "github");
+  assert.equal(parsed?.tool?.status, "completed");
+  // A tool message with no readable tool payload is dropped.
+  assert.equal(
+    parseMessage({
+      id: "64b7f0c2a1b2c3d4e5f60e10",
+      seq: 5,
+      runId: RUN,
+      role: "tool",
+      text: "",
+      state: "complete",
+      createdAt: "2026-10-17T10:00:00.000Z",
+    }),
+    null,
+  );
+});
+
+test("a tool message is not counted as assistant text or a reply", () => {
+  const thread: ChatThread = {
+    chat: parseChat(chat())!,
+    messages: [
+      message(1, "user", RUN, { text: "List my issues" }) as never,
+      parseMessage({
+        id: "64b7f0c2a1b2c3d4e5f60e22",
+        seq: 2,
+        runId: RUN,
+        role: "tool",
+        text: "",
+        state: "complete",
+        tool: { connector: "github", name: "list_issues", status: "completed" },
+        createdAt: "2026-10-17T10:00:00.000Z",
+      }) as never,
+      message(3, "assistant", RUN, { text: "Here they are" }) as never,
+    ],
+    runs: { [RUN]: parseRun(run()) as never },
+    hasMore: false,
+  };
+  const exchange = exchangesOf(thread)[0];
+  // The tool message is carried in order, not dropped.
+  assert.deepEqual(
+    exchange.messages.map((m) => m.role),
+    ["user", "tool", "assistant"],
+  );
+  // The assistant-text helper (what the transcript collects as replies) must
+  // exclude tool messages: only the real reply counts.
+  const replyText = exchange.messages
+    .filter((m) => m.role === "assistant")
+    .map((m) => m.text);
+  assert.deepEqual(replyText, ["Here they are"]);
+  // A tool message carries no state note (states are user/assistant only).
+  const tool = exchange.messages.find((m) => m.role === "tool")!;
+  assert.equal(messageStateNote(tool), null);
+});
+
+test("progressFlags: a reply before a tool call is progress, the last reply is the answer", () => {
+  // The GitHub run: narration, tool, narration, tool, answer.
+  assert.deepEqual(progressFlags(["reply", "tool", "reply", "tool", "reply"]), [
+    true,
+    false,
+    true,
+    false,
+    false,
+  ]);
+  // Tools first, then one answer.
+  assert.deepEqual(progressFlags(["tool", "tool", "reply"]), [
+    false,
+    false,
+    false,
+  ]);
+  // No tools: every reply stays an answer (steer-split replies included).
+  assert.deepEqual(progressFlags(["reply", "input", "reply"]), [
+    false,
+    false,
+    false,
+  ]);
+  // A steer ends the stretch: a tool after it does not reach back over it.
+  assert.deepEqual(progressFlags(["reply", "input", "tool", "reply"]), [
+    false,
+    false,
+    false,
+    false,
+  ]);
+  // A run that ends on a tool (stopped or failed) leaves its reply as progress.
+  assert.deepEqual(progressFlags(["reply", "tool"]), [true, false]);
+  assert.deepEqual(progressFlags([]), []);
+});
+
+// ---- Write-tool approvals in the live reply ----
+
+const APPROVAL = (overrides: Record<string, unknown> = {}) => ({
+  approvalId: "ap1",
+  itemId: "t1",
+  connector: "github",
+  tool: "create_branch",
+  params: [{ name: "repo", value: "octo/widgets" }],
+  status: "pending",
+  expiresAt: "2026-10-20T10:05:00.000Z",
+  ...overrides,
+});
+
+test("an approval event opens a pending card at its tool row", () => {
+  const reply = applyStreamEvent(liveReply(RUN), {
+    type: "approval",
+    data: APPROVAL(),
+  });
+  const pending = pendingApprovalForItem(reply, "t1");
+  assert.equal(pending?.approvalId, "ap1");
+  assert.equal(pending?.tool, "create_branch");
+  assert.equal(hasPendingApproval(reply), true);
+  // The reply leaves "waiting" so the composer is not stuck on "Working".
+  assert.equal(reply.phase, "streaming");
+});
+
+test("a resolved approval event settles the card to its decision", () => {
+  const pendingReply = applyStreamEvent(liveReply(RUN), {
+    type: "approval",
+    data: APPROVAL(),
+  });
+  const resolved = applyStreamEvent(pendingReply, {
+    type: "approval",
+    data: APPROVAL({ status: "deny", auto: false }),
+  });
+  assert.equal(pendingApprovalForItem(resolved, "t1"), null);
+  assert.equal(approvalForItem(resolved, "t1")?.status, "deny");
+  assert.equal(hasPendingApproval(resolved), false);
+});
+
+test("an auto allow-for-chat settles with no pending card", () => {
+  const reply = applyStreamEvent(liveReply(RUN), {
+    type: "approval",
+    data: APPROVAL({ status: "allow_for_chat", auto: true }),
+  });
+  assert.equal(pendingApprovalForItem(reply, "t1"), null);
+  const settled = approvalForItem(reply, "t1");
+  assert.equal(settled?.status, "allow_for_chat");
+  assert.equal(settled?.auto, true);
+  assert.equal(hasPendingApproval(reply), false);
+});
+
+test("a snapshot carries pending approvals and replaces a settled one", () => {
+  // A reconnect snapshot with one pending approval shows its card again.
+  const snapshot = applyStreamEvent(liveReply(RUN), {
+    type: "snapshot",
+    data: {
+      runId: RUN,
+      phase: "streaming",
+      items: [],
+      approvals: [APPROVAL()],
+    },
+  });
+  assert.equal(pendingApprovalForItem(snapshot, "t1")?.approvalId, "ap1");
+  // A later snapshot without that approval (it settled server-side) clears it.
+  const cleared = applyStreamEvent(snapshot, {
+    type: "snapshot",
+    data: { runId: RUN, phase: "streaming", items: [], approvals: [] },
+  });
+  assert.equal(pendingApprovalForItem(cleared, "t1"), null);
+  assert.equal(hasPendingApproval(cleared), false);
+  // A snapshot with no approvals field leaves the map untouched.
+  const kept = applyStreamEvent(snapshot, {
+    type: "snapshot",
+    data: { runId: RUN, phase: "streaming", items: [] },
+  });
+  assert.equal(pendingApprovalForItem(kept, "t1")?.approvalId, "ap1");
+});
+
+test("withApproval settles a pending approval and ignores a settled one", () => {
+  const reply = applyStreamEvent(liveReply(RUN), {
+    type: "approval",
+    data: APPROVAL(),
+  });
+  const allowed = withApproval(reply, "ap1", "allow");
+  assert.equal(allowed.approvals.ap1.status, "allow");
+  // A second answer is a no-op (first answer wins locally too).
+  assert.equal(
+    withApproval(allowed, "ap1", "deny").approvals.ap1.status,
+    "allow",
+  );
+  // An unknown approvalId changes nothing.
+  assert.equal(withApproval(reply, "nope", "allow"), reply);
+});
+
+test("withApprovalRace marks a lost first-answer race for the card", () => {
+  const reply = applyStreamEvent(liveReply(RUN), {
+    type: "approval",
+    data: APPROVAL(),
+  });
+  const resolved = withApprovalRace(reply, "ap1", "resolved");
+  assert.equal(resolved.approvals.ap1.race, "resolved");
+  // Still pending underneath, but the card shows "Already answered".
+  assert.equal(resolved.approvals.ap1.status, "pending");
+  const notFound = withApprovalRace(reply, "ap1", "not_found");
+  assert.equal(notFound.approvals.ap1.race, "not_found");
+  assert.equal(withApprovalRace(reply, "nope", "resolved"), reply);
+});
+
+test("approvalForItem returns the latest approval for a tool row", () => {
+  assert.equal(approvalForItem(null, "t1"), null);
+  const reply = applyStreamEvent(liveReply(RUN), {
+    type: "approval",
+    data: APPROVAL({ status: "allow", auto: false }),
+  });
+  assert.equal(approvalForItem(reply, "t1")?.status, "allow");
+  // A tool row with no approval has none.
+  assert.equal(approvalForItem(reply, "other"), null);
+});
+
+test("a malformed approval event leaves the reply unchanged", () => {
+  const reply = liveReply(RUN);
+  assert.equal(
+    applyStreamEvent(reply, { type: "approval", data: { itemId: "t1" } }),
+    reply,
+  );
+});
+
+test("a replayed pending event does not reopen a locally settled approval", () => {
+  const pendingReply = applyStreamEvent(liveReply(RUN), {
+    type: "approval",
+    data: APPROVAL(),
+  });
+  // The member answered (optimistic settle); a reconnect replays the pending
+  // event, which must not reopen the card (first answer wins).
+  const allowed = withApproval(pendingReply, "ap1", "allow");
+  const replayed = applyStreamEvent(allowed, {
+    type: "approval",
+    data: APPROVAL(),
+  });
+  assert.equal(replayed.approvals.ap1.status, "allow");
+  assert.equal(pendingApprovalForItem(replayed, "t1"), null);
+  // A raced card (409) also survives a replayed pending event.
+  const raced = withApprovalRace(pendingReply, "ap1", "resolved");
+  const replayedRace = applyStreamEvent(raced, {
+    type: "approval",
+    data: APPROVAL(),
+  });
+  assert.equal(replayedRace.approvals.ap1.race, "resolved");
+  // A real settled event (a decision) still applies over a pending card.
+  const settledByStream = applyStreamEvent(pendingReply, {
+    type: "approval",
+    data: APPROVAL({ status: "deny" }),
+  });
+  assert.equal(settledByStream.approvals.ap1.status, "deny");
 });

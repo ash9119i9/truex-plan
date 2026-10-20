@@ -11,7 +11,10 @@ import { isDuplicateKeyError } from "../../database/mongo-errors";
 import {
   CHATS_COLLECTION,
   MESSAGES_COLLECTION,
+  MAX_CHAT_TOOL_APPROVALS,
   RUNS_COLLECTION,
+  TOOL_APPROVALS_COLLECTION,
+  type ApprovalDecision,
   type ChatDoc,
   type MessageDoc,
   type MessageState,
@@ -20,6 +23,7 @@ import {
   type RunStatus,
   type RunUsage,
   type SteerDoc,
+  type ToolApprovalDoc,
 } from "./chat";
 
 // How long a run stays claimed by the process streaming it without a lease
@@ -43,7 +47,23 @@ export type SettleItem =
       // The runtime finished it; a reply cut off by a steer never is.
       readonly completed: boolean;
     }
-  | { readonly type: "input"; readonly clientMessageId: string };
+  | { readonly type: "input"; readonly clientMessageId: string }
+  | ToolSettleItem;
+
+// A connector tool call (slice 4/5 contract). `inProgress` only while the
+// run streams; a call still running at settle is saved failed / UNKNOWN.
+// Arguments and results are never carried.
+export interface ToolSettleItem {
+  readonly type: "tool";
+  readonly itemId: string;
+  readonly connector: string;
+  readonly tool: string;
+  readonly status: "inProgress" | "completed" | "failed";
+  readonly durationMs?: number;
+  readonly errorCode?: string;
+  // How the call's approval ended, when it needed one (write tools).
+  readonly approval?: ApprovalDecision;
+}
 
 export interface Settlement {
   readonly status: "completed" | "stopped" | "failed";
@@ -70,13 +90,45 @@ const SETTLED: RunStatus[] = ["completed", "stopped", "failed"];
 
 type PlannedMessage = Pick<
   MessageDoc,
-  "role" | "text" | "state" | "clientMessageId" | "textHash" | "runtimeItemId"
+  | "role"
+  | "text"
+  | "state"
+  | "clientMessageId"
+  | "textHash"
+  | "runtimeItemId"
+  | "tool"
 >;
 
 // The messages a settled run writes after its own, in order: each non-empty
-// reply and each steer where the runtime used it, then the steers it never
+// reply, each tool call and each steer where the runtime used it, then the
+// steers it never
 // read as `not_sent`. A reply followed by a steer was finished or cut off by
 // it; the replies after the last steer take the run's outcome.
+// A tool call's saved summary. A call the runtime never finished (the run
+// was stopped or failed around it) is saved failed / UNKNOWN.
+function toolMessage(item: ToolSettleItem): PlannedMessage {
+  const finished = item.status !== "inProgress";
+  const status = item.status === "completed" ? "completed" : "failed";
+  return {
+    role: "tool",
+    text: "",
+    state: status === "completed" ? "complete" : "failed",
+    runtimeItemId: item.itemId,
+    tool: {
+      connector: item.connector,
+      name: item.tool,
+      status,
+      ...(item.durationMs !== undefined ? { durationMs: item.durationMs } : {}),
+      ...(finished
+        ? item.errorCode
+          ? { errorCode: item.errorCode }
+          : {}
+        : { errorCode: "UNKNOWN" }),
+      ...(item.approval ? { approval: item.approval } : {}),
+    },
+  };
+}
+
 export function plannedMessages(
   run: Pick<RunDoc, "steers">,
   outcome: Pick<Settlement, "status" | "items">,
@@ -91,6 +143,10 @@ export function plannedMessages(
   );
   const planned: PlannedMessage[] = [];
   outcome.items.forEach((item, index) => {
+    if (item.type === "tool") {
+      planned.push(toolMessage(item));
+      return;
+    }
     if (item.type === "reply") {
       if (item.text.trim().length === 0) return;
       planned.push({
@@ -234,6 +290,43 @@ export class ChatStore {
       .sort({ "activeRun.leaseExpiresAt": 1 })
       .limit(limit)
       .toArray();
+  }
+
+  // The audit record of one resolved approval. Keyed by approvalId, so a
+  // resolution seen again after a reconnect is not a second record.
+  async recordApproval(dbName: string, doc: ToolApprovalDoc): Promise<void> {
+    try {
+      await this.database
+        .tenantDb(dbName)
+        .collection<ToolApprovalDoc>(TOOL_APPROVALS_COLLECTION)
+        .insertOne(doc);
+    } catch (error) {
+      if (!isDuplicateKeyError(error)) throw error;
+    }
+  }
+
+  // Allow for this chat: later calls of the tool in this chat run without a
+  // card. Once per connector and tool, and at most MAX_CHAT_TOOL_APPROVALS.
+  async allowToolForChat(
+    dbName: string,
+    chatId: ObjectId,
+    ownerId: ObjectId,
+    connector: string,
+    tool: string,
+  ): Promise<void> {
+    const now = new Date();
+    await this.collections(dbName).chats.updateOne(
+      {
+        _id: chatId,
+        ownerId,
+        toolApprovals: { $not: { $elemMatch: { connector, tool } } },
+        [`toolApprovals.${MAX_CHAT_TOOL_APPROVALS - 1}`]: { $exists: false },
+      },
+      {
+        $push: { toolApprovals: { connector, tool, at: now } },
+        $set: { updatedAt: now },
+      },
+    );
   }
 
   async markUncertain(dbName: string, runId: ObjectId): Promise<void> {

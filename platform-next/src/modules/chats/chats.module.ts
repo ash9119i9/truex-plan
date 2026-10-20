@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { TenantGuard } from "../../common/access/tenant.guard";
 import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import { AgentsModule } from "../agents/agents.module";
+import { ConnectorsModule } from "../connectors/connectors.module";
 import { MembershipsModule } from "../memberships/memberships.module";
 import { ModelsModule } from "../models/models.module";
 import { SessionsModule } from "../sessions/sessions.module";
@@ -20,6 +21,7 @@ import { RuntimeClient } from "./runtime-client";
     TenantsModule,
     AgentsModule,
     ModelsModule,
+    ConnectorsModule,
   ],
   controllers: [ChatsController],
   providers: [

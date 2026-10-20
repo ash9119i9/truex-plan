@@ -32,6 +32,7 @@ const agent = (overrides: Partial<TenantAgent> = {}): TenantAgent => ({
   tint: "mint",
   model: MODEL,
   available: true,
+  connectors: [],
   revision: 3,
   createdByMe: true,
   status: "active",
@@ -91,6 +92,8 @@ test("create sends the trimmed form, scope and request ID", async (t) => {
       modelId: MODEL.id,
       look: 4,
       tint: "mint",
+      connectorSlugs: [],
+      connectorAccess: {},
     },
     "tenant",
     "req-12345678",
@@ -104,6 +107,7 @@ test("create sends the trimmed form, scope and request ID", async (t) => {
     modelId: MODEL.id,
     look: 4,
     tint: "mint",
+    connectors: [],
   });
 });
 
@@ -205,4 +209,89 @@ test("groups, updates and picks agents", () => {
     [builtin.id],
   );
   assert.equal(withAgent([builtin], mine).length, 2);
+});
+
+// ---- Write access: per-connector access in the agent body ----
+
+const ref = (slug: string, access: "read_write" | "read_only") => ({
+  slug,
+  displayName: slug.charAt(0).toUpperCase() + slug.slice(1),
+  icon: "plug",
+  available: true,
+  access,
+});
+
+test("create sends a read_only connector as an object and read_write as a string", async (t) => {
+  const sent = mockFetch(t, { agent: agent() });
+  await createTenantAgent(
+    {
+      name: "Builder",
+      description: "Ships branches.",
+      modelId: MODEL.id,
+      look: 2,
+      tint: "ice",
+      connectorSlugs: ["github", "jira"],
+      // github read_only (object), jira read_write (string, the default).
+      connectorAccess: { github: "read_only" },
+    },
+    "personal",
+    "req-abcdef12",
+  );
+  const body = sent[0]?.body as { connectors: unknown[] };
+  assert.deepEqual(body.connectors, [
+    { slug: "github", access: "read_only" },
+    "jira",
+  ]);
+});
+
+test("formOf reads per-connector access from the agent", () => {
+  const form = formOf(
+    agent({
+      connectors: [ref("github", "read_only"), ref("jira", "read_write")],
+    }),
+    [],
+  );
+  assert.deepEqual(form.connectorSlugs, ["github", "jira"]);
+  // Only read_only is recorded; read_write is the default and left out.
+  assert.deepEqual(form.connectorAccess, { github: "read_only" });
+});
+
+test("formChanges treats an access-only edit as a change and carries both fields", () => {
+  const a = agent({ connectors: [ref("github", "read_write")] });
+  const base = formOf(a, []);
+  // Switch github to read_only: slugs are unchanged, access differs.
+  const changes = formChanges(a, {
+    ...base,
+    connectorAccess: { github: "read_only" },
+  });
+  assert.deepEqual(changes.connectorSlugs, ["github"]);
+  assert.deepEqual(changes.connectorAccess, { github: "read_only" });
+});
+
+test("formChanges reports no change when access matches", () => {
+  const a = agent({ connectors: [ref("github", "read_only")] });
+  assert.deepEqual(formChanges(a, formOf(a, [])), {});
+});
+
+test("edit PATCH sends connectors as the mixed shape when access changes", async (t) => {
+  const a = agent({ connectors: [ref("github", "read_write")] });
+  const sent = mockFetch(t, { agent: a });
+  await updateTenantAgent(a.id, a.revision, {
+    connectorSlugs: ["github"],
+    connectorAccess: { github: "read_only" },
+  });
+  const body = sent[0]?.body as { connectors: unknown[] };
+  assert.deepEqual(body.connectors, [{ slug: "github", access: "read_only" }]);
+});
+
+test("a read_write connector change sends a plain slug string", async (t) => {
+  const a = agent({ connectors: [ref("github", "read_only")] });
+  const sent = mockFetch(t, { agent: a });
+  // Switch github back to read_write: the body is the plain slug.
+  await updateTenantAgent(a.id, a.revision, {
+    connectorSlugs: ["github"],
+    connectorAccess: {},
+  });
+  const body = sent[0]?.body as { connectors: unknown[] };
+  assert.deepEqual(body.connectors, ["github"]);
 });

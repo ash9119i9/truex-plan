@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { ApiRequestError, userMessage } from "@/lib/api";
 import { LOOKS, TINTS, tintOf } from "@/lib/agent-look";
 import {
@@ -18,6 +18,17 @@ import {
 } from "@/lib/tenant-agents";
 import { Badge, Robot } from "@/components/v2/agent-badge";
 import { Icon } from "@/components/v2/icon";
+import {
+  fetchConnectors,
+  isNotConfigured,
+  MAX_CONNECTORS,
+  tokenEstimateHint,
+  type Connector,
+  type ConnectorAccess,
+} from "@/lib/tenant-connectors";
+import { warnFailure } from "@/lib/api";
+// Connect card, tool rows, connector banner and picker styles.
+import "@/styles/v2/connectors.css";
 
 // Create or edit a personal or workspace agent. Reuses the agent dialog's
 // form, look/tint pickers and badge preview (styles/v2/agent-dialog.css).
@@ -53,6 +64,10 @@ export function TenantAgentDialog({
   const [scope, setScope] = useState<AgentScope>("personal");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // The connector catalog for the picker. null while loading or when the
+  // feature is off / the fetch failed — in which case the section is hidden
+  // (existing selections on an edited agent are left untouched either way).
+  const [connectors, setConnectors] = useState<Connector[] | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const ids = useRef(requestIds());
   // Answers that arrive after the dialog closed or reopened are ignored.
@@ -80,12 +95,61 @@ export function TenantAgentDialog({
       setForm((f) => ({ ...f, modelId: models[0]!.id }));
   }, [open, editing, models, form.modelId]);
 
+  // The connector picker's catalog. A failure or a feature-off result hides
+  // the section silently (connectors stays null); existing selections on an
+  // edited agent are kept regardless, since the picker only reads them.
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setConnectors(null);
+    fetchConnectors().then(
+      (result) => {
+        if (!live) return;
+        setConnectors(result.kind === "list" ? result.connectors : null);
+      },
+      (error) => {
+        if (!live) return;
+        setConnectors(null);
+        if (!isNotConfigured(error)) warnFailure("connectors catalog", error);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [open, editing]);
+
   if (!open) return null;
 
   const set = <K extends keyof AgentForm>(key: K, value: AgentForm[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
     setError("");
   };
+
+  // Toggles a connector in the form, preserving selection order; a new slug
+  // is appended (so the order stays stable) and the cap is enforced here too.
+  const toggleConnector = (slug: string) => {
+    setForm((f) => {
+      const has = f.connectorSlugs.includes(slug);
+      const next = has
+        ? f.connectorSlugs.filter((s) => s !== slug)
+        : f.connectorSlugs.length >= MAX_CONNECTORS
+          ? f.connectorSlugs
+          : [...f.connectorSlugs, slug];
+      return { ...f, connectorSlugs: next };
+    });
+    setError("");
+  };
+  // Sets a connector's access (only offered when it has write tools). The
+  // form keeps a read_only flag; cleanForm prunes it if the connector is
+  // later removed.
+  const setConnectorAccess = (slug: string, access: ConnectorAccess) => {
+    setForm((f) => ({
+      ...f,
+      connectorAccess: { ...f.connectorAccess, [slug]: access },
+    }));
+    setError("");
+  };
+  const atConnectorCap = form.connectorSlugs.length >= MAX_CONNECTORS;
   const selectedModel = models.find((m) => m.id === form.modelId);
   const changes = editing ? formChanges(editing, form) : null;
   const problem =
@@ -309,6 +373,76 @@ export function TenantAgentDialog({
             )}
           </label>
 
+          {connectors && connectors.length > 0 && (
+            <fieldset className="field">
+              <legend className="field-label">Connected tools</legend>
+              <p className="muted sm">
+                Let this agent use a tool&apos;s data. Tools that change data
+                ask for your approval each time. Up to {MAX_CONNECTORS}.
+              </p>
+              <div className="connector-picker">
+                {connectors.map((c) => {
+                  const checked = form.connectorSlugs.includes(c.slug);
+                  const disabled = !checked && atConnectorCap;
+                  const hint = tokenEstimateHint(c.toolTokenEstimate);
+                  const notConnected = c.connection.status !== "active";
+                  return (
+                    <label
+                      key={c.slug}
+                      className={[
+                        "connector-pick",
+                        checked && "is-checked",
+                        disabled && "is-disabled",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleConnector(c.slug)}
+                      />
+                      <span className="connector-pick-text">
+                        <span className="strong block">{c.displayName}</span>
+                        {c.description && (
+                          <span className="muted sm block">
+                            {c.description}
+                          </span>
+                        )}
+                        {hint && (
+                          <span className="connector-pick-hint">{hint}</span>
+                        )}
+                        {checked && notConnected && (
+                          <span className="connector-pick-hint">
+                            Not connected yet — you can connect from Connected
+                            tools.
+                          </span>
+                        )}
+                        {checked && c.writeTools.length > 0 && (
+                          <ConnectorAccessChoice
+                            slug={c.slug}
+                            displayName={c.displayName}
+                            access={
+                              form.connectorAccess[c.slug] ?? "read_write"
+                            }
+                            onChange={setConnectorAccess}
+                          />
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {atConnectorCap && (
+                <p className="connector-pick-hint">
+                  You&apos;ve reached the limit of {MAX_CONNECTORS}. Remove one
+                  to choose another.
+                </p>
+              )}
+            </fieldset>
+          )}
+
           {error && (
             <p className="field-hint is-bad" role="alert">
               {error}
@@ -350,5 +484,55 @@ export function TenantAgentDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+// The read/write access choice for one attached connector, shown only when it
+// has write tools. Read and write (the default) lets its write tools run,
+// each guarded by a per-call approval in the chat; Read only strips them.
+// Rendered as buttons (not radios) inside the connector's label so a click
+// sets access without toggling the connector's own checkbox.
+function ConnectorAccessChoice({
+  slug,
+  displayName,
+  access,
+  onChange,
+}: {
+  slug: string;
+  displayName: string;
+  access: ConnectorAccess;
+  onChange: (slug: string, access: ConnectorAccess) => void;
+}) {
+  const options: { value: ConnectorAccess; label: string }[] = [
+    { value: "read_write", label: "Read and write" },
+    { value: "read_only", label: "Read only" },
+  ];
+  const pick = (e: MouseEvent<HTMLButtonElement>, value: ConnectorAccess) => {
+    // The choice sits inside the connector's <label>; stop the click from
+    // toggling that checkbox.
+    e.preventDefault();
+    e.stopPropagation();
+    onChange(slug, value);
+  };
+  return (
+    <span
+      className="connector-access"
+      role="group"
+      aria-label={`${displayName} access`}
+    >
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          className={
+            "connector-access-opt" + (access === o.value ? " is-active" : "")
+          }
+          aria-pressed={access === o.value}
+          onClick={(e) => pick(e, o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </span>
   );
 }

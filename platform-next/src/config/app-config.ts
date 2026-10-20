@@ -1,5 +1,9 @@
 import { loadAuthConfig, type AuthConfig } from "./auth-config";
 import { loadChatConfig, type ChatConfig } from "./chat-config";
+import {
+  loadConnectorsConfig,
+  type ConnectorsConfig,
+} from "./connectors-config";
 import { loadGoogleConfig, type GoogleConfig } from "./google-config";
 
 // Startup configuration. Read once from the environment and validated before
@@ -14,6 +18,9 @@ export interface AppConfig {
   readonly google: GoogleConfig;
   // Absent when chat is not configured; chat endpoints then answer 503.
   readonly chat?: ChatConfig;
+  // Absent when the connector token keys are not set; connector endpoints
+  // then answer 503 (CONNECTORS_NOT_CONFIGURED).
+  readonly connectors?: ConnectorsConfig;
 }
 
 export const APP_CONFIG = Symbol("APP_CONFIG");
@@ -66,6 +73,7 @@ export function loadConfig(env: Env): AppConfig {
   const auth = loadAuthConfig(env, problems);
   const google = loadGoogleConfig(env, auth?.allowedOrigins, problems);
   const chat = loadChatConfig(env, problems);
+  const connectors = loadConnectorsConfig(env, auth?.allowedOrigins, problems);
 
   if (problems.length > 0 || !auth || !google) throw new ConfigError(problems);
   return {
@@ -75,5 +83,6 @@ export function loadConfig(env: Env): AppConfig {
     auth,
     google,
     ...(chat ? { chat } : {}),
+    ...(connectors ? { connectors } : {}),
   };
 }

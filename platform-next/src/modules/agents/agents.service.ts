@@ -7,10 +7,13 @@ import {
 } from "mongodb";
 import type { TenantContext } from "../../common/access/tenant.guard";
 import { DomainError } from "../../common/domain-error";
+import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import { DatabaseService } from "../../database/database.service";
 import { isDuplicateKeyError } from "../../database/mongo-errors";
 import { toWireId } from "../../database/object-id";
 import { AuditService } from "../audit/audit.service";
+import type { ConnectorDoc } from "../connectors/connector";
+import { ConnectorsCatalogService } from "../connectors/connectors-catalog.service";
 import { MembershipsService } from "../memberships/memberships.service";
 import { modelView, type ModelDoc, type ModelView } from "../models/model";
 import { ModelsService } from "../models/models.service";
@@ -20,8 +23,11 @@ import {
   MAX_AGENTS_PER_USER,
   MAX_TENANT_AGENTS,
   requestHashOf,
+  type AgentConnector,
+  type AgentConnectorRequest,
   type AgentDoc,
   type AgentScope,
+  type ConnectorAccess,
   type CreateAgentInput,
   type UpdateAgentInput,
 } from "./agent";
@@ -46,6 +52,24 @@ export interface ChatAgent {
   modelId: ObjectId;
   look: number;
   tint: AgentTint;
+  // The connectors the chat snapshots at start; [] for built-ins and agents
+  // created before connectors existed.
+  connectors: AgentConnector[];
+}
+
+// One connector on an agent as the caller sees it: product-written display
+// fields merged from the catalog. `available: false` means the product team
+// disabled it, so the agent still names it but a chat cannot use it.
+// `access` is the agent's choice (read_write by default); `writeTools` is the
+// catalog's list of data-changing tools ([] when unavailable), so the dialog
+// shows the access choice only when there is something to restrict.
+export interface AgentConnectorView {
+  slug: string;
+  displayName: string;
+  icon: string;
+  available: boolean;
+  access: ConnectorAccess;
+  writeTools: string[];
 }
 
 // One agent as the caller sees it, with what the caller may do to it.
@@ -58,6 +82,8 @@ export interface AgentView {
   tint: AgentTint;
   // Null when the agent's model is disabled or gone.
   model: ModelView | null;
+  // The directory connectors this agent uses, always present ([] when none).
+  connectors: AgentConnectorView[];
   // False when a chat could not start with it right now.
   available: boolean;
   revision: number;
@@ -107,6 +133,9 @@ export class AgentsService {
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(MembershipsService)
     private readonly memberships: MembershipsService,
+    @Inject(ConnectorsCatalogService)
+    private readonly connectors: ConnectorsCatalogService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   private db(context: TenantContext): Db {
@@ -126,6 +155,39 @@ export class AgentsService {
   // process, outside the write transactions that record to it.
   private ensureIndexes(): Promise<void> {
     return this.audit.ensureIndexes();
+  }
+
+  // Resolves the connectors a create or edit attached to the connectors stored
+  // on the agent, pinning each by catalog ID and keeping the chosen access.
+  // Refuses when connectors are not configured on this server, or when a slug
+  // names no enabled catalog entry (naming the slug). An empty list resolves
+  // to [] without a catalog read. read_write is stored as the absence of
+  // `access`, so old documents keep their meaning.
+  private async resolveConnectors(
+    requests: readonly AgentConnectorRequest[],
+  ): Promise<AgentConnector[]> {
+    if (requests.length === 0) return [];
+    if (!this.config.connectors)
+      throw new DomainError(
+        "CONNECTORS_NOT_CONFIGURED",
+        "Directory connectors are not available on this server.",
+      );
+    const enabled = new Map(
+      (await this.connectors.enabledConnectors()).map((c) => [c.slug, c]),
+    );
+    return requests.map((request) => {
+      const connector = enabled.get(request.slug);
+      if (!connector)
+        throw new DomainError(
+          "INVALID_INPUT",
+          `"${request.slug}" is not an available connector.`,
+        );
+      return {
+        connectorId: connector._id,
+        slug: request.slug,
+        ...(request.access === "read_only" ? { access: "read_only" } : {}),
+      };
+    });
   }
 
   // Everything the picker shows: enabled built-ins, then the caller's
@@ -159,10 +221,13 @@ export class AgentsService {
       toWireId(a._id).localeCompare(toWireId(b._id));
     const personal = agents.filter((a) => a.scope === "personal").sort(byName);
     const tenant = agents.filter((a) => a.scope === "tenant").sort(byName);
+    const connectors = await this.enabledConnectorMap(
+      ...agents.map((a) => a.connectors),
+    );
     return [
       ...builtins.map((b) => builtinView(b, models.get(toWireId(b.modelId)))),
       ...[...personal, ...tenant].map((a) =>
-        agentView(a, context, models.get(toWireId(a.modelId))),
+        agentView(a, context, models.get(toWireId(a.modelId)), connectors),
       ),
     ];
   }
@@ -179,6 +244,10 @@ export class AgentsService {
 
     const model = await this.models.findEnabled(input.modelId);
     if (!model) throw modelUnavailable();
+    // Resolved against the enabled catalog; refuses an unknown slug or, when
+    // connectors are off, any connector at all. Before the locks so a bad
+    // request does not touch the quota documents.
+    const connectors = await this.resolveConnectors(input.connectors);
     await this.prepareLocks(context, input.scope === "tenant");
 
     const now = new Date();
@@ -191,6 +260,7 @@ export class AgentsService {
       modelId: input.modelId,
       look: input.look,
       tint: input.tint,
+      ...(connectors.length ? { connectors } : {}),
       status: "active",
       revision: 1,
       clientRequestId: input.clientRequestId,
@@ -216,7 +286,15 @@ export class AgentsService {
       if (!raced) throw error;
       return { agent: raced, created: false };
     }
-    return { agent: agentView(doc, context, model), created: true };
+    return {
+      agent: agentView(
+        doc,
+        context,
+        model,
+        await this.enabledConnectorMap(doc.connectors),
+      ),
+      created: true,
+    };
   }
 
   async update(
@@ -243,7 +321,16 @@ export class AgentsService {
           : agent[field as keyof AgentDoc] !== value,
       ),
     ) as UpdateAgentInput["changes"];
-    if (Object.keys(changes).length === 0)
+    // Connectors are resolved and compared to what the agent already has, so
+    // an edit that re-sends the same connectors is a no-op like any field.
+    const connectors =
+      input.connectors === undefined
+        ? undefined
+        : await this.resolveConnectors(input.connectors);
+    const connectorsChanged =
+      connectors !== undefined &&
+      !sameConnectors(agent.connectors ?? [], connectors);
+    if (Object.keys(changes).length === 0 && !connectorsChanged)
       return this.singleView(context, agent);
     if (changes.modelId && !(await this.models.findEnabled(changes.modelId)))
       throw modelUnavailable();
@@ -257,14 +344,29 @@ export class AgentsService {
       const next = await this.agents(context).findOneAndUpdate(
         { _id: agent._id, revision: input.revision, status: "active" },
         {
-          $set: { ...changes, updatedAt: new Date() },
+          $set: {
+            ...changes,
+            ...(connectorsChanged && connectors!.length
+              ? { connectors: connectors! }
+              : {}),
+            updatedAt: new Date(),
+          },
           $inc: { revision: 1 },
+          // An edit that clears the connectors removes the field entirely.
+          ...(connectorsChanged && connectors!.length === 0
+            ? { $unset: { connectors: "" } }
+            : {}),
         },
         { returnDocument: "after", session },
       );
       if (!next) throw staleRevision();
       await this.record(context, "agent.update", next, requestId, session, {
-        fields: Object.keys(changes).sort().join(","),
+        fields: [
+          ...Object.keys(changes),
+          ...(connectorsChanged ? ["connectors"] : []),
+        ]
+          .sort()
+          .join(","),
       });
       return next;
     });
@@ -386,6 +488,7 @@ export class AgentsService {
         modelId: agent.modelId,
         look: agent.look,
         tint: agent.tint,
+        connectors: agent.connectors ?? [],
       };
     const added = await this.builtins.findEnabledWithInstructions(agentId);
     return added ? builtinChatAgent(added) : null;
@@ -581,8 +684,27 @@ export class AgentsService {
     context: TenantContext,
     agent: AgentDoc,
   ): Promise<AgentView> {
-    const model = await this.models.findEnabled(agent.modelId);
-    return agentView(agent, context, model ?? undefined);
+    const [model, connectors] = await Promise.all([
+      this.models.findEnabled(agent.modelId),
+      this.enabledConnectorMap(agent.connectors),
+    ]);
+    return agentView(agent, context, model ?? undefined, connectors);
+  }
+
+  // The enabled catalog connectors keyed by slug, for rendering agent views.
+  // Empty (no catalog read) when connectors are off or no agent in view has
+  // any, so the common text-only path adds no work.
+  private async enabledConnectorMap(
+    ...connectorLists: ReadonlyArray<readonly AgentConnector[] | undefined>
+  ): Promise<ReadonlyMap<string, ConnectorDoc>> {
+    const empty = new Map<string, ConnectorDoc>();
+    if (
+      !this.config.connectors ||
+      !connectorLists.some((list) => list && list.length > 0)
+    )
+      return empty;
+    const enabled = await this.connectors.enabledConnectors();
+    return new Map(enabled.map((c) => [c.slug, c]));
   }
 }
 
@@ -593,10 +715,28 @@ function mayArchive(agent: AgentDoc, context: TenantContext): boolean {
   );
 }
 
+// Whether two connector lists name the same catalog IDs with the same access
+// in the same order: the order the member chose is meaningful (the prompt
+// lists them in it), so a reorder is a change, and so is an access-only edit.
+function sameConnectors(
+  current: readonly AgentConnector[],
+  next: readonly AgentConnector[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every(
+      (ref, i) =>
+        ref.connectorId.equals(next[i]!.connectorId) &&
+        (ref.access ?? "read_write") === (next[i]!.access ?? "read_write"),
+    )
+  );
+}
+
 function agentView(
   agent: AgentDoc,
   context: TenantContext,
   model: ModelDoc | undefined,
+  enabledConnectors: ReadonlyMap<string, ConnectorDoc>,
 ): AgentView {
   const mine = agent.ownerId.equals(context.userId);
   const active = agent.status === "active";
@@ -608,6 +748,7 @@ function agentView(
     look: agent.look,
     tint: agent.tint,
     model: model ? modelView(model) : null,
+    connectors: connectorViewsOf(agent.connectors, enabledConnectors),
     available: active && !!model,
     revision: agent.revision,
     createdByMe: mine,
@@ -616,6 +757,37 @@ function agentView(
     canArchive: active && mayArchive(agent, context),
     canPromote: active && mine && agent.scope === "personal",
   };
+}
+
+// An agent's stored connectors as views. A connector that has since been
+// disabled (dropped from the enabled catalog) is still shown, named from the
+// stored slug, with `available: false` — connecting cannot help.
+function connectorViewsOf(
+  connectors: readonly AgentConnector[] | undefined,
+  enabled: ReadonlyMap<string, ConnectorDoc>,
+): AgentConnectorView[] {
+  return (connectors ?? []).map((ref) => {
+    const access: ConnectorAccess =
+      ref.access === "read_only" ? "read_only" : "read_write";
+    const connector = enabled.get(ref.slug);
+    return connector
+      ? {
+          slug: connector.slug,
+          displayName: connector.displayName,
+          icon: connector.icon,
+          available: true,
+          access,
+          writeTools: connector.writeTools ?? [],
+        }
+      : {
+          slug: ref.slug,
+          displayName: ref.slug,
+          icon: "",
+          available: false,
+          access,
+          writeTools: [],
+        };
+  });
 }
 
 function builtinChatAgent(builtin: BuiltinAgentDoc): ChatAgent {
@@ -629,6 +801,8 @@ function builtinChatAgent(builtin: BuiltinAgentDoc): ChatAgent {
     modelId: builtin.modelId,
     look: builtin.look,
     tint: builtin.tint,
+    // Built-ins never attach connectors; members cannot set them.
+    connectors: [],
   };
 }
 
@@ -644,6 +818,8 @@ function builtinView(
     look: agent.look,
     tint: agent.tint,
     model: model ? modelView(model) : null,
+    // Built-ins never attach connectors.
+    connectors: [],
     available: !!model,
     revision: agent.revision,
     createdByMe: false,

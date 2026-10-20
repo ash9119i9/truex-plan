@@ -4,6 +4,8 @@ import { loadChatConfig } from "../../src/config/chat-config";
 import { DomainError } from "../../src/common/domain-error";
 import {
   MAX_MESSAGE_CHARS,
+  isApprovalId,
+  parseApprovalAnswer,
   parseRename,
   parseSend,
   parseStartChat,
@@ -190,6 +192,97 @@ describe("chat prompt", () => {
     assert.equal(
       prompt.split("\n").filter((l) => l.startsWith("Ignore")).length,
       0,
+    );
+  });
+});
+
+describe("chat prompt v4 (write tools)", () => {
+  const v4Chat = {
+    platformInstructionsVersion: "v4",
+    createdAt: new Date("2026-10-19T23:30:00Z"),
+  };
+  const agent = {
+    source: "personal" as const,
+    name: "Bot",
+    description: "Writes.",
+  };
+
+  test("with write tools it names them, states the approval rule, and is not read-only", () => {
+    const prompt = chatPrompt(
+      agent,
+      v4Chat,
+      ["GitHub create branch", "GitHub get issue"],
+      ["GitHub create branch"],
+    );
+    assert.match(
+      prompt,
+      /Only these tools change data: GitHub create branch\./,
+    );
+    assert.match(prompt, /Each change waits for the member's approval/);
+    assert.match(prompt, /if they decline, do not retry it/);
+    // The writable line must not call the tools read-only.
+    assert.doesNotMatch(prompt, /read-only/);
+    // Both tool names are listed.
+    assert.match(prompt, /GitHub get issue/);
+  });
+
+  test("without write tools v4 reads like v3's read-only tools line", () => {
+    const withTools = chatPrompt(agent, v4Chat, ["GitHub get issue"], []);
+    assert.match(withTools, /read-only tools: GitHub get issue/);
+    assert.doesNotMatch(withTools, /change data/);
+
+    // A v3 chat with the same connectors produces the same tools sentence.
+    const v3 = chatPrompt(
+      agent,
+      { ...v4Chat, platformInstructionsVersion: "v3" },
+      ["GitHub get issue"],
+      [],
+    );
+    const lineOf = (p: string) =>
+      p.split("\n").find((l) => l.includes("GitHub get issue"));
+    assert.equal(lineOf(withTools), lineOf(v3));
+  });
+
+  test("a text-only v4 chat keeps the no-tools sentence", () => {
+    const prompt = chatPrompt(agent, v4Chat, [], []);
+    assert.match(prompt, /You have no tools/);
+    assert.doesNotMatch(prompt, /change data/);
+  });
+});
+
+describe("parseApprovalAnswer", () => {
+  const refused = (fn: () => unknown) =>
+    assert.throws(fn, (e: unknown) => e instanceof DomainError);
+
+  test("accepts the three answers", () => {
+    for (const decision of ["allow", "allow_for_chat", "deny"])
+      assert.equal(parseApprovalAnswer({ decision }), decision);
+  });
+
+  test("refuses an unknown decision, a decision-less body and unknown fields", () => {
+    refused(() => parseApprovalAnswer({ decision: "expired" }));
+    refused(() => parseApprovalAnswer({ decision: "cancelled" }));
+    refused(() => parseApprovalAnswer({ decision: "maybe" }));
+    refused(() => parseApprovalAnswer({}));
+    refused(() => parseApprovalAnswer({ decision: "allow", extra: true }));
+    refused(() => parseApprovalAnswer(null));
+  });
+});
+
+describe("isApprovalId", () => {
+  test("accepts ap_ + a 36-char uuid-shaped id and rejects anything else", () => {
+    assert.equal(isApprovalId("ap_00000000-0000-0000-0000-000000000000"), true);
+    assert.equal(isApprovalId("ap_0123abcd-0000-0000-0000-00000000abcd"), true);
+    // Wrong prefix, wrong length, uppercase hex and non-hex are all rejected.
+    assert.equal(isApprovalId("00000000-0000-0000-0000-000000000000"), false);
+    assert.equal(isApprovalId("ap_short"), false);
+    assert.equal(
+      isApprovalId("ap_0000000000000000000000000000000000ZZ"),
+      false,
+    );
+    assert.equal(
+      isApprovalId("ap_AAAAAAAA-0000-0000-0000-000000000000"),
+      false,
     );
   });
 });

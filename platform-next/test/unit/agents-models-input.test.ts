@@ -250,6 +250,93 @@ describe("agent request bodies", () => {
       changes: { tint: "mint" },
     });
   });
+
+  test("a bare slug string is read_write", () => {
+    const input = parseCreateAgent({ ...body, connectors: ["github"] });
+    assert.deepEqual(input.connectors, [
+      { slug: "github", access: "read_write" },
+    ]);
+  });
+
+  test("an object entry carries its chosen access; absent access is read_write", () => {
+    const input = parseCreateAgent({
+      ...body,
+      connectors: [{ slug: "github", access: "read_only" }, { slug: "jira" }],
+    });
+    assert.deepEqual(input.connectors, [
+      { slug: "github", access: "read_only" },
+      { slug: "jira", access: "read_write" },
+    ]);
+  });
+
+  test("a bad access, bad slug, duplicate slug or too many connectors is refused", () => {
+    refused(
+      () =>
+        parseCreateAgent({
+          ...body,
+          connectors: [{ slug: "github", access: "write" }],
+        }),
+      /connectors\.access/,
+    );
+    refused(
+      () => parseCreateAgent({ ...body, connectors: ["GitHub"] }),
+      /connector slugs/,
+    );
+    refused(
+      () =>
+        parseCreateAgent({
+          ...body,
+          connectors: ["github", { slug: "github", access: "read_only" }],
+        }),
+      /must not repeat "github"/,
+    );
+    refused(
+      () =>
+        parseCreateAgent({
+          ...body,
+          connectors: ["a_one", "b_two", "c_three", "d_four"],
+        }),
+      /at most 3/,
+    );
+  });
+
+  test("update replaces connectors (even with an empty list) and keeps access", () => {
+    const changed = parseUpdateAgent({
+      revision: 2,
+      connectors: [{ slug: "github", access: "read_only" }],
+    });
+    assert.deepEqual(changed.connectors, [
+      { slug: "github", access: "read_only" },
+    ]);
+    // An empty list is a change (clears the connectors).
+    assert.deepEqual(parseUpdateAgent({ revision: 2, connectors: [] }), {
+      revision: 2,
+      changes: {},
+      connectors: [],
+    });
+  });
+
+  test("the request hash includes access, so flipping it is a different create", () => {
+    const readWrite = requestHashOf(
+      parseCreateAgent({ ...body, connectors: ["github"] }),
+    );
+    const sameAccess = requestHashOf(
+      parseCreateAgent({
+        ...body,
+        connectors: [{ slug: "github", access: "read_write" }],
+      }),
+    );
+    const readOnly = requestHashOf(
+      parseCreateAgent({
+        ...body,
+        connectors: [{ slug: "github", access: "read_only" }],
+      }),
+    );
+    // A bare slug and an explicit read_write are the same create.
+    assert.equal(readWrite, sameAccess);
+    // Flipping to read_only is a different create.
+    assert.notEqual(readWrite, readOnly);
+  });
 });
 
 describe("TtlCache", () => {

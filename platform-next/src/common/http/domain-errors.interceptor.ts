@@ -21,11 +21,18 @@ const HTTP: Record<DomainErrorCode, { status: number; code: ErrorCode }> = {
   CHAT_READ_ONLY: { status: 409, code: "CHAT_READ_ONLY" },
   RATE_LIMITED: { status: 429, code: "RATE_LIMITED" },
   UNAVAILABLE: { status: 503, code: "UNAVAILABLE" },
+  CONNECTORS_NOT_CONFIGURED: {
+    status: 503,
+    code: "CONNECTORS_NOT_CONFIGURED",
+  },
+  CONNECTION_REQUIRED: { status: 409, code: "CONNECTION_REQUIRED" },
+  APPROVAL_RESOLVED: { status: 409, code: "APPROVAL_RESOLVED" },
+  APPROVAL_NOT_FOUND: { status: 404, code: "APPROVAL_NOT_FOUND" },
 };
 
 export function toApiError(error: DomainError): ApiError {
   const { status, code } = HTTP[error.code];
-  return new ApiError(status, code, error.message);
+  return new ApiError(status, code, error.message, error.details);
 }
 
 // Opt-in per controller: business-rule refusals become their HTTP error with

@@ -3,6 +3,12 @@
 // dialog stay focused on UI state. Every request names this tab's tenant
 // through api().
 import { api } from "./api.ts";
+import {
+  MAX_CONNECTORS,
+  parseConnectorRefs,
+  type ConnectorAccess,
+  type ConnectorRef,
+} from "./tenant-connectors.ts";
 
 export type AgentSource = "builtin" | "personal" | "tenant";
 export type AgentScope = Exclude<AgentSource, "builtin">;
@@ -24,6 +30,9 @@ export interface TenantAgent {
   tint: AgentTint;
   model: TenantModel | null;
   available: boolean;
+  // The directory connectors this agent attaches (always present, [] when
+  // none). Its chats can use these connectors' read-only tools.
+  connectors: ConnectorRef[];
   revision: number;
   createdByMe: boolean;
   status: "active" | "archived";
@@ -38,6 +47,12 @@ export interface AgentForm {
   modelId: string;
   look: number;
   tint: AgentTint;
+  // Connector slugs the agent attaches, at most MAX_CONNECTORS, unique.
+  connectorSlugs: string[];
+  // Per-connector access, by slug. A slug absent here (or set to read_write)
+  // attaches read_write; only read_only is sent as an object on the wire.
+  // Only connectors with write tools offer the choice.
+  connectorAccess: Record<string, ConnectorAccess>;
 }
 
 // Kept in step with platform-next/src/modules/agents/agent-fields.ts.
@@ -93,6 +108,7 @@ export function parseAgent(value: unknown): TenantAgent | null {
     tint,
     model: a.model === null ? null : parseModel(a.model),
     available: a.available === true,
+    connectors: parseConnectorRefs(a.connectors),
     revision,
     createdByMe: a.createdByMe === true,
     status: a.status === "archived" ? "archived" : "active",
@@ -136,7 +152,7 @@ export const createTenantAgent = async (
     await api("/api/v1/agents", {
       clientRequestId,
       scope,
-      ...cleanForm(form),
+      ...toWire(cleanForm(form)),
     }),
   );
 
@@ -148,7 +164,7 @@ export const updateTenantAgent = async (
   agentOf(
     await api(
       `/api/v1/agents/${encodeURIComponent(id)}`,
-      { revision, ...changes },
+      { revision, ...toWire(changes) },
       undefined,
       "PATCH",
     ),
@@ -167,7 +183,41 @@ export function cleanForm(form: AgentForm): AgentForm {
     modelId: form.modelId,
     look: form.look,
     tint: form.tint,
+    connectorSlugs: dedupe(form.connectorSlugs).slice(0, MAX_CONNECTORS),
+    connectorAccess: cleanAccess(form),
   };
+}
+
+// Drops duplicate slugs, preserving order.
+function dedupe(slugs: string[]): string[] {
+  return slugs.filter((slug, index) => slugs.indexOf(slug) === index);
+}
+
+// The access map pruned to the slugs still attached, keeping only read_only
+// entries (read_write is the default and needs no record). So a connector
+// removed from the agent, or switched back to read_write, drops out.
+function cleanAccess(form: AgentForm): Record<string, ConnectorAccess> {
+  const kept = new Set(dedupe(form.connectorSlugs).slice(0, MAX_CONNECTORS));
+  const access: Record<string, ConnectorAccess> = {};
+  for (const [slug, value] of Object.entries(form.connectorAccess ?? {}))
+    if (kept.has(slug) && value === "read_only") access[slug] = value;
+  return access;
+}
+
+// The wire shape for create/update: the form's `connectorSlugs` and
+// `connectorAccess` become the platform's `connectors` field — a plain slug
+// string for read_write (the default) and a `{ slug, access }` object for
+// read_only (write access contract: strings still accepted = read_write).
+// Only present fields are sent, so a PATCH that didn't touch connectors
+// leaves them unchanged; `connectorAccess` is never a top-level wire field.
+function toWire(form: Partial<AgentForm>): Record<string, unknown> {
+  const { connectorSlugs, connectorAccess, ...rest } = form;
+  if (connectorSlugs === undefined) return { ...rest };
+  const access = connectorAccess ?? {};
+  const connectors = connectorSlugs.map((slug) =>
+    access[slug] === "read_only" ? { slug, access: "read_only" } : slug,
+  );
+  return { ...rest, connectors };
 }
 
 // Matches the server's rule closely enough that Save is disabled before a
@@ -196,7 +246,37 @@ export function formChanges(
   if (f.modelId !== (agent.model?.id ?? "")) changes.modelId = f.modelId;
   if (f.look !== agent.look) changes.look = f.look;
   if (f.tint !== agent.tint) changes.tint = f.tint;
+  // Connectors changed when the attached set or any per-connector access
+  // differs. Access is part of the connectors field, so both are carried
+  // together to toWire (an access-only edit is still a change).
+  const current = formOf(agent, []);
+  if (
+    !sameSlugs(f.connectorSlugs, current.connectorSlugs) ||
+    !sameAccess(f, current)
+  ) {
+    changes.connectorSlugs = f.connectorSlugs;
+    changes.connectorAccess = f.connectorAccess;
+  }
   return changes;
+}
+
+// Two cleaned forms attach the same access when every selected slug resolves
+// to the same access (read_write default vs read_only). cleanForm already
+// pruned read_write entries, so an equal access map is equality here.
+function sameAccess(a: AgentForm, b: AgentForm): boolean {
+  const access = (form: AgentForm) =>
+    form.connectorSlugs.map(
+      (slug) => form.connectorAccess[slug] ?? "read_write",
+    );
+  const av = access(a);
+  const bv = access(b);
+  return av.length === bv.length && av.every((v, i) => v === bv[i]);
+}
+
+// Two connector-slug lists are equal when they hold the same slugs in the
+// same order (the picker keeps a stable order, so order is meaningful).
+function sameSlugs(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((slug, index) => slug === b[index]);
 }
 
 export function formOf(
@@ -210,6 +290,12 @@ export function formOf(
         modelId: agent.model?.id ?? "",
         look: agent.look,
         tint: agent.tint,
+        connectorSlugs: agent.connectors.map((c) => c.slug),
+        connectorAccess: Object.fromEntries(
+          agent.connectors
+            .filter((c) => c.access === "read_only")
+            .map((c) => [c.slug, c.access]),
+        ),
       }
     : {
         name: "",
@@ -217,6 +303,8 @@ export function formOf(
         modelId: models[0]?.id ?? "",
         look: DEFAULT_LOOK,
         tint: DEFAULT_TINT,
+        connectorSlugs: [],
+        connectorAccess: {},
       };
 }
 

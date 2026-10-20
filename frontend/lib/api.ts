@@ -20,11 +20,15 @@ export class ApiRequestError extends Error {
   code: string;
   // Correlates this failure with platform logs; absent for network failures.
   requestId?: string;
+  // The platform's optional error.details, carried through so a caller can
+  // act on a structured failure (e.g. 409 CONNECTION_REQUIRED's connectors).
+  // Untyped here: each caller validates the shape it expects.
+  details?: unknown;
   constructor(
     message: string,
     status: number,
     code: string,
-    options?: { requestId?: string; cause?: unknown },
+    options?: { requestId?: string; cause?: unknown; details?: unknown },
   ) {
     super(
       message,
@@ -34,6 +38,7 @@ export class ApiRequestError extends Error {
     this.status = status;
     this.code = code;
     if (options?.requestId) this.requestId = options.requestId;
+    if (options?.details !== undefined) this.details = options.details;
   }
 }
 
@@ -142,7 +147,9 @@ export async function api(
   body?: unknown,
   session: Auth = auth,
   // GET without a body and POST with one, unless named (for example PATCH).
-  method: "GET" | "POST" | "PATCH" = body === undefined ? "GET" : "POST",
+  method: "GET" | "POST" | "PATCH" | "DELETE" = body === undefined
+    ? "GET"
+    : "POST",
 ) {
   // AgentCore can cold-start on session creation or restoration. Its backend
   // invocation deadline is 150 seconds; let that response reach the browser.
@@ -230,7 +237,11 @@ export async function api(
     // platform-next nests the detail: { error: { code, message }, requestId }.
     const detail =
       data?.error && typeof data.error === "object"
-        ? { error: data.error.message, code: data.error.code }
+        ? {
+            error: data.error.message,
+            code: data.error.code,
+            details: data.error.details,
+          }
         : data;
     return fail(
       new ApiRequestError(
@@ -244,6 +255,7 @@ export async function api(
             typeof data?.requestId === "string" && data.requestId
               ? data.requestId
               : headerId,
+          details: detail?.details,
         },
       ),
     );

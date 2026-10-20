@@ -23,6 +23,8 @@ export const REQUEST_ERRORS = {
     false,
     "The message was sent but its outcome is unknown.",
   ],
+  APPROVAL_NOT_FOUND: [404, false, "This approval is unknown or has expired."],
+  APPROVAL_RESOLVED: [409, false, "This approval was already answered."],
   PAYLOAD_TOO_LARGE: [413, false, "The request is too large."],
   RUNTIME_BUSY: [503, true, "The assistant is at capacity. Try again shortly."],
   DRAINING: [503, true, "The assistant is restarting. Try again shortly."],

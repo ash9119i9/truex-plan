@@ -18,10 +18,14 @@ import {
   replyItems,
   SLOW_REPLY_MS,
   isCutShort,
+  progressFlags,
+  pendingApprovalForItem,
+  approvalForItem,
   sentSteerId,
   steerText,
   titleProblem,
   usageLine,
+  type ApprovalView,
   type ChatMessage,
   type ChatRun,
   type ChatSummary,
@@ -30,9 +34,24 @@ import {
 } from "@/lib/tenant-chat";
 import { Icon } from "@/components/v2/icon";
 import {
+  approvalCardTitle,
+  approvalOutcomeLabel,
+  connectorBanner,
+  connectorName,
+  savedApprovalLabel,
+  toolCardLabel,
+  type ApprovalAnswer,
+  type ConnectorFailureReason,
+  type ConnectorRef,
+  type SavedTool,
+  type ToolCall,
+} from "@/lib/tenant-connectors";
+import {
   CopyTextButton,
   StreamingMarkdown,
 } from "@/components/streaming-markdown";
+// Connect card, tool rows, connector banner and picker styles.
+import "@/styles/v2/connectors.css";
 
 // How the browser's own connection to a live reply is doing; the platform's
 // phases (retrying, stopping, …) come in the reply itself.
@@ -223,6 +242,9 @@ export const Transcript = memo(function Transcript({
   onLoadOlder,
   onReconnect,
   onResend,
+  onApprove,
+  approvalBusy,
+  tenantId,
 }: {
   thread: ChatThread;
   live: LiveReply | null;
@@ -233,6 +255,13 @@ export const Transcript = memo(function Transcript({
   onReconnect: () => void;
   // Sends a not-sent message's text again as a new message.
   onResend: (text: string) => void;
+  // Answers a pending write-tool approval card.
+  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
+  // The approvalId whose answer is in flight (its card's buttons disabled),
+  // or null.
+  approvalBusy: string | null;
+  // This tab's tenant, for the Connected tools reconnect link.
+  tenantId: string;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -247,6 +276,7 @@ export const Transcript = memo(function Transcript({
   const agent = thread.chat.agent;
   const agentName = agent?.name ?? "Assistant";
   const hue = tintOf(agent?.tint).bg;
+  const connectors = thread.chat.connectors;
   const liveText =
     live?.items.reduce(
       (n, i) => n + (i.type === "reply" ? i.text.length : 0),
@@ -289,6 +319,8 @@ export const Transcript = memo(function Transcript({
     liveText,
     live?.phase,
     live?.items.length,
+    // A new approval card (or its settling) changes the reply's height.
+    live && Object.keys(live.approvals).length,
   ]);
 
   const loadOlder = () => {
@@ -338,8 +370,12 @@ export const Transcript = memo(function Transcript({
             connection={connection}
             agentName={agentName}
             hue={hue}
+            connectors={connectors}
+            tenantId={tenantId}
             onReconnect={onReconnect}
             onResend={onResend}
+            onApprove={onApprove}
+            approvalBusy={approvalBusy}
           />
         ))}
       </div>
@@ -354,8 +390,12 @@ function Exchange({
   connection,
   agentName,
   hue,
+  connectors,
+  tenantId,
   onReconnect,
   onResend,
+  onApprove,
+  approvalBusy,
 }: {
   messages: ChatMessage[];
   run: ChatRun | null;
@@ -363,8 +403,12 @@ function Exchange({
   connection: Connection;
   agentName: string;
   hue: string;
+  connectors: ConnectorRef[];
+  tenantId: string;
   onReconnect: () => void;
   onResend: (text: string) => void;
+  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
+  approvalBusy: string | null;
 }) {
   // A live run shows its saved user message(s) and the reply as it streams;
   // the replies Codex has written are in the live items, so the run's own
@@ -383,7 +427,11 @@ function Exchange({
             live={live}
             run={run}
             connection={connection}
+            connectors={connectors}
+            tenantId={tenantId}
             onReconnect={onReconnect}
+            onApprove={onApprove}
+            approvalBusy={approvalBusy}
           />
         </AgentReply>
       ) : (
@@ -392,6 +440,7 @@ function Exchange({
           run={run}
           agentName={agentName}
           hue={hue}
+          connectors={connectors}
           onResend={onResend}
         />
       )}
@@ -442,6 +491,189 @@ function SteerBubble({ text }: { text: string }) {
   );
 }
 
+// A saved tool message's payload rendered as a ToolCall, with the connector's
+// display name resolved from the chat's connector list (slug fallback).
+function savedToolToCall(
+  tool: SavedTool,
+  connectors: ConnectorRef[],
+): ToolCall {
+  return {
+    connector: connectorName(tool.connector, connectors),
+    tool: tool.name,
+    status: tool.status,
+    durationMs: tool.durationMs,
+    errorCode: tool.errorCode,
+  };
+}
+
+// A compact inline row for one connector tool call, live or saved. The label
+// carries the meaning for a screen reader; the spinner is decorative. Only a
+// live in-progress row is a status region (it announces when it settles); a
+// saved row is static and is not announced. `approvalLabel` is the decision
+// a write-tool call settled with ("Allowed", "Not run", …), shown after the
+// call label.
+function ToolRow({
+  call,
+  live,
+  approvalLabel,
+}: {
+  call: ToolCall;
+  live: boolean;
+  approvalLabel?: string | null;
+}) {
+  const running = call.status === "inProgress";
+  const label = toolCardLabel(call);
+  return (
+    <div
+      className={call.status === "failed" ? "tool-card is-failed" : "tool-card"}
+      role={live && running ? "status" : undefined}
+    >
+      {running ? (
+        <span className="spinner" aria-hidden="true" />
+      ) : (
+        <Icon
+          name={call.status === "failed" ? "x" : "check"}
+          size={13}
+          className="tool-card-icon"
+        />
+      )}
+      <span>{label}</span>
+      {approvalLabel && (
+        <span className="tool-card-approval">· {approvalLabel}</span>
+      )}
+    </div>
+  );
+}
+
+// The inline approval card shown at a write tool's row while it waits for the
+// member. Params are model-written and untrusted, so they are rendered as
+// plain text, wrapped, never HTML. The card takes focus when it appears
+// (without scrolling the reader away), the three answers are real buttons,
+// and Escape is deliberately NOT bound to Deny (too easy to hit). While an
+// answer is in flight the buttons are disabled; a lost first-answer race
+// (409/404) shows "Already answered"/"Expired" instead.
+function ApprovalCard({
+  approval,
+  connectorLabel,
+  busy,
+  onApprove,
+}: {
+  approval: ApprovalView;
+  connectorLabel: string;
+  busy: boolean;
+  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Focus the card when it appears so a keyboard user reaches the buttons
+  // without hunting; preventScroll keeps a reader who scrolled up in place.
+  useEffect(() => {
+    ref.current?.focus({ preventScroll: true });
+  }, []);
+  const title = approvalCardTitle(connectorLabel, approval.tool);
+  const race =
+    approval.race === "resolved"
+      ? "Already answered"
+      : approval.race === "not_found"
+        ? "Expired"
+        : null;
+  return (
+    <div
+      ref={ref}
+      className="approval-card"
+      role="group"
+      aria-label={title}
+      tabIndex={-1}
+    >
+      <p className="approval-title">{title}</p>
+      {approval.params.length > 0 && (
+        <dl className="approval-params">
+          {approval.params.map((p, i) => (
+            <div key={`${p.name}:${i}`} className="approval-param">
+              <dt>{p.name}</dt>
+              {/* Plain text only: model-written, never rendered as HTML. */}
+              <dd>{p.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {race ? (
+        <p className="approval-outcome" role="status">
+          {race}
+        </p>
+      ) : (
+        <div className="approval-actions">
+          <button
+            type="button"
+            className="btn-solid"
+            disabled={busy}
+            onClick={() => onApprove(approval.approvalId, "allow")}
+          >
+            Allow once
+          </button>
+          <button
+            type="button"
+            className="btn-soft"
+            disabled={busy}
+            onClick={() => onApprove(approval.approvalId, "allow_for_chat")}
+          >
+            Allow for this chat
+          </button>
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={busy}
+            onClick={() => onApprove(approval.approvalId, "deny")}
+          >
+            Deny
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The banners for connectors that failed during this reply, shown once per
+// connector. An auth failure links to Connected tools to reconnect.
+function ConnectorBanners({
+  failures,
+  connectors,
+  tenantId,
+}: {
+  failures: Record<string, ConnectorFailureReason>;
+  connectors: ConnectorRef[];
+  tenantId: string;
+}) {
+  const banners = Object.entries(failures).flatMap(([slug, reason]) => {
+    const banner = connectorBanner(
+      "failed",
+      reason,
+      connectorName(slug, connectors),
+    );
+    return banner ? [{ slug, banner }] : [];
+  });
+  if (!banners.length) return null;
+  return (
+    <>
+      {banners.map(({ slug, banner }) => (
+        <div
+          key={slug}
+          className="connector-banner"
+          role="status"
+          aria-live="polite"
+        >
+          <Icon name="plug" size={14} aria-hidden="true" />
+          <span className="grow">{banner.message}</span>
+          {banner.reconnect && (
+            <a className="link" href={`/t/${tenantId}/connected-tools`}>
+              Reconnect
+            </a>
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
 // A settled run's saved messages in seq order: member bubbles and assistant
 // replies, interleaved, with the run's note and usage after the last reply.
 function SavedExchange({
@@ -449,35 +681,38 @@ function SavedExchange({
   run,
   agentName,
   hue,
+  connectors,
   onResend,
 }: {
   messages: ChatMessage[];
   run: ChatRun | null;
   agentName: string;
   hue: string;
+  connectors: ConnectorRef[];
   onResend: (text: string) => void;
 }) {
   const note = run ? outcomeNote(run.status, run.error) : null;
   const usage = run && isSettled(run.status) ? usageLine(run) : "";
-  // Consecutive assistant messages share one reply frame (and keep their
-  // markdown memoized); the run footer rides the last reply so it sits at
-  // the end of the exchange.
+  // Everything between two user messages (progress replies, tool rows and
+  // the answer) shares one reply frame, in saved order, as it did while
+  // live. The run footer rides the last frame so it sits at the end of the
+  // exchange.
   const blocks: Array<
     | { kind: "user"; message: ChatMessage }
-    | { kind: "replies"; messages: ChatMessage[] }
+    | { kind: "agent"; messages: ChatMessage[] }
   > = [];
   for (const message of messages) {
     if (message.role === "user") blocks.push({ kind: "user", message });
     else {
       const last = blocks.at(-1);
-      if (last?.kind === "replies") last.messages.push(message);
-      else blocks.push({ kind: "replies", messages: [message] });
+      if (last?.kind === "agent") last.messages.push(message);
+      else blocks.push({ kind: "agent", messages: [message] });
     }
   }
-  const lastReplyIndex = blocks.map((b) => b.kind).lastIndexOf("replies");
+  const lastAgentIndex = blocks.map((b) => b.kind).lastIndexOf("agent");
   const hasFooter = !!(note || usage);
   // An empty settled run (no replies saved) still shows its footer.
-  const showLooseFooter = hasFooter && lastReplyIndex < 0;
+  const showLooseFooter = hasFooter && lastAgentIndex < 0;
   return (
     <>
       {blocks.map((block, index) =>
@@ -495,9 +730,10 @@ function SavedExchange({
             live={null}
           >
             <SavedBody
-              replies={block.messages}
-              note={index === lastReplyIndex ? note : null}
-              usage={index === lastReplyIndex ? usage : ""}
+              entries={block.messages}
+              connectors={connectors}
+              note={index === lastAgentIndex ? note : null}
+              usage={index === lastAgentIndex ? usage : ""}
               failed={run?.status === "failed"}
             />
           </AgentReply>
@@ -506,7 +742,8 @@ function SavedExchange({
       {showLooseFooter && (
         <AgentReply agentName={agentName} hue={hue} live={null}>
           <SavedBody
-            replies={[]}
+            entries={[]}
+            connectors={connectors}
             note={note}
             usage={usage}
             failed={run?.status === "failed"}
@@ -561,27 +798,47 @@ function AgentReply({
 // again while another reply streams. The run's footer (note and usage) is
 // passed in so it sits after the last reply of the exchange.
 function SavedBody({
-  replies,
+  entries,
+  connectors,
   note,
   usage,
   failed,
 }: {
-  replies: ChatMessage[];
+  entries: ChatMessage[];
+  connectors: ConnectorRef[];
   note: string | null;
   usage: string;
   failed: boolean;
 }) {
+  const progress = progressFlags(
+    entries.map((m) => (m.role === "tool" ? "tool" : "reply")),
+  );
   return (
     <>
-      {replies.map((reply) => (
-        <div key={reply.id} className="answer markdown">
-          <StreamingMarkdown text={reply.text} streaming={false} />
-          {messageStateNote(reply) && (
-            <p className="msg-foot">{messageStateNote(reply)}</p>
-          )}
-          <CopyTextButton text={reply.text} label="Copy answer" />
-        </div>
-      ))}
+      {entries.map((entry, index) =>
+        entry.role === "tool" ? (
+          <ToolRow
+            key={entry.id}
+            call={savedToolToCall(entry.tool!, connectors)}
+            live={false}
+            approvalLabel={
+              entry.tool!.approval
+                ? savedApprovalLabel(entry.tool!.approval)
+                : null
+            }
+          />
+        ) : progress[index] ? (
+          <ProgressNote key={entry.id} text={entry.text} streaming={false} />
+        ) : (
+          <div key={entry.id} className="answer markdown">
+            <StreamingMarkdown text={entry.text} streaming={false} />
+            {messageStateNote(entry) && (
+              <p className="msg-foot">{messageStateNote(entry)}</p>
+            )}
+            <CopyTextButton text={entry.text} label="Copy answer" />
+          </div>
+        ),
+      )}
       {note && (
         <p className={failed ? "msg-foot tchat-failed" : "msg-foot"}>{note}</p>
       )}
@@ -590,16 +847,76 @@ function SavedBody({
   );
 }
 
+// A reply the model wrote before calling a tool: narration of what it is
+// about to do, shown quietly between the tool rows and never offered as an
+// answer to copy.
+function ProgressNote({
+  text,
+  streaming,
+}: {
+  text: string;
+  streaming: boolean;
+}) {
+  return (
+    <div className="progress-note markdown">
+      <StreamingMarkdown text={text} streaming={streaming} />
+    </div>
+  );
+}
+
+// A live tool row with its write-tool approval, if any. A pending approval
+// (not auto-answered) shows the card below the row; a settled one shows its
+// outcome label on the row. An auto allow-for-chat shows the label, no card.
+function ToolApprovalRow({
+  call,
+  pending,
+  settled,
+  onApprove,
+  approvalBusy,
+}: {
+  call: ToolCall;
+  pending: ApprovalView | null;
+  settled: ApprovalView | null;
+  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
+  approvalBusy: string | null;
+}) {
+  const label =
+    settled && settled.status !== "pending"
+      ? approvalOutcomeLabel(settled.status)
+      : null;
+  return (
+    <>
+      <ToolRow call={call} live approvalLabel={label} />
+      {pending && (
+        <ApprovalCard
+          approval={pending}
+          connectorLabel={call.connector}
+          busy={approvalBusy === pending.approvalId}
+          onApprove={onApprove}
+        />
+      )}
+    </>
+  );
+}
+
 function LiveBody({
   live,
   run,
   connection,
+  connectors,
+  tenantId,
   onReconnect,
+  onApprove,
+  approvalBusy,
 }: {
   live: LiveReply;
   run: ChatRun | null;
   connection: Connection;
+  connectors: ConnectorRef[];
+  tenantId: string;
   onReconnect: () => void;
+  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
+  approvalBusy: string | null;
 }) {
   const replies = replyItems(live);
   const slow = useSlow(live.since, replies.length === 0);
@@ -614,9 +931,10 @@ function LiveBody({
     ? outcomeNote(live.outcome.status, live.outcome.error)
     : null;
   const lastReplyId = replies.at(-1)?.itemId;
+  const progress = progressFlags(live.items.map((item) => item.type));
   return (
     <>
-      {!replies.length && streaming && (
+      {!live.items.length && streaming && (
         <ul className="steps" role="status">
           <li>
             <span className="spinner" aria-hidden="true" />
@@ -625,7 +943,9 @@ function LiveBody({
         </ul>
       )}
       {live.items.map((item, index) =>
-        item.type === "reply" ? (
+        item.type === "reply" && progress[index] ? (
+          <ProgressNote key={item.itemId} text={item.text} streaming={false} />
+        ) : item.type === "reply" ? (
           <div key={item.itemId} className="answer markdown">
             <StreamingMarkdown text={item.text} streaming={streaming} />
             {streaming && item.itemId === lastReplyId && (
@@ -636,6 +956,21 @@ function LiveBody({
               <p className="msg-foot">{LIVE_INTERRUPTED_NOTE}</p>
             )}
           </div>
+        ) : item.type === "tool" ? (
+          <ToolApprovalRow
+            key={`tool:${item.itemId}`}
+            call={{
+              connector: connectorName(item.connector, connectors),
+              tool: item.tool,
+              status: item.status,
+              durationMs: item.durationMs,
+              errorCode: item.errorCode,
+            }}
+            pending={pendingApprovalForItem(live, item.itemId)}
+            settled={approvalForItem(live, item.itemId)}
+            onApprove={onApprove}
+            approvalBusy={approvalBusy}
+          />
         ) : (
           <SteerBubble
             key={`input:${item.clientMessageId}`}
@@ -643,6 +978,11 @@ function LiveBody({
           />
         ),
       )}
+      <ConnectorBanners
+        failures={live.connectorFailures}
+        connectors={connectors}
+        tenantId={tenantId}
+      />
       {outcome && (
         <p
           className={

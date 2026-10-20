@@ -10,6 +10,11 @@ import {
 } from "../agents/builtin-agents.service";
 import type { AuditActor } from "../audit/audit";
 import { AuditService } from "../audit/audit.service";
+import { parseConnectorSpec, type ConnectorDoc } from "../connectors/connector";
+import {
+  ConnectorsCatalogService,
+  type PutOutcome as ConnectorPutOutcome,
+} from "../connectors/connectors-catalog.service";
 import {
   isRole,
   type MembershipDoc,
@@ -59,6 +64,11 @@ export interface PutBuiltinAgentCommand {
   definition: unknown;
 }
 
+export interface PutConnectorCommand {
+  operator: string;
+  definition: unknown;
+}
+
 export interface SetEnabledCommand {
   operator: string;
   slug: string;
@@ -81,6 +91,16 @@ export interface BuiltinAgentSummary {
   slug: string;
   name: string;
   modelId: string;
+  enabled: boolean;
+  revision: number;
+}
+
+// What an operator command prints about a connector. Never its auth secrets
+// (the auth block is omitted entirely).
+export interface ConnectorSummary {
+  id: string;
+  slug: string;
+  displayName: string;
   enabled: boolean;
   revision: number;
 }
@@ -108,6 +128,16 @@ export function builtinSummary(agent: BuiltinListing): BuiltinAgentSummary {
   };
 }
 
+export function connectorSummary(connector: ConnectorDoc): ConnectorSummary {
+  return {
+    id: connector._id.toHexString(),
+    slug: connector.slug,
+    displayName: connector.displayName,
+    enabled: connector.enabled,
+    revision: connector.revision,
+  };
+}
+
 export interface AssignRoleResult {
   user: UserDoc;
   membership: MembershipDoc;
@@ -128,6 +158,8 @@ export class OperatorService {
     @Inject(ModelsService) private readonly models: ModelsService,
     @Inject(BuiltinAgentsService)
     private readonly builtins: BuiltinAgentsService,
+    @Inject(ConnectorsCatalogService)
+    private readonly connectors: ConnectorsCatalogService,
   ) {}
 
   // Adds a model, or updates the one with the same slug. Its identity
@@ -287,6 +319,90 @@ export class OperatorService {
 
   async listBuiltinAgents(): Promise<BuiltinAgentSummary[]> {
     return (await this.builtins.listAll()).map(builtinSummary);
+  }
+
+  // Adds a directory connector, or updates the one with the same slug. The
+  // slug (the Codex server name) can never change. Refusals never echo the
+  // auth block.
+  async putConnector(
+    command: PutConnectorCommand,
+  ): Promise<{ connector: ConnectorSummary; outcome: ConnectorPutOutcome }> {
+    const actor = operatorActor(command.operator);
+    const base = { action: "connector.put", actor };
+    try {
+      const spec = parseConnectorSpec(command.definition);
+      await Promise.all([
+        this.connectors.ensureIndexes(),
+        this.audit.ensureIndexes(),
+      ]);
+      return await this.database.withTransaction(async (session) => {
+        const { connector, outcome } = await this.connectors.put(
+          spec,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: {
+              slug: connector.slug,
+              connectorId: connector._id.toHexString(),
+              outcome,
+              revision: connector.revision,
+            },
+          },
+          session,
+        );
+        return { connector: connectorSummary(connector), outcome };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  // Disabling is how a connector is removed: existing connections keep its ID.
+  async setConnectorEnabled(
+    command: SetEnabledCommand,
+  ): Promise<{ connector: ConnectorSummary; changed: boolean }> {
+    const actor = operatorActor(command.operator);
+    const base = {
+      action: command.enabled ? "connector.enable" : "connector.disable",
+      actor,
+      details: { slug: String(command.slug).slice(0, 64) },
+    };
+    try {
+      await this.audit.ensureIndexes();
+      return await this.database.withTransaction(async (session) => {
+        const { connector, changed } = await this.connectors.setEnabled(
+          command.slug,
+          command.enabled,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: {
+              ...base.details,
+              changed,
+              revision: connector.revision,
+            },
+          },
+          session,
+        );
+        return { connector: connectorSummary(connector), changed };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  async listConnectors(): Promise<ConnectorSummary[]> {
+    return (await this.connectors.listAll()).map(connectorSummary);
   }
 
   async provisionTenant(command: ProvisionTenantCommand): Promise<TenantDoc> {

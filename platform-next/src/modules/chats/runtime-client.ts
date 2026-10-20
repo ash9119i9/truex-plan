@@ -1,6 +1,8 @@
 // The platform's side of the runtime adapter contract
 // (runtime-adapter/README.md). Plain HTTP today; the AgentCore transport wraps
-// the same five operations.
+// the same operations.
+
+import type { McpServerSpec } from "../connectors/mcp-server-spec";
 
 export interface AdapterEvent {
   readonly seq: number;
@@ -33,6 +35,9 @@ export interface StartRunBody extends ChatRef {
   readonly threadId: string | null;
   readonly input: { readonly text: string; readonly clientMessageId: string };
   readonly agentPrompt: string;
+  // The directory-connector MCP servers for this turn, included only when
+  // non-empty. Carries per-user Authorization headers, so it is NEVER logged.
+  readonly mcp?: readonly McpServerSpec[];
   readonly model: {
     readonly modelName: string;
     readonly gatewayUrl: string;
@@ -118,6 +123,21 @@ export class RuntimeClient {
       ...ref,
       input,
     });
+  }
+
+  // The member's answer to a pending tool approval. Refusals are
+  // AdapterRefusal (APPROVAL_RESOLVED, APPROVAL_NOT_FOUND, RUN_NOT_FOUND).
+  async answerApproval(
+    runId: string,
+    approvalId: string,
+    ref: ChatRef,
+    decision: "allow" | "allow_for_chat" | "deny",
+  ): Promise<void> {
+    await this.json(
+      `/v1/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(approvalId)}`,
+      "POST",
+      { ...ref, decision },
+    );
   }
 
   async history(ref: ChatRef): Promise<HistoryTurn[]> {

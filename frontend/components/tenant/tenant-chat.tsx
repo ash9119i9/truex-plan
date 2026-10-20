@@ -45,6 +45,9 @@ import {
   withSaved,
   withSteer,
   withLiveSteer,
+  withApproval,
+  withApprovalRace,
+  hasPendingApproval,
   dropSteer,
   type ChatSummary,
   type ChatThread,
@@ -54,6 +57,15 @@ import {
   type SendFailure,
 } from "@/lib/tenant-chat";
 import { followRun } from "@/lib/tenant-chat-stream";
+import {
+  connectCardText,
+  connectionRequired,
+  postApproval,
+  RETURN_KEY,
+  startConnect,
+  type ApprovalAnswer,
+  type ConnectionRequired,
+} from "@/lib/tenant-connectors";
 import { Panel } from "@/components/v2/shell";
 import { Hero } from "@/components/v2/hero";
 import { Icon } from "@/components/v2/icon";
@@ -67,6 +79,8 @@ import { ChatList } from "./chat-list";
 import { ChatComposer } from "./chat-composer";
 import { ChatHeader, Transcript, type Connection } from "./chat-transcript";
 import "@/styles/v2/tenant-chat.css";
+// Connect card, tool rows, connector banner and picker styles.
+import "@/styles/v2/connectors.css";
 
 type Load =
   | { state: "loading" }
@@ -86,7 +100,7 @@ const NARROW = "(max-width: 720px)";
  * reopens it and a reply in progress is followed again from its snapshot.
  */
 export function TenantChat() {
-  const { actions } = useWorkspace();
+  const { me, actions } = useWorkspace();
   // A fresh object on every session check; the stream must not refollow.
   const recheck = useRef(actions.recheck);
   recheck.current = actions.recheck;
@@ -388,6 +402,13 @@ export function TenantChat() {
   } | null>(null);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
+  // A 409 CONNECTION_REQUIRED on start/send: the draft is kept and a Connect
+  // card is shown above the composer. Keyed by the draft it blocked, so it is
+  // dropped when the member switches chats/agents or a send succeeds.
+  const [connectCard, setConnectCard] = useState<{
+    key: string;
+    required: ConnectionRequired;
+  } | null>(null);
   // The message on its way, shown before the platform answers, and the
   // agent a first message starts its chat with.
   const [pending, setPending] = useState<
@@ -396,6 +417,12 @@ export function TenantChat() {
   const [ids] = useState(() => messageIds());
   const draftKey = openId ?? NEW;
   const draft = drafts[draftKey] ?? "";
+
+  // Switching the new-chat agent dismisses a Connect card raised for a
+  // different agent (switching chats changes draftKey, which hides it).
+  useEffect(() => {
+    setConnectCard((current) => (current?.key === NEW ? null : current));
+  }, [selectedId]);
 
   const send = () => {
     const key = openId ?? NEW;
@@ -410,6 +437,78 @@ export function TenantChat() {
     void dispatch(openId ?? NEW, text, true);
   };
 
+  // Starts sign-in to a connector named on the Connect card: stores where to
+  // return so the member lands back on this chat, then navigates to the
+  // provider's authorize URL (matching connected-tools-screen's RETURN_KEY).
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const connect = async (slug: string) => {
+    if (connecting) return;
+    setConnecting(slug);
+    try {
+      try {
+        window.sessionStorage.setItem(
+          RETURN_KEY,
+          window.location.pathname + window.location.search,
+        );
+      } catch {
+        /* Storage can be unavailable; the member still returns via history. */
+      }
+      const url = await startConnect(slug);
+      window.location.assign(url);
+    } catch (error) {
+      setConnecting(null);
+      setConnectCard((current) =>
+        current
+          ? {
+              ...current,
+              required: {
+                ...current.required,
+                message: userMessage(
+                  error,
+                  "Sign-in couldn't be started. Try again.",
+                ),
+              },
+            }
+          : current,
+      );
+    }
+  };
+
+  // ---- Write-tool approvals ----
+  // The approvalId whose answer is in flight, so its card's buttons disable.
+  const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  const approvalBusyRef = useRef(false);
+  const approve = async (approvalId: string, decision: ApprovalAnswer) => {
+    const chat = openThread?.chat ?? null;
+    const runId = openLive?.runId ?? chat?.activeRunId ?? null;
+    if (!chat || !runId || approvalBusyRef.current) return;
+    approvalBusyRef.current = true;
+    setApprovalBusy(approvalId);
+    // Only touch the live reply that owns this approval, and only while this
+    // chat is still open, so a late answer never settles another reply.
+    const mine = (current: typeof live) =>
+      current?.chatId === chat.id && current.reply.runId === runId;
+    try {
+      const result = await postApproval(chat.id, runId, approvalId, decision);
+      if (openRef.current !== chat.id) return;
+      setLive((current) => {
+        if (!mine(current)) return current;
+        const reply =
+          result.kind === "ok"
+            ? withApproval(current!.reply, approvalId, result.decision)
+            : result.kind === "resolved"
+              ? withApprovalRace(current!.reply, approvalId, "resolved")
+              : result.kind === "not_found"
+                ? withApprovalRace(current!.reply, approvalId, "not_found")
+                : current!.reply; // a retryable failure leaves the card open
+        return reply === current!.reply ? current : { ...current!, reply };
+      });
+    } finally {
+      approvalBusyRef.current = false;
+      setApprovalBusy(null);
+    }
+  };
+
   const dispatch = async (key: string, text: string, resent = false) => {
     if (sendingRef.current || !canSendDraft(text)) return;
     const chat = openThread?.chat ?? null;
@@ -421,6 +520,7 @@ export function TenantChat() {
     sendingRef.current = true;
     setSending(true);
     setFailure(null);
+    setConnectCard(null);
     const target = openId ?? `new:${agent!.id}`;
     // A resend reuses no earlier intent; its id is the one just minted.
     const clientMessageId = resent
@@ -500,6 +600,13 @@ export function TenantChat() {
             ? { ...current, reply: dropSteer(current.reply, clientMessageId) }
             : current,
         );
+      // A 409 CONNECTION_REQUIRED keeps the draft (restored above) and shows
+      // the Connect card instead of a generic send failure.
+      const required = connectionRequired(error);
+      if (required) {
+        if (openRef.current === openId) setConnectCard({ key, required });
+        return;
+      }
       const failed = sendFailure(error);
       if (openRef.current === openId) {
         setFailure({ key, failure: failed });
@@ -600,6 +707,8 @@ export function TenantChat() {
   }, [narrow, drawer]);
 
   const shownFailure = failure?.key === draftKey ? failure.failure : null;
+  const shownConnectCard =
+    connectCard?.key === draftKey ? connectCard.required : null;
   const setDraft = (value: string) => {
     setDrafts((all) => ({ ...all, [draftKey]: value }));
     if (shownFailure && !shownFailure.unknown) setFailure(null);
@@ -648,6 +757,13 @@ export function TenantChat() {
     stage = (
       <section className="workspace-empty tchat-new" aria-label="New chat">
         <Hero agentHue={selected ? tintOf(selected.tint).dot : undefined}>
+          {shownConnectCard && (
+            <ConnectCard
+              required={shownConnectCard}
+              connecting={connecting}
+              onConnect={(slug) => void connect(slug)}
+            />
+          )}
           <ChatComposer
             hero
             value={draft}
@@ -715,6 +831,11 @@ export function TenantChat() {
           onLoadOlder={loadOlder}
           onReconnect={reconnect}
           onResend={resend}
+          onApprove={(approvalId, decision) =>
+            void approve(approvalId, decision)
+          }
+          approvalBusy={approvalBusy}
+          tenantId={me.tenant.id}
         />
         <div className="bottom">
           {note && !busy ? (
@@ -729,27 +850,37 @@ export function TenantChat() {
               </button>
             </div>
           ) : (
-            <ChatComposer
-              value={draft}
-              onChange={setDraft}
-              onSend={send}
-              onStop={() => void stop()}
-              agentName={chat.agent?.name ?? null}
-              busy={busy}
-              sending={sending}
-              ending={
-                openLive?.phase === "settled"
-                  ? "saving"
-                  : stopping === chat.activeRunId ||
-                      openLive?.phase === "stopping"
-                    ? "stopping"
-                    : null
-              }
-              disabled={false}
-              failure={shownFailure}
-              stopError={stopError}
-              focusKey={chat.id}
-            />
+            <>
+              {shownConnectCard && (
+                <ConnectCard
+                  required={shownConnectCard}
+                  connecting={connecting}
+                  onConnect={(slug) => void connect(slug)}
+                />
+              )}
+              <ChatComposer
+                value={draft}
+                onChange={setDraft}
+                onSend={send}
+                onStop={() => void stop()}
+                agentName={chat.agent?.name ?? null}
+                busy={busy}
+                sending={sending}
+                ending={
+                  openLive?.phase === "settled"
+                    ? "saving"
+                    : stopping === chat.activeRunId ||
+                        openLive?.phase === "stopping"
+                      ? "stopping"
+                      : null
+                }
+                awaitingApproval={hasPendingApproval(openLive)}
+                disabled={false}
+                failure={shownFailure}
+                stopError={stopError}
+                focusKey={chat.id}
+              />
+            </>
           )}
         </div>
       </section>
@@ -808,6 +939,9 @@ export function TenantChat() {
           onNew={() => navigate(null)}
           onRetry={() => setListAttempt((n) => n + 1)}
           onMore={() => void loadMore()}
+          onConnectedTools={() =>
+            window.location.assign(`/t/${me.tenant.id}/connected-tools`)
+          }
         />
       </Panel>
       {narrow && drawer && (
@@ -866,4 +1000,50 @@ function useMedia(query: string): boolean {
     return () => list.removeEventListener("change", update);
   }, [query]);
   return matches;
+}
+
+// Shown above the composer after a 409 CONNECTION_REQUIRED: the draft is kept,
+// and the member connects each available connector the agent needs. An
+// unavailable connector cannot be connected, so it is listed as such with no
+// button.
+function ConnectCard({
+  required,
+  connecting,
+  onConnect,
+}: {
+  required: ConnectionRequired;
+  connecting: string | null;
+  onConnect: (slug: string) => void;
+}) {
+  const available = required.connectors.filter((c) => c.available);
+  const unavailable = required.connectors.filter((c) => !c.available);
+  return (
+    <div
+      className="connect-card"
+      role="region"
+      aria-label="Connect to continue"
+    >
+      <p>{connectCardText(required.connectors)}</p>
+      {!!available.length && (
+        <div className="connect-card-actions">
+          {available.map((c) => (
+            <button
+              key={c.slug}
+              type="button"
+              className="btn-solid"
+              disabled={connecting !== null}
+              onClick={() => onConnect(c.slug)}
+            >
+              {connecting === c.slug ? "Starting…" : `Connect ${c.displayName}`}
+            </button>
+          ))}
+        </div>
+      )}
+      {unavailable.map((c) => (
+        <p key={c.slug} className="connector-pick-hint">
+          {c.displayName} is unavailable right now.
+        </p>
+      ))}
+    </div>
+  );
 }

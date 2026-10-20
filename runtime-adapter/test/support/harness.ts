@@ -28,6 +28,10 @@ export interface HarnessOptions {
   readonly limits?: Partial<RuntimeLimits>;
   readonly maxProcesses?: number;
   readonly stateDir?: string;
+  // Lets a test attach an http loopback MCP fixture (the only transport a test
+  // can host). Off by default, so non-MCP tests keep production's https-only
+  // posture.
+  readonly allowLoopbackMcp?: boolean;
 }
 
 export class Harness {
@@ -141,6 +145,7 @@ export class Harness {
       limits,
       manager: this.manager,
       log: (event, fields) => this.logs.push({ event, fields }),
+      allowLoopbackMcp: this.options.allowLoopbackMcp ?? false,
     });
     this.server.listen(0, "127.0.0.1");
     await once(this.server, "listening");

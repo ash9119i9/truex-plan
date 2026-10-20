@@ -15,6 +15,7 @@ interface SafeError {
   status: number;
   code: ErrorCode;
   message: string;
+  details?: Readonly<Record<string, unknown>>;
 }
 
 const STATUS_ERRORS: Record<number, Omit<SafeError, "status">> = {
@@ -64,6 +65,7 @@ function toSafeError(exception: unknown): SafeError {
       status: exception.getStatus(),
       code: exception.code,
       message: exception.message,
+      ...(exception.details ? { details: exception.details } : {}),
     };
   const status =
     exception instanceof HttpException
@@ -94,7 +96,11 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
 
     if (res.headersSent) return;
     const body: ErrorEnvelope = {
-      error: { code: safe.code, message: safe.message },
+      error: {
+        code: safe.code,
+        message: safe.message,
+        ...(safe.details ? { details: safe.details } : {}),
+      },
       requestId,
     };
     res.status(safe.status).json(body);

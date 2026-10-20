@@ -16,9 +16,20 @@ import { toWireId } from "../../database/object-id";
 import type { AgentTint } from "../agents/agent-fields";
 import {
   AgentsService,
+  type AgentConnectorView,
   type AgentSummary,
   type ChatAgent,
 } from "../agents/agents.service";
+import type { ConnectorDoc } from "../connectors/connector";
+import { connectorView } from "../connectors/connector";
+import { ConnectorsCatalogService } from "../connectors/connectors-catalog.service";
+import {
+  ConnectorsService,
+  enabledToolsOf,
+  type RunConnectorRef,
+  type RunToolApproval,
+} from "../connectors/connectors.service";
+import type { McpServerSpec } from "../connectors/mcp-server-spec";
 import { modelView, type ModelDoc, type ModelView } from "../models/model";
 import { ModelsService } from "../models/models.service";
 import {
@@ -31,9 +42,13 @@ import {
   textHashOf,
   titleOf,
   type AgentSource,
+  type ApprovalAnswer,
+  type ChatConnector,
   type ChatDoc,
+  type ChatToolApproval,
   type MessageDoc,
   type MessageState,
+  type MessageTool,
   type RunDoc,
   type RunErrorInfo,
   type RunStatus,
@@ -51,6 +66,7 @@ import {
 } from "./chat-store";
 import { signGatewayToken } from "./gateway-token";
 import { RunExecutor, type Dispatch } from "./run-executor";
+import { AdapterUnreachable } from "./runtime-client";
 
 export interface ChatView {
   id: string;
@@ -63,6 +79,8 @@ export interface ChatView {
     tint: AgentTint;
   } | null;
   model: ModelView | null;
+  // The chat's snapshotted connectors as views, always present ([] when none).
+  connectors: AgentConnectorView[];
   // Why the chat can be read but not continued, or null when it can.
   readOnly: null | "THREAD_LOST" | "MODEL_UNAVAILABLE" | "AGENT_UNAVAILABLE";
   activeRunId: string | null;
@@ -75,10 +93,12 @@ export interface MessageView {
   id: string;
   seq: number;
   runId: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   text: string;
   state: MessageState;
   clientMessageId?: string;
+  // Role `tool` only: the connector-tool-call summary.
+  tool?: MessageTool;
   createdAt: string;
 }
 
@@ -161,6 +181,10 @@ export class ChatsService {
     @Inject(RunExecutor) private readonly executor: RunExecutor,
     @Inject(AgentsService) private readonly agents: AgentsService,
     @Inject(ModelsService) private readonly models: ModelsService,
+    @Inject(ConnectorsService)
+    private readonly connectors: ConnectorsService,
+    @Inject(ConnectorsCatalogService)
+    private readonly connectorCatalog: ConnectorsCatalogService,
   ) {}
 
   private db(context: TenantContext): ChatCollections {
@@ -202,6 +226,25 @@ export class ChatsService {
     const refund = this.admitSend(context);
     if (!refund) return this.startRefused(context, input, rateLimited());
 
+    // The connectors the chat snapshots from the resolved agent. runSpecs is
+    // called before anything is saved and only when the agent has connectors,
+    // so a text-only chat makes zero extra Mongo round trips and a connector
+    // chat makes exactly one tenant read (the connections find). A missing or
+    // reconnect-needed connection refuses the whole start — no chat, message,
+    // run or runtime call — routed through startRefused so a retry of a
+    // committed start still gets its receipt.
+    const connectors = agent.connectors;
+    let mcp: McpServerSpec[];
+    try {
+      // A new chat has no per-chat approvals yet, so none are forwarded.
+      mcp = await this.runMcpSpecs(context, connectors, undefined);
+    } catch (error) {
+      refund();
+      if (error instanceof DomainError)
+        return this.startRefused(context, input, error);
+      throw error;
+    }
+
     const now = new Date();
     const chat: ChatDoc = {
       _id: new ObjectId(),
@@ -209,6 +252,7 @@ export class ChatsService {
       title: titleOf(input.text),
       agent: { source: agent.source, id: agent.id, revision: agent.revision },
       model: { id: model._id, revision: model.revision },
+      ...(connectors.length ? { connectors } : {}),
       platformInstructionsVersion: PLATFORM_INSTRUCTIONS_VERSION,
       runtime: { threadId: null, state: "none" },
       activeRun: null,
@@ -250,10 +294,19 @@ export class ChatsService {
       return raced;
     }
     this.executor.begin(
-      this.dispatchOf(context, chat, run, message, agent, model, "start"),
+      this.dispatchOf(context, chat, run, message, agent, model, "start", {
+        mcp,
+        toolNames: await this.connectorNames(chat.connectors),
+        writeToolNames: await this.writeToolNames(chat.connectors),
+      }),
     );
     return {
-      chat: chatView(chat, summaryOf(agent), model),
+      chat: chatView(
+        chat,
+        summaryOf(agent),
+        model,
+        await this.connectorViews(chat.connectors),
+      ),
       message: messageView(message),
       run: runView(run),
       created: true,
@@ -332,6 +385,23 @@ export class ChatsService {
     const refund = this.admitSend(context);
     if (!refund) return refuse(rateLimited());
 
+    // Connectors are checked before anything is saved, only when the chat
+    // snapshotted some (zero extra Mongo work for a text-only chat; exactly
+    // one tenant read otherwise). A missing connection refuses the send with
+    // nothing written, through refuse so a committed retry still replays.
+    let mcp: McpServerSpec[];
+    try {
+      mcp = await this.runMcpSpecs(
+        context,
+        chat.connectors ?? [],
+        chat.toolApprovals,
+      );
+    } catch (error) {
+      refund();
+      if (error instanceof DomainError) return refuse(error);
+      throw error;
+    }
+
     const now = new Date();
     const runId = new ObjectId();
     const turn = this.newTurn(context, chat, chat.nextSeq, input, now, runId);
@@ -394,6 +464,11 @@ export class ChatsService {
         agent,
         model,
         "start",
+        {
+          mcp,
+          toolNames: await this.connectorNames(chat.connectors),
+          writeToolNames: await this.writeToolNames(chat.connectors),
+        },
       ),
     );
     const latest: ChatDoc = {
@@ -403,10 +478,11 @@ export class ChatsService {
       lastMessageAt: now,
       updatedAt: now,
     };
+    const connectors = await this.connectorViews(latest.connectors);
     return {
       chat: agent
-        ? chatView(latest, summaryOf(agent), model)
-        : chatState(latest, model, false),
+        ? chatView(latest, summaryOf(agent), model, connectors)
+        : chatState(latest, model, false, connectors),
       message: messageView(turn.message),
       run: runView(turn.run),
       created: true,
@@ -556,7 +632,12 @@ export class ChatsService {
   ): Promise<SteerReceipt> {
     const model = await this.models.enabledById(chat.model.id);
     return {
-      chat: chatState(chat, model ?? undefined, false),
+      chat: chatState(
+        chat,
+        model ?? undefined,
+        false,
+        await this.connectorViews(chat.connectors),
+      ),
       run: runView(run),
       steer: steerView(steer),
       created,
@@ -735,6 +816,61 @@ export class ChatsService {
     return { status: "stopping" };
   }
 
+  // The member's answer to a write-tool approval on their own chat's reply
+  // that is still being written. A run this process reads is checked from
+  // memory; otherwise one owner-filtered chat read. First answer wins. The
+  // chat allow and audit record are written by the run's reader when the
+  // runtime reports the approval resolved, so a retried answer changes
+  // nothing.
+  async answerApproval(
+    context: TenantContext,
+    chatId: ObjectId,
+    runId: ObjectId,
+    approvalId: string,
+    decision: ApprovalAnswer,
+  ): Promise<{ decision: ApprovalAnswer }> {
+    this.requireRuntime();
+    const here = this.executor.liveFor(
+      context.dbName,
+      chatId,
+      runId,
+      context.userId,
+    );
+    if (here !== "running") {
+      if (here) throw approvalNotFound();
+      const chat = await timed("chat", () => this.findOwned(context, chatId));
+      if (!chat.activeRun?.runId.equals(runId)) throw approvalNotFound();
+    }
+    let outcome;
+    try {
+      outcome = await timed("runtime", () =>
+        this.executor.answerApproval(
+          runId,
+          { tenantId: toWireId(context.tenantId), chatId: toWireId(chatId) },
+          approvalId,
+          decision,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof AdapterUnreachable)
+        throw new DomainError(
+          "UNAVAILABLE",
+          "Your answer couldn't reach the assistant. Try again.",
+        );
+      throw new DomainError(
+        "UNAVAILABLE",
+        "Your answer couldn't be sent. Try again.",
+      );
+    }
+    if (outcome === "resolved")
+      throw new DomainError(
+        "APPROVAL_RESOLVED",
+        "This request was already answered.",
+      );
+    if (outcome === "not_found") throw approvalNotFound();
+    return { decision };
+  }
+
   // The recovery sweep's work for one tenant: every chat whose run's lease
   // lapsed gets a reader, as opening it would. Recovery reattaches or reads
   // the runtime's history and never posts a message again, so it runs
@@ -812,6 +948,17 @@ export class ChatsService {
     const agent = await this.agents.resolveForChat(context, chat.agent.id, {
       allowArchived: true,
     });
+    // Reattach specs: the live token when available, else placeholders that
+    // keep the adapter's request-hash surface identical so the thread
+    // reattaches rather than restarting. Only for a chat that snapshotted
+    // connectors.
+    const mcp = await this.recoverMcpSpecs(
+      context,
+      chat.connectors,
+      chat.toolApprovals,
+    );
+    const toolNames = await this.connectorNames(chat.connectors);
+    const writeToolNames = await this.writeToolNames(chat.connectors);
     const lapsed =
       active.leaseExpiresAt.getTime() <= Date.now() ||
       this.executor.abandonedHere(active.runId);
@@ -828,17 +975,145 @@ export class ChatsService {
     )
       return;
     this.executor.begin(
-      this.dispatchOf(
-        context,
-        chat,
-        run,
-        message,
-        agent,
-        model,
-        "recover",
-        lapsed ? undefined : active.leaseExpiresAt,
+      this.dispatchOf(context, chat, run, message, agent, model, "recover", {
+        mcp,
+        toolNames,
+        writeToolNames,
+        ...(lapsed ? {} : { notBefore: active.leaseExpiresAt }),
+      }),
+    );
+  }
+
+  // The MCP server specs for a chat/agent's connectors, resolved before
+  // anything is saved. [] (and NO Mongo round trip) when there are none, so a
+  // text-only chat costs exactly what it did before connectors existed. With
+  // connectors it is exactly one tenant read (the connections find inside
+  // ConnectorsService.runSpecs); the catalog comes from its cache. A missing
+  // or reconnect-needed connection throws CONNECTION_REQUIRED (409) naming the
+  // connectors to connect; an unreachable provider mid-refresh throws
+  // UNAVAILABLE. Steers never call this.
+  private async runMcpSpecs(
+    context: TenantContext,
+    connectors: readonly ChatConnector[] | undefined,
+    toolApprovals: readonly ChatToolApproval[] | undefined,
+  ): Promise<McpServerSpec[]> {
+    if (!connectors || connectors.length === 0) return [];
+    const result = await timed("connectors", () =>
+      this.connectors.runSpecs(
+        context.dbName,
+        context.userId,
+        runConnectorRefs(connectors),
+        { toolApprovals: approvalRefs(toolApprovals) },
       ),
     );
+    if (result.ok) return result.specs;
+    const names = result.missing.map((m) => m.displayName);
+    throw new DomainError(
+      "CONNECTION_REQUIRED",
+      `Connect ${joinNames(names)} to use this agent.`,
+      { connectors: result.missing },
+    );
+  }
+
+  // The MCP specs for a recovery reattach. It tries runSpecs; when the
+  // connection is gone or the provider cannot be reached, it still builds
+  // specs with the same names, URLs, enabled tools and timeouts and a
+  // placeholder Authorization value, so the adapter's request hash (which
+  // excludes header values — see runtime-adapter manager.ts requestHash) still
+  // matches and the thread reattaches instead of restarting. The turn is never
+  // reposted on recovery, so a placeholder token is never used to call a
+  // provider.
+  private async recoverMcpSpecs(
+    context: TenantContext,
+    connectors: readonly ChatConnector[] | undefined,
+    toolApprovals: readonly ChatToolApproval[] | undefined,
+  ): Promise<McpServerSpec[]> {
+    if (!connectors || connectors.length === 0) return [];
+    try {
+      const result = await this.connectors.runSpecs(
+        context.dbName,
+        context.userId,
+        runConnectorRefs(connectors),
+        { toolApprovals: approvalRefs(toolApprovals) },
+      );
+      if (result.ok) return result.specs;
+    } catch (error) {
+      this.logger.warn({
+        message: "recovery could not resolve connector tokens",
+        chatId: toWireId(context.userId),
+        error: error instanceof Error ? error.name : "unknown",
+      });
+    }
+    return this.placeholderSpecs(connectors, toolApprovals);
+  }
+
+  // Specs built from the catalog alone, with a placeholder Authorization, for
+  // a reattach when the live token is unavailable. A connector that has since
+  // been disabled is dropped (no catalog entry); its tools simply do not come
+  // back on reattach. Access and approvals are honored so the adapter's MCP
+  // fingerprint matches (approvedTools is outside the fingerprint, but
+  // enabledTools is part of it — a read_only chat must reattach with the same
+  // narrowed list).
+  private async placeholderSpecs(
+    connectors: readonly ChatConnector[],
+    toolApprovals: readonly ChatToolApproval[] | undefined,
+  ): Promise<McpServerSpec[]> {
+    const catalog = await this.enabledConnectorMap(connectors);
+    const approvedByConnector = new Map<string, string[]>();
+    for (const approval of toolApprovals ?? []) {
+      const tools = approvedByConnector.get(approval.connector) ?? [];
+      tools.push(approval.tool);
+      approvedByConnector.set(approval.connector, tools);
+    }
+    const specs: McpServerSpec[] = [];
+    for (const { slug, access } of connectors) {
+      const connector = catalog.get(slug);
+      if (!connector) continue;
+      const spec: McpServerSpec = {
+        name: connector.slug,
+        url: connector.url,
+        headers: {
+          ...connector.fixedHeaders,
+          Authorization: "Bearer unavailable",
+        },
+        toolTimeoutSec: connector.toolTimeoutSec,
+        startupTimeoutSec: connector.startupTimeoutSec,
+      };
+      const enabledTools = enabledToolsOf(connector, access === "read_only");
+      if (enabledTools !== undefined) spec.enabledTools = enabledTools;
+      const approved = approvedByConnector.get(connector.slug);
+      if (approved && approved.length > 0) spec.approvedTools = approved;
+      specs.push(spec);
+    }
+    return specs;
+  }
+
+  // The connectors' display names for the prompt, from the catalog cache
+  // (snapshot slug → displayName, falling back to the slug). Empty and no
+  // catalog read when the chat has no connectors.
+  private async connectorNames(
+    connectors: readonly ChatConnector[] | undefined,
+  ): Promise<string[]> {
+    if (!connectors || connectors.length === 0) return [];
+    const catalog = await this.enabledConnectorMap(connectors);
+    return connectors.map((c) => catalog.get(c.slug)?.displayName ?? c.slug);
+  }
+
+  // The writable tool names the v4 prompt lists: a read_write connector's
+  // writeTools, by catalog name. Empty for a read_only chat or one with no
+  // write tools, and no catalog read when the chat has no connectors.
+  private async writeToolNames(
+    connectors: readonly ChatConnector[] | undefined,
+  ): Promise<string[]> {
+    if (!connectors || connectors.length === 0) return [];
+    const catalog = await this.enabledConnectorMap(connectors);
+    const names: string[] = [];
+    for (const { slug, access } of connectors) {
+      if (access === "read_only") continue;
+      const connector = catalog.get(slug);
+      for (const tool of connector?.writeTools ?? []) names.push(tool);
+    }
+    return names;
   }
 
   private dispatchOf(
@@ -849,16 +1124,24 @@ export class ChatsService {
     agent: ChatAgent | null,
     model: ModelDoc | null,
     mode: Dispatch["mode"],
-    notBefore?: Date,
+    options: {
+      mcp?: readonly McpServerSpec[];
+      toolNames?: readonly string[];
+      writeToolNames?: readonly string[];
+      notBefore?: Date;
+    } = {},
   ): Dispatch {
     const chatConfig = this.config.chat!;
     const tenantId = toWireId(context.tenantId);
     const chatId = toWireId(chat._id);
     const modelId = toWireId(chat.model.id);
+    const { mcp, toolNames, writeToolNames, notBefore } = options;
     // Recovery without a model or agent can still reattach or read history;
-    // posting then fails validation in the adapter and settles as failed.
+    // posting then fails validation in the adapter and settles as failed. The
+    // tool names make the v3+ prompt list the chat's connectors; v4 also
+    // names the tools that change data.
     const prompt = agent
-      ? chatPrompt(agent, chat)
+      ? chatPrompt(agent, chat, toolNames ?? [], writeToolNames ?? [])
       : "This chat's agent is no longer available.";
     return {
       dbName: context.dbName,
@@ -876,6 +1159,9 @@ export class ChatsService {
         threadId: chat.runtime.threadId,
         input: { text: message.text, clientMessageId: run.clientMessageId },
         agentPrompt: prompt,
+        // Included only when non-empty, so a text-only turn is byte-identical
+        // to before. Never logged (it carries per-user Authorization headers).
+        ...(mcp && mcp.length ? { mcp } : {}),
         model: {
           modelName: model?.modelName ?? "unavailable",
           gatewayUrl: `${chatConfig.gatewayUrl}/p/${modelId}/v1`,
@@ -1035,12 +1321,44 @@ export class ChatsService {
       for (const model of await this.models.findEnabledMany(unknown))
         models.set(toWireId(model._id), model);
 
+    // One catalog read, only when a chat on the page has connectors and
+    // connectors are configured; a text-only listing adds no work.
+    const connectorCatalog = await this.enabledConnectorMap(
+      ...chats.map((c) => c.connectors),
+    );
     return chats.map((chat) =>
       chatView(
         chat,
         summaries.get(toWireId(chat.agent.id)),
         models.get(toWireId(chat.model.id)),
+        connectorViewsOf(chat.connectors, connectorCatalog),
       ),
+    );
+  }
+
+  // The enabled catalog connectors keyed by slug. Empty (no read) when
+  // connectors are off or no chat in view has any.
+  private async enabledConnectorMap(
+    ...connectorLists: ReadonlyArray<readonly ChatConnector[] | undefined>
+  ): Promise<ReadonlyMap<string, ConnectorDoc>> {
+    const empty = new Map<string, ConnectorDoc>();
+    if (
+      !this.config.connectors ||
+      !connectorLists.some((list) => list && list.length > 0)
+    )
+      return empty;
+    return new Map(
+      (await this.connectorCatalog.enabledConnectors()).map((c) => [c.slug, c]),
+    );
+  }
+
+  // One chat's snapshotted connectors as views (the same shape as an agent's).
+  private async connectorViews(
+    connectors: readonly ChatConnector[] | undefined,
+  ): Promise<AgentConnectorView[]> {
+    return connectorViewsOf(
+      connectors,
+      await this.enabledConnectorMap(connectors),
     );
   }
 
@@ -1091,11 +1409,12 @@ function chatView(
   chat: ChatDoc,
   summary: AgentSummary | undefined,
   model: ModelDoc | undefined,
+  connectors: AgentConnectorView[],
 ): ChatView {
   const agentGone =
     !summary || (chat.agent.source === "builtin" && !summary.available);
   return {
-    ...chatState(chat, model, agentGone),
+    ...chatState(chat, model, agentGone, connectors),
     agent: summary
       ? {
           id: toWireId(chat.agent.id),
@@ -1113,11 +1432,13 @@ function chatState(
   chat: ChatDoc,
   model: ModelDoc | undefined,
   agentGone: boolean,
+  connectors: AgentConnectorView[],
 ): ChatStateView {
   return {
     id: toWireId(chat._id),
     title: chat.title,
     model: model ? modelView(model) : null,
+    connectors,
     readOnly:
       chat.runtime.state === "lost"
         ? "THREAD_LOST"
@@ -1131,6 +1452,64 @@ function chatState(
     lastMessageAt: chat.lastMessageAt.toISOString(),
     createdAt: chat.createdAt.toISOString(),
   };
+}
+
+// A chat's snapshotted connectors as views: product-written display fields
+// from the catalog. A connector since disabled (not in the enabled map) is
+// still shown, named from the stored slug, with `available: false`.
+function connectorViewsOf(
+  connectors: readonly ChatConnector[] | undefined,
+  enabled: ReadonlyMap<string, ConnectorDoc>,
+): AgentConnectorView[] {
+  return (connectors ?? []).map((ref) => {
+    const access = ref.access === "read_only" ? "read_only" : "read_write";
+    const connector = enabled.get(ref.slug);
+    return connector
+      ? {
+          slug: connector.slug,
+          displayName: connector.displayName,
+          icon: connector.icon,
+          available: true,
+          access,
+          writeTools: connector.writeTools ?? [],
+        }
+      : {
+          slug: ref.slug,
+          displayName: ref.slug,
+          icon: "",
+          available: false,
+          access,
+          writeTools: [],
+        };
+  });
+}
+
+// "GitHub", "GitHub and Jira", "GitHub, Jira and Slack" — for the
+// CONNECTION_REQUIRED message. Never a URL or ID.
+function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) return names[0] ?? "the connector";
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+// A chat's snapshotted connectors as the refs runSpecs takes: the catalog ID
+// with the chat's access choice (absent = read_write).
+function runConnectorRefs(
+  connectors: readonly ChatConnector[],
+): RunConnectorRef[] {
+  return connectors.map((c) =>
+    c.access === "read_only"
+      ? { connectorId: c.connectorId, access: "read_only" as const }
+      : c.connectorId,
+  );
+}
+
+// The chat's per-chat tool approvals as runSpecs takes them, or undefined
+// when it has none.
+function approvalRefs(
+  approvals: readonly ChatToolApproval[] | undefined,
+): RunToolApproval[] | undefined {
+  if (!approvals || approvals.length === 0) return undefined;
+  return approvals.map(({ connector, tool }) => ({ connector, tool }));
 }
 
 // The agent a turn was just admitted with: usable by definition. An archived
@@ -1162,6 +1541,7 @@ export function messageView(message: MessageDoc): MessageView {
     ...(message.clientMessageId
       ? { clientMessageId: message.clientMessageId }
       : {}),
+    ...(message.tool ? { tool: message.tool } : {}),
     createdAt: message.createdAt.toISOString(),
   };
 }
@@ -1225,6 +1605,13 @@ function modelUnavailable(): DomainError {
   return new DomainError(
     "MODEL_UNAVAILABLE",
     "This agent's model is not available right now.",
+  );
+}
+
+function approvalNotFound(): DomainError {
+  return new DomainError(
+    "APPROVAL_NOT_FOUND",
+    "This request has expired or the reply has finished.",
   );
 }
 

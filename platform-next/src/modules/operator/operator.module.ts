@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AgentsModule } from "../agents/agents.module";
 import { AuditModule } from "../audit/audit.module";
+import { ConnectorsModule } from "../connectors/connectors.module";
 import { MembershipsModule } from "../memberships/memberships.module";
 import { ModelsModule } from "../models/models.module";
 import { TenantsModule } from "../tenants/tenants.module";
@@ -16,6 +17,7 @@ import { OperatorService } from "./operator.service";
     AuditModule,
     ModelsModule,
     AgentsModule,
+    ConnectorsModule,
   ],
   providers: [OperatorService],
   exports: [OperatorService],

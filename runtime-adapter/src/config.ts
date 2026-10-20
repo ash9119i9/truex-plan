@@ -14,6 +14,11 @@ export interface AdapterConfig {
   readonly idleMs: number;
   readonly drainMs: number;
   readonly limits: RuntimeLimits;
+  // When true, an MCP spec may use an http URL whose host is loopback. Off by
+  // default: every other request requires https. This is a test-only escape
+  // hatch (the fixture MCP server listens on 127.0.0.1 over plain http), so
+  // production never relaxes transport security for a real connector.
+  readonly allowLoopbackMcp: boolean;
 }
 
 // Timeouts the adapter enforces. Callers may shorten the model limits, never
@@ -22,6 +27,8 @@ export interface RuntimeLimits {
   readonly rpcMs: number;
   readonly firstResponseMs: number;
   readonly silenceMs: number;
+  // Longest a tool approval may wait; the platform may ask for less.
+  readonly approvalMs: number;
   readonly stopMs: number;
   readonly heartbeatMs: number;
   readonly finishedRunTtlMs: number;
@@ -32,6 +39,7 @@ export const DEFAULT_LIMITS: RuntimeLimits = {
   rpcMs: 30_000,
   firstResponseMs: 180_000,
   silenceMs: 120_000,
+  approvalMs: 5 * 60_000,
   stopMs: 5_000,
   heartbeatMs: 15_000,
   finishedRunTtlMs: 5 * 60_000,
@@ -76,6 +84,10 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
   const maxProcesses = int("RUNTIME_MAX_PROCESSES", 20, 1, 1000);
   const idleMs = int("RUNTIME_IDLE_MS", 600_000, 1000, 86_400_000);
   const drainMs = int("RUNTIME_DRAIN_MS", 30_000, 0, 600_000);
+  // Opt-in, test-only: a single "1" turns it on. Any other value (including
+  // "true") is treated as off, so an accidental setting can never silently
+  // weaken transport security in production.
+  const allowLoopbackMcp = env.ADAPTER_ALLOW_LOOPBACK_MCP === "1";
 
   const codexBinary = resolveCodexBinary(env, repoRoot, problems);
 
@@ -90,6 +102,7 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
     idleMs,
     drainMs,
     limits: DEFAULT_LIMITS,
+    allowLoopbackMcp,
   };
 }
 

@@ -4,10 +4,19 @@ import { createInterface } from "node:readline";
 // One `codex app-server` child speaking newline-delimited JSON-RPC on stdio.
 // Every request has a timeout, so an unanswered call (Codex never replies to a
 // second interrupt, for example) fails instead of hanging. Requests from Codex
-// to the client (approvals, user input) are refused immediately: chat v1 has
-// no tools and no approval UI.
+// to the client are refused immediately unless the request handler takes them
+// (MCP tool approvals); a handler must answer each request it takes exactly
+// once, through `respond`.
 
 export interface Notification {
+  readonly method: string;
+  readonly params: Record<string, unknown>;
+}
+
+// A request Codex sent to this client. `id` is its JSON-RPC id, echoed in
+// `serverRequest/resolved` when Codex withdraws it.
+export interface ServerRequest {
+  readonly id: string | number;
   readonly method: string;
   readonly params: Record<string, unknown>;
 }
@@ -59,6 +68,8 @@ export class CodexProcess {
   private readonly pending = new Map<number, Pending>();
   private nextId = 0;
   private listener: ((n: Notification) => void) | undefined;
+  // Returns true when it took the request (and will `respond` to it).
+  private requestHandler: ((r: ServerRequest) => boolean) | undefined;
   private readonly stderrTail: string[] = [];
   readonly exited: Promise<void>;
   private alive = true;
@@ -111,6 +122,17 @@ export class CodexProcess {
 
   setListener(listener: ((n: Notification) => void) | undefined): void {
     this.listener = listener;
+  }
+
+  setRequestHandler(
+    handler: ((request: ServerRequest) => boolean) | undefined,
+  ): void {
+    this.requestHandler = handler;
+  }
+
+  // Answers a request Codex sent (see `setRequestHandler`).
+  respond(id: string | number, result: unknown): void {
+    this.write({ id, result });
   }
 
   async initialize(): Promise<void> {
@@ -175,6 +197,12 @@ export class CodexProcess {
     }
     const { id, method } = message;
     if (typeof method === "string" && id !== undefined) {
+      const params = (message.params ?? {}) as Record<string, unknown>;
+      if (
+        (typeof id === "string" || typeof id === "number") &&
+        this.requestHandler?.({ id, method, params }) === true
+      )
+        return;
       this.write({
         id,
         error: { code: -32601, message: "Not supported by this client." },

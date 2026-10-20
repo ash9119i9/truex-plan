@@ -44,6 +44,37 @@ export const MAX_AGENTS_PER_USER = 50;
 export const MAX_TENANT_AGENTS = 200;
 export const DEFAULT_LOOK = 2;
 export const DEFAULT_TINT: AgentTint = "ice";
+// At most this many directory connectors per agent (Build contract: the
+// adapter rejects more than 3 MCP servers).
+export const MAX_AGENT_CONNECTORS = 3;
+
+// The catalog slug pattern connectors use (see connectors/connector.ts). A
+// slug that cannot match is refused before any catalog lookup.
+const CONNECTOR_SLUG = /^[a-z][a-z0-9_]{1,30}$/;
+
+// How much of a connector an agent may use. read_write (the default, and what
+// a bare slug means) keeps the connector's write tools, each gated by the
+// member's per-call approval; read_only removes the write tools entirely.
+export const CONNECTOR_ACCESS = ["read_write", "read_only"] as const;
+export type ConnectorAccess = (typeof CONNECTOR_ACCESS)[number];
+
+// A connector an agent uses, pinned by catalog ID so a slug reuse cannot
+// repoint it, with the slug kept to build views and the chat snapshot without
+// a catalog read. Absent on agents created before connectors existed.
+// `access` is absent for read_write, so documents written before write access
+// existed keep their read_write meaning.
+export interface AgentConnector {
+  connectorId: ObjectId;
+  slug: string;
+  access?: "read_only";
+}
+
+// One connector a create/edit attached: a slug and the chosen access. A bare
+// slug string in the request body is read_write.
+export interface AgentConnectorRequest {
+  slug: string;
+  access: ConnectorAccess;
+}
 
 export interface AgentDoc {
   _id: ObjectId;
@@ -54,6 +85,9 @@ export interface AgentDoc {
   modelId: ObjectId;
   look: number;
   tint: AgentTint;
+  // The directory connectors this agent uses. Absent on documents created
+  // before connectors existed, read as an empty list everywhere.
+  connectors?: AgentConnector[];
   status: AgentStatus;
   // Bumped by every change; edits must name the revision they started from.
   revision: number;
@@ -74,6 +108,10 @@ export interface CreateAgentInput {
   modelId: ObjectId;
   look: number;
   tint: AgentTint;
+  // Catalog connectors the creator attached (slug + access). Resolved to
+  // AgentConnector[] by the service against the enabled catalog; empty when
+  // none were given.
+  connectors: AgentConnectorRequest[];
 }
 
 export interface UpdateAgentInput {
@@ -81,6 +119,9 @@ export interface UpdateAgentInput {
   changes: Partial<
     Pick<AgentDoc, "name" | "description" | "modelId" | "look" | "tint">
   >;
+  // Absent (undefined) leaves the agent's connectors unchanged; a list (even
+  // empty) replaces them. Resolved to AgentConnector[] by the service.
+  connectors?: AgentConnectorRequest[];
 }
 
 // Generated once per create by the client and reused on every retry.
@@ -90,6 +131,42 @@ function modelIdOf(value: unknown): ObjectId {
   const id = parseWireId(value);
   if (!id) invalid("modelId must be a model ID.");
   return id;
+}
+
+// The connectors a create or edit attached: at most MAX_AGENT_CONNECTORS
+// entries, each a bare slug string (= read_write) or a { slug, access }
+// object, with unique slugs. Shape only; whether each names an enabled
+// connector is checked by the service against the catalog.
+function parseConnectorRequests(value: unknown): AgentConnectorRequest[] {
+  if (!Array.isArray(value)) invalid("connectors must be an array.");
+  if (value.length > MAX_AGENT_CONNECTORS)
+    invalid(`connectors must have at most ${MAX_AGENT_CONNECTORS} entries.`);
+  const requests: AgentConnectorRequest[] = [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    const request = parseConnectorRequest(entry);
+    if (seen.has(request.slug))
+      invalid(`connectors must not repeat "${request.slug}".`);
+    seen.add(request.slug);
+    requests.push(request);
+  }
+  return requests;
+}
+
+function parseConnectorRequest(value: unknown): AgentConnectorRequest {
+  if (typeof value === "string") {
+    if (!CONNECTOR_SLUG.test(value))
+      invalid("connectors must be connector slugs.");
+    return { slug: value, access: "read_write" };
+  }
+  const raw = objectWith(value, ["slug", "access"], "A connector");
+  if (typeof raw.slug !== "string" || !CONNECTOR_SLUG.test(raw.slug))
+    invalid("connectors must be connector slugs.");
+  const access =
+    raw.access === undefined
+      ? ("read_write" as const)
+      : oneOf(raw.access, "connectors.access", CONNECTOR_ACCESS);
+  return { slug: raw.slug, access };
 }
 
 export function parseCreateAgent(body: unknown): CreateAgentInput {
@@ -103,6 +180,7 @@ export function parseCreateAgent(body: unknown): CreateAgentInput {
       "modelId",
       "look",
       "tint",
+      "connectors",
     ],
     "The request body",
   );
@@ -121,13 +199,25 @@ export function parseCreateAgent(body: unknown): CreateAgentInput {
     modelId: modelIdOf(raw.modelId),
     look: raw.look === undefined ? DEFAULT_LOOK : parseLook(raw.look),
     tint: raw.tint === undefined ? DEFAULT_TINT : parseTint(raw.tint),
+    connectors:
+      raw.connectors === undefined
+        ? []
+        : parseConnectorRequests(raw.connectors),
   };
 }
 
 export function parseUpdateAgent(body: unknown): UpdateAgentInput {
   const raw = objectWith(
     body,
-    ["revision", "name", "description", "modelId", "look", "tint"],
+    [
+      "revision",
+      "name",
+      "description",
+      "modelId",
+      "look",
+      "tint",
+      "connectors",
+    ],
     "The request body",
   );
   const revision = integer(
@@ -143,9 +233,19 @@ export function parseUpdateAgent(body: unknown): UpdateAgentInput {
   if (raw.modelId !== undefined) changes.modelId = modelIdOf(raw.modelId);
   if (raw.look !== undefined) changes.look = parseLook(raw.look);
   if (raw.tint !== undefined) changes.tint = parseTint(raw.tint);
-  if (Object.keys(changes).length === 0)
-    invalid("Give at least one of name, description, modelId, look or tint.");
-  return { revision, changes };
+  const connectors =
+    raw.connectors === undefined
+      ? undefined
+      : parseConnectorRequests(raw.connectors);
+  if (Object.keys(changes).length === 0 && connectors === undefined)
+    invalid(
+      "Give at least one of name, description, modelId, look, tint or connectors.",
+    );
+  return {
+    revision,
+    changes,
+    ...(connectors !== undefined ? { connectors } : {}),
+  };
 }
 
 // Identifies what a create asked for, so a retry with a different body under
@@ -160,6 +260,14 @@ export function requestHashOf(input: CreateAgentInput): string {
         modelId: input.modelId.toHexString(),
         look: input.look,
         tint: input.tint,
+        // Order matters to the caller, so the connectors are hashed as given:
+        // a retry with the same connectors and access in the same order is the
+        // same create. requestHashOf includes access, so a retry that only
+        // flips access is a different create.
+        connectors: input.connectors.map((c) => ({
+          slug: c.slug,
+          access: c.access,
+        })),
       }),
     )
     .digest("hex");

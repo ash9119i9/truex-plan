@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
+import { canonical } from "../canonical";
 import type { AdapterConfig } from "../config";
-import type { ChatRef, SteerRequest, StartRunRequest } from "../contract";
+import type {
+  ApprovalAnswer,
+  ApprovalRequest,
+  ChatRef,
+  SteerRequest,
+  StartRunRequest,
+} from "../contract";
 import { AdapterError } from "../errors";
 import { ChatRuntime, type HistoryTurn, type SteerResult } from "./chat";
 import { isFinished, Run } from "./run";
@@ -90,6 +97,21 @@ export class RuntimeManager {
   // to this chat (else RUN_NOT_FOUND); a finished run, or one with no active
   // turn, is RUN_ENDED. Validation, idempotency and serialization live in the
   // chat.
+  // Answers a tool approval the run is waiting on. First answer wins: a
+  // repeat is APPROVAL_RESOLVED; an approval this run never asked, or one
+  // whose run has ended, is APPROVAL_NOT_FOUND.
+  answerApproval(
+    runId: string,
+    approvalId: string,
+    request: ApprovalRequest,
+  ): ApprovalAnswer {
+    const run = this.getRun(runId, request);
+    const chat = this.chats.get(key(request));
+    if (!chat || chat.activeRun !== run)
+      throw new AdapterError("APPROVAL_NOT_FOUND");
+    return chat.answerApproval(approvalId, request.decision);
+  }
+
   steerRun(runId: string, input: SteerRequest): Promise<SteerResult> {
     const run = this.getRun(runId, input);
     const chat = this.chats.get(key(input));
@@ -185,25 +207,22 @@ function key(ref: ChatRef): string {
 
 // Same turn → same hash. Object keys are sorted so field order doesn't
 // matter. The gateway token is a credential, not part of the turn, so a retry
-// carrying a refreshed token still attaches.
+// carrying a refreshed token still attaches. MCP header VALUES are treated the
+// same way: a connector's rotated token is a credential, not part of the turn,
+// and must never reach the hash surface — only the connector names, URLs,
+// header NAMES, enabled tools and timeouts shape the hash. `approvedTools` is
+// left out too: it grows while a run waits (the member picks "Allow for this
+// chat"), so a recovery that resends the run with the longer list must still
+// match.
 function requestHash(request: StartRunRequest): string {
   const { gatewayToken: _token, ...model } = request.model;
+  const mcp = request.mcp?.map(({ approvedTools: _approved, ...server }) => ({
+    ...server,
+    headers: Object.keys(server.headers).sort(),
+  }));
   return createHash("sha256")
-    .update(canonical({ ...request, model }))
+    .update(canonical({ ...request, model, ...(mcp ? { mcp } : {}) }))
     .digest("hex");
-}
-
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object")
-    return `{${Object.keys(value)
-      .sort()
-      .map(
-        (k) =>
-          `${JSON.stringify(k)}:${canonical((value as Record<string, unknown>)[k])}`,
-      )
-      .join(",")}}`;
-  return JSON.stringify(value) ?? "null";
 }
 
 function sleep(ms: number): Promise<void> {

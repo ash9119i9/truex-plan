@@ -6,9 +6,10 @@ import { AppModule } from "./app.module";
 import type { AppConfig } from "./config/app-config";
 import { ErrorEnvelopeFilter } from "./common/http/error-envelope.filter";
 import { assignRequestId } from "./common/http/request-id";
+import { API_PREFIX } from "./common/http/api-prefix";
 import { serverTiming } from "./common/http/server-timing";
 
-export const API_PREFIX = "api/v1";
+export { API_PREFIX };
 
 export interface CreateAppOptions {
   logger?: LoggerService | LogLevel[] | false;

@@ -9,6 +9,20 @@ import type {
   TenantAgent,
   TenantModel,
 } from "./tenant-agents.ts";
+import {
+  parseApprovalEvent,
+  parseConnectorEvent,
+  parseConnectorRefs,
+  parseSavedTool,
+  parseToolEvent,
+  type ApprovalParam,
+  type ApprovalStatus,
+  type ConnectorFailureReason,
+  type ConnectorRef,
+  type SavedTool,
+  type ToolErrorCode,
+  type ToolStatus,
+} from "./tenant-connectors.ts";
 
 // Kept in step with platform-next/src/modules/chats/chat.ts.
 export const MAX_MESSAGE_CHARS = 32_000;
@@ -49,15 +63,21 @@ export interface ChatSummary {
   status: "active" | "archived";
   lastMessageAt: string;
   createdAt: string;
+  // The directory connectors this chat's agent attaches (always present,
+  // [] when none), so a Connect card can name them.
+  connectors: ConnectorRef[];
 }
 
 export interface ChatMessage {
   id: string;
   seq: number;
   runId: string;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   text: string;
   state: MessageState;
+  // A saved tool message (role "tool", text "") carries its settled call
+  // here; absent on user/assistant messages.
+  tool?: SavedTool;
   clientMessageId?: string;
   createdAt: string;
 }
@@ -229,6 +249,7 @@ export function parseChat(value: unknown): ChatSummary | null {
     status: c.status === "archived" ? "archived" : "active",
     lastMessageAt,
     createdAt,
+    connectors: parseConnectorRefs(c.connectors),
   };
 }
 
@@ -238,11 +259,18 @@ export function parseMessage(value: unknown): ChatMessage | null {
   const runId = id(m?.runId);
   const text = str(m?.text, 1_000_000);
   const createdAt = date(m?.createdAt);
-  const role = m?.role === "user" || m?.role === "assistant" ? m.role : null;
+  const role =
+    m?.role === "user" || m?.role === "assistant" || m?.role === "tool"
+      ? m.role
+      : null;
   if (!m || !messageId || !runId || text === null || !createdAt || !role)
     return null;
   if (typeof m.seq !== "number" || !Number.isInteger(m.seq)) return null;
   const clientMessageId = str(m.clientMessageId, 64);
+  // A tool message that carries no readable tool payload is dropped: it
+  // would render as an empty, meaningless row.
+  const tool = role === "tool" ? parseSavedTool(m.tool) : null;
+  if (role === "tool" && !tool) return null;
   return {
     id: messageId,
     seq: m.seq,
@@ -250,6 +278,7 @@ export function parseMessage(value: unknown): ChatMessage | null {
     role,
     text,
     state: oneOf(m.state, STATES) ?? "complete",
+    ...(tool ? { tool } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
     createdAt,
   };
@@ -566,6 +595,7 @@ export function pendingThread(
     status: "active",
     lastMessageAt: at,
     createdAt: at,
+    connectors: agent.connectors,
   };
   return withPending({ chat, messages: [], runs: {}, hasMore: false }, pending);
 }
@@ -584,6 +614,18 @@ export type LiveReplyItem =
       clientMessageId: string;
       text: string | null;
       placed: boolean;
+    }
+  | {
+      // A connector tool call kiro-cli ran, placed in stream order. The same
+      // itemId goes inProgress -> completed/failed; a repeat start after it
+      // settled is ignored so a settled card never flips back to running.
+      type: "tool";
+      itemId: string;
+      connector: string;
+      tool: string;
+      status: ToolStatus;
+      durationMs: number | null;
+      errorCode: ToolErrorCode | null;
     };
 
 // Only the reply items of a live reply, in order.
@@ -608,6 +650,26 @@ export const steerText = (
 ): string | null =>
   run?.steers?.find((s) => s.clientMessageId === clientMessageId)?.text ?? null;
 
+// A write-tool approval shown inline at its tool row during a live reply.
+// It opens "pending" (the card) and settles to a decision (an outcome label);
+// `auto` marks a decision the platform answered itself (an allow-for-chat
+// replay), which shows only the label, never a card.
+export interface ApprovalView {
+  approvalId: string;
+  itemId: string;
+  connector: string;
+  tool: string;
+  params: ApprovalParam[];
+  status: ApprovalStatus;
+  expiresAt: string | null;
+  auto: boolean;
+  // Set when this tab's own answer lost the first-answer race: a 409
+  // (someone/something already answered) or a 404 (the request expired or the
+  // reply finished). The card shows "Already answered" / "Expired", distinct
+  // from a decision outcome. Absent otherwise.
+  race?: "resolved" | "not_found";
+}
+
 // What the screen shows for one reply while it is not yet saved.
 export interface LiveReply {
   runId: string;
@@ -619,6 +681,13 @@ export interface LiveReply {
   saveFailed: boolean;
   // When the reply started, for the "Still working…" note.
   since: number;
+  // Connectors (by slug) that failed during this reply, each kept once with
+  // the reason it last reported, so a banner shows once per connector per run.
+  connectorFailures: Record<string, ConnectorFailureReason>;
+  // Write-tool approvals by approvalId: pending ones show a card at their
+  // tool row, settled ones an outcome label. A snapshot replaces this with
+  // the still-pending set, so a reconnecting caller shows the open cards.
+  approvals: Record<string, ApprovalView>;
 }
 
 export function liveReply(runId: string, now = Date.now()): LiveReply {
@@ -630,6 +699,8 @@ export function liveReply(runId: string, now = Date.now()): LiveReply {
     outcome: null,
     saveFailed: false,
     since: now,
+    connectorFailures: {},
+    approvals: {},
   };
 }
 
@@ -646,11 +717,119 @@ function parseItems(value: unknown): LiveReplyItem[] {
         ? { type: "input", clientMessageId, text: null, placed: true }
         : null;
     }
+    if (item.type === "tool") {
+      // A snapshot/completed tool item is shaped like a tool event; reuse
+      // its parser, then carry the itemId so repeat starts can be ignored.
+      const event = parseToolEvent(item);
+      return event
+        ? {
+            type: "tool",
+            itemId: event.itemId,
+            connector: event.connector,
+            tool: event.tool,
+            status: event.status,
+            durationMs: event.durationMs,
+            errorCode: event.errorCode,
+          }
+        : null;
+    }
     const itemId = str(item.itemId, 200);
     const text = str(item.text, 1_000_000);
     if (!itemId || text === null) return null;
     return { type: "reply", itemId, text, completed: item.completed === true };
   });
+}
+
+// A snapshot's pending approvals → an approvals map keyed by approvalId. Each
+// entry is shaped like an approval event, so the event parser is reused.
+function parseApprovals(value: unknown): Record<string, ApprovalView> {
+  const approvals: Record<string, ApprovalView> = {};
+  for (const event of list(value, parseApprovalEvent))
+    approvals[event.approvalId] = {
+      approvalId: event.approvalId,
+      itemId: event.itemId,
+      connector: event.connector,
+      tool: event.tool,
+      params: event.params,
+      status: event.status,
+      expiresAt: event.expiresAt,
+      auto: event.auto,
+    };
+  return approvals;
+}
+
+// The pending approval for a tool row (`itemId`), or null. A card is shown
+// for exactly this; a settled approval is looked up with `approvalForItem`.
+export function pendingApprovalForItem(
+  reply: LiveReply | null,
+  itemId: string,
+): ApprovalView | null {
+  if (!reply) return null;
+  return (
+    Object.values(reply.approvals).find(
+      (a) => a.itemId === itemId && a.status === "pending",
+    ) ?? null
+  );
+}
+
+// The most recent approval for a tool row (`itemId`), pending or settled, or
+// null. A settled one shows an outcome label on the row.
+export function approvalForItem(
+  reply: LiveReply | null,
+  itemId: string,
+): ApprovalView | null {
+  if (!reply) return null;
+  return (
+    Object.values(reply.approvals).findLast((a) => a.itemId === itemId) ?? null
+  );
+}
+
+// True while any approval on this reply is still waiting for the member, so
+// the composer can show "Waiting for your approval".
+export function hasPendingApproval(reply: LiveReply | null): boolean {
+  return (
+    !!reply &&
+    Object.values(reply.approvals).some((a) => a.status === "pending")
+  );
+}
+
+// Settles one approval on a live reply to the decision the platform recorded,
+// without waiting for the stream's resolved event — used when the POST
+// succeeds. A no-op when the approval is unknown or already settled, so a
+// late stream event cannot reopen it.
+export function withApproval(
+  reply: LiveReply,
+  approvalId: string,
+  status: ApprovalStatus,
+): LiveReply {
+  const current = reply.approvals[approvalId];
+  if (!current || current.status !== "pending") return reply;
+  return {
+    ...reply,
+    approvals: {
+      ...reply.approvals,
+      [approvalId]: { ...current, status },
+    },
+  };
+}
+
+// Marks one approval as having lost the first-answer race (a 409/404 to this
+// tab's answer): the card shows "Already answered"/"Expired". A no-op when
+// the approval is unknown.
+export function withApprovalRace(
+  reply: LiveReply,
+  approvalId: string,
+  race: "resolved" | "not_found",
+): LiveReply {
+  const current = reply.approvals[approvalId];
+  if (!current) return reply;
+  return {
+    ...reply,
+    approvals: {
+      ...reply.approvals,
+      [approvalId]: { ...current, race },
+    },
+  };
 }
 
 // A steer shown at the bottom of the running reply the moment it is sent,
@@ -678,6 +857,27 @@ export function withLiveSteer(
       },
     ],
   };
+}
+
+// Which entries of an exchange are progress narration rather than the answer.
+// A reply written before a tool call ("I'll search your repositories…") is
+// progress; the reply after the last call is the answer. Codex can mark this
+// itself (an agentMessage `phase` of "commentary"), but only when the provider
+// sends a phase, and the gateway's providers do not, so the rule is
+// structural. A user message or steer ends the stretch a later tool call can
+// reach back over.
+export type ExchangeEntry = "reply" | "tool" | "input";
+
+export function progressFlags(entries: readonly ExchangeEntry[]): boolean[] {
+  const flags = new Array<boolean>(entries.length).fill(false);
+  let toolLater = false;
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const entry = entries[i];
+    if (entry === "tool") toolLater = true;
+    else if (entry === "input") toolLater = false;
+    else flags[i] = toolLater;
+  }
+  return flags;
 }
 
 // The reply at `index` was cut short by a steer: it never completed and a
@@ -714,6 +914,9 @@ export type StreamEvent =
   | { type: "delta"; data: unknown }
   | { type: "item"; data: unknown }
   | { type: "input"; data: unknown }
+  | { type: "tool"; data: unknown }
+  | { type: "connector"; data: unknown }
+  | { type: "approval"; data: unknown }
   | { type: "usage"; data: unknown }
   | { type: "completed"; data: unknown }
   | { type: "save_failed"; data: unknown };
@@ -735,6 +938,13 @@ export function applyStreamEvent(
         phase: oneOf(data.phase, PHASES) ?? reply.phase,
         items: parseItems(data.items),
         usage: parseUsage(data.usage) ?? reply.usage,
+        // A snapshot carries only the still-pending approvals; it replaces
+        // the map so a settled card does not linger after a reconnect, and
+        // the open cards are shown again.
+        approvals:
+          data.approvals === undefined
+            ? reply.approvals
+            : parseApprovals(data.approvals),
       };
     }
     case "status": {
@@ -799,6 +1009,91 @@ export function applyStreamEvent(
             placed: true,
           },
         ],
+        phase: reply.phase === "waiting" ? "streaming" : reply.phase,
+      };
+    }
+    case "tool": {
+      // A connector tool call: inProgress places a card, completed/failed
+      // settles it by itemId. A repeat start after a call settled is
+      // ignored, so a finished card never reverts to running.
+      const event = parseToolEvent(data);
+      if (!event) return reply;
+      const index = reply.items.findIndex(
+        (i) => i.type === "tool" && i.itemId === event.itemId,
+      );
+      const next: Extract<LiveReplyItem, { type: "tool" }> = {
+        type: "tool",
+        itemId: event.itemId,
+        connector: event.connector,
+        tool: event.tool,
+        status: event.status,
+        durationMs: event.durationMs,
+        errorCode: event.errorCode,
+      };
+      if (index < 0)
+        return {
+          ...reply,
+          items: [...reply.items, next],
+          phase: reply.phase === "waiting" ? "streaming" : reply.phase,
+        };
+      const current = reply.items[index] as Extract<
+        LiveReplyItem,
+        { type: "tool" }
+      >;
+      // A duplicate start for an already-settled call changes nothing.
+      if (event.status === "inProgress" && current.status !== "inProgress")
+        return reply;
+      const items = [...reply.items];
+      items[index] = next;
+      return { ...reply, items };
+    }
+    case "connector": {
+      // A connector's own status during the reply. Only a failure is kept,
+      // once per connector, so a banner shows once per connector per run.
+      const event = parseConnectorEvent(data);
+      if (!event || event.status !== "failed") return reply;
+      if (reply.connectorFailures[event.connector] === event.reason)
+        return reply;
+      return {
+        ...reply,
+        connectorFailures: {
+          ...reply.connectorFailures,
+          [event.connector]: event.reason,
+        },
+      };
+    }
+    case "approval": {
+      // A write-tool approval. A pending event opens the card at its tool
+      // row; a settled event (a decision, or an auto allow-for-chat replay)
+      // updates it to an outcome label by approvalId.
+      const event = parseApprovalEvent(data);
+      if (!event) return reply;
+      const current = reply.approvals[event.approvalId];
+      // First answer wins: a late or replayed *pending* event must not reopen
+      // a card this tab already settled (withApproval) or raced to a 409/404
+      // (withApprovalRace). A settled event (a real decision) still applies.
+      if (
+        event.status === "pending" &&
+        current &&
+        (current.status !== "pending" || current.race)
+      )
+        return reply;
+      return {
+        ...reply,
+        approvals: {
+          ...reply.approvals,
+          [event.approvalId]: {
+            approvalId: event.approvalId,
+            itemId: event.itemId,
+            connector: event.connector,
+            tool: event.tool,
+            params: event.params,
+            status: event.status,
+            expiresAt: event.expiresAt,
+            auto: event.auto,
+            ...(current?.race ? { race: current.race } : {}),
+          },
+        },
         phase: reply.phase === "waiting" ? "streaming" : reply.phase,
       };
     }

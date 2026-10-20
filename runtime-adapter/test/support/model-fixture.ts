@@ -10,7 +10,11 @@ export type Behavior =
   | { kind: "hangBeforeHeaders" }
   | { kind: "hangAfterCreated" }
   | { kind: "status"; status: number }
-  | { kind: "failed"; code: string };
+  | { kind: "failed"; code: string }
+  // Emits one function call (for an MCP namespace tool), so a test can make the
+  // model ask Codex to run an MCP tool. Codex runs it and feeds the result
+  // back as the next request; follow that with a `reply` to finish the turn.
+  | { kind: "call"; name: string; namespace?: string; args: unknown };
 
 export interface ModelRequest {
   readonly authorized: boolean;
@@ -95,6 +99,34 @@ export class ModelFixture {
         });
         res.end();
         return;
+      case "call": {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        const item = {
+          type: "function_call",
+          id: `fc_${n}`,
+          call_id: `call_${n}`,
+          name: behavior.name,
+          ...(behavior.namespace ? { namespace: behavior.namespace } : {}),
+          arguments: JSON.stringify(behavior.args),
+        };
+        emit({ type: "response.created", response: { id: `resp_${n}` } });
+        emit({ type: "response.output_item.added", output_index: 0, item });
+        emit({ type: "response.output_item.done", output_index: 0, item });
+        emit({
+          type: "response.completed",
+          response: {
+            id: `resp_${n}`,
+            usage: {
+              input_tokens: 20,
+              input_tokens_details: { cached_tokens: 0 },
+              output_tokens: 10,
+              total_tokens: 30,
+            },
+          },
+        });
+        res.end();
+        return;
+      }
       case "reply": {
         res.writeHead(200, { "content-type": "text/event-stream" });
         const id = `resp_${n}`;

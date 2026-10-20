@@ -15,6 +15,10 @@ export type ErrorCode =
   | "PAYLOAD_TOO_LARGE"
   | "RATE_LIMITED"
   | "UNAVAILABLE"
+  | "CONNECTORS_NOT_CONFIGURED"
+  | "CONNECTION_REQUIRED"
+  | "APPROVAL_RESOLVED"
+  | "APPROVAL_NOT_FOUND"
   | "INTERNAL";
 
 // An error whose code and message are safe to show the caller.
@@ -23,6 +27,7 @@ export class ApiError extends HttpException {
     status: number,
     readonly code: ErrorCode,
     message: string,
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(message, status);
   }
@@ -30,6 +35,10 @@ export class ApiError extends HttpException {
 
 // The single error shape every endpoint returns.
 export interface ErrorEnvelope {
-  error: { code: ErrorCode; message: string };
+  error: {
+    code: ErrorCode;
+    message: string;
+    details?: Readonly<Record<string, unknown>>;
+  };
   requestId: string;
 }

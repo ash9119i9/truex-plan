@@ -6,12 +6,18 @@ import {
   type ServerResponse,
 } from "node:http";
 import type { RuntimeLimits } from "./config";
-import { id, parseChatRef, parseSteer, parseStartRun } from "./contract";
+import {
+  id,
+  parseApproval,
+  parseChatRef,
+  parseSteer,
+  parseStartRun,
+} from "./contract";
 import { AdapterError } from "./errors";
 import type { Logger, RuntimeManager } from "./runtime/manager";
 import type { Run, RunEvent } from "./runtime/run";
 
-// The adapter's HTTP surface: four authenticated operations plus health.
+// The adapter's HTTP surface: five authenticated operations plus health.
 // Bodies are size-limited JSON; everything else is refused before it reaches
 // the runtime.
 
@@ -24,6 +30,8 @@ export interface ServerOptions {
   readonly limits: RuntimeLimits;
   readonly manager: RuntimeManager;
   readonly log: Logger;
+  // Forwarded to request parsing so a body can never relax transport security.
+  readonly allowLoopbackMcp: boolean;
 }
 
 export function createAdapterServer(options: ServerOptions): Server {
@@ -57,7 +65,9 @@ export function createAdapterServer(options: ServerOptions): Server {
 
     if (parts[0] !== "v1") throw notFound();
     if (req.method === "POST" && parts.length === 2 && parts[1] === "runs") {
-      const request = parseStartRun(await readJson(req), options.limits);
+      const request = parseStartRun(await readJson(req), options.limits, {
+        allowLoopbackMcp: options.allowLoopbackMcp,
+      });
       const run = options.manager.startRun(request);
       return stream(res, run, 0, options);
     }
@@ -85,6 +95,19 @@ export function createAdapterServer(options: ServerOptions): Server {
         );
         return sendJson(res, 202, result);
       }
+    }
+    if (
+      req.method === "POST" &&
+      parts[1] === "runs" &&
+      parts.length === 5 &&
+      parts[3] === "approvals"
+    ) {
+      const decision = options.manager.answerApproval(
+        id(parts[2], "runId"),
+        id(parts[4], "approvalId"),
+        parseApproval(await readJson(req)),
+      );
+      return sendJson(res, 200, { decision });
     }
     if (
       req.method === "GET" &&

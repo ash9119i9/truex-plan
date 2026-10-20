@@ -127,4 +127,60 @@ describe("settling a steered run", () => {
     ]);
     assert.deepEqual(unknown, ["ghost", "s1"]);
   });
+
+  test("tool calls are saved in order as summaries; one still running is failed", () => {
+    const planned = plannedMessages(
+      {},
+      {
+        status: "stopped",
+        items: [
+          reply("a", "Checking."),
+          {
+            type: "tool",
+            itemId: "t1",
+            connector: "github",
+            tool: "list_issues",
+            status: "completed",
+            durationMs: 900,
+          },
+          {
+            type: "tool",
+            itemId: "t2",
+            connector: "github",
+            tool: "get_issue",
+            status: "inProgress",
+          },
+        ],
+      },
+    );
+    assert.deepEqual(shape(planned), [
+      ["assistant", "Checking.", "stopped"],
+      ["tool", "", "complete"],
+      ["tool", "", "failed"],
+    ]);
+    assert.deepEqual(
+      planned.map((m) => [m.runtimeItemId, m.tool]),
+      [
+        ["a", undefined],
+        [
+          "t1",
+          {
+            connector: "github",
+            name: "list_issues",
+            status: "completed",
+            durationMs: 900,
+          },
+        ],
+        [
+          "t2",
+          {
+            connector: "github",
+            name: "get_issue",
+            status: "failed",
+            errorCode: "UNKNOWN",
+          },
+        ],
+      ],
+    );
+  });
 });

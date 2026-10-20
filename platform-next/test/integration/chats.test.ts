@@ -387,7 +387,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       .collection<ChatDoc>(CHATS_COLLECTION)
       .findOne({ _id: new ObjectId(receipt.chat.id) });
     assert.ok(chat);
-    assert.equal(chat.platformInstructionsVersion, "v2");
+    assert.equal(chat.platformInstructionsVersion, "v4");
     assert.ok(
       JSON.stringify(request.body).includes(
         `This chat started on ${chat.createdAt.toISOString().slice(0, 10)} (UTC).`,
@@ -443,8 +443,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       ["db", 0],
       ["total", 0],
     ]);
-    for (let i = 0; i < 100 && gateway.requests.length === 0; i++)
-      await sleep(50);
+    await gateway.waitForRequests(1);
     gateway.release();
     assert.equal(savedOf(await readStream(live)).run.status, "completed");
 
@@ -702,8 +701,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       await call(alice, "POST", path, body),
       202,
     );
-    for (let i = 0; i < 100 && gateway.requests.length < 2; i++)
-      await sleep(50);
+    await gateway.waitForRequests(2);
     // While its reply streams the chat is busy, but this is the same message.
     const during = await json<Receipt>(
       await call(alice, "POST", path, body),
@@ -945,8 +943,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     );
     assert.equal(steered.run.id, first.run.id);
     // Codex may take the steer before the first model request or cut it.
-    for (let i = 0; i < 100 && gateway.requests.length < 2; i++)
-      await sleep(50);
+    await gateway.waitForRequests(2);
     if (gateway.requests.length < 2) gateway.release();
     const saved = savedOf(await finish(alice, first));
     assert.equal(saved.run.status, "completed");
@@ -1196,6 +1193,48 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     assert.equal(bobs.chats.length, 0);
   });
 
+  test("answerApproval refuses bad input, another member's chat and a settled run", async () => {
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, receipt);
+    const { id } = receipt.chat;
+    const okId = `ap_${"0".repeat(8)}-0000-0000-0000-000000000000`;
+    const path = (approvalId: string) =>
+      `/chats/${id}/runs/${receipt.run.id}/approvals/${approvalId}`;
+
+    // An unknown decision (and an "expired"/"cancelled" that are decisions
+    // but not answers) is a 400 before anything reaches the runtime.
+    for (const decision of ["maybe", "expired", "cancelled"])
+      await fails(
+        await call(alice, "POST", path(okId), { decision }),
+        400,
+        "BAD_REQUEST",
+      );
+    // Unknown body fields are refused too.
+    await fails(
+      await call(alice, "POST", path(okId), { decision: "allow", extra: 1 }),
+      400,
+      "BAD_REQUEST",
+    );
+    // A malformed approvalId is a 404 APPROVAL_NOT_FOUND (before the runtime).
+    await fails(
+      await call(alice, "POST", path("not-an-approval"), { decision: "allow" }),
+      404,
+      "APPROVAL_NOT_FOUND",
+    );
+    // Another member cannot answer on this chat: a plain 404.
+    await fails(
+      await call(bob, "POST", path(okId), { decision: "allow" }),
+      404,
+      "NOT_FOUND",
+    );
+    // The run is settled, so there is no pending approval: 404 APPROVAL_NOT_FOUND.
+    await fails(
+      await call(alice, "POST", path(okId), { decision: "allow" }),
+      404,
+      "APPROVAL_NOT_FOUND",
+    );
+  });
+
   test("a live reply streams only to its owner, in its chat and tenant", async () => {
     gateway.script.push(
       { kind: "reply", text: "Other chat." },
@@ -1225,8 +1264,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       404,
       "NOT_FOUND",
     );
-    for (let i = 0; i < 100 && gateway.requests.length < 2; i++)
-      await sleep(50);
+    await gateway.waitForRequests(2);
     gateway.release();
     assert.equal(textOf(await finish(alice, receipt)), "Held reply.");
   });
@@ -1539,8 +1577,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       after: ", after restart.",
     });
     const receipt = await json<Receipt>(await startChat(alice), 202);
-    for (let i = 0; i < 100 && gateway.requests.length === 0; i++)
-      await sleep(50);
+    await gateway.waitForRequests(1);
     await sleep(300);
     // The process goes away without settling; its lease would lapse.
     await running.app.get(RunExecutor).drain(0);
@@ -1677,8 +1714,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       after: " never",
     });
     const receipt = await json<Receipt>(await startChat(alice, "FIRST"), 202);
-    for (let i = 0; i < 100 && gateway.requests.length === 0; i++)
-      await sleep(50);
+    await gateway.waitForRequests(1);
     await sleep(300);
     await adapter.stop();
     const saved = savedOf(await finish(alice, receipt));
