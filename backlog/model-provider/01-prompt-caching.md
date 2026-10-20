@@ -8,6 +8,8 @@ Real adapter + pinned Codex + local gateway + catalog profile `claude-sonnet-5-5
 
 2026-10-18, after the platform-side latency work: the provider's time to first token is now the largest part of a reply. Three short replies on a ~2.8k-token prompt with 0 cached tokens took 1,858, 2,349 and 1,463 ms (`ttftMs` in the gateway log), against about 0.6–0.9 s of platform time before the stream and about 0.8 s of laptop-to-Atlas settle time.
 
+2026-10-20, context stress test: about 10M input tokens over many turns of up to ~250k, `cached=0` on every turn. Two identical direct calls to the proxy also returned no cache fields, which confirms the proxy, not the gateway, is the cause. At this size each turn is billed in full.
+
 ## Why it matters
 
 Codex resends the whole conversation each turn (3.8 KB → 18 KB over the test). Without caching, every turn pays for the full history in cost and time to first text.
