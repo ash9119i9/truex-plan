@@ -73,7 +73,7 @@ test("toChatRequest: instructions, developer text, tools and tool history", () =
   assert.equal(body.tool_choice, "auto");
   assert.deepEqual(
     body.tools.map((t: any) => t.function.name),
-    ["request_user_input", "mcp__qlik__list_apps"],
+    ["request_user_input", "mcp__qlik__list_apps", "apply_patch"],
   );
   assert.deepEqual(tools.fromProvider("mcp__qlik__list_apps"), {
     name: "list_apps",
@@ -403,5 +403,149 @@ test("toChatRequest: tool output that cannot be sent is marked, not dropped sile
   assert.equal(
     body.messages.find((m: any) => m.role === "tool").content,
     "transcript\n[audio omitted]",
+  );
+});
+
+test("custom tools: offered as a function with the grammar, called back as custom_tool_call", async () => {
+  const { body, tools } = toChatRequest(
+    {
+      tools: [
+        {
+          type: "custom",
+          name: "apply_patch",
+          description:
+            "This is a FREEFORM tool, so do not wrap the patch in JSON.",
+          format: {
+            type: "grammar",
+            syntax: "lark",
+            definition: "start: begin_patch",
+          },
+        },
+      ],
+      input: [
+        {
+          type: "custom_tool_call",
+          call_id: "c0",
+          name: "apply_patch",
+          input: "*** Begin Patch",
+        },
+        { type: "custom_tool_call_output", call_id: "c0", output: "ok" },
+      ],
+    },
+    "provider-model",
+  );
+  const fn = body.tools[0].function;
+  assert.equal(fn.name, "apply_patch");
+  assert.match(fn.description, /start: begin_patch/);
+  assert.doesNotMatch(fn.description, /FREEFORM/);
+  assert.deepEqual(fn.parameters.required, ["input"]);
+  // History: the earlier custom call is replayed as a function call.
+  const call = body.messages.find((m: any) => m.tool_calls)?.tool_calls[0];
+  assert.deepEqual(JSON.parse(call.function.arguments), {
+    input: "*** Begin Patch",
+  });
+
+  const res = new Capture();
+  await streamChat(
+    sse([
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: "call_p",
+                  function: {
+                    name: "apply_patch",
+                    arguments: JSON.stringify({
+                      input: "*** Begin Patch\n*** End Patch\n",
+                    }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+      "[DONE]",
+    ]),
+    new ResponsesStream(res as any),
+    tools,
+  );
+  const item = res
+    .events()
+    .find((e) => e.type === "response.output_item.done")?.item;
+  assert.equal(item.type, "custom_tool_call");
+  assert.equal(item.name, "apply_patch");
+  assert.equal(item.call_id, "call_p");
+  assert.equal(item.input, "*** Begin Patch\n*** End Patch\n");
+  assert.equal(item.arguments, undefined);
+});
+
+test("custom tools: the input streams to Codex as it arrives (apply_patch progress)", async () => {
+  const { tools } = toChatRequest(
+    { tools: [{ type: "custom", name: "apply_patch" }], input: [] },
+    "provider-model",
+  );
+  const args = JSON.stringify({
+    input: "*** Begin Patch\n*** Add File: a.md\n+hi\n*** End Patch\n",
+  });
+  const pieces = [args.slice(0, 7), args.slice(7, 30), args.slice(30)];
+  const res = new Capture();
+  await streamChat(
+    sse([
+      ...pieces.map((piece, i) => ({
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  ...(i === 0
+                    ? {
+                        id: "call_p",
+                        function: { name: "apply_patch", arguments: piece },
+                      }
+                    : { function: { arguments: piece } }),
+                },
+              ],
+            },
+          },
+        ],
+      })),
+      { choices: [{ delta: {}, finish_reason: "tool_calls" }] },
+      "[DONE]",
+    ]),
+    new ResponsesStream(res as any),
+    tools,
+  );
+  const events = res.events();
+  const added = events.filter((e) => e.type === "response.output_item.added");
+  assert.equal(added.length, 1);
+  assert.equal(added[0].item.type, "custom_tool_call");
+  assert.equal(added[0].item.input, "");
+  const deltas = events.filter(
+    (e) => e.type === "response.custom_tool_call_input.delta",
+  );
+  assert.ok(deltas.length >= 2, "more than one piece streamed");
+  assert.equal(
+    deltas.map((d) => d.delta).join(""),
+    "*** Begin Patch\n*** Add File: a.md\n+hi\n*** End Patch\n",
+  );
+  for (const d of deltas) {
+    assert.equal(d.item_id, added[0].item.id);
+    assert.equal(d.call_id, "call_p");
+  }
+  const done = events.find((e) => e.type === "response.output_item.done");
+  assert.equal(done.item.id, added[0].item.id);
+  assert.equal(
+    done.item.input,
+    "*** Begin Patch\n*** Add File: a.md\n+hi\n*** End Patch\n",
+  );
+  // Ordinary function calls are unaffected.
+  assert.ok(
+    !events.some((e) => e.type === "response.function_call_arguments.delta"),
   );
 });

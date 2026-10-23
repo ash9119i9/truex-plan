@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { UpstreamTimeoutError } from "../upstream";
 import type { AdapterContext } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
-import { ToolNames, systemPrompt } from "../tool-names";
+import { customToolAsFunction, ToolNames, systemPrompt } from "../tool-names";
 import { chatCacheOptions } from "../prompt-cache";
 
 // OpenAI Chat Completions (and the many providers that copy it).
@@ -21,12 +21,16 @@ export function toChatRequest(input: any, model: string): ChatRequest {
   const chatTools: any[] = [];
   for (const tool of input.tools ?? []) {
     if (tool?.type === "function") chatTools.push(chatTool(tools, tool));
-    else if (tool?.type === "namespace")
+    else if (tool?.type === "namespace") {
       for (const inner of tool.tools ?? [])
         if (inner?.type === "function")
           chatTools.push(chatTool(tools, inner, tool.name));
-    // web_search, tool_search and custom (freeform) tools run only on
-    // OpenAI's Responses backend, so they are not offered to the provider.
+    } else if (tool?.type === "custom" && typeof tool.name === "string")
+      chatTools.push(
+        chatTool(tools, customToolAsFunction(tool), undefined, true),
+      );
+    // web_search and tool_search run only on OpenAI's Responses backend, so
+    // they are not offered to the provider.
   }
   const body: Record<string, any> = {
     model,
@@ -42,11 +46,20 @@ export function toChatRequest(input: any, model: string): ChatRequest {
   return { body, tools };
 }
 
-function chatTool(names: ToolNames, tool: any, namespace?: string) {
+function chatTool(
+  names: ToolNames,
+  tool: any,
+  namespace?: string,
+  custom?: boolean,
+) {
   return {
     type: "function",
     function: {
-      name: names.toProvider({ name: tool.name, namespace }),
+      name: names.toProvider({
+        name: tool.name,
+        namespace,
+        ...(custom ? { custom } : {}),
+      }),
       description: tool.description || undefined,
       parameters: tool.parameters ?? { type: "object", properties: {} },
     },
@@ -235,8 +248,17 @@ export async function streamChat(
         const call = pendingCall(calls, part);
         if (part.id) call.id = part.id;
         if (part.function?.name && !call.name) call.name = part.function.name;
-        if (typeof part.function?.arguments === "string")
+        if (typeof part.function?.arguments === "string") {
           call.args += part.function.arguments;
+          // apply_patch progress. Needs the call's id, which providers send
+          // with its first piece; one that omits it streams nothing.
+          const ref = call.name ? tools.fromProvider(call.name) : undefined;
+          if (ref?.custom && call.id)
+            out.customCallDelta(
+              { callId: call.id, name: ref.name },
+              part.function.arguments,
+            );
+        }
       }
       if (choice.finish_reason) finished = true;
     }

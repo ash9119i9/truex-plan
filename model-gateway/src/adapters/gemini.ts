@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { UpstreamTimeoutError } from "../upstream";
 import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
-import { ToolNames, systemPrompt } from "../tool-names";
+import { customToolAsFunction, ToolNames, systemPrompt } from "../tool-names";
 import { isContextError } from "./chat";
 
 // Google Gemini (generativelanguage.googleapis.com, v1beta generateContent).
@@ -71,12 +71,16 @@ export function toGeminiRequest(
   const declarations: any[] = [];
   for (const tool of input.tools ?? []) {
     if (tool?.type === "function") declarations.push(declaration(tools, tool));
-    else if (tool?.type === "namespace")
+    else if (tool?.type === "namespace") {
       for (const inner of tool.tools ?? [])
         if (inner?.type === "function")
           declarations.push(declaration(tools, inner, tool.name));
-    // web_search, tool_search and custom (freeform) tools run only on
-    // OpenAI's Responses backend, so they are not offered to Gemini.
+    } else if (tool?.type === "custom" && typeof tool.name === "string")
+      declarations.push(
+        declaration(tools, customToolAsFunction(tool), undefined, true),
+      );
+    // web_search and tool_search run only on OpenAI's Responses backend, so
+    // they are not offered to the provider.
   }
   const { system, contents } = toContents(input, tools);
   const body: Record<string, any> = { contents };
@@ -103,9 +107,18 @@ export function toGeminiRequest(
   return { body, tools };
 }
 
-function declaration(names: ToolNames, tool: any, namespace?: string) {
+function declaration(
+  names: ToolNames,
+  tool: any,
+  namespace?: string,
+  custom?: boolean,
+) {
   return {
-    name: names.toProvider({ name: tool.name, namespace }),
+    name: names.toProvider({
+      name: tool.name,
+      namespace,
+      ...(custom ? { custom } : {}),
+    }),
     ...(tool.description ? { description: tool.description } : {}),
     // parametersJsonSchema takes standard JSON Schema (additionalProperties
     // included), unlike the OpenAPI-subset `parameters` field.

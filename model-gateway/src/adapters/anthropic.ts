@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, type Usage } from "../responses";
-import { ToolNames, systemPrompt } from "../tool-names";
+import { customToolAsFunction, ToolNames, systemPrompt } from "../tool-names";
 import { isContextError } from "./chat";
 
 // Anthropic Messages API via the official SDK. Like the Chat adapter, every
@@ -35,12 +35,16 @@ export function toAnthropicRequest(
   for (const tool of input.tools ?? []) {
     if (tool?.type === "function")
       anthropicTools.push(anthropicTool(tools, tool));
-    else if (tool?.type === "namespace")
+    else if (tool?.type === "namespace") {
       for (const inner of tool.tools ?? [])
         if (inner?.type === "function")
           anthropicTools.push(anthropicTool(tools, inner, tool.name));
-    // web_search, tool_search and custom (freeform) tools only run on
-    // OpenAI's Responses backend, so they are not offered to Claude.
+    } else if (tool?.type === "custom" && typeof tool.name === "string")
+      anthropicTools.push(
+        anthropicTool(tools, customToolAsFunction(tool), undefined, true),
+      );
+    // web_search and tool_search run only on OpenAI's Responses backend, so
+    // they are not offered to the provider.
   }
   const { system, messages } = toMessages(input, tools);
   const policy =
@@ -102,15 +106,25 @@ function anthropicTool(
   names: ToolNames,
   tool: any,
   namespace?: string,
+  custom?: boolean,
 ): Anthropic.Tool {
   const schema =
     tool.parameters && typeof tool.parameters === "object"
       ? { ...tool.parameters, type: "object" }
       : { type: "object", properties: {} };
   return {
-    name: names.toProvider({ name: tool.name, namespace }),
+    name: names.toProvider({
+      name: tool.name,
+      namespace,
+      ...(custom ? { custom } : {}),
+    }),
     ...(tool.description ? { description: tool.description } : {}),
     input_schema: schema as Anthropic.Tool.InputSchema,
+    // A custom tool (apply_patch) carries a whole file in one string. Without
+    // eager streaming Anthropic holds the parameter until it is complete, so a
+    // long file shows nothing while it is written. The input can then arrive
+    // as invalid JSON; the decoder tolerates that and Codex checks the patch.
+    ...(custom ? { eager_input_streaming: true } : {}),
   };
 }
 
@@ -482,9 +496,19 @@ export async function streamAnthropic(
         else if (
           delta.type === "input_json_delta" &&
           block?.type === "tool_use"
-        )
+        ) {
           block.json += delta.partial_json;
-        else if (delta.type === "thinking_delta" && block?.type === "thinking")
+          // apply_patch progress: the patch text streams to Codex as written.
+          const ref = tools.fromProvider(block.name);
+          if (ref.custom)
+            out.customCallDelta(
+              { callId: block.id, name: ref.name },
+              delta.partial_json,
+            );
+        } else if (
+          delta.type === "thinking_delta" &&
+          block?.type === "thinking"
+        )
           block.thinking += delta.thinking;
         else if (delta.type === "signature_delta" && block?.type === "thinking")
           block.signature += delta.signature;

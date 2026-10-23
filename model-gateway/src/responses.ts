@@ -1,11 +1,12 @@
 import type { ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
+import { CustomInputDecoder } from "./custom-input";
 import { record } from "./logging";
 
 // Writes the subset of the Responses SSE stream that the pinned Codex parses
 // (codex-api/src/sse/responses.rs): created, output_item.added/done,
-// output_text.delta, completed and failed. A stream must end in completed or
+// output_text.delta, custom_tool_call_input.delta, completed and failed. A stream must end in completed or
 // failed; Codex treats anything else as a dropped connection and retries.
 
 export interface Usage {
@@ -23,7 +24,23 @@ export interface FunctionCall {
   callId: string;
   name: string;
   namespace?: string;
+  // A custom tool offered as a function (see customToolAsFunction): sent to
+  // Codex as a custom_tool_call carrying the `input` argument.
+  custom?: boolean;
   arguments: string;
+}
+
+// The `input` string of a custom tool's function arguments. Arguments that
+// are not an object with a string `input` pass through as raw text, so Codex
+// rejects the malformed call and tells the model.
+function customInput(args: string): string {
+  try {
+    const value = JSON.parse(args);
+    if (value && typeof value.input === "string") return value.input;
+  } catch {
+    // fall through
+  }
+  return args;
 }
 
 const newId = (prefix: string) => prefix + "_" + randomUUID().replace(/-/g, "");
@@ -35,6 +52,9 @@ export class ResponsesStream {
   private outputIndex = 0;
   private message?: { id: string; text: string };
   private leading = "";
+  // The custom tool call whose input is streaming, if any (one at a time).
+  private custom?: { callId: string; id: string; decoder: CustomInputDecoder };
+  private customStreamed = new Set<string>();
   constructor(private readonly res: ServerResponse) {}
 
   get isStarted() {
@@ -87,22 +107,75 @@ export class ResponsesStream {
     });
   }
 
+  // Streams part of a custom tool call's function arguments as it arrives,
+  // so Codex can report apply_patch progress. The call is opened on its first
+  // piece; functionCall finishes it. Only one call streams at a time, and a
+  // call that was not opened here is sent whole by functionCall as before.
+  customCallDelta(call: { callId: string; name: string }, argsPiece: string) {
+    if (this.custom && this.custom.callId !== call.callId) return;
+    if (!this.custom) {
+      if (this.customStreamed.has(call.callId)) return;
+      this.start();
+      this.finishMessage();
+      this.custom = {
+        callId: call.callId,
+        id: newId("ctc"),
+        decoder: new CustomInputDecoder(),
+      };
+      this.customStreamed.add(call.callId);
+      this.emit({
+        type: "response.output_item.added",
+        output_index: this.outputIndex,
+        item: {
+          type: "custom_tool_call",
+          id: this.custom.id,
+          call_id: call.callId,
+          name: call.name,
+          input: "",
+          status: "in_progress",
+        },
+      });
+    }
+    const delta = this.custom.decoder.push(argsPiece);
+    if (delta)
+      this.emit({
+        type: "response.custom_tool_call_input.delta",
+        item_id: this.custom.id,
+        call_id: call.callId,
+        output_index: this.outputIndex,
+        delta,
+      });
+  }
+
   functionCall(call: FunctionCall) {
     this.start();
+    // A streamed custom call was already opened; only its done event is left.
+    const streamed = call.custom && this.custom?.callId === call.callId;
+    const id = streamed ? this.custom!.id : undefined;
+    if (streamed) this.custom = undefined;
     this.finishMessage();
-    const item = {
-      type: "function_call",
-      id: newId("fc"),
-      call_id: call.callId,
-      name: call.name,
-      ...(call.namespace ? { namespace: call.namespace } : {}),
-      arguments: call.arguments,
-    };
-    this.emit({
-      type: "response.output_item.added",
-      output_index: this.outputIndex,
-      item,
-    });
+    const item = call.custom
+      ? {
+          type: "custom_tool_call",
+          id: id ?? newId("ctc"),
+          call_id: call.callId,
+          name: call.name,
+          input: customInput(call.arguments),
+        }
+      : {
+          type: "function_call",
+          id: newId("fc"),
+          call_id: call.callId,
+          name: call.name,
+          ...(call.namespace ? { namespace: call.namespace } : {}),
+          arguments: call.arguments,
+        };
+    if (!streamed)
+      this.emit({
+        type: "response.output_item.added",
+        output_index: this.outputIndex,
+        item,
+      });
     this.emit({
       type: "response.output_item.done",
       output_index: this.outputIndex++,
