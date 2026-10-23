@@ -65,7 +65,10 @@ export function goalStateLabel(goal: Goal, review: GoalReview | null) {
 }
 
 // Codex edits an objective in place, so the creation time identifies a goal.
-export function sameGoal(a: Goal | null | undefined, b: Goal | null | undefined) {
+export function sameGoal(
+  a: Goal | null | undefined,
+  b: Goal | null | undefined,
+) {
   return !!a && !!b && a.createdAt === b.createdAt;
 }
 
@@ -138,8 +141,7 @@ export const budgetHelp =
 export function parseTokenBudget(text: string) {
   const value = /^(\d[\d,_]*)(k?)$/i.exec(text.trim());
   if (!value) return null;
-  const tokens =
-    Number(value[1].replace(/[,_]/g, "")) * (value[2] ? 1000 : 1);
+  const tokens = Number(value[1].replace(/[,_]/g, "")) * (value[2] ? 1000 : 1);
   return Number.isSafeInteger(tokens) &&
     tokens > 0 &&
     tokens <= MAX_TOKEN_BUDGET

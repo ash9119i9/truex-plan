@@ -95,7 +95,12 @@ export function SearchPalette({
           />
           <kbd>esc</kbd>
         </div>
-        <div className="palette-list" id={listId} role="listbox" aria-label="Conversations">
+        <div
+          className="palette-list"
+          id={listId}
+          role="listbox"
+          aria-label="Conversations"
+        >
           {results.length === 0 ? (
             <div className="muted sm pad">No matches for “{q}”</div>
           ) : (

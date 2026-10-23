@@ -26,7 +26,9 @@ export function TokenBar({
   helperUsage?: TokenCounts | null;
 }) {
   if (!usage)
-    return <p className="tc-empty">Token usage was not reported for this turn.</p>;
+    return (
+      <p className="tc-empty">Token usage was not reported for this turn.</p>
+    );
   const split = splitTokens(usage);
   const context = contextFraction(usage);
   return (

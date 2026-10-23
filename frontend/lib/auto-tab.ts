@@ -55,7 +55,11 @@ export function followTab(
   return null;
 }
 
-export const emptySeen = (): FollowSeen => ({ goal: null, plan: [], agentIds: [] });
+export const emptySeen = (): FollowSeen => ({
+  goal: null,
+  plan: [],
+  agentIds: [],
+});
 
 // What the stream has shown so far, so only starts are followed.
 export function noteSeen(

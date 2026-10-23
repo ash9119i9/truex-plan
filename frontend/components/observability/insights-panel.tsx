@@ -101,7 +101,14 @@ export function InsightsPanel({
   const shares: Share[] = [
     { key: "main", label: "Main agent", value: mainTokens, tone: "tone-main" },
     ...(helperTokens > 0
-      ? [{ key: "helpers", label: "Helpers", value: helperTokens, tone: "tone-0" }]
+      ? [
+          {
+            key: "helpers",
+            label: "Helpers",
+            value: helperTokens,
+            tone: "tone-0",
+          },
+        ]
       : []),
   ];
   const mainMs = times.reduce((a, b) => a + b, 0);
@@ -131,7 +138,9 @@ export function InsightsPanel({
           <dt>Slowest</dt>
           <dd>{formatDuration(slowestMs)}</dd>
           {s.turns > 1 && (
-            <span className="in-sub">Slowest 5% {formatDuration(s.p95TotalMs)}</span>
+            <span className="in-sub">
+              Slowest 5% {formatDuration(s.p95TotalMs)}
+            </span>
           )}
         </div>
         <div className="in-kpi">
@@ -147,15 +156,15 @@ export function InsightsPanel({
           <div className="in-kpi">
             <dt>Helpers</dt>
             <dd>{helpers.length}</dd>
-            {finished > 0 && <span className="in-sub">{finished} finished</span>}
+            {finished > 0 && (
+              <span className="in-sub">{finished} finished</span>
+            )}
           </div>
         )}
         <div className={`in-kpi${s.privacyFindings ? " is-warn" : ""}`}>
           <dt>Personal data</dt>
           <dd>{s.privacyFindings ? s.privacyFindings : "None"}</dd>
-          <span className="in-sub">
-            Pattern checks on sent text
-          </span>
+          <span className="in-sub">Pattern checks on sent text</span>
         </div>
       </dl>
 
@@ -210,10 +219,14 @@ export function InsightsPanel({
                 <div className="in-row-track" aria-hidden="true">
                   <div
                     className="in-row-bar"
-                    style={{ width: `${Math.max(1, (r.value / maxTime) * 100)}%` }}
+                    style={{
+                      width: `${Math.max(1, (r.value / maxTime) * 100)}%`,
+                    }}
                   />
                 </div>
-                <span className="in-row-val mono">{formatDuration(r.value)}</span>
+                <span className="in-row-val mono">
+                  {formatDuration(r.value)}
+                </span>
               </div>
             ))}
           </div>
@@ -301,7 +314,11 @@ export function InsightsPanel({
                 id: t.turnId,
                 label: `Response ${i + 1}`,
                 segments: [
-                  { value: split.newInput, tone: "seg-new", label: "New input" },
+                  {
+                    value: split.newInput,
+                    tone: "seg-new",
+                    label: "New input",
+                  },
                   { value: split.cached, tone: "seg-cached", label: "Cached" },
                   {
                     value:
@@ -366,9 +383,19 @@ export function InsightsPanel({
                 {t.nonStreaming ? " · non-streaming" : ""}
               </span>
               <div className="in-timing-bar" aria-hidden="true">
-                <i style={{ width: `${((t.ttftMs || 0) / (t.totalMs || 1)) * 100}%` }} />
-                <i style={{ width: `${(t.streamMs / (t.totalMs || 1)) * 100}%` }} />
-                <i style={{ width: `${(t.finalizeMs / (t.totalMs || 1)) * 100}%` }} />
+                <i
+                  style={{
+                    width: `${((t.ttftMs || 0) / (t.totalMs || 1)) * 100}%`,
+                  }}
+                />
+                <i
+                  style={{ width: `${(t.streamMs / (t.totalMs || 1)) * 100}%` }}
+                />
+                <i
+                  style={{
+                    width: `${(t.finalizeMs / (t.totalMs || 1)) * 100}%`,
+                  }}
+                />
               </div>
               <span className="muted sm">
                 First output {formatDuration(t.ttftMs)} · stream{" "}

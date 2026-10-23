@@ -12,7 +12,10 @@ const labels = {
 // spinner for the current step, a small dot while pending.
 export function StepMark({ state }: { state: "done" | "current" | "pending" }) {
   return (
-    <span className={`step-mark${state === "done" ? " is-done" : ""}`} aria-hidden="true">
+    <span
+      className={`step-mark${state === "done" ? " is-done" : ""}`}
+      aria-hidden="true"
+    >
       {state === "done" ? (
         <Icon name="check" size={11} stroke={2.5} />
       ) : state === "current" ? (
@@ -39,7 +42,9 @@ export function PlanSteps({ plan }: { plan: PlanStep[] }) {
             className={`pl-item${done ? " is-done" : ""}${isCurrent ? " is-current" : ""}`}
             aria-current={isCurrent ? "step" : undefined}
           >
-            <StepMark state={done ? "done" : isCurrent ? "current" : "pending"} />
+            <StepMark
+              state={done ? "done" : isCurrent ? "current" : "pending"}
+            />
             <div>
               <div className="pl-label">{p.step}</div>
               <div className="pl-status">

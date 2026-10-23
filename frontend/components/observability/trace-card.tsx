@@ -77,7 +77,10 @@ function DeveloperDetails({
     if (!sessionId) return setContext({ state: "gone" });
     setContext({ state: "loading" });
     try {
-      const data = (await getTurnContext(sessionId, trace.turnId)) as TurnContext;
+      const data = (await getTurnContext(
+        sessionId,
+        trace.turnId,
+      )) as TurnContext;
       setContext(
         Array.isArray(data?.sections)
           ? { state: "ready", context: data }

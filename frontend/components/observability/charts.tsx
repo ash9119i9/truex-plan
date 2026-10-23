@@ -116,7 +116,9 @@ export function ColumnChart({
   format: (n: number) => string;
   height?: number;
 }) {
-  const totals = columns.map((c) => c.segments.reduce((s, x) => s + x.value, 0));
+  const totals = columns.map((c) =>
+    c.segments.reduce((s, x) => s + x.value, 0),
+  );
   const max = Math.max(1, ...totals);
   const slot = 12,
     bar = 8;
@@ -131,7 +133,13 @@ export function ColumnChart({
       style={{ height }}
     >
       <title>{`${title}. ${summary}`}</title>
-      <line className="in-base" x1={0} x2={width} y1={height - 0.5} y2={height - 0.5} />
+      <line
+        className="in-base"
+        x1={0}
+        x2={width}
+        y1={height - 0.5}
+        y2={height - 0.5}
+      />
       {columns.map((c, i) => {
         let y = height;
         const x = i * slot + (slot - bar) / 2;
@@ -144,7 +152,13 @@ export function ColumnChart({
           <g key={c.id} className={c.highlight ? "is-high" : undefined}>
             <title>{tip}</title>
             {/* Full-height hit target, bigger than the mark. */}
-            <rect className="in-hit" x={i * slot} y={0} width={slot} height={height} />
+            <rect
+              className="in-hit"
+              x={i * slot}
+              y={0}
+              width={slot}
+              height={height}
+            />
             {c.segments.map((s, j) => {
               const h = (s.value / max) * (height - 2);
               if (h <= 0) return null;
