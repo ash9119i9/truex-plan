@@ -447,6 +447,7 @@ test("a first message shows as the start of its chat", () => {
     model: null,
     available: true,
     connectors: [],
+    skills: [],
     revision: 1,
     createdByMe: false,
     status: "active" as const,
@@ -1406,4 +1407,41 @@ test("a replayed pending event does not reopen a locally settled approval", () =
     data: APPROVAL({ status: "deny" }),
   });
   assert.equal(settledByStream.approvals.ap1.status, "deny");
+});
+
+test("a used skill shows once, live and from a snapshot or saved message", () => {
+  let reply = liveReply(RUN, 0);
+  for (let i = 0; i < 2; i++)
+    reply = applyStreamEvent(reply, {
+      type: "skill",
+      data: { slug: "invoice-check", name: "Invoice check" },
+    });
+  assert.deepEqual(reply.items, [
+    { type: "skill", slug: "invoice-check", name: "Invoice check" },
+  ]);
+  reply = applyStreamEvent(reply, { type: "skill", data: { slug: "x" } });
+  assert.equal(reply.items.length, 1);
+  reply = applyStreamEvent(reply, {
+    type: "snapshot",
+    data: {
+      runId: RUN,
+      phase: "streaming",
+      items: [{ type: "skill", slug: "invoice-check", name: "Invoice check" }],
+    },
+  });
+  assert.equal(reply.items[0]?.type, "skill");
+  const saved = parseMessage({
+    id: "64b7f0c2a1b2c3d4e5f60e01",
+    seq: 3,
+    runId: "64b7f0c2a1b2c3d4e5f60e02",
+    role: "tool",
+    text: "",
+    state: "complete",
+    skill: { slug: "invoice-check", name: "Invoice check" },
+    createdAt: "2026-10-23T10:00:00.000Z",
+  });
+  assert.deepEqual(saved?.skill, {
+    slug: "invoice-check",
+    name: "Invoice check",
+  });
 });

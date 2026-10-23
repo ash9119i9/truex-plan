@@ -294,6 +294,12 @@
   font-size: 12px;
   color: var(--ink-3);
 }
+/* "Unavailable" / "Needs coding" beside a skill's name in the picker. */
+.skill-pick-note {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ink-3);
+}
 
 /* ---- The agent-dialog per-connector access choice (write tools) ---- */
 .connector-access {
@@ -393,4 +399,81 @@
   .connector-hint {
     justify-self: start;
   }
+}
+
+/* ---- Commands and file changes in the chat's workspace ---- */
+.activity-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Model-written command text and output: plain text, wrapped, never markup. */
+.activity-command,
+.approval-command,
+.activity-output pre,
+.approval-diff pre {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.approval-command {
+  margin: 0 0 10px;
+}
+.activity-output pre,
+.approval-diff pre {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 6px;
+}
+.activity-output summary,
+.approval-diff summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.approval-diff {
+  margin: 0 0 10px;
+}
+.approval-files,
+.activity-files {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.activity-files {
+  margin: 0;
+}
+.approval-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---- A sandbox request Truex blocked (network card) ---- */
+.network-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.network-title .tool-card-icon {
+  flex: none;
+  color: var(--ink-3);
+}
+.network-detail {
+  margin: 0 0 10px;
 }

@@ -15,6 +15,7 @@ import {
   parseConnectorRefs,
   parseSavedTool,
   parseToolEvent,
+  type ApprovalKind,
   type ApprovalParam,
   type ApprovalStatus,
   type ConnectorFailureReason,
@@ -23,6 +24,31 @@ import {
   type ToolErrorCode,
   type ToolStatus,
 } from "./tenant-connectors.ts";
+import {
+  parseActivity,
+  parseProgress,
+  parseSavedActivity,
+  withOutput,
+  withPreviewPiece,
+  type Activity,
+} from "./tenant-coding.ts";
+import {
+  parseFiles,
+  parseUnsaved,
+  withFiles,
+  type ChatFile,
+} from "./tenant-files.ts";
+import {
+  filesReady,
+  parseAttachments,
+  type DraftFile,
+  type MessageAttachment,
+} from "./tenant-uploads.ts";
+import {
+  parseNetworkBlock,
+  type NetworkBlock,
+  type NetworkDecision,
+} from "./tenant-network.ts";
 
 // Kept in step with platform-next/src/modules/chats/chat.ts.
 export const MAX_MESSAGE_CHARS = 32_000;
@@ -78,6 +104,14 @@ export interface ChatMessage {
   // A saved tool message (role "tool", text "") carries its settled call
   // here; absent on user/assistant messages.
   tool?: SavedTool;
+  // Or a command / file change in the chat's workspace.
+  activity?: Activity;
+  // Or a skill the reply used ("Used skill <name>").
+  skill?: UsedSkill;
+  // Or a sandbox request Truex blocked, with the owner's answer once given.
+  network?: NetworkBlock;
+  // A user message's attached files, in order; absent when none.
+  attachments?: MessageAttachment[];
   clientMessageId?: string;
   createdAt: string;
 }
@@ -117,6 +151,8 @@ export interface ChatRun {
   };
   // The steers queued on this run, in arrival order; absent once settled.
   steers?: SteerView[];
+  // Files the reply wrote that couldn't be saved; absent when none.
+  unsavedFiles?: string[];
 }
 
 // One open chat: its summary and the loaded, contiguous tail of messages.
@@ -253,6 +289,20 @@ export function parseChat(value: unknown): ChatSummary | null {
   };
 }
 
+// A skill the assistant opened during a reply. The name is the one the chat
+// started with.
+export interface UsedSkill {
+  slug: string;
+  name: string;
+}
+
+function parseUsedSkill(value: unknown): UsedSkill | null {
+  const s = record(value);
+  const slug = str(s?.slug, 64);
+  const name = str(s?.name, 200);
+  return slug && name ? { slug, name } : null;
+}
+
 export function parseMessage(value: unknown): ChatMessage | null {
   const m = record(value);
   const messageId = id(m?.id);
@@ -269,8 +319,18 @@ export function parseMessage(value: unknown): ChatMessage | null {
   const clientMessageId = str(m.clientMessageId, 64);
   // A tool message that carries no readable tool payload is dropped: it
   // would render as an empty, meaningless row.
-  const tool = role === "tool" ? parseSavedTool(m.tool) : null;
-  if (role === "tool" && !tool) return null;
+  const tool =
+    role === "tool" && m.tool !== undefined ? parseSavedTool(m.tool) : null;
+  const activity =
+    role === "tool" && !tool ? parseSavedActivity(m.activity, messageId) : null;
+  const skill =
+    role === "tool" && !tool && !activity ? parseUsedSkill(m.skill) : null;
+  const network =
+    role === "tool" && !tool && !activity && !skill
+      ? parseNetworkBlock(m.network)
+      : null;
+  if (role === "tool" && !tool && !activity && !skill && !network) return null;
+  const attachments = role === "user" ? parseAttachments(m.attachments) : [];
   return {
     id: messageId,
     seq: m.seq,
@@ -279,6 +339,10 @@ export function parseMessage(value: unknown): ChatMessage | null {
     text,
     state: oneOf(m.state, STATES) ?? "complete",
     ...(tool ? { tool } : {}),
+    ...(activity ? { activity } : {}),
+    ...(skill ? { skill } : {}),
+    ...(network ? { network } : {}),
+    ...(attachments.length ? { attachments } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
     createdAt,
   };
@@ -333,6 +397,7 @@ export function parseRun(value: unknown): ChatRun | null {
         return parsed ? [parsed] : [];
       })
     : null;
+  const unsavedFiles = parseUnsaved(r.unsavedFiles);
   return {
     id: runId,
     status,
@@ -340,6 +405,7 @@ export function parseRun(value: unknown): ChatRun | null {
     usage: parseUsage(r.usage),
     timings,
     ...(steers ? { steers } : {}),
+    ...(unsavedFiles.length ? { unsavedFiles } : {}),
   };
 }
 
@@ -441,12 +507,24 @@ export async function fetchOlderMessages(
   };
 }
 
+// `attachments` are staged upload IDs; sent only when there are some.
+const withUploads = (attachments: readonly string[]) =>
+  attachments.length ? { attachments } : {};
+
 export const startChat = async (
   agentId: string,
   text: string,
   clientMessageId: string,
+  attachments: readonly string[] = [],
 ): Promise<SendReceipt> =>
-  receiptOf(await api("/api/v1/chats", { agentId, clientMessageId, text }));
+  receiptOf(
+    await api("/api/v1/chats", {
+      agentId,
+      clientMessageId,
+      text,
+      ...withUploads(attachments),
+    }),
+  );
 
 // A message to an open chat. The platform decides whether it starts a new
 // run or steers the one still replying, so the receipt is one or the other.
@@ -454,9 +532,14 @@ export const sendMessage = async (
   chat: ChatSummary,
   text: string,
   clientMessageId: string,
+  attachments: readonly string[] = [],
 ): Promise<MessageReceipt> =>
   messageReceiptOf(
-    await api(chatPath(chat.id, "/messages"), { clientMessageId, text }),
+    await api(chatPath(chat.id, "/messages"), {
+      clientMessageId,
+      text,
+      ...withUploads(attachments),
+    }),
     chat,
   );
 
@@ -543,6 +626,7 @@ export interface PendingSend {
   text: string;
   clientMessageId: string;
   since: number;
+  attachments?: MessageAttachment[];
 }
 
 // The run a pending message is shown under until the real run is known.
@@ -567,6 +651,9 @@ export function withPending(
     role: "user",
     text: pending.text,
     state: "complete",
+    ...(pending.attachments?.length
+      ? { attachments: pending.attachments }
+      : {}),
     clientMessageId: pending.clientMessageId,
     createdAt: new Date(pending.since).toISOString(),
   };
@@ -626,7 +713,14 @@ export type LiveReplyItem =
       status: ToolStatus;
       durationMs: number | null;
       errorCode: ToolErrorCode | null;
-    };
+    }
+  // A command or file change in the chat's workspace, by itemId like a tool.
+  | Activity
+  // A skill the model opened, once per reply.
+  | ({ type: "skill" } & UsedSkill)
+  // A sandbox request Truex blocked, once per site and method; answered on
+  // the saved reply.
+  | ({ type: "network" } & NetworkBlock);
 
 // Only the reply items of a live reply, in order.
 export const replyItems = (
@@ -657,12 +751,14 @@ export const steerText = (
 export interface ApprovalView {
   approvalId: string;
   itemId: string;
+  kind: ApprovalKind;
   connector: string;
   tool: string;
   params: ApprovalParam[];
   status: ApprovalStatus;
   expiresAt: string | null;
   auto: boolean;
+  allowForChat: boolean;
   // Set when this tab's own answer lost the first-answer race: a 409
   // (someone/something already answered) or a 404 (the request expired or the
   // reply finished). The card shows "Already answered" / "Expired", distinct
@@ -688,6 +784,10 @@ export interface LiveReply {
   // tool row, settled ones an outcome label. A snapshot replaces this with
   // the still-pending set, so a reconnecting caller shows the open cards.
   approvals: Record<string, ApprovalView>;
+  // The file versions the reply stored, once it has finished (the `files`
+  // event, before `saved`), and the paths it wrote that couldn't be stored.
+  files: ChatFile[];
+  unsaved: string[];
 }
 
 export function liveReply(runId: string, now = Date.now()): LiveReply {
@@ -701,6 +801,8 @@ export function liveReply(runId: string, now = Date.now()): LiveReply {
     since: now,
     connectorFailures: {},
     approvals: {},
+    files: [],
+    unsaved: [],
   };
 }
 
@@ -716,6 +818,16 @@ function parseItems(value: unknown): LiveReplyItem[] {
       return clientMessageId
         ? { type: "input", clientMessageId, text: null, placed: true }
         : null;
+    }
+    if (item.type === "command" || item.type === "file_change")
+      return parseActivity(item);
+    if (item.type === "skill") {
+      const skill = parseUsedSkill(item);
+      return skill ? { type: "skill", ...skill } : null;
+    }
+    if (item.type === "network") {
+      const block = parseNetworkBlock(item);
+      return block ? { type: "network", ...block } : null;
     }
     if (item.type === "tool") {
       // A snapshot/completed tool item is shaped like a tool event; reuse
@@ -740,21 +852,22 @@ function parseItems(value: unknown): LiveReplyItem[] {
   });
 }
 
+// A snapshot's file changes still being written.
+function parseWriting(value: unknown): LiveReplyItem[] {
+  return list(value, (v) => {
+    const progress = parseProgress(v);
+    if (!progress || progress.ended) return null;
+    const preview = withPreviewPiece(undefined, progress.piece);
+    return preview ? { ...progress.activity, preview } : progress.activity;
+  });
+}
+
 // A snapshot's pending approvals → an approvals map keyed by approvalId. Each
 // entry is shaped like an approval event, so the event parser is reused.
 function parseApprovals(value: unknown): Record<string, ApprovalView> {
   const approvals: Record<string, ApprovalView> = {};
   for (const event of list(value, parseApprovalEvent))
-    approvals[event.approvalId] = {
-      approvalId: event.approvalId,
-      itemId: event.itemId,
-      connector: event.connector,
-      tool: event.tool,
-      params: event.params,
-      status: event.status,
-      expiresAt: event.expiresAt,
-      auto: event.auto,
-    };
+    approvals[event.approvalId] = { ...event };
   return approvals;
 }
 
@@ -917,8 +1030,14 @@ export type StreamEvent =
   | { type: "tool"; data: unknown }
   | { type: "connector"; data: unknown }
   | { type: "approval"; data: unknown }
+  | { type: "activity"; data: unknown }
+  | { type: "skill"; data: unknown }
+  | { type: "network"; data: unknown }
+  | { type: "output"; data: unknown }
+  | { type: "progress"; data: unknown }
   | { type: "usage"; data: unknown }
   | { type: "completed"; data: unknown }
+  | { type: "files"; data: unknown }
   | { type: "save_failed"; data: unknown };
 
 // One stream event applied to the live reply. Unknown or malformed events
@@ -936,7 +1055,8 @@ export function applyStreamEvent(
       return {
         ...reply,
         phase: oneOf(data.phase, PHASES) ?? reply.phase,
-        items: parseItems(data.items),
+        // File changes still being written follow the ordered items.
+        items: [...parseItems(data.items), ...parseWriting(data.writing)],
         usage: parseUsage(data.usage) ?? reply.usage,
         // A snapshot carries only the still-pending approvals; it replaces
         // the map so a settled card does not linger after a reconnect, and
@@ -1047,6 +1167,110 @@ export function applyStreamEvent(
       items[index] = next;
       return { ...reply, items };
     }
+    case "skill": {
+      // A skill the model opened: placed once, where it happened.
+      const skill = parseUsedSkill(data);
+      if (
+        !skill ||
+        reply.items.some((i) => i.type === "skill" && i.slug === skill.slug)
+      )
+        return reply;
+      return {
+        ...reply,
+        items: [...reply.items, { type: "skill", ...skill }],
+        phase: reply.phase === "waiting" ? "streaming" : reply.phase,
+      };
+    }
+    case "network": {
+      // A blocked sandbox request: placed once per site and method.
+      const block = parseNetworkBlock(data);
+      if (!block || reply.items.some((i) => sameBlock(i, block))) return reply;
+      return {
+        ...reply,
+        items: [...reply.items, { type: "network", ...block }],
+        phase: reply.phase === "waiting" ? "streaming" : reply.phase,
+      };
+    }
+    case "activity": {
+      // A command or file change: placed when first seen, settled by itemId.
+      // A finished one never goes back to running; output streamed so far is
+      // kept when the event carries none.
+      const next = parseActivity(data);
+      if (!next) return reply;
+      const index = reply.items.findIndex(
+        (i) =>
+          i.type === next.type && "itemId" in i && i.itemId === next.itemId,
+      );
+      if (index < 0)
+        return {
+          ...reply,
+          items: [...reply.items, next],
+          phase: reply.phase === "waiting" ? "streaming" : reply.phase,
+        };
+      const current = reply.items[index] as Activity;
+      if (current.status !== "inProgress") return reply;
+      const merged: Activity =
+        next.type === "command" &&
+        current.type === "command" &&
+        !next.output &&
+        current.output
+          ? {
+              ...next,
+              output: current.output,
+              outputTruncated: current.outputTruncated,
+            }
+          : next;
+      const items = [...reply.items];
+      items[index] = merged;
+      return { ...reply, items };
+    }
+    case "progress": {
+      // A file change the model is still writing: shown where the change
+      // will be, until its activity replaces it. A progress event for an
+      // existing activity changes nothing.
+      const progress = parseProgress(data);
+      if (!progress) return reply;
+      const itemId = progress.ended
+        ? progress.itemId
+        : progress.activity.itemId;
+      const index = reply.items.findIndex(
+        (i) => i.type === "file_change" && i.itemId === itemId,
+      );
+      const current =
+        index < 0
+          ? null
+          : (reply.items[index] as Extract<Activity, { type: "file_change" }>);
+      if (current && current.writtenLines === undefined) return reply;
+      if (progress.ended)
+        return current
+          ? { ...reply, items: reply.items.filter((_, i) => i !== index) }
+          : reply;
+      const preview = withPreviewPiece(current?.preview, progress.piece);
+      const next = preview
+        ? { ...progress.activity, preview }
+        : progress.activity;
+      if (!current)
+        return {
+          ...reply,
+          items: [...reply.items, next],
+          phase: reply.phase === "waiting" ? "streaming" : reply.phase,
+        };
+      const items = [...reply.items];
+      items[index] = next;
+      return { ...reply, items };
+    }
+    case "output": {
+      const itemId = str(data?.itemId, 200);
+      const text = str(data?.text, 100_000);
+      if (!itemId || !text) return reply;
+      const index = reply.items.findIndex(
+        (i) => i.type === "command" && i.itemId === itemId,
+      );
+      if (index < 0) return reply;
+      const items = [...reply.items];
+      items[index] = withOutput(items[index] as Activity, text);
+      return { ...reply, items };
+    }
     case "connector": {
       // A connector's own status during the reply. Only a failure is kept,
       // once per connector, so a banner shows once per connector per run.
@@ -1083,14 +1307,7 @@ export function applyStreamEvent(
         approvals: {
           ...reply.approvals,
           [event.approvalId]: {
-            approvalId: event.approvalId,
-            itemId: event.itemId,
-            connector: event.connector,
-            tool: event.tool,
-            params: event.params,
-            status: event.status,
-            expiresAt: event.expiresAt,
-            auto: event.auto,
+            ...event,
             ...(current?.race ? { race: current.race } : {}),
           },
         },
@@ -1112,6 +1329,12 @@ export function applyStreamEvent(
         usage: parseUsage(data.usage) ?? reply.usage,
         outcome: { status, error: parseRunError(data.error) },
       };
+    }
+    case "files": {
+      const files = parseFiles(data);
+      const unsaved = parseUnsaved(data?.unsaved);
+      if (!files.length && !unsaved.length) return reply;
+      return { ...reply, files: withFiles(reply.files, files), unsaved };
     }
     case "save_failed":
       return { ...reply, saveFailed: true };
@@ -1150,6 +1373,31 @@ export function withSaved(
           : next.chat.readOnly,
     },
   };
+}
+
+// The owner's answer to a network card, applied to its saved message.
+export function withNetworkDecision(
+  thread: ChatThread,
+  messageId: string,
+  decision: NetworkDecision,
+): ChatThread {
+  let changed = false;
+  const messages = thread.messages.map((m) => {
+    if (m.id !== messageId || !m.network || m.network.decision) return m;
+    changed = true;
+    return { ...m, network: { ...m.network, decision } };
+  });
+  return changed ? { ...thread, messages } : thread;
+}
+
+// One card per site and method in a reply (the platform's networkKey).
+function sameBlock(item: LiveReplyItem, block: NetworkBlock): boolean {
+  return (
+    item.type === "network" &&
+    item.kind === block.kind &&
+    item.host === block.host &&
+    (block.kind === "unlisted" || item.method === block.method)
+  );
 }
 
 // An older page of history added above what is loaded. Runs already known
@@ -1198,6 +1446,18 @@ export function draftProblem(text: string): string | null {
 
 export const canSendDraft = (text: string) =>
   text.trim().length > 0 && draftProblem(text) === null;
+
+// A message can be text, files, or both. Files must all be uploaded, and
+// can't be added to a reply that is running (`busy`).
+export function canSendMessage(
+  text: string,
+  files: readonly DraftFile[],
+  busy: boolean,
+): boolean {
+  if (draftProblem(text) !== null) return false;
+  if (files.length === 0) return text.trim().length > 0;
+  return !busy && filesReady(files);
+}
 
 export interface SendFailure {
   message: string;

@@ -33,6 +33,7 @@ const agent = (overrides: Partial<TenantAgent> = {}): TenantAgent => ({
   model: MODEL,
   available: true,
   connectors: [],
+  skills: [],
   revision: 3,
   createdByMe: true,
   status: "active",
@@ -94,6 +95,7 @@ test("create sends the trimmed form, scope and request ID", async (t) => {
       tint: "mint",
       connectorSlugs: [],
       connectorAccess: {},
+      skillIds: [],
     },
     "tenant",
     "req-12345678",
@@ -108,6 +110,7 @@ test("create sends the trimmed form, scope and request ID", async (t) => {
     look: 4,
     tint: "mint",
     connectors: [],
+    skillIds: [],
   });
 });
 
@@ -167,6 +170,41 @@ test("formChanges sends only what changed", () => {
       modelId: MODEL.id,
     }),
     { modelId: MODEL.id },
+  );
+});
+
+test("skills: parsed from the agent, and an edit sends only a changed list", () => {
+  const parsed = parseAgent({
+    ...agent(),
+    skills: [
+      {
+        id: "64b7f0c2a1b2c3d4e5f60b01",
+        slug: "invoice-check",
+        displayName: "Invoice check",
+        description: "Checks invoices.",
+        hasScripts: true,
+        available: false,
+      },
+      { id: "bad", slug: "x", displayName: "X", description: "" },
+    ],
+  });
+  assert.deepEqual(
+    parsed?.skills.map((s) => [s.slug, s.available, s.hasScripts]),
+    [["invoice-check", false, true]],
+  );
+  const a = agent({ skills: parsed!.skills });
+  assert.deepEqual(formChanges(a, formOf(a, [])), {});
+  assert.deepEqual(formChanges(a, { ...formOf(a, []), skillIds: [] }), {
+    skillIds: [],
+  });
+  const many = Array.from(
+    { length: 12 },
+    (_, i) => `64b7f0c2a1b2c3d4e5f60c${String(i).padStart(2, "0")}`,
+  );
+  assert.equal(
+    formChanges(a, { ...formOf(a, []), skillIds: [...many, many[0]!] }).skillIds
+      ?.length,
+    10,
   );
 });
 
@@ -233,6 +271,7 @@ test("create sends a read_only connector as an object and read_write as a string
       connectorSlugs: ["github", "jira"],
       // github read_only (object), jira read_write (string, the default).
       connectorAccess: { github: "read_only" },
+      skillIds: [],
     },
     "personal",
     "req-abcdef12",

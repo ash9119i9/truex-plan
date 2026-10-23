@@ -26,6 +26,13 @@ import {
   type Connector,
   type ConnectorAccess,
 } from "@/lib/tenant-connectors";
+import {
+  fetchSkills,
+  MAX_SKILLS,
+  skillNote,
+  skillOptions,
+  type SkillCatalog,
+} from "@/lib/tenant-skills";
 import { warnFailure } from "@/lib/api";
 // Connect card, tool rows, connector banner and picker styles.
 import "@/styles/v2/connectors.css";
@@ -68,6 +75,9 @@ export function TenantAgentDialog({
   // feature is off / the fetch failed — in which case the section is hidden
   // (existing selections on an edited agent are left untouched either way).
   const [connectors, setConnectors] = useState<Connector[] | null>(null);
+  // The skill catalog, null while loading or when the fetch failed. Skills an
+  // edited agent already has are shown either way.
+  const [skillCatalog, setSkillCatalog] = useState<SkillCatalog | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const ids = useRef(requestIds());
   // Answers that arrive after the dialog closed or reopened are ignored.
@@ -118,6 +128,25 @@ export function TenantAgentDialog({
     };
   }, [open, editing]);
 
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setSkillCatalog(null);
+    fetchSkills().then(
+      (catalog) => {
+        if (live) setSkillCatalog(catalog);
+      },
+      (error) => {
+        if (!live) return;
+        setSkillCatalog(null);
+        warnFailure("skills catalog", error);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [open, editing]);
+
   if (!open) return null;
 
   const set = <K extends keyof AgentForm>(key: K, value: AgentForm[K]) => {
@@ -150,6 +179,24 @@ export function TenantAgentDialog({
     setError("");
   };
   const atConnectorCap = form.connectorSlugs.length >= MAX_CONNECTORS;
+  // Toggles a skill, keeping the chosen order; a new one is appended.
+  const toggleSkill = (id: string) => {
+    setForm((f) => {
+      const has = f.skillIds.includes(id);
+      const next = has
+        ? f.skillIds.filter((s) => s !== id)
+        : f.skillIds.length >= MAX_SKILLS
+          ? f.skillIds
+          : [...f.skillIds, id];
+      return { ...f, skillIds: next };
+    });
+    setError("");
+  };
+  const atSkillCap = form.skillIds.length >= MAX_SKILLS;
+  const skillRows = skillOptions(
+    skillCatalog?.skills ?? [],
+    editing?.skills ?? [],
+  );
   const selectedModel = models.find((m) => m.id === form.modelId);
   const changes = editing ? formChanges(editing, form) : null;
   const problem =
@@ -438,6 +485,73 @@ export function TenantAgentDialog({
                 <p className="connector-pick-hint">
                   You&apos;ve reached the limit of {MAX_CONNECTORS}. Remove one
                   to choose another.
+                </p>
+              )}
+            </fieldset>
+          )}
+
+          {skillRows.length > 0 && (
+            <fieldset className="field">
+              <legend className="field-label">Skills</legend>
+              <p className="muted sm">
+                Instructions and files the agent reads when a task calls for
+                them. Up to {MAX_SKILLS}.
+              </p>
+              <div className="connector-picker">
+                {skillRows.map((skill) => {
+                  const checked = form.skillIds.includes(skill.id);
+                  // An unavailable skill can only be removed.
+                  const disabled = !checked && (atSkillCap || !skill.available);
+                  const note = skillNote(skill, skillCatalog?.scripts ?? false);
+                  return (
+                    <label
+                      key={skill.id}
+                      className={[
+                        "connector-pick",
+                        checked && "is-checked",
+                        disabled && "is-disabled",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleSkill(skill.id)}
+                      />
+                      <span className="connector-pick-text">
+                        <span className="strong block">
+                          {skill.displayName}
+                          {note && (
+                            <span className="skill-pick-note"> · {note}</span>
+                          )}
+                        </span>
+                        {skill.description && (
+                          <span className="muted sm block">
+                            {skill.description}
+                          </span>
+                        )}
+                        {note === "Unavailable" && checked && (
+                          <span className="connector-pick-hint">
+                            No longer offered. New chats run without it.
+                          </span>
+                        )}
+                        {note === "Needs coding" && checked && (
+                          <span className="connector-pick-hint">
+                            Its instructions work here; its scripts need coding,
+                            which is off in this workspace.
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {atSkillCap && (
+                <p className="connector-pick-hint">
+                  You&apos;ve reached the limit of {MAX_SKILLS}. Remove one to
+                  choose another.
                 </p>
               )}
             </fieldset>

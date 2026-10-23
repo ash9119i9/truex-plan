@@ -9,6 +9,7 @@ import {
   type ConnectorAccess,
   type ConnectorRef,
 } from "./tenant-connectors.ts";
+import { MAX_SKILLS, parseSkillRefs, type SkillRef } from "./tenant-skills.ts";
 
 export type AgentSource = "builtin" | "personal" | "tenant";
 export type AgentScope = Exclude<AgentSource, "builtin">;
@@ -33,6 +34,8 @@ export interface TenantAgent {
   // The directory connectors this agent attaches (always present, [] when
   // none). Its chats can use these connectors' read-only tools.
   connectors: ConnectorRef[];
+  // The catalog skills this agent uses (always present, [] when none).
+  skills: SkillRef[];
   revision: number;
   createdByMe: boolean;
   status: "active" | "archived";
@@ -53,6 +56,8 @@ export interface AgentForm {
   // attaches read_write; only read_only is sent as an object on the wire.
   // Only connectors with write tools offer the choice.
   connectorAccess: Record<string, ConnectorAccess>;
+  // Skill IDs the agent uses, at most MAX_SKILLS, unique, in order.
+  skillIds: string[];
 }
 
 // Kept in step with platform-next/src/modules/agents/agent-fields.ts.
@@ -109,6 +114,7 @@ export function parseAgent(value: unknown): TenantAgent | null {
     model: a.model === null ? null : parseModel(a.model),
     available: a.available === true,
     connectors: parseConnectorRefs(a.connectors),
+    skills: parseSkillRefs(a.skills),
     revision,
     createdByMe: a.createdByMe === true,
     status: a.status === "archived" ? "archived" : "active",
@@ -185,6 +191,7 @@ export function cleanForm(form: AgentForm): AgentForm {
     tint: form.tint,
     connectorSlugs: dedupe(form.connectorSlugs).slice(0, MAX_CONNECTORS),
     connectorAccess: cleanAccess(form),
+    skillIds: dedupe(form.skillIds ?? []).slice(0, MAX_SKILLS),
   };
 }
 
@@ -257,6 +264,7 @@ export function formChanges(
     changes.connectorSlugs = f.connectorSlugs;
     changes.connectorAccess = f.connectorAccess;
   }
+  if (!sameSlugs(f.skillIds, current.skillIds)) changes.skillIds = f.skillIds;
   return changes;
 }
 
@@ -296,6 +304,7 @@ export function formOf(
             .filter((c) => c.access === "read_only")
             .map((c) => [c.slug, c.access]),
         ),
+        skillIds: agent.skills.map((s) => s.id),
       }
     : {
         name: "",
@@ -305,6 +314,7 @@ export function formOf(
         tint: DEFAULT_TINT,
         connectorSlugs: [],
         connectorAccess: {},
+        skillIds: [],
       };
 }
 

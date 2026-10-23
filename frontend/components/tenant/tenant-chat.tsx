@@ -7,7 +7,19 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ApiRequestError, userMessage } from "@/lib/api";
+import { ApiRequestError, userMessage, warnFailure } from "@/lib/api";
+import { fitPanel } from "@/lib/fit-panel";
+import {
+  cachedFileContent,
+  downloadFile,
+  fetchChatFiles,
+  isImage,
+  parseFiles,
+  retryUnsavedFiles,
+  seedFileContent,
+  withFiles,
+  type ChatFile,
+} from "@/lib/tenant-files";
 import { tintOf } from "@/lib/agent-look";
 import {
   defaultAgent,
@@ -20,7 +32,7 @@ import {
 import {
   applyStreamEvent,
   archiveChat,
-  canSendDraft,
+  canSendMessage,
   chatParam,
   fetchChat,
   fetchChats,
@@ -47,6 +59,7 @@ import {
   withLiveSteer,
   withApproval,
   withApprovalRace,
+  withNetworkDecision,
   hasPendingApproval,
   dropSteer,
   type ChatSummary,
@@ -57,6 +70,19 @@ import {
   type SendFailure,
 } from "@/lib/tenant-chat";
 import { followRun } from "@/lib/tenant-chat-stream";
+import {
+  discardUpload,
+  fetchUploadSettings,
+  fileProblem,
+  pendingAttachments,
+  uploadFile,
+  uploadIds,
+  UPLOADS_OFF,
+  withDraftFile,
+  previewSeeds,
+  type DraftFile,
+  type UploadSettings,
+} from "@/lib/tenant-uploads";
 import {
   connectCardText,
   connectionRequired,
@@ -77,7 +103,24 @@ import { AgentPicker } from "./agent-picker";
 import { TenantAgentDialog } from "./tenant-agent-dialog";
 import { ChatList } from "./chat-list";
 import { ChatComposer } from "./chat-composer";
-import { ChatHeader, Transcript, type Connection } from "./chat-transcript";
+import {
+  ChatHeader,
+  NetworkActionsContext,
+  Transcript,
+  type Connection,
+  type NetworkActions,
+} from "./chat-transcript";
+import {
+  postNetworkDecision,
+  type NetworkDecision,
+} from "@/lib/tenant-network";
+import {
+  FileActionsContext,
+  type FileActions,
+  type RetryState,
+  type ViewerTarget,
+} from "./file-card";
+import { FileViewer } from "./file-viewer";
 import "@/styles/v2/tenant-chat.css";
 // Connect card, tool rows, connector banner and picker styles.
 import "@/styles/v2/connectors.css";
@@ -90,6 +133,14 @@ type Load =
 // The draft and send notes of the new-chat screen are kept under this key;
 // an open chat's under its ID.
 const NEW = "new";
+// Files uploading at once; the platform takes three per member.
+const UPLOADS_AT_ONCE = 2;
+
+// A picked image is kept with its chip, so it can be shown before (and
+// without) any download.
+const imagePreview = (file: File, name: string): { preview?: Blob } =>
+  isImage(name) ? { preview: file } : {};
+
 // Below this width the sidebar is a drawer (Layout & shell §7).
 const NARROW = "(max-width: 720px)";
 
@@ -247,6 +298,24 @@ export function TenantChat() {
   const [live, setLive] = useState<{ chatId: string; reply: LiveReply } | null>(
     null,
   );
+  // The open chat's stored file versions, and the file the viewer shows.
+  const [chatFiles, setChatFiles] = useState<{
+    chatId: string;
+    files: ChatFile[];
+  } | null>(null);
+  const [viewer, setViewer] = useState<{
+    chatId: string;
+    target: ViewerTarget;
+  } | null>(null);
+  // Replies whose viewer the person closed: it does not open by itself again.
+  const dismissed = useRef(new Set<string>());
+  const addFiles = useCallback((chatId: string, added: ChatFile[]) => {
+    setChatFiles((current) => ({
+      chatId,
+      files:
+        current?.chatId === chatId ? withFiles(current.files, added) : added,
+    }));
+  }, []);
   const [connection, setConnection] = useState<Connection>("open");
   const [followKey, setFollowKey] = useState(0);
   const [stopping, setStopping] = useState<string | null>(null);
@@ -281,36 +350,47 @@ export function TenantChat() {
   }, []);
 
   // Reads the chat; `quiet` keeps what is on screen while it does.
-  const load = useCallback(async (chatId: string, quiet = false) => {
-    if (!quiet) setOpened({ state: "loading" });
-    try {
-      const next = await fetchChat(chatId);
-      if (openRef.current !== chatId) return;
-      setThread(next);
-      setOpened({ state: "ready" });
-      setChats((list) => withChat(list, next.chat));
-      const runId = next.chat.activeRunId;
-      setLive((current) =>
-        !runId
-          ? null
-          : current?.chatId === chatId && current.reply.runId === runId
-            ? current
-            : { chatId, reply: liveReply(runId) },
-      );
-    } catch (error) {
-      if (openRef.current !== chatId) return;
-      // A quiet reload that fails leaves the chat as it was.
-      if (quiet && threadRef.current?.chat.id === chatId) return;
-      const notFound = error instanceof ApiRequestError && error.status === 404;
-      setOpened({
-        state: "error",
-        notFound,
-        message: notFound
-          ? "This chat doesn't exist, or you can't open it."
-          : userMessage(error, "This chat couldn't be opened. Try again."),
-      });
-    }
-  }, []);
+  const load = useCallback(
+    async (chatId: string, quiet = false) => {
+      if (!quiet) setOpened({ state: "loading" });
+      try {
+        const next = await fetchChat(chatId);
+        if (openRef.current !== chatId) return;
+        // Alongside, not first: a chat opens without waiting for its files.
+        fetchChatFiles(chatId).then(
+          (files) => {
+            if (openRef.current === chatId) addFiles(chatId, files);
+          },
+          (error: unknown) => warnFailure("chat files", error),
+        );
+        setThread(next);
+        setOpened({ state: "ready" });
+        setChats((list) => withChat(list, next.chat));
+        const runId = next.chat.activeRunId;
+        setLive((current) =>
+          !runId
+            ? null
+            : current?.chatId === chatId && current.reply.runId === runId
+              ? current
+              : { chatId, reply: liveReply(runId) },
+        );
+      } catch (error) {
+        if (openRef.current !== chatId) return;
+        // A quiet reload that fails leaves the chat as it was.
+        if (quiet && threadRef.current?.chat.id === chatId) return;
+        const notFound =
+          error instanceof ApiRequestError && error.status === 404;
+        setOpened({
+          state: "error",
+          notFound,
+          message: notFound
+            ? "This chat doesn't exist, or you can't open it."
+            : userMessage(error, "This chat couldn't be opened. Try again."),
+        });
+      }
+    },
+    [addFiles],
+  );
 
   useEffect(() => {
     if (!openId) {
@@ -334,12 +414,15 @@ export function TenantChat() {
     const mine = (current: typeof live) =>
       current?.chatId === followChat && current.reply.runId === followRunId;
     return followRun(followChat, followRunId, {
-      onEvent: (event) =>
+      onEvent: (event) => {
         setLive((current) =>
           mine(current)
             ? { ...current!, reply: applyStreamEvent(current!.reply, event) }
             : current,
-        ),
+        );
+        if (event.type === "files")
+          addFiles(followChat, parseFiles(event.data));
+      },
       onConnection: (connected) =>
         setConnection(connected ? "open" : "reconnecting"),
       onEnd: (end) => {
@@ -377,7 +460,7 @@ export function TenantChat() {
         setConnection("lost");
       },
     });
-  }, [followChat, followRunId, followKey, load]);
+  }, [followChat, followRunId, followKey, load, addFiles]);
 
   // Stable, like loadOlder, so typing a draft does not re-render the
   // transcript (dev build, 54 messages: it added 8–16 ms per keystroke).
@@ -417,6 +500,116 @@ export function TenantChat() {
   const [ids] = useState(() => messageIds());
   const draftKey = openId ?? NEW;
   const draft = drafts[draftKey] ?? "";
+
+  // ---- Attached files ----
+  // Each picked file uploads at once (a few at a time, the platform's
+  // per-member bound) and waits in its draft until the message is sent.
+  const [uploadSettings, setUploadSettings] =
+    useState<UploadSettings>(UPLOADS_OFF);
+  useEffect(() => {
+    let current = true;
+    fetchUploadSettings()
+      .then((settings) => current && setUploadSettings(settings))
+      .catch((error) => warnFailure("upload settings", error));
+    return () => {
+      current = false;
+    };
+  }, []);
+  const [draftFiles, setDraftFiles] = useState<Record<string, DraftFile[]>>({});
+  const [fileErrors, setFileErrors] = useState<Record<string, string>>({});
+  const uploadQueue = useRef<
+    Array<{ draft: string; chip: string; file: File; name: string }>
+  >([]);
+  const uploading = useRef(new Map<string, AbortController>());
+  // Chips taken off while their upload was still going.
+  const removedChips = useRef(new Set<string>());
+  const files = draftFiles[draftKey] ?? [];
+  const setChip = (draft: string, chip: string, next: DraftFile | null) =>
+    setDraftFiles((all) => {
+      const list = all[draft];
+      if (!list?.some((f) => f.key === chip)) return all;
+      return { ...all, [draft]: withDraftFile(list, chip, next) };
+    });
+  const pumpUploads = () => {
+    while (uploading.current.size < UPLOADS_AT_ONCE) {
+      const next = uploadQueue.current.shift();
+      if (!next) return;
+      const controller = new AbortController();
+      uploading.current.set(next.chip, controller);
+      void uploadFile(next.file, next.name, controller.signal)
+        .then((uploadId) => {
+          if (removedChips.current.has(next.chip)) {
+            void discardUpload(uploadId);
+            return;
+          }
+          setChip(next.draft, next.chip, {
+            key: next.chip,
+            name: next.name,
+            size: next.file.size,
+            ...imagePreview(next.file, next.name),
+            state: "ready",
+            uploadId,
+          });
+        })
+        .catch((error) => {
+          if (removedChips.current.has(next.chip)) return;
+          setChip(next.draft, next.chip, {
+            key: next.chip,
+            name: next.name,
+            size: next.file.size,
+            ...imagePreview(next.file, next.name),
+            state: "failed",
+            error: userMessage(error, "The file couldn't be attached."),
+          });
+        })
+        .finally(() => {
+          uploading.current.delete(next.chip);
+          pumpUploads();
+        });
+    }
+  };
+  const attachFiles = (picked: File[]) => {
+    const key = draftKey;
+    let count = (draftFiles[key] ?? []).length;
+    const added: DraftFile[] = [];
+    let problem = "";
+    for (const file of picked) {
+      const refused = fileProblem(file, uploadSettings, count);
+      if (refused) {
+        problem ||= refused;
+        continue;
+      }
+      count++;
+      const chip = crypto.randomUUID();
+      const name = file.name.normalize("NFC").trim();
+      added.push({
+        key: chip,
+        name,
+        size: file.size,
+        ...imagePreview(file, name),
+        state: "uploading",
+      });
+      uploadQueue.current.push({ draft: key, chip, file, name });
+    }
+    setFileErrors((all) => ({ ...all, [key]: problem }));
+    if (added.length === 0) return;
+    setDraftFiles((all) => ({
+      ...all,
+      [key]: [...(all[key] ?? []), ...added],
+    }));
+    pumpUploads();
+  };
+  const removeFile = (chip: string) => {
+    const key = draftKey;
+    const file = (draftFiles[key] ?? []).find((f) => f.key === chip);
+    if (!file) return;
+    removedChips.current.add(chip);
+    uploadQueue.current = uploadQueue.current.filter((q) => q.chip !== chip);
+    uploading.current.get(chip)?.abort();
+    if (file.state === "ready") void discardUpload(file.uploadId);
+    setChip(key, chip, null);
+    setFileErrors((all) => ({ ...all, [key]: "" }));
+  };
 
   // Switching the new-chat agent dismisses a Connect card raised for a
   // different agent (switching chats changes draftKey, which hides it).
@@ -509,9 +702,47 @@ export function TenantChat() {
     }
   };
 
+  // ---- Network cards (blocked sandbox requests on saved replies) ----
+  const [networkBusy, setNetworkBusy] = useState<string | null>(null);
+  const [networkErrors, setNetworkErrors] = useState<Record<string, string>>(
+    {},
+  );
+  const answerNetwork = async (
+    messageId: string,
+    decision: NetworkDecision,
+  ) => {
+    const chatId = openThread?.chat.id;
+    if (!chatId || networkBusy) return;
+    setNetworkBusy(messageId);
+    setNetworkErrors(({ [messageId]: _gone, ...rest }) => rest);
+    try {
+      const result = await postNetworkDecision(chatId, messageId, decision);
+      if (openRef.current !== chatId) return;
+      if (result.kind === "failed")
+        setNetworkErrors((all) => ({ ...all, [messageId]: result.message }));
+      else if (result.kind === "resolved")
+        // Answered elsewhere: the next read shows that answer.
+        setNetworkErrors((all) => ({
+          ...all,
+          [messageId]: "This was already answered. Reload to see the answer.",
+        }));
+      else
+        setThread((current) =>
+          current?.chat.id === chatId
+            ? withNetworkDecision(current, messageId, result.decision)
+            : current,
+        );
+    } finally {
+      setNetworkBusy(null);
+    }
+  };
+
   const dispatch = async (key: string, text: string, resent = false) => {
-    if (sendingRef.current || !canSendDraft(text)) return;
     const chat = openThread?.chat ?? null;
+    // A resend is the text of a steer that was never read; it has no files.
+    const sentFiles = resent ? [] : (draftFiles[key] ?? []);
+    const busyNow = !!(openId && chat?.activeRunId);
+    if (sendingRef.current || !canSendMessage(text, sentFiles, busyNow)) return;
     // A reply in progress is steered, not blocked; only a read-only or
     // missing chat refuses.
     if (openId && (!chat || readOnlyNote(chat))) return;
@@ -523,9 +754,14 @@ export function TenantChat() {
     setConnectCard(null);
     const target = openId ?? `new:${agent!.id}`;
     // A resend reuses no earlier intent; its id is the one just minted.
+    const attachments = uploadIds(sentFiles);
+    // A retry of the same text and files reuses its ID.
+    const intent = attachments.length
+      ? `${target}:files:${attachments.join(",")}`
+      : target;
     const clientMessageId = resent
       ? ids.for(`resend:${target}:${Date.now()}`, text)
-      : ids.for(target, text);
+      : ids.for(intent, text);
     const since = Date.now();
     // A message into a running reply shows at the bottom of that reply at
     // once (a steer); otherwise it shows as the next message in the chat.
@@ -540,17 +776,36 @@ export function TenantChat() {
             }
           : current,
       );
-    else setPending({ key, text, clientMessageId, since, agent });
+    else
+      setPending({
+        key,
+        text,
+        clientMessageId,
+        since,
+        agent,
+        attachments: pendingAttachments(sentFiles),
+      });
     setDrafts((all) => {
       const { [key]: _sent, ...rest } = all;
       return rest;
     });
+    if (sentFiles.length)
+      setDraftFiles((all) => {
+        const { [key]: _sent, ...rest } = all;
+        return rest;
+      });
+    setFileErrors((all) => (all[key] ? { ...all, [key]: "" } : all));
     try {
       const receipt = openId
-        ? await sendMessage(chat!, text, clientMessageId)
+        ? await sendMessage(chat!, text, clientMessageId, attachments)
         : {
             kind: "send" as const,
-            receipt: await startChat(agent!.id, text, clientMessageId),
+            receipt: await startChat(
+              agent!.id,
+              text,
+              clientMessageId,
+              attachments,
+            ),
           };
       ids.reset();
       setChats((list) => withChat(list, receipt.receipt.chat));
@@ -583,9 +838,24 @@ export function TenantChat() {
             ? { ...current, reply: dropSteer(current.reply, clientMessageId) }
             : current,
         );
+      // Sent images are shown from the bytes already here, not downloaded.
+      for (const { fileId, blob } of previewSeeds(
+        sentFiles,
+        sent.message.attachments ?? [],
+      ))
+        seedFileContent(fileId, blob);
       setThread((current) =>
         withReceipt(current?.chat.id === chatId ? current : null, sent),
       );
+      // The attached files are the chat's files now; a reply's `files`
+      // event names only what the reply wrote, so read them once here.
+      if (attachments.length)
+        fetchChatFiles(chatId).then(
+          (files) => {
+            if (openRef.current === chatId) addFiles(chatId, files);
+          },
+          (error: unknown) => warnFailure("chat files", error),
+        );
       setOpened({ state: "ready" });
       if (sent.chat.activeRunId === sent.run.id)
         setLive({ chatId, reply: liveReply(sent.run.id, since) });
@@ -593,6 +863,10 @@ export function TenantChat() {
       else void load(chatId, true);
     } catch (error) {
       setDrafts((all) => (all[key] ? all : { ...all, [key]: text }));
+      if (sentFiles.length)
+        setDraftFiles((all) =>
+          all[key]?.length ? all : { ...all, [key]: sentFiles },
+        );
       // An optimistic steer that never reached the turn is removed.
       if (steering)
         setLive((current) =>
@@ -752,6 +1026,138 @@ export function TenantChat() {
   const shownLive = openLive ?? pendingLive;
   const creating = !openId && !!shownThread;
 
+  // ---- Files ----
+  const shownFiles = useMemo(
+    () => (chatFiles && chatFiles.chatId === openId ? chatFiles.files : []),
+    [chatFiles, openId],
+  );
+  const shownViewer = viewer && viewer.chatId === openId ? viewer : null;
+  // The viewed reply's files that couldn't be saved.
+  const viewerRun = shownViewer?.target.runId;
+  const viewerUnsaved = !viewerRun
+    ? []
+    : openLive?.runId === viewerRun
+      ? openLive.unsaved
+      : (shownThread?.runs[viewerRun]?.unsavedFiles ?? []);
+  // A reply that starts writing a new file opens it in the viewer, so its
+  // text can be watched as it is written. Not on a phone, where the viewer
+  // would cover the chat, and not after the person closed it for this reply.
+  const writingPath = openLive ? firstWritingPath(openLive) : null;
+  const liveRunId = openLive?.runId ?? null;
+  useEffect(() => {
+    if (!openId || !liveRunId || !writingPath || narrow) return;
+    if (dismissed.current.has(liveRunId)) return;
+    setViewer((current) =>
+      current?.chatId === openId && current.target.runId === liveRunId
+        ? current
+        : { chatId: openId, target: { runId: liveRunId, path: writingPath } },
+    );
+  }, [openId, liveRunId, writingPath, narrow]);
+  const closeViewer = useCallback(() => {
+    setViewer((current) => {
+      if (current) dismissed.current.add(current.target.runId);
+      return null;
+    });
+  }, []);
+  const download = useCallback(
+    (file: ChatFile) => {
+      if (!openId) return;
+      downloadFile(openId, file).catch((error: unknown) =>
+        setAnnouncement(userMessage(error, "The file couldn't be downloaded.")),
+      );
+    },
+    [openId],
+  );
+  // Retries of replies' unsaved files, by run.
+  const [retries, setRetries] = useState<Record<string, RetryState>>({});
+  const retryFiles = useCallback(
+    (runId: string, paths: readonly string[]) => {
+      const chatId = openId;
+      if (!chatId) return;
+      const put = (state: RetryState | null) =>
+        setRetries((current) => {
+          const next = { ...current };
+          if (state) next[runId] = state;
+          else delete next[runId];
+          return next;
+        });
+      put({ busy: true });
+      retryUnsavedFiles(chatId, runId).then(
+        ({ files, unsaved }) => {
+          addFiles(chatId, files);
+          // Neither saved nor still failing: no longer in the chat.
+          const gone = paths.some(
+            (path) =>
+              !unsaved.includes(path) && !files.some((f) => f.path === path),
+          );
+          put(
+            unsaved.length
+              ? {
+                  busy: false,
+                  message: "Still couldn't save. Try again in a moment.",
+                }
+              : gone
+                ? {
+                    busy: false,
+                    message:
+                      "Some files are no longer in this chat, so they weren't saved.",
+                  }
+                : null,
+          );
+          setThread((current) => {
+            const run = current?.chat.id === chatId && current.runs[runId];
+            if (!run) return current;
+            const { unsavedFiles: _before, ...rest } = run;
+            return {
+              ...current,
+              runs: {
+                ...current.runs,
+                [runId]: unsaved.length
+                  ? { ...rest, unsavedFiles: unsaved }
+                  : rest,
+              },
+            };
+          });
+          setLive((current) =>
+            current?.chatId === chatId && current.reply.runId === runId
+              ? { ...current, reply: { ...current.reply, unsaved } }
+              : current,
+          );
+        },
+        (error: unknown) =>
+          put({
+            busy: false,
+            message: userMessage(
+              error,
+              "The files couldn't be saved. Try again.",
+            ),
+          }),
+      );
+    },
+    [openId, addFiles],
+  );
+  // Stable per chat, so image previews don't reload as the viewer changes.
+  const fileContent = useCallback(
+    (fileId: string) =>
+      openId
+        ? cachedFileContent(openId, fileId)
+        : Promise.reject(new Error("No chat is open.")),
+    [openId],
+  );
+  const fileActions = useMemo<FileActions>(
+    () => ({
+      open: (target) => openId && setViewer({ chatId: openId, target }),
+      content: fileContent,
+      download,
+      active: shownViewer?.target ?? null,
+      retry: retryFiles,
+      retryState: (runId) => retries[runId],
+    }),
+    [openId, fileContent, download, shownViewer, retryFiles, retries],
+  );
+  const viewportWidth = useViewportWidth();
+  const viewerFit = fitPanel(viewportWidth, 560, 640, !narrow, true);
+
   let stage: ReactNode;
   if (!openId && !creating) {
     stage = (
@@ -778,6 +1184,11 @@ export function TenantChat() {
             failure={shownFailure}
             stopError=""
             focusKey={NEW}
+            uploads={uploadSettings}
+            files={files}
+            onAddFiles={attachFiles}
+            onRemoveFile={removeFile}
+            fileError={fileErrors[draftKey] ?? ""}
           />
           {agentsLoad.state === "loading" && (
             <p className="workspace-empty-note" aria-busy="true">
@@ -813,6 +1224,14 @@ export function TenantChat() {
     const chat = shownThread.chat;
     const note = readOnlyNote(chat);
     const busy = !!chat.activeRunId;
+    const networkActions: NetworkActions = {
+      answer: (messageId, decision) => void answerNetwork(messageId, decision),
+      busy: networkBusy,
+      errors: networkErrors,
+      // "Try again" is an ordinary message: the next reply carries the allow.
+      tryAgain: busy || note || sending ? null : () => resend("Try again."),
+      latestRunId: shownThread.messages.at(-1)?.runId ?? null,
+    };
     stage = (
       <section className="tchat-open" aria-label={chat.title || "Chat"}>
         <ChatHeader
@@ -822,21 +1241,26 @@ export function TenantChat() {
           onRename={rename}
           onArchive={archive}
         />
-        <Transcript
-          thread={shownThread}
-          live={shownLive}
-          connection={connection}
-          loadingOlder={olderFor === chat.id}
-          olderError={olderError}
-          onLoadOlder={loadOlder}
-          onReconnect={reconnect}
-          onResend={resend}
-          onApprove={(approvalId, decision) =>
-            void approve(approvalId, decision)
-          }
-          approvalBusy={approvalBusy}
-          tenantId={me.tenant.id}
-        />
+        <FileActionsContext.Provider value={fileActions}>
+          <NetworkActionsContext.Provider value={networkActions}>
+            <Transcript
+              thread={shownThread}
+              live={shownLive}
+              connection={connection}
+              loadingOlder={olderFor === chat.id}
+              olderError={olderError}
+              onLoadOlder={loadOlder}
+              onReconnect={reconnect}
+              onResend={resend}
+              onApprove={(approvalId, decision) =>
+                void approve(approvalId, decision)
+              }
+              approvalBusy={approvalBusy}
+              tenantId={me.tenant.id}
+              files={shownFiles}
+            />
+          </NetworkActionsContext.Provider>
+        </FileActionsContext.Provider>
         <div className="bottom">
           {note && !busy ? (
             <div className="tchat-readonly" role="status">
@@ -879,6 +1303,11 @@ export function TenantChat() {
                 failure={shownFailure}
                 stopError={stopError}
                 focusKey={chat.id}
+                uploads={uploadSettings}
+                files={files}
+                onAddFiles={attachFiles}
+                onRemoveFile={removeFile}
+                fileError={fileErrors[draftKey] ?? ""}
               />
             </>
           )}
@@ -924,7 +1353,8 @@ export function TenantChat() {
     <>
       <Panel
         kind="sidebar"
-        open={!narrow || drawer}
+        // Gives way to an open file before the file floats over the chat.
+        open={narrow ? drawer : !shownViewer || viewerFit.sidebar}
         label="Chats"
         className="tchat-side"
       >
@@ -969,6 +1399,30 @@ export function TenantChat() {
       >
         {stage}
       </WorkspaceStage>
+      <Panel
+        kind="activity"
+        open={!!shownViewer}
+        width={560}
+        // Floats over the chat only when even without the sidebar the chat
+        // would be under 640px.
+        overlay={viewerFit.overlay}
+        label="File"
+      >
+        {shownViewer && openId && (
+          <FileViewer
+            chatId={openId}
+            target={shownViewer.target}
+            files={shownFiles}
+            live={openLive}
+            onSelect={(target) => setViewer({ chatId: openId, target })}
+            onClose={closeViewer}
+            onDownload={download}
+            unsaved={viewerUnsaved}
+            saving={retries[shownViewer.target.runId]}
+            onSave={() => retryFiles(shownViewer.target.runId, viewerUnsaved)}
+          />
+        )}
+      </Panel>
       <TenantAgentDialog
         open={dialog !== null}
         editing={dialog?.editing ?? null}
@@ -986,6 +1440,31 @@ export function TenantChat() {
       </p>
     </>
   );
+}
+
+// The first new file the reply is writing that has text to show.
+function firstWritingPath(live: LiveReply): string | null {
+  for (const item of live.items)
+    if (
+      item.type === "file_change" &&
+      item.status === "inProgress" &&
+      item.preview?.text
+    )
+      return item.preview.path;
+  return null;
+}
+
+function useViewportWidth(): number {
+  const [width, setWidth] = useState(() =>
+    typeof window === "undefined" ? 1440 : window.innerWidth,
+  );
+  useEffect(() => {
+    const update = () => setWidth(window.innerWidth);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return width;
 }
 
 function useMedia(query: string): boolean {

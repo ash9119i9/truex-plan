@@ -4,6 +4,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import {
   MAX_BODY_BYTES,
+  MAX_UPLOAD_BODY_BYTES,
+  bodyLimitFor,
   forward,
   forwardedFor,
   isBlockedPath,
@@ -267,6 +269,34 @@ test("oversized requests are refused up front and cut off mid-stream", async (t)
   // A body at the limit is fine.
   const fine = await call(up, "/api", ["x"], { method: "POST", body: "z".repeat(1024 * 1024), headers: { "content-type": "application/json" } });
   assert.equal(fine.status, 200);
+});
+
+test("an attached file may be up to 20 MB; nothing else is", async (t) => {
+  assert.equal(bodyLimitFor("POST", "/api/v1/uploads"), MAX_UPLOAD_BODY_BYTES);
+  assert.equal(bodyLimitFor("POST", "/api/v1/chats"), MAX_BODY_BYTES);
+  assert.equal(bodyLimitFor("PATCH", "/api/v1/uploads"), MAX_BODY_BYTES);
+  assert.equal(bodyLimitFor("POST", "/api/v1/uploads/x"), MAX_BODY_BYTES);
+  const up = await upstream(ECHO);
+  t.after(up.close);
+  const file = "u".repeat(5 * 1024 * 1024);
+  const ok = await call(up, "/api", ["v1", "uploads"], {
+    method: "POST",
+    body: file,
+    headers: { "content-type": "application/octet-stream" },
+  });
+  assert.equal(ok.status, 200, "a 5 MB upload passes");
+  const other = await call(up, "/api", ["v1", "chats"], {
+    method: "POST",
+    body: file,
+    headers: { "content-type": "application/json" },
+  });
+  assert.equal(other.status, 413, "the same body to another route is refused");
+  const huge = await call(up, "/api", ["v1", "uploads"], {
+    method: "POST",
+    body: "u".repeat(MAX_UPLOAD_BODY_BYTES + 1),
+    headers: { "content-type": "application/octet-stream" },
+  });
+  assert.equal(huge.status, 413, "past 20 MB is refused");
 });
 
 test("an unreachable or slow platform is an outage, never a sign-out", async (t) => {

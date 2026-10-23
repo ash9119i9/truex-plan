@@ -1,6 +1,8 @@
 "use client";
 import {
+  createContext,
   memo,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -51,6 +53,36 @@ import {
   StreamingMarkdown,
 } from "@/components/streaming-markdown";
 // Connect card, tool rows, connector banner and picker styles.
+import {
+  activityLabel,
+  writingNote,
+  allowForChatHint,
+  codingCardTitle,
+  fileLabel,
+  type Activity,
+} from "@/lib/tenant-coding";
+import {
+  fileTag,
+  filesOfRun,
+  formatBytes,
+  isImage,
+  type ChatFile,
+} from "@/lib/tenant-files";
+import type { MessageAttachment } from "@/lib/tenant-uploads";
+import {
+  networkDetail,
+  networkOutcome,
+  networkTitle,
+  type NetworkBlock,
+  type NetworkDecision,
+} from "@/lib/tenant-network";
+import {
+  FileActionsContext,
+  FileCard,
+  useImageBlob,
+  useObjectUrl,
+  type WritingFile,
+} from "./file-card";
 import "@/styles/v2/connectors.css";
 
 // How the browser's own connection to a live reply is doing; the platform's
@@ -245,6 +277,7 @@ export const Transcript = memo(function Transcript({
   onApprove,
   approvalBusy,
   tenantId,
+  files,
 }: {
   thread: ChatThread;
   live: LiveReply | null;
@@ -262,6 +295,8 @@ export const Transcript = memo(function Transcript({
   approvalBusy: string | null;
   // This tab's tenant, for the Connected tools reconnect link.
   tenantId: string;
+  // Every stored file version of the chat; each reply shows its own.
+  files: readonly ChatFile[];
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -321,6 +356,8 @@ export const Transcript = memo(function Transcript({
     live?.items.length,
     // A new approval card (or its settling) changes the reply's height.
     live && Object.keys(live.approvals).length,
+    // So does a reply's file card.
+    files.length,
   ]);
 
   const loadOlder = () => {
@@ -376,6 +413,7 @@ export const Transcript = memo(function Transcript({
             onResend={onResend}
             onApprove={onApprove}
             approvalBusy={approvalBusy}
+            files={filesOfRun(files, exchange.runId)}
           />
         ))}
       </div>
@@ -396,6 +434,7 @@ function Exchange({
   onResend,
   onApprove,
   approvalBusy,
+  files,
 }: {
   messages: ChatMessage[];
   run: ChatRun | null;
@@ -409,6 +448,8 @@ function Exchange({
   onResend: (text: string) => void;
   onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
   approvalBusy: string | null;
+  // The files this reply stored (newest version of each path).
+  files: ChatFile[];
 }) {
   // A live run shows its saved user message(s) and the reply as it streams;
   // the replies Codex has written are in the live items, so the run's own
@@ -432,6 +473,7 @@ function Exchange({
             onReconnect={onReconnect}
             onApprove={onApprove}
             approvalBusy={approvalBusy}
+            files={files}
           />
         </AgentReply>
       ) : (
@@ -442,6 +484,7 @@ function Exchange({
           hue={hue}
           connectors={connectors}
           onResend={onResend}
+          files={files}
         />
       )}
     </>
@@ -461,7 +504,10 @@ function UserBubble({
   return (
     <article className="msg user" aria-label="Your message">
       <div className="bubble-wrap">
-        <div className="bubble">{message.text}</div>
+        {message.attachments && (
+          <SentFiles runId={message.runId} files={message.attachments} />
+        )}
+        {message.text && <div className="bubble">{message.text}</div>}
         {message.state === "not_sent" && (
           <p className="msg-foot tchat-notsent">
             {note}
@@ -476,6 +522,127 @@ function UserBubble({
         )}
       </div>
     </article>
+  );
+}
+
+// The files a member attached to a message, above its text: an image as
+// itself, any other file as its tile and name. A saved one opens in the file
+// viewer; one still being sent can't be opened yet.
+function SentFiles({
+  runId,
+  files,
+}: {
+  runId: string;
+  files: readonly MessageAttachment[];
+}) {
+  const actions = useContext(FileActionsContext);
+  const images = files.filter((f) => isImage(f.name));
+  const others = files.filter((f) => !isImage(f.name));
+  const open = (file: MessageAttachment) =>
+    actions && file.fileId
+      ? () => actions.open({ runId, path: file.path, fileId: file.fileId })
+      : undefined;
+  return (
+    <>
+      {images.length > 0 && (
+        <ul className="sent-images" aria-label="Attached images">
+          {images.map((file, i) => (
+            <li key={file.fileId || `${i}:${file.name}`}>
+              <SentImage file={file} onOpen={open(file)} />
+            </li>
+          ))}
+        </ul>
+      )}
+      {others.length > 0 && (
+        <ul className="sent-files" aria-label="Attached files">
+          {others.map((file, i) => {
+            const onOpen = open(file);
+            const body = <FileChipBody name={file.name} size={file.size} />;
+            return (
+              <li
+                key={file.fileId || `${i}:${file.name}`}
+                className="draft-file"
+              >
+                {onOpen ? (
+                  <button
+                    type="button"
+                    className="sent-file-open"
+                    onClick={onOpen}
+                    aria-label={`Open ${file.name}`}
+                  >
+                    {body}
+                  </button>
+                ) : (
+                  body
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function FileChipBody({ name, size }: { name: string; size: number }) {
+  const tag = fileTag(name);
+  return (
+    <>
+      <span className={`file-tile ft-${tag.tone}`} aria-hidden="true">
+        {tag.label}
+      </span>
+      <span className="draft-file-text">
+        <span className="draft-file-name">{name}</span>
+        <span className="draft-file-meta">{formatBytes(size)}</span>
+      </span>
+    </>
+  );
+}
+
+// A sent image, shown from the bytes this browser still has or the saved
+// version. Until it loads (or if it can't) it keeps its place as a plain
+// frame, so the message doesn't jump; one that fails shows its file chip.
+function SentImage({
+  file,
+  onOpen,
+}: {
+  file: MessageAttachment;
+  onOpen: (() => void) | undefined;
+}) {
+  const blob = useImageBlob(file.preview, file.fileId || undefined);
+  const url = useObjectUrl(blob instanceof Blob ? blob : null);
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [url]);
+  if (broken || blob === "failed")
+    return (
+      <span className="draft-file">
+        <FileChipBody name={file.name} size={file.size} />
+      </span>
+    );
+  const image = url ? (
+    <img
+      src={url}
+      alt={file.name}
+      decoding="async"
+      onError={() => setBroken(true)}
+    />
+  ) : (
+    <span className="sent-image-wait" aria-label={`${file.name}, loading`} />
+  );
+  return onOpen ? (
+    <button
+      type="button"
+      className="sent-image"
+      onClick={onOpen}
+      aria-label={`Open ${file.name}`}
+      title={file.name}
+    >
+      {image}
+    </button>
+  ) : (
+    <span className="sent-image" title={file.name}>
+      {image}
+    </span>
   );
 }
 
@@ -545,6 +712,123 @@ function ToolRow({
   );
 }
 
+// What a network card on a saved reply can do. Provided by the chat screen;
+// absent (no buttons) where a transcript is shown read-only.
+export interface NetworkActions {
+  answer: (messageId: string, decision: NetworkDecision) => void;
+  // The message whose answer is in flight, or null.
+  busy: string | null;
+  // Why the last answer to a card failed, by message.
+  errors: Readonly<Record<string, string>>;
+  // Sends "Try again" as the next message; null while a reply is running or
+  // the chat can't continue. Offered only on the chat's latest reply.
+  tryAgain: (() => void) | null;
+  latestRunId: string | null;
+}
+
+export const NetworkActionsContext = createContext<NetworkActions | null>(null);
+
+// A sandbox request Truex blocked. Live (`messageId` null) it only reports
+// the block: the card can be answered once the reply is saved. Saved, it
+// offers the answers the block allows; an allow applies from the next reply.
+// Host and connector names come from the runtime: plain text only.
+function NetworkCard({
+  block,
+  messageId,
+  runId,
+}: {
+  block: NetworkBlock;
+  messageId: string | null;
+  runId: string;
+}) {
+  const actions = useContext(NetworkActionsContext);
+  const title = networkTitle(block);
+  const busy = !!messageId && actions?.busy === messageId;
+  const error = messageId ? actions?.errors[messageId] : undefined;
+  const open = !!messageId && !!actions && !block.decision;
+  return (
+    <div className="approval-card network-card" role="group" aria-label={title}>
+      <p className="approval-title network-title">
+        <Icon name="lock" size={13} className="tool-card-icon" />
+        <span>{title}</span>
+      </p>
+      <p className="approval-hint network-detail">{networkDetail(block)}</p>
+      {block.decision ? (
+        <div className="approval-actions">
+          <p className="approval-outcome" role="status">
+            {networkOutcome(block.decision)}
+          </p>
+          {block.decision !== "keep_blocked" &&
+            actions?.tryAgain &&
+            actions.latestRunId === runId && (
+              <button
+                type="button"
+                className="btn-soft"
+                onClick={actions.tryAgain}
+              >
+                Try again
+              </button>
+            )}
+        </div>
+      ) : !messageId ? (
+        <p className="approval-outcome">
+          {block.grant === "none"
+            ? "This can't be allowed."
+            : "You can allow it when this reply finishes."}
+        </p>
+      ) : open && block.grant !== "none" ? (
+        <div className="approval-actions">
+          <button
+            type="button"
+            className="btn-solid"
+            disabled={busy}
+            onClick={() => actions!.answer(messageId, "allow_once")}
+          >
+            Allow once
+          </button>
+          {block.grant === "chat" && (
+            <button
+              type="button"
+              className="btn-soft"
+              disabled={busy}
+              onClick={() => actions!.answer(messageId, "allow_for_chat")}
+            >
+              Allow for this chat
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={busy}
+            onClick={() => actions!.answer(messageId, "keep_blocked")}
+          >
+            Keep blocked
+          </button>
+        </div>
+      ) : (
+        block.grant === "none" && (
+          <p className="approval-outcome">This can't be allowed.</p>
+        )
+      )}
+      {error && (
+        <p className="field-hint is-bad" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+// A skill the reply used. Only its name: what the model read stays private.
+function SkillRow({ name }: { name: string }) {
+  return (
+    <div className="tool-card">
+      <Icon name="book" size={13} className="tool-card-icon" />
+      <span>Used skill {name}</span>
+    </div>
+  );
+}
+
 // The inline approval card shown at a write tool's row while it waits for the
 // member. Params are model-written and untrusted, so they are rendered as
 // plain text, wrapped, never HTML. The card takes focus when it appears
@@ -569,13 +853,22 @@ function ApprovalCard({
   useEffect(() => {
     ref.current?.focus({ preventScroll: true });
   }, []);
-  const title = approvalCardTitle(connectorLabel, approval.tool);
+  const coding = approval.kind !== "mcp";
+  const title = coding
+    ? codingCardTitle(approval.tool)
+    : approvalCardTitle(connectorLabel, approval.tool);
   const race =
     approval.race === "resolved"
       ? "Already answered"
       : approval.race === "not_found"
         ? "Expired"
         : null;
+  const command =
+    approval.kind === "command"
+      ? approval.params.find((p) => p.name === "command")?.value
+      : undefined;
+  const hint =
+    coding && approval.allowForChat ? allowForChatHint(approval.tool) : null;
   return (
     <div
       ref={ref}
@@ -585,16 +878,21 @@ function ApprovalCard({
       tabIndex={-1}
     >
       <p className="approval-title">{title}</p>
-      {approval.params.length > 0 && (
-        <dl className="approval-params">
-          {approval.params.map((p, i) => (
-            <div key={`${p.name}:${i}`} className="approval-param">
-              <dt>{p.name}</dt>
-              {/* Plain text only: model-written, never rendered as HTML. */}
-              <dd>{p.value}</dd>
-            </div>
-          ))}
-        </dl>
+      {command !== undefined ? (
+        // Plain text only: model-written, shown exactly as it will run.
+        <pre className="approval-command">{command}</pre>
+      ) : (
+        approval.params.length > 0 && (
+          <dl className="approval-params">
+            {approval.params.map((p, i) => (
+              <div key={`${p.name}:${i}`} className="approval-param">
+                <dt>{p.name}</dt>
+                {/* Plain text only: model-written, never rendered as HTML. */}
+                <dd>{p.value}</dd>
+              </div>
+            ))}
+          </dl>
+        )
       )}
       {race ? (
         <p className="approval-outcome" role="status">
@@ -610,14 +908,16 @@ function ApprovalCard({
           >
             Allow once
           </button>
-          <button
-            type="button"
-            className="btn-soft"
-            disabled={busy}
-            onClick={() => onApprove(approval.approvalId, "allow_for_chat")}
-          >
-            Allow for this chat
-          </button>
+          {approval.allowForChat && (
+            <button
+              type="button"
+              className="btn-soft"
+              disabled={busy}
+              onClick={() => onApprove(approval.approvalId, "allow_for_chat")}
+            >
+              Allow for this chat
+            </button>
+          )}
           <button
             type="button"
             className="btn-danger"
@@ -628,7 +928,125 @@ function ApprovalCard({
           </button>
         </div>
       )}
+      {hint && !race && <p className="approval-hint">{hint}</p>}
     </div>
+  );
+}
+
+// One command or file change in the chat's workspace, live or saved. The
+// command and its output are model-written: plain text, never HTML. Output
+// is collapsed by default so a long test run does not push the answer away.
+function ActivityRow({
+  activity,
+  live,
+  approvalLabel,
+  asking = false,
+}: {
+  activity: Activity;
+  live: boolean;
+  approvalLabel?: string | null;
+  // Its approval card is open and already shows the command.
+  asking?: boolean;
+}) {
+  const running = activity.status === "inProgress";
+  const failed = activity.status === "failed" || activity.status === "declined";
+  const note = writingNote(activity);
+  return (
+    <div
+      className={
+        failed ? "tool-card activity-card is-failed" : "tool-card activity-card"
+      }
+      role={live && running ? "status" : undefined}
+    >
+      <div className="activity-head">
+        {running ? (
+          <span className="spinner" aria-hidden="true" />
+        ) : (
+          <Icon
+            name={
+              failed ? "x" : activity.type === "command" ? "check" : "pencil"
+            }
+            size={13}
+            className="tool-card-icon"
+          />
+        )}
+        <span>
+          {asking && running
+            ? "Waiting for your approval"
+            : activityLabel(activity)}
+        </span>
+        {approvalLabel && (
+          <span className="tool-card-approval">· {approvalLabel}</span>
+        )}
+        {/* Updates twice a second; kept out of the status announcement. */}
+        {note && (
+          <span className="tool-card-approval" aria-hidden="true">
+            · {note}
+          </span>
+        )}
+      </div>
+      {activity.type === "command" ? (
+        <>
+          {!asking && (
+            <pre className="activity-command">{activity.command}</pre>
+          )}
+          {activity.output && (
+            <details className="activity-output">
+              <summary>
+                Output{activity.outputTruncated ? " (cut short)" : ""}
+              </summary>
+              <pre>{activity.output}</pre>
+            </details>
+          )}
+        </>
+      ) : (
+        activity.files.length > 1 && (
+          <ul className="activity-files">
+            {activity.files.map((file, i) => (
+              <li key={`${file.path}:${i}`}>{fileLabel(file)}</li>
+            ))}
+          </ul>
+        )
+      )}
+    </div>
+  );
+}
+
+// A live command or file change with its approval card, like a tool row.
+function ActivityApprovalRow({
+  activity,
+  pending,
+  settled,
+  onApprove,
+  approvalBusy,
+}: {
+  activity: Activity;
+  pending: ApprovalView | null;
+  settled: ApprovalView | null;
+  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
+  approvalBusy: string | null;
+}) {
+  const label =
+    settled && settled.status !== "pending"
+      ? approvalOutcomeLabel(settled.status)
+      : null;
+  return (
+    <>
+      <ActivityRow
+        activity={activity}
+        live
+        approvalLabel={label}
+        asking={!!pending}
+      />
+      {pending && (
+        <ApprovalCard
+          approval={pending}
+          connectorLabel="Workspace"
+          busy={approvalBusy === pending.approvalId}
+          onApprove={onApprove}
+        />
+      )}
+    </>
   );
 }
 
@@ -683,6 +1101,7 @@ function SavedExchange({
   hue,
   connectors,
   onResend,
+  files,
 }: {
   messages: ChatMessage[];
   run: ChatRun | null;
@@ -690,8 +1109,18 @@ function SavedExchange({
   hue: string;
   connectors: ConnectorRef[];
   onResend: (text: string) => void;
+  files: ChatFile[];
 }) {
   const note = run ? outcomeNote(run.status, run.error) : null;
+  const card =
+    run && (files.length > 0 || run.unsavedFiles?.length) ? (
+      <FileCard
+        runId={run.id}
+        files={files}
+        writing={[]}
+        unsaved={run.unsavedFiles}
+      />
+    ) : null;
   const usage = run && isSettled(run.status) ? usageLine(run) : "";
   // Everything between two user messages (progress replies, tool rows and
   // the answer) shares one reply frame, in saved order, as it did while
@@ -710,7 +1139,7 @@ function SavedExchange({
     }
   }
   const lastAgentIndex = blocks.map((b) => b.kind).lastIndexOf("agent");
-  const hasFooter = !!(note || usage);
+  const hasFooter = !!(note || usage || card);
   // An empty settled run (no replies saved) still shows its footer.
   const showLooseFooter = hasFooter && lastAgentIndex < 0;
   return (
@@ -735,6 +1164,7 @@ function SavedExchange({
               note={index === lastAgentIndex ? note : null}
               usage={index === lastAgentIndex ? usage : ""}
               failed={run?.status === "failed"}
+              card={index === lastAgentIndex ? card : null}
             />
           </AgentReply>
         ),
@@ -747,6 +1177,7 @@ function SavedExchange({
             note={note}
             usage={usage}
             failed={run?.status === "failed"}
+            card={card}
           />
         </AgentReply>
       )}
@@ -803,12 +1234,15 @@ function SavedBody({
   note,
   usage,
   failed,
+  card,
 }: {
   entries: ChatMessage[];
   connectors: ConnectorRef[];
   note: string | null;
   usage: string;
   failed: boolean;
+  // The reply's file card, after its last paragraph.
+  card: ReactNode;
 }) {
   const progress = progressFlags(
     entries.map((m) => (m.role === "tool" ? "tool" : "reply")),
@@ -816,7 +1250,27 @@ function SavedBody({
   return (
     <>
       {entries.map((entry, index) =>
-        entry.role === "tool" ? (
+        entry.role === "tool" && entry.skill ? (
+          <SkillRow key={entry.id} name={entry.skill.name} />
+        ) : entry.role === "tool" && entry.network ? (
+          <NetworkCard
+            key={entry.id}
+            block={entry.network}
+            messageId={entry.id}
+            runId={entry.runId}
+          />
+        ) : entry.role === "tool" && entry.activity ? (
+          <ActivityRow
+            key={entry.id}
+            activity={entry.activity}
+            live={false}
+            approvalLabel={
+              entry.activity.approval
+                ? savedApprovalLabel(entry.activity.approval)
+                : null
+            }
+          />
+        ) : entry.role === "tool" ? (
           <ToolRow
             key={entry.id}
             call={savedToolToCall(entry.tool!, connectors)}
@@ -839,6 +1293,7 @@ function SavedBody({
           </div>
         ),
       )}
+      {card}
       {note && (
         <p className={failed ? "msg-foot tchat-failed" : "msg-foot"}>{note}</p>
       )}
@@ -908,6 +1363,7 @@ function LiveBody({
   onReconnect,
   onApprove,
   approvalBusy,
+  files,
 }: {
   live: LiveReply;
   run: ChatRun | null;
@@ -917,8 +1373,10 @@ function LiveBody({
   onReconnect: () => void;
   onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
   approvalBusy: string | null;
+  files: ChatFile[];
 }) {
   const replies = replyItems(live);
+  const writing = writingFiles(live);
   const slow = useSlow(live.since, replies.length === 0);
   const streaming = live.phase !== "settled";
   const note =
@@ -931,7 +1389,16 @@ function LiveBody({
     ? outcomeNote(live.outcome.status, live.outcome.error)
     : null;
   const lastReplyId = replies.at(-1)?.itemId;
-  const progress = progressFlags(live.items.map((item) => item.type));
+  const progress = progressFlags(
+    live.items.map((item) =>
+      item.type === "command" ||
+      item.type === "file_change" ||
+      item.type === "skill" ||
+      item.type === "network"
+        ? "tool"
+        : item.type,
+    ),
+  );
   return (
     <>
       {!live.items.length && streaming && (
@@ -971,6 +1438,24 @@ function LiveBody({
             onApprove={onApprove}
             approvalBusy={approvalBusy}
           />
+        ) : item.type === "command" || item.type === "file_change" ? (
+          <ActivityApprovalRow
+            key={`activity:${item.itemId}`}
+            activity={item}
+            pending={pendingApprovalForItem(live, item.itemId)}
+            settled={approvalForItem(live, item.itemId)}
+            onApprove={onApprove}
+            approvalBusy={approvalBusy}
+          />
+        ) : item.type === "skill" ? (
+          <SkillRow key={`skill:${item.slug}`} name={item.name} />
+        ) : item.type === "network" ? (
+          <NetworkCard
+            key={`network:${item.kind}:${item.host}:${item.method}`}
+            block={item}
+            messageId={null}
+            runId={live.runId}
+          />
         ) : (
           <SteerBubble
             key={`input:${item.clientMessageId}`}
@@ -978,6 +1463,12 @@ function LiveBody({
           />
         ),
       )}
+      <FileCard
+        runId={live.runId}
+        files={files}
+        writing={writing}
+        unsaved={live.unsaved}
+      />
       <ConnectorBanners
         failures={live.connectorFailures}
         connectors={connectors}
@@ -1010,6 +1501,16 @@ function LiveBody({
       )}
     </>
   );
+}
+
+// New files the reply is still writing, for its file card.
+function writingFiles(live: LiveReply): WritingFile[] {
+  const out: WritingFile[] = [];
+  for (const item of live.items)
+    if (item.type === "file_change" && item.status === "inProgress")
+      for (const file of item.files)
+        if (file.kind === "add") out.push({ path: file.path });
+  return out;
 }
 
 // True once a reply has shown nothing for SLOW_REPLY_MS.

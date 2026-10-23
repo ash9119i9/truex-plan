@@ -89,6 +89,10 @@
   font: 12px var(--font-sans);
   color: var(--error-text);
 }
+.tchat-count.is-status {
+  font: 12px var(--font-sans);
+  color: var(--ink-3);
+}
 .tchat-note {
   margin: 8px 4px 0;
   font-size: 12.5px;

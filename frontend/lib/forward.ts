@@ -41,6 +41,13 @@ const DROP_RESPONSE = new Set([
 // The platform accepts 2 MB of JSON. A little more is allowed for the envelope;
 // anything larger is refused here instead of being buffered or streamed on.
 export const MAX_BODY_BYTES = 2 * 1024 * 1024 + 4096;
+// An attached file is its own raw request body, up to the platform's 20 MB.
+export const MAX_UPLOAD_BODY_BYTES = 20 * 1024 * 1024 + 4096;
+const UPLOAD_PATH = "/api/v1/uploads";
+export const bodyLimitFor = (method: string, path: string) =>
+  method === "POST" && path === UPLOAD_PATH
+    ? MAX_UPLOAD_BODY_BYTES
+    : MAX_BODY_BYTES;
 // Cold runtime starts can take two and a half minutes (see lib/api.ts); the
 // forwarder waits slightly longer than the browser does.
 const DEADLINE_MS = 190_000;
@@ -200,8 +207,9 @@ export async function forward(
 
   // Oversized requests are refused up front when they announce their size, and
   // cut off mid-stream when they do not.
+  const limit = bodyLimitFor(method, upstreamPath);
   const declared = Number(req.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES)
+  if (Number.isFinite(declared) && declared > limit)
     return json(
       413,
       "The request is too large.",
@@ -211,7 +219,7 @@ export async function forward(
   let exceeded = false;
   const hasBody = METHODS_WITH_BODY.has(method) && req.body !== null;
   const body = hasBody
-    ? req.body!.pipeThrough(limitBody(MAX_BODY_BYTES, () => (exceeded = true)))
+    ? req.body!.pipeThrough(limitBody(limit, () => (exceeded = true)))
     : undefined;
 
   // Ends the upstream request when the browser goes away (a closed tab, a

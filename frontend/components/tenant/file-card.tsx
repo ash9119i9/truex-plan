@@ -1,0 +1,230 @@
+"use client";
+import { createContext, useContext, useEffect, useState } from "react";
+import { Icon } from "@/components/v2/icon";
+import {
+  fileTag,
+  formatBytes,
+  typeName,
+  type ChatFile,
+  type ViewerTarget,
+} from "@/lib/tenant-files";
+import "@/styles/v2/chat-files.css";
+
+export type { ViewerTarget };
+
+export interface FileActions {
+  open: (target: ViewerTarget) => void;
+  // A stored version's bytes, from the open chat (cached).
+  content: (fileId: string) => Promise<Blob>;
+  download: (file: ChatFile) => void;
+  // The target the viewer shows now, so its row is highlighted.
+  active: ViewerTarget | null;
+  // Saves a reply's unsaved files (`paths`, as the card shows them) again.
+  retry: (runId: string, paths: readonly string[]) => void;
+  // A reply's retry in progress, or why the last one didn't finish.
+  retryState: (runId: string) => RetryState | undefined;
+}
+
+export type RetryState = { busy: true } | { busy: false; message: string };
+
+export const FileActionsContext = createContext<FileActions | null>(null);
+
+// An object URL for `blob` while the caller is mounted; revoked after.
+export function useObjectUrl(blob: Blob | null | undefined): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!blob) return setUrl(null);
+    const made = URL.createObjectURL(blob);
+    setUrl(made);
+    return () => URL.revokeObjectURL(made);
+  }, [blob]);
+  return url;
+}
+
+// An image file's bytes: the given blob, or a saved version's loaded through
+// the file actions. "failed" when it can't be loaded (or there is nothing to
+// load); the caller then shows the file's tile instead.
+export function useImageBlob(
+  blob: Blob | undefined,
+  fileId: string | undefined,
+): Blob | "loading" | "failed" {
+  const actions = useContext(FileActionsContext);
+  const load = actions?.content;
+  const [loaded, setLoaded] = useState<{
+    id: string;
+    blob: Blob | "failed";
+  } | null>(null);
+  useEffect(() => {
+    if (blob || !fileId || !load) return;
+    let current = true;
+    load(fileId).then(
+      (bytes) => current && setLoaded({ id: fileId, blob: bytes }),
+      () => current && setLoaded({ id: fileId, blob: "failed" }),
+    );
+    return () => {
+      current = false;
+    };
+  }, [blob, fileId, load]);
+  if (blob) return blob;
+  if (!fileId || !load) return "failed";
+  return loaded && loaded.id === fileId ? loaded.blob : "loading";
+}
+
+// Rows shown before "+N more".
+const SHOWN = 3;
+
+export interface WritingFile {
+  path: string;
+}
+
+// The files a reply made, under its last paragraph: each with Open (the
+// viewer) and its own Download. A file still being written shows Writing…
+// and can be opened to watch it. A file that couldn't be saved says so,
+// with Retry; it has nothing to open or download until it is saved.
+export function FileCard({
+  runId,
+  files,
+  writing,
+  unsaved = [],
+}: {
+  runId: string;
+  files: readonly ChatFile[];
+  writing: readonly WritingFile[];
+  unsaved?: readonly string[];
+}) {
+  const actions = useContext(FileActionsContext);
+  const [expanded, setExpanded] = useState(false);
+  if (!actions) return null;
+  const stored = new Set(files.map((f) => f.path));
+  const failed = unsaved.filter((path) => !stored.has(path));
+  const failedSet = new Set(failed);
+  const rows: Array<
+    | { kind: "file"; file: ChatFile }
+    | { kind: "writing"; path: string }
+    | { kind: "unsaved"; path: string }
+  > = [
+    ...files.map((file) => ({ kind: "file" as const, file })),
+    ...failed.map((path) => ({ kind: "unsaved" as const, path })),
+    ...writing
+      .filter((w) => !stored.has(w.path) && !failedSet.has(w.path))
+      .map((w) => ({ kind: "writing" as const, path: w.path })),
+  ];
+  if (rows.length === 0) return null;
+  const total = rows.length;
+  const ready = files.length;
+  const visible = expanded ? rows : rows.slice(0, SHOWN);
+  const retry = actions.retryState(runId);
+  const noun = total === 1 ? "file" : "files";
+  const heading =
+    ready === total
+      ? `${total} ${noun}`
+      : failed.length > 0
+        ? `${total} ${noun} · ${failed.length} not saved`
+        : `${total} ${noun} · ${ready} ready`;
+  const isActive = (path: string) =>
+    actions.active?.runId === runId && actions.active.path === path;
+  return (
+    <section className="file-card" aria-label="Files from this reply">
+      <p className="file-card-head">{heading}</p>
+      <ul>
+        {visible.map((row) => {
+          const path = row.kind === "file" ? row.file.path : row.path;
+          const name = path.slice(path.lastIndexOf("/") + 1);
+          const tag = fileTag(name);
+          if (row.kind === "unsaved")
+            return (
+              <li key={path} className="file-row is-unsaved">
+                <span className={`file-tile ft-${tag.tone}`} aria-hidden="true">
+                  {tag.label}
+                </span>
+                <span className="file-open is-static">
+                  <span className="file-name">{name}</span>
+                  <span className="file-meta file-unsaved">
+                    {retry?.busy ? (
+                      <span className="file-writing">
+                        <span className="spinner" aria-hidden="true" />
+                        Saving…
+                      </span>
+                    ) : (
+                      "Couldn't save this file"
+                    )}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="text-btn file-retry"
+                  aria-label={`Retry saving ${name}`}
+                  disabled={retry?.busy === true}
+                  onClick={() => actions.retry(runId, failed)}
+                >
+                  Retry
+                </button>
+              </li>
+            );
+          return (
+            <li
+              key={path}
+              className={isActive(path) ? "file-row is-active" : "file-row"}
+            >
+              <span className={`file-tile ft-${tag.tone}`} aria-hidden="true">
+                {tag.label}
+              </span>
+              <button
+                type="button"
+                className="file-open"
+                onClick={() => actions.open({ runId, path })}
+                aria-label={`Open ${name}`}
+              >
+                <span className="file-name">{name}</span>
+                <span className="file-meta">
+                  {row.kind === "file" ? (
+                    <>
+                      {typeName(name)} · {formatBytes(row.file.size)}
+                      {row.file.version > 1 && (
+                        <span className="file-version">
+                          v{row.file.version}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    <span className="file-writing">
+                      <span className="spinner" aria-hidden="true" />
+                      Writing…
+                    </span>
+                  )}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="icon-btn ghost"
+                aria-label={`Download ${name}`}
+                title="Download"
+                disabled={row.kind !== "file"}
+                onClick={() =>
+                  row.kind === "file" && actions.download(row.file)
+                }
+              >
+                <Icon name="arrowUp" size={15} className="file-download" />
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+      {retry && !retry.busy && (
+        <p className="file-card-note" role="alert">
+          {retry.message}
+        </p>
+      )}
+      {rows.length > SHOWN && (
+        <button
+          type="button"
+          className="file-more"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((open) => !open)}
+        >
+          {expanded ? "Show fewer" : `+${rows.length - SHOWN} more`}
+        </button>
+      )}
+    </section>
+  );
+}

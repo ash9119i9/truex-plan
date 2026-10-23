@@ -581,17 +581,30 @@ export interface ApprovalParam {
 export interface ApprovalEvent {
   approvalId: string;
   itemId: string;
+  // mcp: a connector tool call. command: a command in the chat's workspace
+  // (connector "@workspace"); edits there never ask.
+  kind: ApprovalKind;
   connector: string;
   tool: string;
   params: ApprovalParam[];
   status: ApprovalStatus;
   expiresAt: string | null;
   auto: boolean;
+  // False when the card must not offer Allow for this chat (a push).
+  allowForChat: boolean;
 }
+
+export type ApprovalKind = "mcp" | "command";
+
+// A command is shown whole on its card; other values are cut.
+const MAX_APPROVAL_COMMAND_CHARS = 4_000;
 
 // The params list, each value stringified and cut. Never HTML: the caller
 // renders them as plain text.
-export function parseApprovalParams(value: unknown): ApprovalParam[] {
+export function parseApprovalParams(
+  value: unknown,
+  commandCard = false,
+): ApprovalParam[] {
   if (!Array.isArray(value)) return [];
   const params: ApprovalParam[] = [];
   for (const entry of value) {
@@ -609,7 +622,12 @@ export function parseApprovalParams(value: unknown): ApprovalParam[] {
             JSON.stringify(raw);
     params.push({
       name,
-      value: text.slice(0, MAX_APPROVAL_PARAM_CHARS),
+      value: text.slice(
+        0,
+        commandCard && name === "command"
+          ? MAX_APPROVAL_COMMAND_CHARS
+          : MAX_APPROVAL_PARAM_CHARS,
+      ),
     });
     if (params.length >= MAX_APPROVAL_PARAMS) break;
   }
@@ -620,7 +638,14 @@ export function parseApprovalEvent(value: unknown): ApprovalEvent | null {
   const e = record(value);
   const approvalId = str(e?.approvalId, 200);
   const itemId = str(e?.itemId, 200);
-  const connector = slugOf(e?.connector);
+  const kind: ApprovalKind = e?.kind === "command" ? "command" : "mcp";
+  // A command only ever comes from the workspace.
+  const connector =
+    kind === "mcp"
+      ? slugOf(e?.connector)
+      : e?.connector === "@workspace"
+        ? "@workspace"
+        : null;
   const tool = str(e?.tool, 200);
   if (!e || !approvalId || !itemId || !connector || !tool) return null;
   // A missing/unknown status is read as "pending" so a half-formed event
@@ -632,12 +657,14 @@ export function parseApprovalEvent(value: unknown): ApprovalEvent | null {
   return {
     approvalId,
     itemId,
+    kind,
     connector,
     tool,
-    params: parseApprovalParams(e.params),
+    params: parseApprovalParams(e.params, kind === "command"),
     status,
     expiresAt: date(e.expiresAt),
     auto: e.auto === true,
+    allowForChat: e.allowForChat !== false,
   };
 }
 
