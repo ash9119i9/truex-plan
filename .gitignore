@@ -13,3 +13,6 @@ a.json
 # Local copies of the root example documents (models, model, agent, mcps) that
 # may hold real credentials. Tracked ones must use "${ENV_NAME}" references.
 /*.local.json
+
+# Local agent-harness skills lock (not part of Truex)
+skills-lock.json
