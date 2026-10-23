@@ -24,8 +24,22 @@ export const REQUEST_ERRORS = {
     "The message was sent but its outcome is unknown.",
   ],
   APPROVAL_NOT_FOUND: [404, false, "This approval is unknown or has expired."],
+  FILE_NOT_FOUND: [404, false, "This file is not in the chat."],
   APPROVAL_RESOLVED: [409, false, "This approval was already answered."],
   PAYLOAD_TOO_LARGE: [413, false, "The request is too large."],
+  UPLOAD_CONFLICT: [
+    409,
+    false,
+    "A folder in the chat is in the way of this file.",
+  ],
+  // The run names skills this runtime does not hold; `missing` lists them.
+  // The platform pushes them and starts the run again.
+  SKILLS_MISSING: [409, false, "This chat's skills are not loaded yet."],
+  UPLOADS_DISABLED: [
+    409,
+    false,
+    "This assistant can't open attached files here.",
+  ],
   RUNTIME_BUSY: [503, true, "The assistant is at capacity. Try again shortly."],
   DRAINING: [503, true, "The assistant is restarting. Try again shortly."],
   RUNTIME_UNAVAILABLE: [503, true, "The assistant did not respond. Try again."],
@@ -41,6 +55,8 @@ export class AdapterError extends Error {
   constructor(
     readonly code: RequestErrorCode,
     message?: string,
+    // Machine-readable fields for the platform, never user text.
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     const [status, retryable, fallback] = REQUEST_ERRORS[code];
     super(message ?? fallback);
@@ -55,6 +71,7 @@ export class AdapterError extends Error {
         code: this.code,
         message: this.message,
         retryable: this.retryable,
+        ...(this.details ? { details: this.details } : {}),
       },
     };
   }

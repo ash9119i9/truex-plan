@@ -13,6 +13,7 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { parseEnv } from "node:util";
 import { portInUse, waitForPort } from "./dev-readiness.mjs";
+import { checkToolchain, configuredDirs } from "./toolchain.mjs";
 
 const LOG_DIR = ".runtime/dev-next";
 // tsx watch gives each backend 5 s to shut down; whatever is left is killed.
@@ -70,6 +71,24 @@ for (const { dir, port } of services) {
 if (problems.length) {
   for (const problem of problems) console.error(problem);
   process.exit(1);
+}
+
+// With coding on, chats run Python with the pinned document libraries. A
+// missing toolchain doesn't stop the stack: chats still work, and code that
+// needs a library fails in the chat.
+const adapterEnv = resolve("runtime-adapter", ".env");
+if (env["runtime-adapter"].RUNTIME_CODING_ENABLED === "1") {
+  const missing = checkToolchain(
+    configuredDirs(readFileSync(adapterEnv, "utf8")),
+  );
+  if (missing.length)
+    console.warn(
+      [
+        "Coding toolchain incomplete:",
+        ...missing.map((problem) => `  ${problem}`),
+        "  Run npm run toolchain:setup and set the RUNTIME_TOOLCHAIN_DIRS it prints.",
+      ].join("\n"),
+    );
 }
 
 function listener(port) {

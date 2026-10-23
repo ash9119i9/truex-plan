@@ -1,5 +1,10 @@
 import { accessSync, constants, readFileSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import {
+  detectToolchains,
+  packageBoundary,
+  type CodingSetup,
+} from "./codex/coding";
 
 // Startup configuration, read once and validated before anything listens.
 // Invalid configuration stops startup with every problem listed.
@@ -19,6 +24,10 @@ export interface AdapterConfig {
   // hatch (the fixture MCP server listens on 127.0.0.1 over plain http), so
   // production never relaxes transport security for a real connector.
   readonly allowLoopbackMcp: boolean;
+  // Present when the operator turned coding on (RUNTIME_CODING_ENABLED=1):
+  // every run gets the coding profile (src/codex/coding.ts). An emergency
+  // switch, not a per-agent setting; off keeps text-only runs unchanged.
+  readonly coding: CodingSetup | undefined;
 }
 
 // Timeouts the adapter enforces. Callers may shorten the model limits, never
@@ -88,6 +97,13 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
   // "true") is treated as off, so an accidental setting can never silently
   // weaken transport security in production.
   const allowLoopbackMcp = env.ADAPTER_ALLOW_LOOPBACK_MCP === "1";
+  // Same rule: only "1" turns coding on.
+  const codingEnabled = env.RUNTIME_CODING_ENABLED === "1";
+  const toolchainDirs = (env.RUNTIME_TOOLCHAIN_DIRS ?? "")
+    .split(":")
+    .filter(Boolean);
+  if (toolchainDirs.some((dir) => !isAbsolute(dir)))
+    problems.push("RUNTIME_TOOLCHAIN_DIRS must list absolute paths.");
 
   const codexBinary = resolveCodexBinary(env, repoRoot, problems);
 
@@ -103,6 +119,12 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
     drainMs,
     limits: DEFAULT_LIMITS,
     allowLoopbackMcp,
+    coding: codingEnabled
+      ? {
+          toolchains: detectToolchains(toolchainDirs),
+          packageBoundary: packageBoundary(stateDir),
+        }
+      : undefined,
   };
 }
 

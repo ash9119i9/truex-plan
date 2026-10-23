@@ -1,0 +1,12 @@
+# Python libraries every coding run can use (documents: Word, Excel,
+# PowerPoint, PDF). Exact versions; transitive pins and hashes live in
+# requirements.txt. After changing a pin, regenerate it with:
+#   uv pip compile runtime-adapter/toolchain/requirements.in --universal \
+#     --python-version 3.11 --generate-hashes --only-binary :all: \
+#     -o runtime-adapter/toolchain/requirements.txt
+# then run `npm run toolchain:setup` and the adapter tests.
+python-docx==1.2.0
+openpyxl==3.1.5
+python-pptx==1.0.2
+pypdf==6.21.2
+reportlab==5.1.0

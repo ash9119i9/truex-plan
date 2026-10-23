@@ -13,6 +13,9 @@
 !agent-core/tsconfig.json
 !agent-core/src/
 !agent-core/src/**
+!runtime-adapter/
+!runtime-adapter/toolchain/
+!runtime-adapter/toolchain/requirements.txt
 !.runtime/
 !.runtime/agentcore/
 !.runtime/agentcore/codex

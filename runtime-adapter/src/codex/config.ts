@@ -1,4 +1,5 @@
 import type { McpServerSpec, ModelSettings } from "../contract";
+import { PERMISSION_PROFILE } from "./coding";
 
 // The only place Codex configuration is built. The platform sends typed model
 // settings; nothing it sends is merged in as raw configuration, so agent text
@@ -35,6 +36,13 @@ const TEXT_ONLY = {
 const TOOL_OUTPUT_TOKEN_LIMIT = 20_000;
 const TOOL_OUTPUT_CONTEXT_SHARE = 0.1;
 
+export function toolOutputTokenLimit(contextWindow: number): number {
+  return Math.min(
+    TOOL_OUTPUT_TOKEN_LIMIT,
+    Math.floor(contextWindow * TOOL_OUTPUT_CONTEXT_SHARE),
+  );
+}
+
 // Builds the `mcp_servers.<name>` config entries Codex consumes. Verified
 // against the pin (the mcp-probe): the key is `mcp_servers.<name>` and each
 // entry carries `url`, `http_headers` (an object), `tool_timeout_sec`,
@@ -63,10 +71,7 @@ function mcpConfigEntries(
   // tool result and drops the middle of anything longer (a 4-repo GitHub
   // search already exceeds it). Allow a larger result, bounded by a share of
   // the model's context so a few calls cannot fill it.
-  entries.tool_output_token_limit = Math.min(
-    TOOL_OUTPUT_TOKEN_LIMIT,
-    Math.floor(contextWindow * TOOL_OUTPUT_CONTEXT_SHARE),
-  );
+  entries.tool_output_token_limit = toolOutputTokenLimit(contextWindow);
   for (const server of mcp) {
     entries[`mcp_servers.${server.name}`] = {
       url: server.url,
@@ -97,19 +102,83 @@ const MCP_APPROVAL_POLICY = {
   },
 } as const;
 
+// A skill directory Codex discovers as a capability root: `<state>/skills/
+// <sha256>`, holding the skill's folder. The model reads it through Codex's
+// own `skills.list` / `skills.read` tools (verified on the pin, skills probe
+// 2026-10-21). Roots are read only at thread/start; a resumed thread keeps
+// them as long as the files are still on disk.
+export interface SkillRoot {
+  readonly id: string;
+  readonly path: string;
+}
+
+function capabilityRoots(skills: readonly SkillRoot[]) {
+  if (skills.length === 0) return {};
+  return {
+    selectedCapabilityRoots: skills.map((skill) => ({
+      id: skill.id,
+      location: {
+        type: "environment",
+        environmentId: "local",
+        path: skill.path,
+      },
+    })),
+  };
+}
+
+// A coding run (RUNTIME_CODING_ENABLED=1): the coding profile's config keys,
+// built by `codingConfig`, applied over the text-only base.
+export interface CodingSettings {
+  readonly config: Record<string, unknown>;
+  // `codingInstructions`, sent on start and on every resume.
+  readonly instructions: string;
+}
+
+// Coding runs ask only before a command a prompt rule matches (see coding.ts)
+// and every MCP tool that is not read-only. Everything else inside the
+// sandbox runs without asking. `sandbox_approval: false` makes Codex refuse,
+// rather than ask about, anything that needs to leave the sandbox: a patch
+// outside the workspace (which an approval would write unsandboxed), an
+// escalation request, and a command Codex flags as dangerous (`rm -f`,
+// `sudo`). Verified on the pin (test/codex/coding-approvals.test.ts). The
+// named permissions profile replaces `sandbox` (Codex refuses both together).
+const CODING_APPROVAL_POLICY = {
+  granular: {
+    sandbox_approval: false,
+    rules: true,
+    skill_approval: false,
+    request_permissions: false,
+    mcp_elicitations: true,
+  },
+} as const;
+
+function access(mcp: readonly McpServerSpec[], coding?: CodingSettings) {
+  if (coding)
+    return {
+      approvalPolicy: CODING_APPROVAL_POLICY,
+      permissions: PERMISSION_PROFILE,
+      developerInstructions: coding.instructions,
+    };
+  return {
+    approvalPolicy: mcp.length > 0 ? MCP_APPROVAL_POLICY : "never",
+    sandbox: "read-only",
+  };
+}
+
 function sessionSettings(
   model: ModelSettings,
   workspace: string,
   mcp: readonly McpServerSpec[] = [],
+  coding?: CodingSettings,
 ) {
   return {
     model: model.modelName,
     modelProvider: PROVIDER,
     cwd: workspace,
-    approvalPolicy: mcp.length > 0 ? MCP_APPROVAL_POLICY : "never",
-    sandbox: "read-only",
+    ...access(mcp, coding),
     config: {
       ...TEXT_ONLY,
+      ...(coding?.config ?? {}),
       [`model_providers.${PROVIDER}`]: {
         name: "Truex gateway",
         base_url: model.gatewayUrl,
@@ -139,10 +208,14 @@ export function threadStartParams(
   agentPrompt: string,
   workspace: string,
   mcp: readonly McpServerSpec[] = [],
+  coding?: CodingSettings,
+  skills: readonly SkillRoot[] = [],
 ) {
   return {
-    ...sessionSettings(model, workspace, mcp),
+    ...sessionSettings(model, workspace, mcp, coding),
     baseInstructions: agentPrompt,
+    // Absent without skills, so the params stay byte for byte the same.
+    ...capabilityRoots(skills),
   };
 }
 
@@ -155,10 +228,11 @@ export function threadResumeParams(
   model: ModelSettings,
   workspace: string,
   mcp: readonly McpServerSpec[] = [],
+  coding?: CodingSettings,
 ) {
   return {
     threadId,
-    ...sessionSettings(model, workspace, mcp),
+    ...sessionSettings(model, workspace, mcp, coding),
     excludeTurns: true,
   };
 }

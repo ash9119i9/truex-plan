@@ -32,7 +32,8 @@ export class RuntimeManager {
     private readonly config: Pick<
       AdapterConfig,
       "stateDir" | "codexBinary" | "maxProcesses" | "idleMs" | "limits"
-    >,
+    > &
+      Partial<Pick<AdapterConfig, "coding">>,
     private readonly log: Logger = () => undefined,
   ) {
     this.sweeper = setInterval(() => void this.sweep(), SWEEP_MS);
@@ -43,6 +44,16 @@ export class RuntimeManager {
     let activeRuns = 0;
     for (const chat of this.chats.values()) if (chat.activeRun) activeRuns++;
     return { activeRuns, processes: this.slots, draining: this.draining };
+  }
+
+  // Coding gives runs a shell, which attached files need to be read.
+  get codingEnabled(): boolean {
+    return this.config.coding !== undefined;
+  }
+
+  // A run of this chat is in progress here.
+  isRunning(ref: ChatRef): boolean {
+    return this.chats.get(key(ref))?.activeRun !== undefined;
   }
 
   // Admission is synchronous, so two requests for one chat can't both pass
@@ -169,6 +180,7 @@ export class RuntimeManager {
       chat = new ChatRuntime(ref.tenantId, ref.chatId, this.config.stateDir, {
         binary: this.config.codexBinary,
         limits: this.config.limits,
+        coding: this.config.coding,
         releaseSlot: (c) => this.releaseSlot(c),
         log: this.log,
       });
@@ -210,18 +222,24 @@ function key(ref: ChatRef): string {
 // carrying a refreshed token still attaches. MCP header VALUES are treated the
 // same way: a connector's rotated token is a credential, not part of the turn,
 // and must never reach the hash surface — only the connector names, URLs,
-// header NAMES, enabled tools and timeouts shape the hash. `approvedTools` is
+// header NAMES, enabled tools and timeouts shape the hash. `approvedTools`
+// (and `criticalTools`, which only narrows it) is
 // left out too: it grows while a run waits (the member picks "Allow for this
 // chat"), so a recovery that resends the run with the longer list must still
-// match.
+// match. `codingApprovals` is left out for the same reason, and `network` too:
+// it carries connector tokens, and the tenant's allowed sites may change
+// between a run and its recovery.
 function requestHash(request: StartRunRequest): string {
+  const { codingApprovals: _allowed, network: _network, ...turn } = request;
   const { gatewayToken: _token, ...model } = request.model;
-  const mcp = request.mcp?.map(({ approvedTools: _approved, ...server }) => ({
-    ...server,
-    headers: Object.keys(server.headers).sort(),
-  }));
+  const mcp = request.mcp?.map(
+    ({ approvedTools: _approved, criticalTools: _critical, ...server }) => ({
+      ...server,
+      headers: Object.keys(server.headers).sort(),
+    }),
+  );
   return createHash("sha256")
-    .update(canonical({ ...request, model, ...(mcp ? { mcp } : {}) }))
+    .update(canonical({ ...turn, model, ...(mcp ? { mcp } : {}) }))
     .digest("hex");
 }
 

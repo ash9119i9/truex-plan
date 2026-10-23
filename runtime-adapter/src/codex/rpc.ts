@@ -61,6 +61,31 @@ export interface SpawnOptions {
   readonly home: string;
   readonly workspace: string;
   readonly rpcMs: number;
+  // Codex `-c key=value` overrides that must apply at process start (the
+  // model catalog is read once per process).
+  readonly configArgs?: readonly string[];
+  // Logs each request the sandbox network proxy blocks to stderr (see
+  // `onBlockedRequest`). Off: Codex logs errors only.
+  readonly networkLog?: boolean;
+  // Extra process environment, for tests only: an upstream proxy and its CA
+  // so the network proxy reaches a loopback fixture (test/support).
+  readonly testEnv?: Readonly<Record<string, string>>;
+}
+
+// The pin's network proxy logs every request it blocks as this prefix and
+// a JSON BlockedRequest (codex-rs network-proxy runtime.rs, debug level). It is
+// the only signal for a request a MITM hook refused: Codex raises no event
+// for those, and the command sees only a 403. Pinned by
+// test/codex/network.test.ts.
+const BLOCKED_PREFIX = "CODEX_NETWORK_POLICY_VIOLATION ";
+const NETWORK_LOG = "error,codex_network_proxy::runtime=debug";
+
+export interface BlockedRequest {
+  readonly host: string;
+  readonly reason: string;
+  readonly method?: string;
+  readonly protocol?: string;
+  readonly port?: number;
 }
 
 export class CodexProcess {
@@ -74,22 +99,29 @@ export class CodexProcess {
   readonly exited: Promise<void>;
   private alive = true;
   onExit: (() => void) | undefined;
+  onBlockedRequest: ((blocked: BlockedRequest) => void) | undefined;
 
   constructor(private readonly options: SpawnOptions) {
     // A minimal environment: the adapter's own secrets (its bearer token) and
     // unrelated host settings never reach Codex.
-    this.child = spawn(options.binary, ["app-server", "--listen", "stdio://"], {
-      cwd: options.workspace,
-      env: {
-        PATH: process.env.PATH ?? "/usr/bin:/bin",
-        HOME: options.home,
-        CODEX_HOME: options.home,
-        TMPDIR: process.env.TMPDIR ?? "/tmp",
-        LANG: "en_US.UTF-8",
-        RUST_LOG: "error",
+    const overrides = (options.configArgs ?? []).flatMap((arg) => ["-c", arg]);
+    this.child = spawn(
+      options.binary,
+      [...overrides, "app-server", "--listen", "stdio://"],
+      {
+        cwd: options.workspace,
+        env: {
+          PATH: process.env.PATH ?? "/usr/bin:/bin",
+          HOME: options.home,
+          CODEX_HOME: options.home,
+          TMPDIR: process.env.TMPDIR ?? "/tmp",
+          LANG: "en_US.UTF-8",
+          RUST_LOG: options.networkLog ? NETWORK_LOG : "error",
+          ...options.testEnv,
+        },
+        stdio: "pipe",
       },
-      stdio: "pipe",
-    });
+    );
     this.exited = new Promise((resolve) => {
       this.child.once("exit", () => resolve());
       this.child.once("error", () => resolve());
@@ -97,6 +129,11 @@ export class CodexProcess {
     void this.exited.then(() => this.handleExit());
     this.child.stdin.on("error", () => undefined);
     createInterface({ input: this.child.stderr }).on("line", (line) => {
+      const blocked = parseBlocked(line);
+      if (blocked) {
+        this.onBlockedRequest?.(blocked);
+        return;
+      }
       this.stderrTail.push(line.slice(0, 500));
       if (this.stderrTail.length > STDERR_TAIL) this.stderrTail.shift();
     });
@@ -238,4 +275,28 @@ export class CodexProcess {
     }
     this.onExit?.();
   }
+}
+
+// The BlockedRequest a proxy log line carries, or undefined for any other
+// line. The line may carry tracing's timestamp and target before the prefix.
+export function parseBlocked(line: string): BlockedRequest | undefined {
+  const at = line.indexOf(BLOCKED_PREFIX);
+  if (at < 0 || line.length > 16_384) return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(line.slice(at + BLOCKED_PREFIX.length));
+  } catch {
+    return undefined;
+  }
+  if (typeof value !== "object" || value === null) return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.host !== "string" || typeof v.reason !== "string")
+    return undefined;
+  return {
+    host: v.host.toLowerCase(),
+    reason: v.reason,
+    ...(typeof v.method === "string" ? { method: v.method.toUpperCase() } : {}),
+    ...(typeof v.protocol === "string" ? { protocol: v.protocol } : {}),
+    ...(typeof v.port === "number" ? { port: v.port } : {}),
+  };
 }

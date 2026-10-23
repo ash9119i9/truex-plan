@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
-import { Harness, completed, readSse, type SseEvent } from "../support/harness";
+import {
+  Harness,
+  completed,
+  readSse,
+  runAnswering,
+  type SseEvent,
+} from "../support/harness";
 import { deadMcpUrl, McpFixture } from "../support/mcp-fixture";
 
 // MCP support on the real pinned Codex, driven by the loopback MCP fixture and
@@ -164,30 +170,6 @@ describe("MCP tool calls (real Codex)", () => {
     );
   });
 });
-
-// A run that answers each approval card as `answer` decides, as the browser
-// would. `answer` may return null to leave a card unanswered.
-async function runAnswering(
-  h: Harness,
-  body: Record<string, unknown>,
-  answer: (approval: Record<string, unknown>) => string | null,
-): Promise<{ events: SseEvent[]; answers: Response[] }> {
-  const answers: Response[] = [];
-  const res = await h.post("/v1/runs", body);
-  assert.equal(res.status, 200);
-  const events = await readSse(res, async (event) => {
-    if (event.type !== "approval.requested") return;
-    const decision = answer(event.data);
-    if (!decision) return;
-    answers.push(
-      await h.post(
-        `/v1/runs/${String(body.runId)}/approvals/${String(event.data.approvalId)}`,
-        { tenantId: "tenant1", chatId: body.chatId, decision },
-      ),
-    );
-  });
-  return { events, answers };
-}
 
 // Scripts `times` write calls and a closing reply. Clears what an earlier
 // (stopped) scenario left unconsumed first.
@@ -352,6 +334,39 @@ describe("MCP tool approvals (real Codex)", () => {
       ],
     );
     assert.equal(mcp.toolCalls(), 1);
+  });
+
+  test("a critical tool asks every time: no Allow for this chat, approvedTools ignored", async () => {
+    mcp.reset();
+    callWrite(h, 2);
+    const [server] = mcpSpec(mcp);
+    const body = h.body({
+      chatId: "ap5c",
+      threadId: null,
+      mcp: [
+        {
+          ...server,
+          approvedTools: ["create_issue"],
+          criticalTools: ["create_issue"],
+        },
+      ],
+    });
+    const { events } = await runAnswering(h, body, () => "allow_for_chat");
+    const requested = tool(events, "approval.requested");
+    assert.equal(requested.length, 2, "each call asks");
+    assert.deepEqual(
+      requested.map((r) => r.allowForChat),
+      [false, false],
+    );
+    // Allow for this chat on a critical card is taken as Allow once.
+    assert.deepEqual(
+      tool(events, "approval.resolved").map((r) => [r.decision, r.auto]),
+      [
+        ["allow", false],
+        ["allow", false],
+      ],
+    );
+    assert.equal(mcp.toolCalls(), 2);
   });
 
   // Longer than the in-flight tool watchdog (toolTimeoutSec 1 s + 15 s grace)

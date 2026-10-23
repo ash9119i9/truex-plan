@@ -1,4 +1,10 @@
 import type { RunError } from "../errors";
+import { blockKey, type NetworkBlock } from "../codex/network";
+import {
+  MAX_COMMAND_OUTPUT,
+  type FileChange,
+  type PreviewUpdate,
+} from "../codex/activity";
 
 // One run = one user message and the turn that answers it. The run keeps a
 // bounded buffer of numbered events plus the full text of each item, so a
@@ -39,7 +45,43 @@ export type RunItem =
       durationMs?: number;
       errorCode?: ToolErrorCode;
       approval?: ApprovalDecision;
-    };
+    }
+  | CommandItem
+  | FileChangeItem
+  | { type: "skill"; slug: string }
+  | NetworkItem;
+
+// A sandbox request the network proxy refused (codex/network.ts
+// `classifyBlock`): one per site and method in a run. The member's answer
+// goes to the platform and applies from the next reply.
+export type NetworkItem = { type: "network" } & NetworkBlock;
+
+// A command Codex ran (or was asked to) in the chat's sandbox. `command` is
+// what the approval card showed; `output` is capped (Codex keeps the rest).
+export interface CommandItem {
+  type: "command";
+  itemId: string;
+  command: string;
+  status: ActivityStatus;
+  exitCode?: number;
+  durationMs?: number;
+  output: string;
+  outputTruncated: boolean;
+  approval?: ApprovalDecision;
+}
+
+// One apply_patch: the files it touches, relative to the workspace.
+export interface FileChangeItem {
+  type: "file_change";
+  itemId: string;
+  files: FileChange[];
+  status: ActivityStatus;
+  approval?: ApprovalDecision;
+}
+
+// declined: the member denied it (or its approval expired or was cancelled),
+// so it never ran.
+export type ActivityStatus = "inProgress" | "completed" | "failed" | "declined";
 
 // Why a tool call ended `failed`. Never carries provider error text. DENIED:
 // its approval was denied, expired or cancelled, so the server was never
@@ -60,12 +102,26 @@ export interface ApprovalParam {
   readonly value: string;
 }
 
+// mcp: a connector tool call. command / file_change: the coding profile's
+// sandboxed command or apply_patch; their connector is "workspace" and tool
+// "command", "push" or "file_change".
+export type ApprovalKind = "mcp" | "command" | "file_change";
+
 export interface PendingApproval {
   readonly approvalId: string;
   readonly itemId: string;
+  readonly kind: ApprovalKind;
   readonly connector: string;
   readonly tool: string;
   readonly params: readonly ApprovalParam[];
+  // False when the card must not offer Allow for this chat (push).
+  readonly allowForChat: boolean;
+  // What Allow for this chat stores, when it is not the connector and tool:
+  // a command's hash (that same command only) or "file_change" (every edit).
+  readonly scope?: string;
+  // file_change only: the changes as a diff, cut at a bound.
+  readonly diff?: string;
+  readonly diffTruncated?: boolean;
   readonly expiresAt: number;
 }
 
@@ -115,12 +171,23 @@ export class Run {
   // MCP tool calls by item id, so a started call can be updated on completion
   // in place (snapshots show an unfinished call as `inProgress`).
   private readonly tools = new Map<string, ToolState>();
+  // Commands and file changes by item id, updated in place like tool calls.
+  private readonly activities = new Map<string, CommandItem | FileChangeItem>();
   // Replies and inputs in the order Codex produced them. Replies appear only
   // once they have text (empty ones never do); every steer input appears.
   private readonly order: RunItem[] = [];
   // Steer inputs already recorded, so a repeated userMessage/completed for one
   // is placed once.
   private readonly recordedInputs = new Set<string>();
+  // Skills the model has opened this run, each recorded once.
+  private readonly usedSkills = new Set<string>();
+  // blockKey of each network.blocked already recorded.
+  private readonly blocked = new Set<string>();
+  // Blocks seen before the command they belong to ended. The proxy's log
+  // line can arrive before Codex reports the command started, so a block is
+  // placed after the next command that ends (or when the run ends), never
+  // above the command that caused it.
+  private readonly heldBlocks: NetworkItem[] = [];
   // Approvals waiting for the member, by approvalId, in request order.
   private readonly pending = new Map<string, PendingApproval>();
   private readonly subscribers = new Set<Subscriber>();
@@ -183,6 +250,35 @@ export class Run {
     this.recordedInputs.add(clientMessageId);
     this.order.push({ type: "input", clientMessageId });
     this.emit("input.accepted", { clientMessageId });
+  }
+
+  // The model opened one of the chat's skills (`skills.read`). Recorded once
+  // per run, in stream order. The slug is one the platform sent, never text
+  // the model wrote.
+  useSkill(slug: string): void {
+    if (this.finishedAt !== undefined || this.usedSkills.has(slug)) return;
+    this.usedSkills.add(slug);
+    this.order.push({ type: "skill", slug });
+    this.emit("skill.used", { slug });
+  }
+
+  // A sandbox request was refused. Recorded once per site and method (a
+  // command often retries); returns false for a repeat.
+  networkBlocked(block: NetworkBlock): boolean {
+    if (this.finishedAt !== undefined) return false;
+    const key = blockKey(block);
+    if (this.blocked.has(key)) return false;
+    this.blocked.add(key);
+    this.heldBlocks.push({ type: "network", ...block });
+    return true;
+  }
+
+  private placeBlocks(): void {
+    for (const item of this.heldBlocks.splice(0)) {
+      this.order.push(item);
+      const { type: _type, ...block } = item;
+      this.emit("network.blocked", block);
+    }
   }
 
   // An MCP tool call started. Placed in stream order so snapshots carry it with
@@ -260,19 +356,24 @@ export class Run {
   // An approval ended. `auto` marks one answered by a standing allow for
   // this chat (no card was shown). Recorded on the tool call it belongs to.
   resolveApproval(
-    approval: Omit<PendingApproval, "expiresAt">,
+    approval: Omit<PendingApproval, "expiresAt" | "diff" | "diffTruncated">,
     decision: ApprovalDecision,
     auto: boolean,
   ): void {
     this.pending.delete(approval.approvalId);
-    const state = this.tools.get(approval.itemId);
+    const state =
+      approval.kind === "mcp"
+        ? this.tools.get(approval.itemId)
+        : this.activities.get(approval.itemId);
     if (state) state.approval = decision;
     this.emit("approval.resolved", {
       approvalId: approval.approvalId,
       itemId: approval.itemId,
+      kind: approval.kind,
       connector: approval.connector,
       tool: approval.tool,
       params: approval.params,
+      ...(approval.scope ? { scope: approval.scope } : {}),
       decision,
       auto,
     });
@@ -288,6 +389,123 @@ export class Run {
     let count = 0;
     for (const state of this.tools.values())
       if (state.status === "inProgress") count++;
+    return count;
+  }
+
+  // A sandboxed command started. Placed in stream order like a tool call; a
+  // repeated start is ignored.
+  startCommand(itemId: string, command: string): void {
+    if (this.activities.has(itemId)) return;
+    const item: CommandItem = {
+      type: "command",
+      itemId,
+      command,
+      status: "inProgress",
+      output: "",
+      outputTruncated: false,
+    };
+    this.activities.set(itemId, item);
+    this.order.push(item);
+    this.emit("command.started", { itemId, command });
+  }
+
+  // Live command output, kept and forwarded up to MAX_COMMAND_OUTPUT.
+  appendOutput(itemId: string, delta: string): void {
+    const item = this.activities.get(itemId);
+    if (item?.type !== "command" || item.outputTruncated || !delta) return;
+    const room = MAX_COMMAND_OUTPUT - item.output.length;
+    const chunk = delta.length > room ? delta.slice(0, room) : delta;
+    item.output += chunk;
+    if (delta.length > room) item.outputTruncated = true;
+    this.emit("command.output", {
+      itemId,
+      delta: chunk,
+      ...(item.outputTruncated ? { truncated: true } : {}),
+    });
+  }
+
+  completeCommand(
+    itemId: string,
+    command: string,
+    status: Exclude<ActivityStatus, "inProgress">,
+    exitCode: number | undefined,
+    durationMs: number | undefined,
+    output: string | undefined,
+  ): void {
+    if (!this.activities.has(itemId)) this.startCommand(itemId, command);
+    const item = this.activities.get(itemId)!;
+    if (item.type !== "command" || item.status !== "inProgress") return;
+    item.status = status;
+    if (exitCode !== undefined) item.exitCode = exitCode;
+    if (durationMs !== undefined) item.durationMs = durationMs;
+    // The final aggregate replaces the streamed text when nothing streamed.
+    if (output && !item.output) {
+      item.output = output.slice(0, MAX_COMMAND_OUTPUT);
+      item.outputTruncated = output.length > MAX_COMMAND_OUTPUT;
+    }
+    this.emit("command.completed", {
+      itemId,
+      command: item.command,
+      status,
+      ...(exitCode !== undefined ? { exitCode } : {}),
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(item.approval ? { approval: item.approval } : {}),
+    });
+    this.placeBlocks();
+  }
+
+  // A file change the model is still writing (apply_patch streaming). Not an
+  // ordered item: it is never listed in snapshots or the completed run, and
+  // it stops once Codex starts the file change itself (or `ended` when the
+  // call never became one).
+  fileChangeProgress(
+    itemId: string,
+    progress:
+      { files: FileChange[]; lines: number; preview?: PreviewUpdate } | "ended",
+  ): void {
+    if (this.activities.has(itemId)) return;
+    this.emit(
+      "file_change.progress",
+      progress === "ended" ? { itemId, ended: true } : { itemId, ...progress },
+    );
+  }
+
+  startFileChange(itemId: string, files: FileChange[]): void {
+    if (this.activities.has(itemId)) return;
+    const item: FileChangeItem = {
+      type: "file_change",
+      itemId,
+      files,
+      status: "inProgress",
+    };
+    this.activities.set(itemId, item);
+    this.order.push(item);
+    this.emit("file_change.started", { itemId, files });
+  }
+
+  completeFileChange(
+    itemId: string,
+    files: FileChange[],
+    status: Exclude<ActivityStatus, "inProgress">,
+  ): void {
+    if (!this.activities.has(itemId)) this.startFileChange(itemId, files);
+    const item = this.activities.get(itemId)!;
+    if (item.type !== "file_change" || item.status !== "inProgress") return;
+    item.status = status;
+    item.files = files;
+    this.emit("file_change.completed", {
+      itemId,
+      files,
+      status,
+      ...(item.approval ? { approval: item.approval } : {}),
+    });
+  }
+
+  // Commands still running, for the watchdog.
+  get inFlightCommandCount(): number {
+    let count = 0;
+    for (const item of this.activities.values())
+      if (item.type === "command" && item.status === "inProgress") count++;
     return count;
   }
 
@@ -328,6 +546,8 @@ export class Run {
           ...(state.approval ? { approval: state.approval } : {}),
         };
       }
+      if (item.type === "command" || item.type === "file_change")
+        return structuredClone(this.activities.get(item.itemId)!);
       return item;
     });
   }
@@ -340,6 +560,7 @@ export class Run {
     usage: Record<string, unknown> | null,
   ): void {
     if (this.finishedAt !== undefined) return;
+    this.placeBlocks();
     this.status = status;
     this.timings.completedAt = Date.now();
     this.emit("run.completed", {

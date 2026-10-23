@@ -41,9 +41,15 @@ describe("chat lifecycle (real Codex)", () => {
       ]),
       [["First answer, streamed in pieces.", true]],
     );
-    const usage = done.usage as { last: Record<string, number> };
+    const usage = done.usage as {
+      last: Record<string, number>;
+      turn: Record<string, number>;
+    };
     assert.equal(usage.last.inputTokens, 20);
     assert.equal(usage.last.outputTokens, 10);
+    assert.equal(usage.turn.inputTokens, 20);
+    assert.equal(usage.turn.cachedInputTokens, 5);
+    assert.equal(usage.turn.outputTokens, 10);
     const timings = done.timings as Record<string, number>;
     assert.ok(timings.receivedAt! <= timings.dispatchedAt!);
     assert.ok(timings.firstTextAt! <= timings.completedAt!);
@@ -89,6 +95,13 @@ describe("chat lifecycle (real Codex)", () => {
     );
     assert.equal(events[0]!.data.threadId, threadId);
     assert.equal(completed(events).status, "completed");
+    // The turn counts only its own calls; the thread total keeps both.
+    const usage = completed(events).usage as {
+      total: Record<string, number>;
+      turn: Record<string, number>;
+    };
+    assert.equal(usage.turn.inputTokens, 20);
+    assert.equal(usage.total.inputTokens, 40);
     const sent = JSON.stringify(h.model.lastRequest().body.input);
     assert.ok(
       sent.includes("First answer, streamed in pieces."),

@@ -14,7 +14,18 @@ export type Behavior =
   // Emits one function call (for an MCP namespace tool), so a test can make the
   // model ask Codex to run an MCP tool. Codex runs it and feeds the result
   // back as the next request; follow that with a `reply` to finish the turn.
-  | { kind: "call"; name: string; namespace?: string; args: unknown };
+  | { kind: "call"; name: string; namespace?: string; args: unknown }
+  // Emits one freeform (custom) tool call, the form Codex offers apply_patch
+  // in. `input` is the raw tool input (the patch text). With `stream`, the
+  // input is also sent in pieces of that size first
+  // (custom_tool_call_input.delta), `delayMs` apart, as a model writes it.
+  | {
+      kind: "custom";
+      name: string;
+      input: string;
+      stream?: number;
+      delayMs?: number;
+    };
 
 export interface ModelRequest {
   readonly authorized: boolean;
@@ -99,18 +110,47 @@ export class ModelFixture {
         });
         res.end();
         return;
-      case "call": {
+      case "call":
+      case "custom": {
         res.writeHead(200, { "content-type": "text/event-stream" });
-        const item = {
-          type: "function_call",
-          id: `fc_${n}`,
-          call_id: `call_${n}`,
-          name: behavior.name,
-          ...(behavior.namespace ? { namespace: behavior.namespace } : {}),
-          arguments: JSON.stringify(behavior.args),
-        };
+        const item =
+          behavior.kind === "call"
+            ? {
+                type: "function_call",
+                id: `fc_${n}`,
+                call_id: `call_${n}`,
+                name: behavior.name,
+                ...(behavior.namespace
+                  ? { namespace: behavior.namespace }
+                  : {}),
+                arguments: JSON.stringify(behavior.args),
+              }
+            : {
+                type: "custom_tool_call",
+                id: `ctc_${n}`,
+                call_id: `call_${n}`,
+                name: behavior.name,
+                input: behavior.input,
+              };
         emit({ type: "response.created", response: { id: `resp_${n}` } });
-        emit({ type: "response.output_item.added", output_index: 0, item });
+        const stream = behavior.kind === "custom" ? behavior.stream : undefined;
+        emit({
+          type: "response.output_item.added",
+          output_index: 0,
+          item: stream ? { ...item, input: "" } : item,
+        });
+        if (behavior.kind === "custom" && stream)
+          for (let i = 0; i < behavior.input.length; i += stream) {
+            if (res.destroyed) return;
+            emit({
+              type: "response.custom_tool_call_input.delta",
+              item_id: item.id,
+              call_id: item.call_id,
+              output_index: 0,
+              delta: behavior.input.slice(i, i + stream),
+            });
+            if (behavior.delayMs) await sleep(behavior.delayMs);
+          }
         emit({ type: "response.output_item.done", output_index: 0, item });
         emit({
           type: "response.completed",

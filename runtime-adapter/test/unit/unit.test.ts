@@ -13,7 +13,22 @@ import {
 } from "../../src/contract";
 import { AdapterError, fromCodexErrorInfo } from "../../src/errors";
 import { Run, type RunEvent } from "../../src/runtime/run";
+import { addTurnUsage } from "../../src/runtime/chat";
 import { threadResumeParams, threadStartParams } from "../../src/codex/config";
+import { detectToolchains } from "../../src/codex/coding";
+import {
+  commandScope,
+  displayCommand,
+  hasHiddenCharacters,
+  isPush,
+  MAX_COMMAND_OUTPUT,
+  MAX_DIFF_CHARS,
+  OUTPUT_TAIL_LIMIT,
+  parseChanges,
+  PathMask,
+  splitStreamed,
+  workspacePath,
+} from "../../src/codex/activity";
 
 const valid = () => ({
   runId: "run_1",
@@ -189,6 +204,123 @@ describe("start-run contract", () => {
   });
 });
 
+describe("start-run network contract", () => {
+  const github = () => ({
+    name: "github",
+    displayName: "GitHub",
+    account: "octocat",
+    access: "read_write",
+    hosts: ["github.com", "api.github.com"],
+    reads: [{ methods: ["GET", "HEAD"] }],
+    critical: [{ methods: ["DELETE"], hosts: ["api.github.com"] }],
+    credential: {
+      auth: ["bearer", "basic"],
+      urlPrefixes: ["https://api.github.com/", "https://github.com/"],
+      tokenPattern: "gh[pousr]_[A-Za-z0-9]{36}",
+      token: "ghp_" + "a".repeat(36),
+    },
+  });
+  const withNetwork = (network: unknown) => ({ ...valid(), network });
+
+  test("absent stays absent; a full policy round-trips", () => {
+    assert.equal("network" in parseStartRun(valid(), DEFAULT_LIMITS), false);
+    const policy = {
+      hosts: ["pypi.org", "registry.npmjs.org"],
+      connectors: [github()],
+    };
+    assert.deepEqual(
+      parseStartRun(withNetwork(policy), DEFAULT_LIMITS).network,
+      policy,
+    );
+  });
+
+  test("hosts must be public DNS names, never IP literals or local zones", () => {
+    for (const host of [
+      "169.254.169.254",
+      "127.0.0.1",
+      "[::1]",
+      "localhost",
+      "db.internal",
+      "*.github.com",
+      "GitHub.com",
+      "metadata.google.internal",
+      "x.test",
+      "single",
+    ])
+      rejects(
+        withNetwork({ hosts: [host], connectors: [] }),
+        /network\.hosts\[0\]/,
+      );
+  });
+
+  test("a connector's rules and token stay on its own hosts", () => {
+    rejects(
+      withNetwork({ hosts: ["github.com"], connectors: [github()] }),
+      /must not repeat network\.hosts/,
+    );
+    rejects(
+      withNetwork({
+        hosts: [],
+        connectors: [
+          {
+            ...github(),
+            reads: [{ methods: ["GET"], hosts: ["evil.example.com"] }],
+          },
+        ],
+      }),
+      /reads\[0\]\.hosts/,
+    );
+    for (const prefix of [
+      "https://evil.example.com/",
+      "http://api.github.com/",
+      "https://api.github.com",
+      "https://api.github.com:8443/",
+      "https://u:p@api.github.com/",
+    ])
+      rejects(
+        withNetwork({
+          hosts: [],
+          connectors: [
+            {
+              ...github(),
+              credential: { ...github().credential, urlPrefixes: [prefix] },
+            },
+          ],
+        }),
+        /urlPrefixes\[0\]/,
+      );
+    rejects(
+      withNetwork({ hosts: [], connectors: [github(), github()] }),
+      /names must be unique/,
+    );
+    rejects(
+      withNetwork({ hosts: [], connectors: [{ ...github(), extra: true }] }),
+      /extra/,
+    );
+  });
+
+  test("a rejected token is never echoed", () => {
+    try {
+      parseStartRun(
+        withNetwork({
+          hosts: [],
+          connectors: [
+            {
+              ...github(),
+              credential: { ...github().credential, token: "SECRET TOKEN" },
+            },
+          ],
+        }),
+        DEFAULT_LIMITS,
+      );
+      assert.fail("expected rejection");
+    } catch (error) {
+      assert.match((error as Error).message, /token is invalid/);
+      assert.doesNotMatch((error as Error).message, /SECRET/);
+    }
+  });
+});
+
 describe("start-run MCP contract", () => {
   const server = () => ({
     name: "github",
@@ -230,6 +362,42 @@ describe("start-run MCP contract", () => {
     );
     rejectsMcp([{ ...server(), approvalMode: "approve" }], /Unknown field/);
     rejectsMcp([{ ...server(), approval_mode: "approve" }], /Unknown field/);
+  });
+
+  test("criticalTools: optional, validated, and removed from approvedTools", () => {
+    const parsed = parse(
+      withMcp([
+        {
+          ...server(),
+          approvedTools: ["create_branch", "delete_repo"],
+          criticalTools: ["delete_repo"],
+        },
+      ]),
+    );
+    assert.deepEqual(parsed.mcp?.[0]?.approvedTools, ["create_branch"]);
+    assert.deepEqual(parsed.mcp?.[0]?.criticalTools, ["delete_repo"]);
+    rejectsMcp(
+      [{ ...server(), criticalTools: ["bad name"] }],
+      /criticalTools has an invalid tool name/,
+    );
+  });
+
+  test("an MCP URL may not name an address or a local or metadata host", () => {
+    for (const url of [
+      "https://127.0.0.1/mcp",
+      "https://10.0.0.5/mcp",
+      "https://169.254.169.254/latest",
+      "https://[::1]/mcp",
+      "https://0x7f000001/mcp",
+      "https://localhost/mcp",
+      "https://mcp.localhost/mcp",
+      "https://sap.local/mcp",
+      "https://metadata.google.internal/x",
+    ])
+      rejectsMcp([{ ...server(), url }], /private or local address|https URL/);
+    assert.ok(
+      parse(withMcp([{ ...server(), url: "https://api.example.com/mcp" }])),
+    );
   });
 
   test("approvedTools: optional, validated like enabledTools, empty omitted", () => {
@@ -472,6 +640,31 @@ describe("configuration", () => {
     }
   });
 
+  // Regression: Node's bin directory came first, so a Homebrew Node
+  // (/opt/homebrew/bin, which also holds Homebrew's python3) shadowed the
+  // toolchain Python that has the pinned document libraries.
+  test("listed toolchains come before Node's own bin directory on PATH", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runtime-adapter-toolchain-"));
+    try {
+      await mkdir(join(root, "node", "bin"), { recursive: true });
+      await mkdir(join(root, "python", "bin"), { recursive: true });
+      const { path, readRoots } = detectToolchains(
+        [join(root, "python"), join(root, "missing")],
+        "linux",
+        join(root, "node", "bin", "node"),
+      );
+      const entries = path.split(":");
+      assert.deepEqual(entries.slice(0, 2), [
+        join(root, "python", "bin"),
+        join(root, "node", "bin"),
+      ]);
+      assert.ok(!path.includes("missing"));
+      assert.deepEqual(readRoots, [join(root, "node"), join(root, "python")]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("defaults to loopback and the pinned binary", () => {
     const config = loadConfig({
       RUNTIME_ADAPTER_TOKEN: "x".repeat(32),
@@ -659,9 +852,11 @@ describe("run buffer", () => {
     const approval = {
       approvalId: "ap_1",
       itemId: "i1",
+      kind: "mcp" as const,
       connector: "github",
       tool: "create_branch",
       params: [{ name: "branch", value: "feature/x" }],
+      allowForChat: true,
       expiresAt: 123,
     };
     run.requestApproval(approval);
@@ -678,6 +873,7 @@ describe("run buffer", () => {
     assert.deepEqual(resolved.data, {
       approvalId: "ap_1",
       itemId: "i1",
+      kind: "mcp",
       connector: "github",
       tool: "create_branch",
       params: [{ name: "branch", value: "feature/x" }],
@@ -840,5 +1036,239 @@ describe("codex MCP config", () => {
       "mcp_servers.github"
     ] as Record<string, unknown>;
     assert.equal(entry.enabled_tools, undefined);
+  });
+});
+
+describe("coding activity display", () => {
+  const ws = "/state/t/a/c/b/workspace";
+
+  test("the shell wrapper is removed only when the inner text is exactly what runs", () => {
+    assert.equal(displayCommand("/bin/zsh -lc 'touch a.txt'"), "touch a.txt");
+    assert.equal(displayCommand("bash -lc 'ls'"), "ls");
+    // Double quotes with nothing special inside are removed too.
+    assert.equal(
+      displayCommand(`/bin/zsh -lc "sed -i '' s/a/b/ f"`),
+      "sed -i '' s/a/b/ f",
+    );
+    // $, backticks and backslashes expand inside double quotes: kept whole.
+    for (const raw of [
+      `/bin/zsh -lc "echo '$HOME'"`,
+      "/bin/zsh -lc \"echo '`id`'\"",
+      `/bin/zsh -lc "echo 'a\\b'"`,
+    ])
+      assert.equal(displayCommand(raw), raw);
+    assert.equal(displayCommand("node -v"), "node -v");
+  });
+
+  test("pushes are recognised inside chains and with options", () => {
+    for (const cmd of [
+      "git push",
+      "git push origin main",
+      "git -C repo push --force",
+      "cd repo && git push",
+    ])
+      assert.equal(isPush(cmd), true, cmd);
+    for (const cmd of ["git status", "echo push", "git pull"])
+      assert.equal(isPush(cmd), false, cmd);
+  });
+
+  test("hidden characters are detected; tabs and newlines are allowed", () => {
+    assert.equal(hasHiddenCharacters("ls\t-l\n"), false);
+    assert.equal(hasHiddenCharacters("touch a\u202Etxt"), true);
+    assert.equal(hasHiddenCharacters("echo \u001b[31m"), true);
+  });
+
+  test("paths are shown relative to the workspace, never absolute", () => {
+    assert.equal(workspacePath(`${ws}/src/a.py`, ws), "src/a.py");
+    assert.equal(workspacePath(ws, ws), ".");
+    assert.equal(
+      workspacePath("/state/t/a/c/b/home/x", ws),
+      "(outside workspace)",
+    );
+  });
+
+  test("changes are listed with kinds and the diff is bounded", () => {
+    const parsed = parseChanges(
+      [
+        { path: `${ws}/a.txt`, kind: { type: "add" }, diff: "+x\n" },
+        {
+          path: `${ws}/b.txt`,
+          kind: { type: "update", move_path: `${ws}/c.txt` },
+          diff: "y".repeat(MAX_DIFF_CHARS),
+        },
+        { path: 7 },
+      ],
+      ws,
+    );
+    assert.deepEqual(parsed.files, [
+      { path: "a.txt", kind: "add" },
+      { path: "b.txt", kind: "move", movePath: "c.txt" },
+    ]);
+    assert.equal(parsed.diffTruncated, true);
+    assert.equal(parsed.diff.length, MAX_DIFF_CHARS);
+    assert.ok(!parsed.diff.includes("/state/"));
+  });
+
+  test("the scope is the exact command's hash", () => {
+    assert.equal(commandScope("ls"), commandScope("ls"));
+    assert.notEqual(commandScope("ls"), commandScope("ls "));
+  });
+
+  test("command output is capped on the item and in events", () => {
+    const run = new Run("r", "t", "c", "h", 1000, "m0");
+    run.startCommand("i1", "cat big");
+    run.appendOutput("i1", "x".repeat(MAX_COMMAND_OUTPUT - 1));
+    run.appendOutput("i1", "yz");
+    run.appendOutput("i1", "more");
+    run.completeCommand("i1", "cat big", "completed", 0, 5, "ignored");
+    const item = run.itemList()[0]!;
+    assert.equal(item.type, "command");
+    if (item.type !== "command") return;
+    assert.equal(item.output.length, MAX_COMMAND_OUTPUT);
+    assert.equal(item.outputTruncated, true);
+    assert.equal(item.exitCode, 0);
+  });
+
+  test("coding approval allows are validated", () => {
+    const base = {
+      runId: "r1",
+      tenantId: "t",
+      chatId: "c",
+      threadId: null,
+      input: { text: "hi", clientMessageId: "m1" },
+      agentPrompt: "p",
+      model: {
+        modelName: "m",
+        gatewayUrl: "http://127.0.0.1:1/v1",
+        gatewayToken: "x".repeat(20),
+        contextWindow: 10_000,
+        autoCompactTokenLimit: 9_000,
+      },
+    };
+    const ok = parseStartRun(
+      {
+        ...base,
+        codingApprovals: { commands: ["a".repeat(64)] },
+      },
+      DEFAULT_LIMITS,
+    );
+    assert.deepEqual(ok.codingApprovals, { commands: ["a".repeat(64)] });
+    for (const bad of [
+      { commands: ["rm -rf /"] },
+      { commands: [], fileChanges: true },
+      { commands: [], extra: 1 },
+    ])
+      assert.throws(() =>
+        parseStartRun({ ...base, codingApprovals: bad }, DEFAULT_LIMITS),
+      );
+  });
+});
+
+describe("turn usage", () => {
+  const u = (input: number, output: number, cached = 0) => ({
+    inputTokens: input,
+    cachedInputTokens: cached,
+    outputTokens: output,
+    totalTokens: input + output,
+  });
+
+  test("sums every call by the growth of the thread total", () => {
+    // Thread already spent 100/10 in earlier turns.
+    let sum = addTurnUsage(null, null, u(150, 15, 20), u(50, 5, 20));
+    sum = addTurnUsage(sum, u(150, 15, 20), u(210, 22, 50), u(60, 7, 30));
+    assert.equal(sum.inputTokens, 110);
+    assert.equal(sum.cachedInputTokens, 50);
+    assert.equal(sum.outputTokens, 12);
+  });
+
+  test("a repeated update with an unchanged total adds nothing", () => {
+    let sum = addTurnUsage(null, null, u(150, 15), u(50, 5));
+    // Compaction estimate / rate-limit refresh: same total, other `last`.
+    sum = addTurnUsage(sum, u(150, 15), u(150, 15), u(0, 0));
+    assert.equal(sum.inputTokens, 50);
+    assert.equal(sum.outputTokens, 5);
+  });
+
+  test("a total that shrank (context full reset) adds nothing", () => {
+    let sum = addTurnUsage(null, null, u(150, 15), u(50, 5));
+    sum = addTurnUsage(sum, u(150, 15), { totalTokens: 1000 }, {});
+    assert.equal(sum.inputTokens, 50);
+    assert.equal(sum.totalTokens, 55);
+  });
+
+  test("bad values count as zero", () => {
+    const sum = addTurnUsage(
+      null,
+      null,
+      {},
+      {
+        inputTokens: -3,
+        outputTokens: "9",
+        cachedInputTokens: 1.5,
+      },
+    );
+    assert.equal(sum.inputTokens, 0);
+    assert.equal(sum.outputTokens, 0);
+    assert.equal(sum.cachedInputTokens, 0);
+  });
+});
+
+describe("path mask", () => {
+  const state = "/mnt/state";
+  const root = `${state}/t/6ad25557bd7f03d236240be6/c/6adb4715c1f7cc575261504b`;
+  const sha = "e".repeat(64);
+  const mask = new PathMask(
+    {
+      stateDir: state,
+      chatRoot: root,
+      workspace: `${root}/workspace`,
+      scratch: `${root}/scratch`,
+      skillLinks: `${root}/skills`,
+    },
+    ["/private/mnt/state"],
+  );
+
+  test("names each place by its variable, longest place first", () => {
+    assert.equal(mask.apply(`${root}/workspace/out`), "$WORKSPACE/out");
+    assert.equal(mask.apply(`cd ${root}/scratch`), "cd $TMPDIR");
+    assert.equal(mask.apply(`${root}/skills/word`), "$SKILLS/word");
+    assert.equal(mask.apply(`${root}/home/x`), "<chat>/home/x");
+    assert.equal(
+      mask.apply(`${state}/skills/${sha}/word/a.py`),
+      "$SKILLS/word/a.py",
+    );
+    assert.equal(mask.apply(`${state}/other`), "<state>/other");
+    assert.equal(
+      mask.apply(`/private${root}/workspace`),
+      "$WORKSPACE",
+      "the real-path spelling",
+    );
+    assert.equal(mask.apply("relative/path $HOME"), "relative/path $HOME");
+  });
+
+  test("a place split across deltas is never shown in part", () => {
+    const line = `saved ${root}/workspace/out.docx\n`;
+    let tail = "";
+    let shown = "";
+    for (const piece of [
+      line.slice(0, 20),
+      line.slice(20, 50),
+      line.slice(50),
+    ]) {
+      const r = splitStreamed(mask, tail + piece, false);
+      shown += r.shown;
+      tail = r.tail;
+    }
+    shown += splitStreamed(mask, tail, true).shown;
+    assert.equal(shown, "saved $WORKSPACE/out.docx\n");
+  });
+
+  test("a long unbroken tail goes out without cutting a place", () => {
+    const text = "x".repeat(OUTPUT_TAIL_LIMIT) + `${root}/workspace` + "y";
+    const r = splitStreamed(mask, text, false);
+    assert.ok(r.shown.length > 0);
+    assert.ok(!r.shown.includes("/mnt") && !r.tail.startsWith("/workspace"));
+    const all = r.shown + splitStreamed(mask, r.tail, true).shown;
+    assert.equal(all, "x".repeat(OUTPUT_TAIL_LIMIT) + "$WORKSPACE" + "y");
   });
 });

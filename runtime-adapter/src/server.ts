@@ -14,10 +14,22 @@ import {
   parseStartRun,
 } from "./contract";
 import { AdapterError } from "./errors";
+import {
+  chatWorkspace,
+  listWorkspace,
+  MAX_FILE_BYTES,
+  readWorkspaceFile,
+} from "./runtime/files";
 import type { Logger, RuntimeManager } from "./runtime/manager";
+import {
+  MAX_SKILL_ARCHIVE_BYTES,
+  missingSkills,
+  writeSkill,
+} from "./runtime/skills";
+import { writeUpload } from "./runtime/uploads";
 import type { Run, RunEvent } from "./runtime/run";
 
-// The adapter's HTTP surface: five authenticated operations plus health.
+// The adapter's HTTP surface: authenticated operations plus health.
 // Bodies are size-limited JSON; everything else is refused before it reaches
 // the runtime.
 
@@ -29,6 +41,8 @@ export interface ServerOptions {
   readonly token: string;
   readonly limits: RuntimeLimits;
   readonly manager: RuntimeManager;
+  // Where chat workspaces live (AdapterConfig.stateDir).
+  readonly stateDir: string;
   readonly log: Logger;
   // Forwarded to request parsing so a body can never relax transport security.
   readonly allowLoopbackMcp: boolean;
@@ -68,6 +82,18 @@ export function createAdapterServer(options: ServerOptions): Server {
       const request = parseStartRun(await readJson(req), options.limits, {
         allowLoopbackMcp: options.allowLoopbackMcp,
       });
+      // Attached images live in uploads/, which only coding chats have.
+      if (request.input.images?.length && !options.manager.codingEnabled)
+        throw new AdapterError("UPLOADS_DISABLED");
+      // Checked on every run, not only the first: a resumed thread reads its
+      // skills from disk, and the runtime's storage may have been reset.
+      if (request.skills?.length) {
+        const missing = await missingSkills(options.stateDir, request.skills);
+        if (missing.length > 0)
+          throw new AdapterError("SKILLS_MISSING", undefined, {
+            missing: missing.map((skill) => skill.sha256),
+          });
+      }
       const run = options.manager.startRun(request);
       return stream(res, run, 0, options);
     }
@@ -120,6 +146,91 @@ export function createAdapterServer(options: ServerOptions): Server {
         chatId: parts[2],
       });
       return sendJson(res, 200, { turns: await options.manager.history(ref) });
+    }
+    if (
+      req.method === "GET" &&
+      parts[1] === "chats" &&
+      parts.length === 4 &&
+      (parts[3] === "files" || parts[3] === "file")
+    ) {
+      const ref = parseChatRef({
+        tenantId: url.searchParams.get("tenantId") ?? undefined,
+        chatId: parts[2],
+      });
+      const workspace = chatWorkspace(options.stateDir, ref);
+      if (parts[3] === "files")
+        return sendJson(res, 200, await listWorkspace(workspace));
+      const data = await readWorkspaceFile(
+        workspace,
+        url.searchParams.get("path") ?? "",
+      );
+      res.writeHead(200, {
+        "content-type": "application/octet-stream",
+        "content-length": data.length,
+        "cache-control": "no-store",
+      });
+      return res.end(data);
+    }
+    if (
+      req.method === "PUT" &&
+      parts[1] === "chats" &&
+      parts.length === 5 &&
+      parts[3] === "uploads"
+    ) {
+      const ref = parseChatRef({
+        tenantId: url.searchParams.get("tenantId") ?? undefined,
+        chatId: parts[2],
+      });
+      if (!options.manager.codingEnabled)
+        throw new AdapterError("UPLOADS_DISABLED");
+      // A run could be reading or rewriting the folder.
+      if (options.manager.isRunning(ref)) throw new AdapterError("CHAT_BUSY");
+      const type = req.headers["content-type"] ?? "";
+      if (!/^application\/octet-stream(\s*;|$)/i.test(type))
+        throw new AdapterError(
+          "INVALID_REQUEST",
+          "Content-Type must be application/octet-stream.",
+        );
+      const declared = Number(req.headers["content-length"] ?? 0);
+      if (declared > MAX_FILE_BYTES)
+        throw new AdapterError("PAYLOAD_TOO_LARGE");
+      let name: string;
+      try {
+        name = decodeURIComponent(parts[4]!);
+      } catch {
+        throw new AdapterError("INVALID_REQUEST", "name is not valid.");
+      }
+      const written = await writeUpload(
+        chatWorkspace(options.stateDir, ref),
+        name,
+        url.searchParams.get("sha256") ?? "",
+        req,
+      );
+      return sendJson(res, 200, written);
+    }
+    if (
+      req.method === "PUT" &&
+      parts[1] === "chats" &&
+      parts.length === 5 &&
+      parts[3] === "skills"
+    ) {
+      // The chat only routes the request (one AgentCore session per chat);
+      // skills are stored by digest, shared by every chat on this runtime.
+      parseChatRef({
+        tenantId: url.searchParams.get("tenantId") ?? undefined,
+        chatId: parts[2],
+      });
+      const type = req.headers["content-type"] ?? "";
+      if (!/^application\/gzip(\s*;|$)/i.test(type))
+        throw new AdapterError(
+          "INVALID_REQUEST",
+          "Content-Type must be application/gzip.",
+        );
+      const declared = Number(req.headers["content-length"] ?? 0);
+      if (declared > MAX_SKILL_ARCHIVE_BYTES)
+        throw new AdapterError("PAYLOAD_TOO_LARGE");
+      const written = await writeSkill(options.stateDir, parts[4]!, req);
+      return sendJson(res, 200, written);
     }
     throw notFound();
   }

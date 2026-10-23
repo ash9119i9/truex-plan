@@ -32,6 +32,13 @@ export interface HarnessOptions {
   // can host). Off by default, so non-MCP tests keep production's https-only
   // posture.
   readonly allowLoopbackMcp?: boolean;
+  // Turns the coding profile on (RUNTIME_CODING_ENABLED=1).
+  readonly coding?: boolean;
+  // RUNTIME_TOOLCHAIN_DIRS.
+  readonly toolchainDirs?: readonly string[];
+  // With coding: the network proxy forwards to this loopback stand-in for
+  // the internet instead of the real hosts (network-fixture.ts).
+  readonly networkEnv?: () => Readonly<Record<string, string>>;
 }
 
 export class Harness {
@@ -134,16 +141,30 @@ export class Harness {
       RUNTIME_ADAPTER_TOKEN: TOKEN,
       RUNTIME_STATE_DIR: this.stateDir,
       PORT: "1",
+      ...(this.options.coding ? { RUNTIME_CODING_ENABLED: "1" } : {}),
+      ...(this.options.toolchainDirs
+        ? { RUNTIME_TOOLCHAIN_DIRS: this.options.toolchainDirs.join(":") }
+        : {}),
     });
     const limits = { ...DEFAULT_LIMITS, ...this.options.limits };
+    const coding =
+      config.coding && this.options.networkEnv
+        ? { ...config.coding, networkTestEnv: this.options.networkEnv() }
+        : config.coding;
     this.manager = new RuntimeManager(
-      { ...config, limits, maxProcesses: this.options.maxProcesses ?? 5 },
+      {
+        ...config,
+        coding,
+        limits,
+        maxProcesses: this.options.maxProcesses ?? 5,
+      },
       (event, fields) => this.logs.push({ event, fields }),
     );
     this.server = createAdapterServer({
       token: TOKEN,
       limits,
       manager: this.manager,
+      stateDir: this.stateDir,
       log: (event, fields) => this.logs.push({ event, fields }),
       allowLoopbackMcp: this.options.allowLoopbackMcp ?? false,
     });
@@ -192,6 +213,31 @@ export async function readSse(
     }
   }
   return events;
+}
+
+// A run that answers each approval card as `answer` decides, as the browser
+// would. `answer` may return null to leave a card unanswered.
+export async function runAnswering(
+  h: Harness,
+  body: Record<string, unknown>,
+  answer: (approval: Record<string, unknown>) => string | null,
+): Promise<{ events: SseEvent[]; answers: Response[] }> {
+  const answers: Response[] = [];
+  const res = await h.post("/v1/runs", body);
+  if (res.status !== 200)
+    throw new Error(`start failed: ${res.status} ${await res.text()}`);
+  const events = await readSse(res, async (event) => {
+    if (event.type !== "approval.requested") return;
+    const decision = answer(event.data);
+    if (!decision) return;
+    answers.push(
+      await h.post(
+        `/v1/runs/${String(body.runId)}/approvals/${String(event.data.approvalId)}`,
+        { tenantId: "tenant1", chatId: body.chatId, decision },
+      ),
+    );
+  });
+  return { events, answers };
 }
 
 export function completed(events: SseEvent[]): Record<string, unknown> {

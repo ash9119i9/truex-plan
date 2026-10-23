@@ -26,6 +26,7 @@ async function main(): Promise<void> {
     token: config.token,
     limits: config.limits,
     manager,
+    stateDir: config.stateDir,
     log,
     allowLoopbackMcp: config.allowLoopbackMcp,
   });
