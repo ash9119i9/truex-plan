@@ -274,3 +274,25 @@ test("another tab's logout clears the private view without reloading a still-liv
   await gate.recheck();
   assert.equal(gate.state().kind, "signedOut");
 });
+
+test("returning to the tab rechecks at most once a minute", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
+  const gate = mountGate(t, 200, ME);
+  await settle();
+  assert.equal(gate.requests.length, 1);
+  const shown = async () => {
+    globalThis.document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+  };
+  t.mock.timers.tick(5_000);
+  await shown();
+  t.mock.timers.tick(30_000);
+  await shown();
+  assert.equal(gate.requests.length, 1, "no recheck inside a minute");
+  t.mock.timers.tick(25_000);
+  await shown();
+  assert.equal(gate.requests.length, 2);
+  // A back/forward cache restore is never throttled.
+  await gate.recheck();
+  assert.equal(gate.requests.length, 3);
+});

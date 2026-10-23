@@ -39,9 +39,12 @@ type State =
   | { kind: "blocked"; message: string }
   | { kind: "unavailable"; message: string };
 
-// A tab that comes back into view, or is restored from the back/forward cache,
-// asks again at most this often.
-const RECHECK_MS = 5_000;
+// A tab that comes back into view or back online asks again at most this
+// often. Each check is two requests, and switching windows fires it, so a
+// short interval looked like polling. Sign-outs and account switches in other
+// tabs arrive through the tab channel and any 401 forces a check at once, so
+// this is only a backstop. A back/forward cache restore always checks.
+const RECHECK_MS = 60_000;
 
 /**
  * Nothing private is shown, and no private request is made, until the platform
