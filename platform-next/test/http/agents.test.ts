@@ -2,7 +2,11 @@ import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { ObjectId } from "mongodb";
 import type { MongoMemoryReplSet } from "mongodb-memory-server";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DatabaseService } from "../../src/database/database.service";
+import { MemoryFileStore } from "../../src/modules/chats/chat-files";
 import {
   AGENTS_COLLECTION,
   MAX_AGENTS_PER_USER,
@@ -43,6 +47,13 @@ interface AgentBody {
   tint: string;
   model: { id: string; displayName: string; shortLabel: string } | null;
   available: boolean;
+  skills: {
+    id: string;
+    slug: string;
+    displayName: string;
+    hasScripts: boolean;
+    available: boolean;
+  }[];
   revision: number;
   createdByMe: boolean;
   status: string;
@@ -76,7 +87,16 @@ describe("agents and models API", () => {
 
   before(async () => {
     mongo = await startReplicaSet();
-    running = await startApp({ mongodbUri: mongo.getUri() });
+    running = await startApp({
+      mongodbUri: mongo.getUri(),
+      // Skill archives are kept in the files bucket.
+      files: {
+        bucket: "b",
+        region: "us-east-1",
+        prefix: "",
+        store: new MemoryFileStore(),
+      },
+    });
     database = running.app.get(DatabaseService);
     users = running.app.get(UsersService);
     memberships = running.app.get(MembershipsService);
@@ -631,6 +651,122 @@ describe("agents and models API", () => {
         409,
         "CONFLICT",
       );
+    });
+  });
+
+  describe("skills", () => {
+    const skillsRoot = mkdtempSync(join(tmpdir(), "agent-skills-"));
+    async function publish(slug: string, scripts = false) {
+      const folder = join(skillsRoot, slug);
+      mkdirSync(join(folder, "scripts"), { recursive: true });
+      writeFileSync(
+        join(folder, "SKILL.md"),
+        `---\nname: ${slug}\ndescription: The ${slug} skill.\n---\n`,
+      );
+      if (scripts) writeFileSync(join(folder, "scripts", "run.py"), "pass");
+      return (
+        await operator.putSkill({
+          operator: "ops",
+          folder,
+          toolchain: new Set(),
+        })
+      ).skill.id;
+    }
+
+    test("members list enabled skills, and agents attach them in order", async () => {
+      const a = await publish("alpha", true);
+      const b = await publish("beta");
+      const { skills, scripts } = await ok<{
+        skills: { slug: string; hasScripts: boolean }[];
+        scripts: boolean;
+      }>(await call(alice, "GET", "/skills"));
+      assert.deepEqual(
+        skills.map((s) => [s.slug, s.hasScripts]),
+        [
+          ["alpha", true],
+          ["beta", false],
+        ],
+      );
+      assert.equal(scripts, false);
+      const agent = await create(alice, { skillIds: [b, a] });
+      assert.deepEqual(
+        agent.skills.map((s) => [s.slug, s.available]),
+        [
+          ["beta", true],
+          ["alpha", true],
+        ],
+      );
+      const stored = await agentsIn(DEFAULT_TENANT_DB_NAME).findOne({
+        _id: new ObjectId(agent.id),
+      });
+      assert.deepEqual(
+        stored?.skillIds?.map((id) => id.toHexString()),
+        [b, a],
+      );
+      const listed = (await list(alice)).find((x) => x.id === agent.id);
+      assert.deepEqual(
+        listed?.skills.map((s) => s.slug),
+        ["beta", "alpha"],
+      );
+    });
+
+    test("a disabled skill shows as Unavailable, can stay, but cannot be added", async () => {
+      const a = await publish("alpha");
+      const b = await publish("beta");
+      const agent = await create(alice, { skillIds: [a] });
+      await operator.setSkillEnabled({
+        operator: "ops",
+        slug: "alpha",
+        enabled: false,
+      });
+      const listed = (await list(alice)).find((x) => x.id === agent.id);
+      assert.deepEqual(
+        listed?.skills.map((s) => [s.slug, s.available]),
+        [["alpha", false]],
+      );
+      // Keeping it while adding another is fine.
+      const { agent: edited } = await ok<{ agent: AgentBody }>(
+        await call(alice, "PATCH", `/agents/${agent.id}`, {
+          revision: 1,
+          skillIds: [a, b],
+        }),
+      );
+      assert.equal(edited.revision, 2);
+      const [event] = await audit("agent.update");
+      assert.equal(event?.details?.fields, "skillIds");
+      // A new agent cannot pick it.
+      await fails(
+        await call(alice, "POST", "/agents", createBody({ skillIds: [a] })),
+        400,
+        "BAD_REQUEST",
+      );
+      // Clearing removes the field.
+      await ok(
+        await call(alice, "PATCH", `/agents/${agent.id}`, {
+          revision: 2,
+          skillIds: [],
+        }),
+      );
+      const stored = await agentsIn(DEFAULT_TENANT_DB_NAME).findOne({
+        _id: new ObjectId(agent.id),
+      });
+      assert.equal(stored?.skillIds, undefined);
+    });
+
+    test("bad skill lists are refused", async () => {
+      const a = await publish("alpha");
+      for (const skillIds of [
+        "x",
+        [a, a],
+        ["not-an-id"],
+        [new ObjectId().toHexString()],
+        Array.from({ length: 11 }, () => new ObjectId().toHexString()),
+      ])
+        await fails(
+          await call(alice, "POST", "/agents", createBody({ skillIds })),
+          400,
+          "BAD_REQUEST",
+        );
     });
   });
 

@@ -17,6 +17,9 @@ export interface McpServerSpec {
   // widen enabledTools. Not part of the adapter's MCP fingerprint, so growing
   // it does not restart the chat's Codex process. Included only when non-empty.
   approvedTools?: string[];
+  // The connector's criticalTools: they ask every time, never covered by
+  // approvedTools. Included only when non-empty.
+  criticalTools?: string[];
   toolTimeoutSec: number;
   startupTimeoutSec: number;
 }

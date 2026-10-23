@@ -27,7 +27,20 @@ export type Behavior =
   | { kind: "held"; before: string; after: string }
   // Sends nothing, not even headers, until release(); then replies `text`.
   | { kind: "stall"; text: string }
-  | { kind: "failed"; code: string };
+  | { kind: "failed"; code: string }
+  // One tool call: a function (exec_command, or `read` in the `skills`
+  // namespace) or a custom tool (apply_patch). Codex runs it and sends the
+  // result as the next request.
+  | { kind: "call"; name: string; namespace?: string; args: unknown }
+  // With `stream`, the input is also sent in pieces of that size first,
+  // `delayMs` apart, as a model writes it (apply_patch progress).
+  | {
+      kind: "custom";
+      name: string;
+      input: string;
+      stream?: number;
+      delayMs?: number;
+    };
 
 export interface GatewayRequest {
   readonly modelId: string;
@@ -120,6 +133,60 @@ export class FakeGateway {
       );
     res.writeHead(200, { "content-type": "text/event-stream" });
     emit({ type: "response.created", response: { id: `resp_${n}` } });
+    if (behavior.kind === "call" || behavior.kind === "custom") {
+      const item =
+        behavior.kind === "call"
+          ? {
+              type: "function_call",
+              id: `fc_${n}`,
+              call_id: `call_${n}`,
+              name: behavior.name,
+              ...(behavior.namespace ? { namespace: behavior.namespace } : {}),
+              arguments: JSON.stringify(behavior.args),
+            }
+          : {
+              type: "custom_tool_call",
+              id: `ctc_${n}`,
+              call_id: `call_${n}`,
+              name: behavior.name,
+              input: behavior.input,
+            };
+      const stream = behavior.kind === "custom" ? behavior.stream : undefined;
+      emit({
+        type: "response.output_item.added",
+        output_index: 0,
+        item: stream ? { ...item, input: "" } : item,
+      });
+      if (behavior.kind === "custom" && stream)
+        for (let i = 0; i < behavior.input.length; i += stream) {
+          emit({
+            type: "response.custom_tool_call_input.delta",
+            item_id: item.id,
+            call_id: item.call_id,
+            output_index: 0,
+            delta: behavior.input.slice(i, i + stream),
+          });
+          if (behavior.delayMs)
+            await new Promise((resolve) =>
+              setTimeout(resolve, behavior.delayMs),
+            );
+        }
+      emit({ type: "response.output_item.done", output_index: 0, item });
+      emit({
+        type: "response.completed",
+        response: {
+          id: `resp_${n}`,
+          usage: {
+            input_tokens: 20,
+            input_tokens_details: { cached_tokens: 0 },
+            output_tokens: 10,
+            total_tokens: 30,
+          },
+        },
+      });
+      res.end();
+      return;
+    }
     if (behavior.kind === "failed") {
       emit({
         type: "response.failed",
@@ -212,6 +279,9 @@ export class AdapterProcess {
   private child: ChildProcess | undefined;
   private port = 0;
 
+  // Turns the adapter's coding profile on (RUNTIME_CODING_ENABLED=1).
+  constructor(private readonly options: { coding?: boolean } = {}) {}
+
   async start(stateDir?: string): Promise<void> {
     this.stateDir ||=
       stateDir ?? (await mkdtemp(join(tmpdir(), "platform-chat-test-")));
@@ -227,6 +297,7 @@ export class AdapterProcess {
         HOST: "127.0.0.1",
         PORT: String(this.port),
         RUNTIME_DRAIN_MS: "1000",
+        ...(this.options.coding ? { RUNTIME_CODING_ENABLED: "1" } : {}),
       },
       stdio: "ignore",
     });

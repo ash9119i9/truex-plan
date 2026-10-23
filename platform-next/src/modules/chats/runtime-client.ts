@@ -3,6 +3,15 @@
 // the same operations.
 
 import type { McpServerSpec } from "../connectors/mcp-server-spec";
+import type { RunNetworkPolicy } from "../network/network-policy";
+
+// A skill version a run uses, by its archive's digest and its folder name.
+// The archive is pushed first (putSkill); the adapter refuses a run whose
+// skills it does not hold with SKILLS_MISSING.
+export interface RunSkill {
+  readonly sha256: string;
+  readonly slug: string;
+}
 
 export interface AdapterEvent {
   readonly seq: number;
@@ -33,11 +42,27 @@ export interface HistoryTurn {
 export interface StartRunBody extends ChatRef {
   readonly runId: string;
   readonly threadId: string | null;
-  readonly input: { readonly text: string; readonly clientMessageId: string };
+  readonly input: {
+    readonly text: string;
+    readonly clientMessageId: string;
+    // `uploads/<name>` paths of attached images, shown to the model as
+    // images. Present only when the message has some.
+    readonly images?: readonly string[];
+  };
   readonly agentPrompt: string;
   // The directory-connector MCP servers for this turn, included only when
   // non-empty. Carries per-user Authorization headers, so it is NEVER logged.
   readonly mcp?: readonly McpServerSpec[];
+  // What sandbox commands may reach (CHAT_SANDBOX_NETWORK=1 only). Carries
+  // the members' connector tokens, so it is NEVER logged.
+  readonly network?: RunNetworkPolicy;
+  // Coding Allow-for-this-chat answers: command scopes.
+  readonly codingApprovals?: {
+    readonly commands: readonly string[];
+  };
+  // The chat's skills, the same list on every run. Included only when
+  // non-empty.
+  readonly skills?: readonly RunSkill[];
   readonly model: {
     readonly modelName: string;
     readonly gatewayUrl: string;
@@ -48,12 +73,25 @@ export interface StartRunBody extends ChatRef {
   };
 }
 
+// A visible file in the chat's runtime workspace.
+export interface WorkspaceFile {
+  // Workspace-relative, "/"-separated.
+  readonly path: string;
+  readonly size: number;
+  readonly modifiedAt: number;
+}
+
+// The adapter's per-file read limit.
+export const MAX_WORKSPACE_FILE_BYTES = 20 * 1024 * 1024;
+
 // The adapter answered with an error. `code` is the adapter's code.
 export class AdapterRefusal extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
     readonly retryable: boolean,
+    // The adapter's machine-readable fields (SKILLS_MISSING: `missing`).
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(`runtime adapter refused: ${code}`);
     this.name = "AdapterRefusal";
@@ -85,6 +123,10 @@ export const DEFAULT_RUNTIME_TIMEOUTS: RuntimeTimeouts = {
 };
 
 const MAX_FRAME = 1024 * 1024;
+// One attached file (at most 20 MiB) into the runtime.
+const UPLOAD_TIMEOUT_MS = 120_000;
+// One skill archive (at most 5 MB).
+const SKILL_TIMEOUT_MS = 60_000;
 
 export class RuntimeClient {
   constructor(
@@ -155,6 +197,89 @@ export class RuntimeClient {
     });
   }
 
+  // The chat's workspace files, for copying a run's output into storage.
+  async files(
+    ref: ChatRef,
+  ): Promise<{ files: WorkspaceFile[]; truncated: boolean }> {
+    const query = new URLSearchParams({ tenantId: ref.tenantId });
+    const body = (await this.json(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/files?${query}`,
+      "GET",
+    )) as { files?: unknown; truncated?: unknown };
+    if (!Array.isArray(body.files))
+      throw new AdapterUnreachable("invalid files response");
+    return {
+      files: body.files.filter(isWorkspaceFile),
+      truncated: body.truncated === true,
+    };
+  }
+
+  // One workspace file's bytes. Refusals are AdapterRefusal (FILE_NOT_FOUND,
+  // PAYLOAD_TOO_LARGE).
+  async file(ref: ChatRef, path: string): Promise<Buffer> {
+    const query = new URLSearchParams({ tenantId: ref.tenantId, path });
+    const res = await this.send(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/file?${query}`,
+      "GET",
+      undefined,
+      AbortSignal.timeout(this.timeouts.requestMs),
+    );
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_WORKSPACE_FILE_BYTES)
+      throw new AdapterUnreachable("file too large");
+    let data: Buffer;
+    try {
+      data = Buffer.from(await res.arrayBuffer());
+    } catch (error) {
+      throw new AdapterUnreachable(
+        error instanceof Error ? error.name : "read failed",
+      );
+    }
+    if (data.length > MAX_WORKSPACE_FILE_BYTES)
+      throw new AdapterUnreachable("file too large");
+    return data;
+  }
+
+  // Writes an attached file to `uploads/<name>` in the chat's workspace, for
+  // the run about to start. Refusals are AdapterRefusal (UPLOADS_DISABLED,
+  // UPLOAD_CONFLICT, CHAT_BUSY, ...).
+  async putUpload(
+    ref: ChatRef,
+    name: string,
+    sha256: string,
+    data: Buffer,
+  ): Promise<{ path: string; modifiedAt: number }> {
+    const query = new URLSearchParams({ tenantId: ref.tenantId, sha256 });
+    const res = await this.send(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/uploads/${encodeURIComponent(name)}?${query}`,
+      "PUT",
+      data,
+      AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+    );
+    let body: { path?: unknown; modifiedAt?: unknown };
+    try {
+      body = (await res.json()) as typeof body;
+    } catch {
+      throw new AdapterUnreachable("invalid upload response");
+    }
+    if (typeof body.path !== "string" || !Number.isSafeInteger(body.modifiedAt))
+      throw new AdapterUnreachable("invalid upload response");
+    return { path: body.path, modifiedAt: body.modifiedAt as number };
+  }
+
+  // Unpacks one skill archive in the chat's runtime, before a run that names
+  // it. Repeating it for a digest the runtime holds changes nothing.
+  async putSkill(ref: ChatRef, sha256: string, data: Buffer): Promise<void> {
+    const query = new URLSearchParams({ tenantId: ref.tenantId });
+    await this.send(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/skills/${encodeURIComponent(sha256)}?${query}`,
+      "PUT",
+      data,
+      AbortSignal.timeout(SKILL_TIMEOUT_MS),
+      "application/gzip",
+    );
+  }
+
   private async json(path: string, method: string, body?: unknown) {
     const res = await this.send(
       path,
@@ -174,16 +299,29 @@ export class RuntimeClient {
     method: string,
     body: unknown,
     signal: AbortSignal,
+    contentType?: string,
   ): Promise<Response> {
     let res: Response;
     try {
+      const raw = Buffer.isBuffer(body);
       res = await fetch(`${this.baseUrl}${path}`, {
         method,
         headers: {
           authorization: `Bearer ${this.token}`,
-          ...(body === undefined ? {} : { "content-type": "application/json" }),
+          ...(body === undefined
+            ? {}
+            : {
+                "content-type":
+                  contentType ??
+                  (raw ? "application/octet-stream" : "application/json"),
+              }),
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body:
+          body === undefined
+            ? undefined
+            : raw
+              ? new Uint8Array(body)
+              : JSON.stringify(body),
         signal,
       });
     } catch (error) {
@@ -268,14 +406,19 @@ function parseFrame(frame: string): AdapterEvent | null {
 async function refusalOf(res: Response): Promise<Error> {
   try {
     const body = (await res.json()) as {
-      error?: { code?: unknown; retryable?: unknown };
+      error?: { code?: unknown; retryable?: unknown; details?: unknown };
     };
-    if (typeof body.error?.code === "string")
+    if (typeof body.error?.code === "string") {
+      const details = body.error.details;
       return new AdapterRefusal(
         res.status,
         body.error.code,
         body.error.retryable === true,
+        details && typeof details === "object" && !Array.isArray(details)
+          ? (details as Record<string, unknown>)
+          : undefined,
       );
+    }
   } catch {
     // Not the adapter's error shape (a proxy, for example).
   }
@@ -292,6 +435,19 @@ function isHistoryTurn(value: unknown): value is HistoryTurn {
     typeof turn.status === "string" &&
     typeof turn.text === "string" &&
     (turn.clientMessageId === null || typeof turn.clientMessageId === "string")
+  );
+}
+
+function isWorkspaceFile(value: unknown): value is WorkspaceFile {
+  if (!value || typeof value !== "object") return false;
+  const file = value as Record<string, unknown>;
+  return (
+    typeof file.path === "string" &&
+    file.path.length > 0 &&
+    file.path.length <= 1024 &&
+    Number.isSafeInteger(file.size) &&
+    (file.size as number) >= 0 &&
+    Number.isSafeInteger(file.modifiedAt)
   );
 }
 

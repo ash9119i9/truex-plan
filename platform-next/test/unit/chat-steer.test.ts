@@ -184,3 +184,47 @@ describe("settling a steered run", () => {
     );
   });
 });
+
+describe("plannedMessages: coding activity", () => {
+  test("commands and file changes become tool messages; unfinished ones are saved failed", () => {
+    const planned = plannedMessages(
+      { steers: [] },
+      {
+        status: "stopped",
+        items: [
+          {
+            type: "command",
+            itemId: "c1",
+            command: "npm test",
+            status: "completed",
+            exitCode: 0,
+            output: "x".repeat(5_000),
+            outputTruncated: false,
+            approval: "allow",
+          },
+          {
+            type: "file_change",
+            itemId: "f1",
+            files: [{ path: "a.txt", kind: "add" }],
+            status: "inProgress",
+          },
+        ],
+      },
+    );
+    assert.equal(planned.length, 2);
+    const [command, change] = planned;
+    assert.equal(command!.role, "tool");
+    assert.equal(command!.runtimeItemId, "c1");
+    assert.equal(command!.activity?.kind, "command");
+    if (command!.activity?.kind !== "command") return;
+    assert.equal(command!.activity.output.length, 4_000);
+    assert.equal(command!.activity.outputTruncated, true);
+    assert.equal(command!.activity.approval, "allow");
+    assert.equal(change!.state, "failed");
+    assert.deepEqual(change!.activity, {
+      kind: "file_change",
+      files: [{ path: "a.txt", kind: "add" }],
+      status: "failed",
+    });
+  });
+});

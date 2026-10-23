@@ -22,6 +22,9 @@ import {
 } from "../memberships/membership";
 import { MembershipsService } from "../memberships/memberships.service";
 import { parseModelSpec, type ModelDoc } from "../models/model";
+import type { SkillDoc } from "../skills/skill";
+import { packSkillFolder } from "../skills/skill-bundle";
+import { SkillsService, type PublishOutcome } from "../skills/skills.service";
 import { ModelsService, type PutOutcome } from "../models/models.service";
 import type { TenantDoc, TenantKind } from "../tenants/tenant";
 import { TenantsService } from "../tenants/tenants.service";
@@ -69,6 +72,14 @@ export interface PutConnectorCommand {
   definition: unknown;
 }
 
+export interface PutSkillCommand {
+  operator: string;
+  // A skill folder, named by the skill's slug.
+  folder: string;
+  // Python packages the runtime image ships; null when unknown.
+  toolchain: ReadonlySet<string> | null;
+}
+
 export interface SetEnabledCommand {
   operator: string;
   slug: string;
@@ -103,6 +114,33 @@ export interface ConnectorSummary {
   displayName: string;
   enabled: boolean;
   revision: number;
+  // The hosts sandbox commands may reach through this connector; absent when
+  // it is MCP only.
+  egressHosts?: string[];
+}
+
+export interface SkillSummary {
+  id: string;
+  slug: string;
+  displayName: string;
+  version: number;
+  sha256: string;
+  hasScripts: boolean;
+  enabled: boolean;
+  revision: number;
+}
+
+export function skillSummary(skill: SkillDoc): SkillSummary {
+  return {
+    id: skill._id.toHexString(),
+    slug: skill.slug,
+    displayName: skill.displayName,
+    version: skill.currentVersion,
+    sha256: skill.currentSha256,
+    hasScripts: skill.hasScripts,
+    enabled: skill.enabled,
+    revision: skill.revision,
+  };
 }
 
 export function modelSummary(model: ModelDoc): ModelSummary {
@@ -135,6 +173,7 @@ export function connectorSummary(connector: ConnectorDoc): ConnectorSummary {
     displayName: connector.displayName,
     enabled: connector.enabled,
     revision: connector.revision,
+    ...(connector.egress ? { egressHosts: [...connector.egress.hosts] } : {}),
   };
 }
 
@@ -160,7 +199,93 @@ export class OperatorService {
     private readonly builtins: BuiltinAgentsService,
     @Inject(ConnectorsCatalogService)
     private readonly connectors: ConnectorsCatalogService,
+    @Inject(SkillsService) private readonly skills: SkillsService,
   ) {}
+
+  // Publishes a skill folder as the skill's newest version, creating the
+  // skill on its first publish. Unchanged content changes nothing. New chats
+  // get the version within SKILL_CACHE_TTL_MS; existing chats keep theirs.
+  async putSkill(
+    command: PutSkillCommand,
+  ): Promise<{ skill: SkillSummary; outcome: PublishOutcome }> {
+    const actor = operatorActor(command.operator);
+    const base = { action: "skill.put", actor };
+    try {
+      const bundle = await packSkillFolder(command.folder, {
+        toolchain: command.toolchain,
+      });
+      await Promise.all([
+        this.skills.ensureIndexes(),
+        this.audit.ensureIndexes(),
+      ]);
+      return await this.database.withTransaction(async (session) => {
+        const { skill, version, outcome } = await this.skills.publish(
+          bundle,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: {
+              slug: skill.slug,
+              skillId: skill._id.toHexString(),
+              outcome,
+              version: version.version,
+              sha256: version.sha256,
+              revision: skill.revision,
+            },
+          },
+          session,
+        );
+        return { skill: skillSummary(skill), outcome };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  // Disabling is how a skill is removed: chats keep their versions, and
+  // agents that use it show it as Unavailable.
+  async setSkillEnabled(
+    command: SetEnabledCommand,
+  ): Promise<{ skill: SkillSummary; changed: boolean }> {
+    const actor = operatorActor(command.operator);
+    const base = {
+      action: command.enabled ? "skill.enable" : "skill.disable",
+      actor,
+      details: { slug: String(command.slug).slice(0, 64) },
+    };
+    try {
+      await this.audit.ensureIndexes();
+      return await this.database.withTransaction(async (session) => {
+        const { skill, changed } = await this.skills.setEnabled(
+          command.slug,
+          command.enabled,
+          command.operator,
+          session,
+        );
+        await this.audit.record(
+          {
+            ...base,
+            result: "success",
+            details: { ...base.details, changed, revision: skill.revision },
+          },
+          session,
+        );
+        return { skill: skillSummary(skill), changed };
+      });
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  async listSkills(): Promise<SkillSummary[]> {
+    return (await this.skills.listAll()).map(skillSummary);
+  }
 
   // Adds a model, or updates the one with the same slug. Its identity
   // (wireApi, baseUrl, modelName) can never change.

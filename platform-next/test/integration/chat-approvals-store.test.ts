@@ -7,6 +7,7 @@ import { DatabaseService } from "../../src/database/database.service";
 import { ChatStore } from "../../src/modules/chats/chat-store";
 import {
   CHATS_COLLECTION,
+  MAX_CHAT_COMMAND_APPROVALS,
   MAX_CHAT_TOOL_APPROVALS,
   TOOL_APPROVALS_COLLECTION,
   type ChatDoc,
@@ -202,5 +203,44 @@ describe("ChatStore approvals (integration)", () => {
       "create_branch",
     );
     assert.equal((await chatApprovals(chatId))?.length, 1);
+  });
+
+  function codingApprovals(
+    chatId: ObjectId,
+  ): Promise<ChatDoc["codingApprovals"]> {
+    return database
+      .tenantDb(DB_NAME)
+      .collection<ChatDoc>(CHATS_COLLECTION)
+      .findOne({ _id: chatId })
+      .then((c) => c?.codingApprovals);
+  }
+
+  test("allowCodingForChat adds a command scope once and is owner-only", async () => {
+    const chatId = new ObjectId();
+    const ownerId = new ObjectId();
+    await insertChat(chatId, ownerId);
+    const scope = "b".repeat(64);
+    await store.allowCodingForChat(DB_NAME, chatId, ownerId, {
+      command: scope,
+    });
+    await store.allowCodingForChat(DB_NAME, chatId, ownerId, {
+      command: scope,
+    });
+    await store.allowCodingForChat(DB_NAME, chatId, new ObjectId(), {
+      command: "c".repeat(64),
+    });
+    assert.deepEqual(await codingApprovals(chatId), { commands: [scope] });
+  });
+
+  test("allowCodingForChat respects the command cap", async () => {
+    const chatId = new ObjectId();
+    const ownerId = new ObjectId();
+    await insertChat(chatId, ownerId);
+    for (let i = 0; i < MAX_CHAT_COMMAND_APPROVALS + 3; i++)
+      await store.allowCodingForChat(DB_NAME, chatId, ownerId, {
+        command: i.toString(16).padStart(64, "0"),
+      });
+    const list = (await codingApprovals(chatId))?.commands ?? [];
+    assert.equal(list.length, MAX_CHAT_COMMAND_APPROVALS);
   });
 });

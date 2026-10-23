@@ -4,6 +4,7 @@ import { ObjectId } from "mongodb";
 import type { ChatStore, Settlement } from "../../src/modules/chats/chat-store";
 import {
   RunExecutor,
+  writtenPaths,
   type Dispatch,
   type LiveEvent,
 } from "../../src/modules/chats/run-executor";
@@ -267,7 +268,11 @@ describe("RunExecutor", () => {
     const last = tools.at(-1);
     assert.equal(last?.type === "tool" && last.data.errorCode, "UNKNOWN");
     assert.deepEqual(
-      outcome?.items.map((i) => (i.type === "input" ? i.type : i.itemId)),
+      outcome?.items.map((i) =>
+        i.type === "input" || i.type === "skill" || i.type === "network"
+          ? i.type
+          : i.itemId,
+      ),
       ["a", "call-1", "call-2", "b"],
     );
     const failedTool = outcome?.items[2];
@@ -990,6 +995,378 @@ describe("RunExecutor.answerApproval", () => {
     await assert.rejects(
       executor.answerApproval(new ObjectId(), ref, approvalId, "allow"),
       (error: unknown) => error instanceof AdapterUnreachable,
+    );
+  });
+});
+
+// ── Coding: commands and file changes ────────────────────────────────
+
+function codingStore() {
+  const base = approvalStore();
+  const coding: Array<Record<string, unknown>> = [];
+  const kinds: Array<string | undefined> = [];
+  const recordApproval = base.store.recordApproval;
+  const store = {
+    ...base.store,
+    recordApproval: async (dbName: string, doc: Record<string, unknown>) => {
+      kinds.push(doc.kind as string | undefined);
+      await recordApproval(dbName, doc as never);
+    },
+    allowCodingForChat: async (
+      _dbName: string,
+      _chatId: ObjectId,
+      _ownerId: ObjectId,
+      allow: Record<string, unknown>,
+    ) => {
+      coding.push(allow);
+    },
+  };
+  return { ...base, store, coding, kinds };
+}
+
+const SCOPE = "a".repeat(64);
+
+function commandApproval(
+  seq: number,
+  type: "approval.requested" | "approval.resolved",
+  over: Record<string, unknown> = {},
+): AdapterEvent {
+  return {
+    seq,
+    type,
+    data: {
+      approvalId: "ap_c1",
+      itemId: "call_c1",
+      kind: "command",
+      connector: "@workspace",
+      tool: "command",
+      params: [
+        { name: "command", value: "npm test" },
+        { name: "cwd", value: "." },
+      ],
+      allowForChat: true,
+      scope: SCOPE,
+      ...(type === "approval.requested"
+        ? { expiresAt: EXPIRES_MS }
+        : { decision: "allow_for_chat", auto: false }),
+      ...over,
+    },
+  };
+}
+
+describe("RunExecutor coding activity", () => {
+  test("a command streams as activity and output, and settles with its output and approval", async () => {
+    const { store } = codingStore();
+    let outcomeItems: unknown;
+    (store as { settleWithRetry: unknown }).settleWithRetry = async (
+      ...args: unknown[]
+    ) => {
+      outcomeItems = (args[4] as Settlement).items;
+      return { run: {}, messages: [] };
+    };
+    const { events } = await driveApprovals(
+      [
+        {
+          seq: 1,
+          type: "command.started",
+          data: { itemId: "call_c1", command: "npm test" },
+        },
+        commandApproval(2, "approval.requested"),
+        commandApproval(3, "approval.resolved"),
+        {
+          seq: 4,
+          type: "command.output",
+          data: { itemId: "call_c1", delta: "ok 1\n" },
+        },
+        {
+          seq: 5,
+          type: "command.completed",
+          data: {
+            itemId: "call_c1",
+            command: "npm test",
+            status: "completed",
+            exitCode: 0,
+            durationMs: 1200,
+          },
+        },
+        {
+          seq: 6,
+          type: "run.completed",
+          data: {
+            status: "completed",
+            delivery: "accepted",
+            items: [
+              {
+                type: "command",
+                itemId: "call_c1",
+                command: "npm test",
+                status: "completed",
+                exitCode: 0,
+                durationMs: 1200,
+                output: "ok 1\n",
+                outputTruncated: false,
+                approval: "allow_for_chat",
+              },
+            ],
+          },
+        },
+      ],
+      store,
+      (type) => type === "activity" || type === "output" || type === "approval",
+    );
+    assert.deepEqual(
+      events.map((e) => e.type),
+      ["activity", "approval", "approval", "output", "activity"],
+    );
+    const card = events[1]!;
+    assert.equal(card.type === "approval" && card.data.kind, "command");
+    assert.equal(card.type === "approval" && card.data.scope, SCOPE);
+    const done = events[4]!;
+    assert.deepEqual(done.type === "activity" && done.data, {
+      type: "command",
+      itemId: "call_c1",
+      command: "npm test",
+      status: "completed",
+      exitCode: 0,
+      durationMs: 1200,
+      output: "ok 1\n",
+      outputTruncated: false,
+      approval: "allow_for_chat",
+    });
+    const items = outcomeItems as Array<Record<string, unknown>>;
+    assert.equal(items[0]?.type, "command");
+    assert.equal(items[0]?.output, "ok 1\n");
+  });
+
+  test("a file change being written streams as progress until it is an activity", async () => {
+    const { store } = codingStore();
+    const progress = (seq: number, data: Record<string, unknown>) => ({
+      seq,
+      type: "file_change.progress",
+      data,
+    });
+    const files = [{ path: "guide.md", kind: "add" }];
+    const { events } = await driveApprovals(
+      [
+        progress(1, { itemId: "call_f1", files, lines: 3 }),
+        // Malformed: ignored.
+        progress(2, { itemId: "call_f1", files, lines: -1 }),
+        progress(3, { itemId: "call_f1", files: [], lines: 4 }),
+        progress(4, { itemId: "call_f1", files, lines: 40 }),
+        {
+          seq: 5,
+          type: "file_change.started",
+          data: { itemId: "call_f1", files },
+        },
+        // Late progress for an activity, and an end for it: both ignored.
+        progress(6, { itemId: "call_f1", files, lines: 41 }),
+        progress(7, { itemId: "call_f1", ended: true }),
+        // A patch Codex rejected ends without an activity.
+        progress(8, { itemId: "call_f2", files, lines: 1 }),
+        progress(9, { itemId: "call_f2", ended: true }),
+        progress(10, { itemId: "call_f2", ended: true }),
+        completed(11),
+      ],
+      store,
+      (type) => type === "progress" || type === "activity",
+    );
+    assert.deepEqual(
+      events.map((e) => [e.type, (e.data as { itemId: string }).itemId]),
+      [
+        ["progress", "call_f1"],
+        ["progress", "call_f1"],
+        ["activity", "call_f1"],
+        ["progress", "call_f2"],
+        ["progress", "call_f2"],
+      ],
+    );
+    assert.deepEqual(events[1]!.data, {
+      itemId: "call_f1",
+      files: [{ path: "guide.md", kind: "add" }],
+      lines: 40,
+    });
+    assert.deepEqual(events[4]!.data, { itemId: "call_f2", ended: true });
+  });
+
+  test("a new file's text: live pieces in order, the whole of it in a reconnect snapshot", async () => {
+    const { store } = codingStore();
+    const files = [{ path: "guide.md", kind: "add" }];
+    const piece = (seq: number, offset: number, text: string) => ({
+      seq,
+      type: "file_change.progress",
+      data: {
+        itemId: "call_f1",
+        files,
+        lines: 1,
+        preview: { path: "guide.md", offset, text, truncated: false },
+      },
+    });
+    let resume!: () => void;
+    const paused = new Promise<void>((resolve) => (resume = resolve));
+    const client = {
+      async *startRun(): AsyncGenerator<AdapterEvent> {
+        yield piece(1, 0, "# Gui");
+        yield piece(2, 5, "de\n");
+        // A gap: dropped, the kept text stands.
+        yield piece(3, 99, "lost");
+        await paused;
+        yield completed(4);
+      },
+    };
+    const executor = new RunExecutor(
+      store as unknown as ChatStore,
+      client as unknown as RuntimeClient,
+    );
+    const dispatch = dispatchFor(new ObjectId());
+    const live: LiveEvent[] = [];
+    executor.begin(dispatch);
+    executor.subscribe(dispatch.runId, {
+      send: (event) => {
+        if (event.type === "progress") live.push(event);
+      },
+      end: () => undefined,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    let snapshot: Record<string, unknown> | undefined;
+    executor.subscribe(dispatch.runId, {
+      send: (event) => {
+        if (event.type === "snapshot")
+          snapshot = event.data as unknown as Record<string, unknown>;
+      },
+      end: () => undefined,
+    });
+    resume();
+    await executor.drain(5_000);
+    await settleWrites();
+    assert.deepEqual(
+      live.map((e) => (e.data as { preview?: { text: string } }).preview?.text),
+      ["# Gui", "de\n", undefined],
+    );
+    const writing = snapshot!.writing as Array<Record<string, unknown>>;
+    assert.deepEqual(writing[0]!.preview, {
+      path: "guide.md",
+      offset: 0,
+      text: "# Guide\n",
+      truncated: false,
+    });
+  });
+
+  test("Allow for this chat stores the command's scope; push stores nothing", async () => {
+    const { store, coding, kinds, allowed } = codingStore();
+    await driveApprovals(
+      [
+        commandApproval(1, "approval.requested"),
+        commandApproval(2, "approval.resolved"),
+        commandApproval(3, "approval.resolved", {
+          approvalId: "ap_c3",
+          itemId: "call_c3",
+          tool: "push",
+          allowForChat: false,
+          scope: undefined,
+        }),
+        completed(4),
+      ],
+      store,
+      () => false,
+    );
+    assert.deepEqual(coding, [{ command: SCOPE }]);
+    assert.deepEqual(kinds, ["command", "command"]);
+    assert.equal(allowed.length, 0, "no connector allow for coding cards");
+  });
+
+  test("a coding approval that does not come from the workspace is ignored", async () => {
+    const { store, recorded } = codingStore();
+    const { events } = await driveApprovals(
+      [
+        commandApproval(1, "approval.requested", { connector: "github" }),
+        commandApproval(2, "approval.resolved", { connector: "github" }),
+        completed(3),
+      ],
+      store,
+      (type) => type === "approval",
+    );
+    assert.equal(events.length, 0);
+    assert.equal(recorded.length, 0);
+  });
+
+  test("a file change card keeps its bounded diff; a snapshot restores activity items", async () => {
+    const { store } = codingStore();
+    const { events } = await driveApprovals(
+      [
+        {
+          seq: 1,
+          type: "run.snapshot",
+          data: {
+            status: "running",
+            items: [
+              {
+                type: "file_change",
+                itemId: "call_f1",
+                files: [
+                  { path: "src/a.py", kind: "add" },
+                  { path: "bad", kind: "explode" },
+                ],
+                status: "inProgress",
+              },
+            ],
+            approvals: [
+              {
+                approvalId: "ap_f1",
+                itemId: "call_f1",
+                kind: "file_change",
+                connector: "@workspace",
+                tool: "file_change",
+                params: [{ name: "add", value: "src/a.py" }],
+                allowForChat: true,
+                scope: "file_change",
+                diff: "x".repeat(20_000),
+                expiresAt: EXPIRES_MS,
+              },
+            ],
+          },
+        },
+        completed(2),
+      ],
+      store,
+      (type) => type === "activity" || type === "approval",
+    );
+    const activity = events.find((e) => e.type === "activity");
+    assert.deepEqual(
+      activity?.type === "activity" &&
+        activity.data.type === "file_change" &&
+        activity.data.files,
+      [{ path: "src/a.py", kind: "add" }],
+    );
+    const card = events.find((e) => e.type === "approval");
+    assert.equal(card?.type === "approval" && card.data.diff?.length, 16_000);
+    assert.equal(card?.type === "approval" && card.data.diffTruncated, true);
+  });
+
+  test("the files a run wrote are its completed edits' final paths", () => {
+    const change = (
+      status: "completed" | "failed",
+      files: Array<{
+        path: string;
+        kind: "add" | "update" | "delete" | "move";
+        movePath?: string;
+      }>,
+    ) => ({ type: "file_change" as const, itemId: "i", status, files });
+    assert.deepEqual(
+      [
+        ...writtenPaths([
+          change("completed", [
+            { path: "a.md", kind: "add" },
+            { path: "b.md", kind: "add" },
+            { path: "old.md", kind: "update" },
+          ]),
+          change("failed", [{ path: "never.md", kind: "add" }]),
+          change("completed", [
+            { path: "b.md", kind: "delete" },
+            { path: "old.md", kind: "move", movePath: "new.md" },
+          ]),
+        ]),
+      ],
+      ["a.md", "new.md"],
     );
   });
 });

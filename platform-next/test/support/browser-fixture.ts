@@ -5,6 +5,7 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { ObjectId } from "mongodb";
 import { createApp } from "../../src/app";
+import { MemoryFileStore } from "../../src/modules/chats/chat-files";
 import { OperatorService } from "../../src/modules/operator/operator.service";
 import {
   builtinDefinition,
@@ -49,6 +50,7 @@ async function main() {
     await google.start();
     cleanups.push(() => google.stop());
     const gateway = new FakeGateway();
+    const fileStore = new MemoryFileStore();
     await gateway.start();
     cleanups.push(() => gateway.close());
     // Slow enough to watch it stream.
@@ -58,7 +60,10 @@ async function main() {
       chunk: 4,
       delayMs: 40,
     };
-    const adapter = new AdapterProcess();
+    // BROWSER_FIXTURE_CODING=1 turns the adapter's coding profile on.
+    const adapter = new AdapterProcess({
+      coding: process.env.BROWSER_FIXTURE_CODING === "1",
+    });
     await adapter.start();
     cleanups.push(() => adapter.close());
     const authorize = createServer((req, res) => {
@@ -102,6 +107,18 @@ async function main() {
           adapterToken: ADAPTER_TOKEN,
           gatewayUrl: gateway.url,
           gatewaySecret: GATEWAY_SECRET,
+          // BROWSER_FIXTURE_NETWORK=1 (with coding) gives runs the sandbox
+          // network policy, so blocked requests become network cards.
+          ...(process.env.BROWSER_FIXTURE_NETWORK === "1"
+            ? { sandboxNetwork: true }
+            : {}),
+        },
+        // Chat files in memory: no S3.
+        files: {
+          bucket: "browser-fixture",
+          region: "us-east-1",
+          prefix: "",
+          store: fileStore,
         },
         google: {
           ...config,
@@ -151,6 +168,14 @@ async function main() {
         if (req.method === "POST" && req.url === "/script") {
           gateway.script.push(...((await jsonOf(req)) as Behavior[]));
           return reply(200, { queued: gateway.script.length });
+        }
+        // Storage refuses (or accepts again) every file save.
+        if (req.method === "POST" && req.url === "/storage") {
+          const { failing } = (await jsonOf(req)) as { failing?: boolean };
+          fileStore.failPuts = failing
+            ? Object.assign(new Error("denied"), { name: "AccessDenied" })
+            : null;
+          return reply(200, { failing: !!failing });
         }
         if (req.method === "POST" && req.url === "/release") {
           gateway.release();

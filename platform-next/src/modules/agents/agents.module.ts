@@ -5,6 +5,7 @@ import { ConnectorsModule } from "../connectors/connectors.module";
 import { MembershipsModule } from "../memberships/memberships.module";
 import { ModelsModule } from "../models/models.module";
 import { SessionsModule } from "../sessions/sessions.module";
+import { SkillsModule } from "../skills/skills.module";
 import { TenantsModule } from "../tenants/tenants.module";
 import { AgentsController } from "./agents.controller";
 import { AgentsService } from "./agents.service";
@@ -18,6 +19,7 @@ import { BuiltinAgentsService } from "./builtin-agents.service";
     AuditModule,
     ModelsModule,
     ConnectorsModule,
+    SkillsModule,
   ],
   controllers: [AgentsController],
   providers: [AgentsService, BuiltinAgentsService, TenantGuard],

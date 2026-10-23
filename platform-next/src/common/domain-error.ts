@@ -17,6 +17,8 @@ export type DomainErrorCode =
   | "STEER_LIMIT"
   // The chat can be read but not continued.
   | "CHAT_READ_ONLY"
+  // A body or file is larger than allowed.
+  | "TOO_LARGE"
   // Too many requests in a short time.
   | "RATE_LIMITED"
   // A dependency is missing or down; retrying later may work.

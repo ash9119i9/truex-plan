@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import type { IndexDescription, ObjectId } from "mongodb";
 import { invalid, objectWith } from "../../common/validation";
 import { parseWireId } from "../../database/object-id";
+import type {
+  ChatNetworkGrant,
+  MessageNetwork,
+} from "../network/network-grants";
+import type { ChatSkill } from "../skills/skill";
 
 // Chats, their messages and runs, in the tenant database. A chat belongs to
 // one member and is never visible to anyone else, admins included; every
@@ -11,6 +16,12 @@ export const MESSAGES_COLLECTION = "messages";
 export const RUNS_COLLECTION = "runs";
 // One audit record per resolved write-tool approval.
 export const TOOL_APPROVALS_COLLECTION = "tool_approvals";
+// One record per stored version of a file a chat's run produced; the bytes
+// are in S3 (chat-files.ts).
+export const CHAT_FILES_COLLECTION = "chat_files";
+// Files members attached, staged before their message is sent
+// (chat-uploads.ts).
+export const CHAT_UPLOADS_COLLECTION = "chat_uploads";
 
 // Built when the tenant is provisioned (see tenant-indexes.ts), never during
 // a request. The unique ones are what make retried sends idempotent.
@@ -57,6 +68,21 @@ export const CHAT_INDEXES: Readonly<Record<string, IndexDescription[]>> = {
   [TOOL_APPROVALS_COLLECTION]: [
     { key: { chatId: 1, at: -1 }, name: "by_chat" },
     { key: { userId: 1, at: -1 }, name: "by_user" },
+  ],
+  [CHAT_FILES_COLLECTION]: [
+    // A path's versions, newest first; unique so two captures of one run
+    // can't both store the same version.
+    {
+      key: { chatId: 1, path: 1, version: -1 },
+      name: "chat_path_version_unique",
+      unique: true,
+    },
+  ],
+  [CHAT_UPLOADS_COLLECTION]: [
+    // The per-member cap on staged uploads.
+    { key: { ownerId: 1, state: 1 }, name: "owner_state" },
+    // Staged uploads never sent go after a day; sent ones have no expiresAt.
+    { key: { expiresAt: 1 }, name: "staged_ttl", expireAfterSeconds: 0 },
   ],
 };
 
@@ -112,6 +138,16 @@ export interface ChatToolApproval {
 // without bound by repeatedly allowing distinct tools.
 export const MAX_CHAT_TOOL_APPROVALS = 50;
 
+// What a member allowed for the whole chat on coding cards. `commands` are
+// the sha256 scopes the runtime gave (each re-allows that exact command).
+// File changes inside the chat never ask. Sent to the runtime as
+// codingApprovals. Push is never in it.
+export interface ChatCodingApprovals {
+  commands?: string[];
+}
+
+export const MAX_CHAT_COMMAND_APPROVALS = 50;
+
 export interface ChatDoc {
   _id: ObjectId;
   ownerId: ObjectId;
@@ -125,10 +161,21 @@ export interface ChatDoc {
   // agent edit never changes a running chat's tools. Absent on chats created
   // before connectors existed, read as [] everywhere.
   connectors?: ChatConnector[];
+  // The skill versions the agent's enabled skills had at chat start. Later
+  // publishes or disables never change them. Absent on chats without skills.
+  skills?: ChatSkill[];
   // Tools the member allowed for this whole chat (Allow for this chat), sent
   // to the adapter as approvedTools. Absent on chats with none; grown by
   // $addToSet when an approval resolves allow_for_chat (non-auto).
   toolApprovals?: ChatToolApproval[];
+  // Absent on chats with none.
+  codingApprovals?: ChatCodingApprovals;
+  // The owner's allows on network cards (network-grants.ts), at most
+  // MAX_CHAT_NETWORK_GRANTS. Absent on chats with none.
+  networkGrants?: ChatNetworkGrant[];
+  // Bytes of every file members attached to the chat's messages, for the
+  // per-chat cap. Absent on chats with none.
+  uploadBytes?: number;
   platformInstructionsVersion: string;
   runtime: { threadId: string | null; state: RuntimeState };
   activeRun: ActiveRun | null;
@@ -168,6 +215,49 @@ export interface MessageTool {
   approval?: ApprovalDecision;
 }
 
+// A skill the assistant opened during a reply, saved on a role `tool`
+// message: shown as "Used skill <name>". Nothing of what it read is kept.
+export interface MessageSkill {
+  slug: string;
+  name: string;
+}
+
+// A command or file change the assistant made in the chat's workspace, saved
+// on a role `tool` message. The command and file paths are what the member
+// approved; output is a bounded preview.
+export type MessageActivity =
+  | {
+      kind: "command";
+      command: string;
+      status: ActivityStatus;
+      exitCode?: number;
+      durationMs?: number;
+      output: string;
+      outputTruncated: boolean;
+      approval?: ApprovalDecision;
+    }
+  | {
+      kind: "file_change";
+      files: ActivityFile[];
+      status: ActivityStatus;
+      approval?: ApprovalDecision;
+    };
+
+// declined: denied (or expired/cancelled) before it ran.
+export type ActivityStatus = "completed" | "failed" | "declined";
+
+export interface ActivityFile {
+  path: string;
+  kind: "add" | "update" | "delete" | "move";
+  movePath?: string;
+}
+
+// Bounds on what an activity message keeps.
+export const MAX_ACTIVITY_COMMAND = 4_000;
+export const MAX_ACTIVITY_OUTPUT = 4_000;
+export const MAX_ACTIVITY_FILES = 50;
+export const MAX_ACTIVITY_PATH = 512;
+
 export interface MessageDoc {
   _id: ObjectId;
   chatId: ObjectId;
@@ -184,7 +274,26 @@ export interface MessageDoc {
   runtimeItemId?: string;
   // Tool messages only: the connector-tool-call summary.
   tool?: MessageTool;
+  // Tool messages only: a command or file change instead of a connector call.
+  activity?: MessageActivity;
+  // Tool messages only: a skill the reply used.
+  skill?: MessageSkill;
+  // Tool messages only: a sandbox request the network proxy refused.
+  network?: MessageNetwork;
+  // User messages only: the files attached to it, in order. Each is a stored
+  // chat file (its upload version) the run copies into the workspace first.
+  attachments?: MessageAttachment[];
   createdAt: Date;
+}
+
+export interface MessageAttachment {
+  // The chat_files version holding the bytes.
+  fileId: ObjectId;
+  name: string;
+  // Workspace-relative: "uploads/<name>".
+  path: string;
+  size: number;
+  contentType: string;
 }
 
 // accepted: saved, not yet acknowledged by the runtime
@@ -241,6 +350,9 @@ export interface RunDoc {
   stopRequested?: boolean;
   // At most STEERS_PER_RUN, in arrival order.
   steers?: SteerDoc[];
+  // Files the run wrote that couldn't be stored when it ended (at most
+  // MAX_UNSAVED), until a retry stores them. Absent when there are none.
+  unsavedFiles?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -254,6 +366,9 @@ export interface ToolApprovalDoc {
   chatId: ObjectId;
   runId: ObjectId;
   userId: ObjectId;
+  // Absent for a connector tool call (records before coding had none).
+  // network: the owner's answer to a network card, or (auto) the block.
+  kind?: "command" | "file_change" | "network";
   connector: string;
   tool: string;
   decision: ApprovalDecision;
@@ -306,7 +421,41 @@ function messageText(value: unknown): string {
 
 export interface SendInput {
   clientMessageId: string;
+  // Empty only when the message has attachments.
   text: string;
+  // Staged upload IDs, in order; at most MAX_MESSAGE_ATTACHMENTS.
+  attachments: ObjectId[];
+}
+
+export const MAX_MESSAGE_ATTACHMENTS = 10;
+
+// IDs of staged uploads, unique, in order. Absent means none.
+function attachmentIds(value: unknown): ObjectId[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > MAX_MESSAGE_ATTACHMENTS)
+    invalid(
+      `attachments must be a list of at most ${MAX_MESSAGE_ATTACHMENTS} upload IDs.`,
+    );
+  const ids: ObjectId[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    const id = parseWireId(item);
+    if (!id) invalid("attachments must be upload IDs.");
+    if (seen.has(id.toHexString())) invalid("attachments repeats an upload.");
+    seen.add(id.toHexString());
+    ids.push(id);
+  }
+  return ids;
+}
+
+// Message text, or "" when files are attached and nothing was typed.
+function sentText(value: unknown, attachments: readonly ObjectId[]): string {
+  if (
+    attachments.length > 0 &&
+    (value === undefined || (typeof value === "string" && !value.trim()))
+  )
+    return "";
+  return messageText(value);
 }
 
 export interface StartChatInput extends SendInput {
@@ -314,25 +463,33 @@ export interface StartChatInput extends SendInput {
 }
 
 export function parseSend(body: unknown): SendInput {
-  const raw = objectWith(body, ["clientMessageId", "text"], "Request body");
+  const raw = objectWith(
+    body,
+    ["clientMessageId", "text", "attachments"],
+    "Request body",
+  );
+  const attachments = attachmentIds(raw.attachments);
   return {
     clientMessageId: clientMessageId(raw.clientMessageId),
-    text: messageText(raw.text),
+    text: sentText(raw.text, attachments),
+    attachments,
   };
 }
 
 export function parseStartChat(body: unknown): StartChatInput {
   const raw = objectWith(
     body,
-    ["clientMessageId", "text", "agentId"],
+    ["clientMessageId", "text", "agentId", "attachments"],
     "Request body",
   );
   const agentId = parseWireId(raw.agentId);
   if (!agentId) invalid("agentId must be an agent ID.");
+  const attachments = attachmentIds(raw.attachments);
   return {
     agentId,
     clientMessageId: clientMessageId(raw.clientMessageId),
-    text: messageText(raw.text),
+    text: sentText(raw.text, attachments),
+    attachments,
   };
 }
 
@@ -369,6 +526,12 @@ export function titleOf(text: string): string {
         .slice(0, TITLE_CHARS - 1)
         .join("")
         .trimEnd()}…`;
+}
+
+// A chat started with files and no text is named after them, each name once:
+// two "notes.txt" files read as "notes.txt", not "notes.txt, notes.txt".
+export function titleOfFiles(names: readonly string[]): string {
+  return titleOf([...new Set(names)].join(", "));
 }
 
 export function textHashOf(text: string): string {

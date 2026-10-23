@@ -5,6 +5,10 @@ import {
   invalid,
   objectWith,
 } from "../../common/validation";
+import {
+  parseConnectorEgress,
+  type ConnectorEgress,
+} from "../network/network-policy";
 
 // A directory connector in the catalog's `truex_mcp_connectors`, written only
 // by the product team through the operator CLI. GitHub is the first entry; the
@@ -103,10 +107,17 @@ export interface ConnectorSpec {
   // each call waits for the member's per-call approval. Absent means every
   // allowed tool is read-only.
   writeTools?: string[];
+  // Write tools that ask every time (deletes, sends outside the company,
+  // sharing or permission changes): a subset of writeTools that Allow for
+  // this chat never covers.
+  criticalTools?: string[];
   toolTimeoutSec: number;
   startupTimeoutSec: number;
   toolTokenEstimate?: number;
   sortOrder: number;
+  // Where sandbox commands may reach this connector and how the member's
+  // token goes with them (network-policy.ts). Absent: MCP tools only.
+  egress?: ConnectorEgress;
 }
 
 export interface ConnectorDoc extends ConnectorSpec {
@@ -173,10 +184,12 @@ const SPEC_FIELDS = [
   "auth",
   "allowedTools",
   "writeTools",
+  "criticalTools",
   "toolTimeoutSec",
   "startupTimeoutSec",
   "toolTokenEstimate",
   "sortOrder",
+  "egress",
 ];
 
 const AUTH_FIELDS = [
@@ -211,7 +224,19 @@ function httpsUrl(value: unknown, field: string): string {
   if (url.protocol !== "https:") invalid(`${field} must use https.`);
   if (url.username || url.password || url.search || url.hash)
     invalid(`${field} must not contain credentials, a query or a fragment.`);
+  if (privateHost(url.hostname))
+    invalid(`${field} must not name a private or local address.`);
   return url.href.replace(/\/+$/, "");
+}
+
+// An IP literal, a local name or a cloud metadata name: Codex reaches a
+// connector from outside the sandbox, so nothing else refuses them. The
+// runtime adapter applies the same rule (contract.ts privateMcpHost).
+function privateHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, "");
+  if (host.includes(":") || /^[0-9.]+$/.test(host) || /^0x/i.test(host))
+    return true;
+  return /(^|\.)(localhost|local|localdomain|internal|arpa)$/.test(host);
 }
 
 function clientSecretOf(value: unknown): ClientSecretRef {
@@ -431,6 +456,26 @@ function writeToolsOf(
     return tool;
   });
 }
+// A subset of writeTools, by the same rule writeTools follows allowedTools.
+function criticalToolsOf(
+  value: unknown,
+  writeTools: readonly string[] | undefined,
+): string[] {
+  if (!Array.isArray(value))
+    invalid("criticalTools must be an array of tool names.");
+  if (writeTools === undefined)
+    invalid("criticalTools needs writeTools to choose from.");
+  const writes = new Set(writeTools);
+  const tools = value.map((tool, index) => {
+    if (typeof tool !== "string" || !writes.has(tool))
+      invalid(`criticalTools[${index}] must be one of writeTools.`);
+    return tool;
+  });
+  if (new Set(tools).size !== tools.length)
+    invalid("criticalTools lists a tool twice.");
+  return tools;
+}
+
 export function parseConnectorSpec(input: unknown): ConnectorSpec {
   const raw = objectWith(input, SPEC_FIELDS, "The connector definition");
 
@@ -471,10 +516,16 @@ export function parseConnectorSpec(input: unknown): ConnectorSpec {
     writeToolsOf(v, allowedTools),
   );
   if (writeTools !== undefined) spec.writeTools = writeTools;
+  const criticalTools = optional(raw.criticalTools, (v) =>
+    criticalToolsOf(v, writeTools),
+  );
+  if (criticalTools !== undefined) spec.criticalTools = criticalTools;
   const estimate = optional(raw.toolTokenEstimate, (v) =>
     integer(v, "toolTokenEstimate", 0, 10_000_000),
   );
   if (estimate !== undefined) spec.toolTokenEstimate = estimate;
+  if (raw.egress !== undefined)
+    spec.egress = parseConnectorEgress(raw.egress, spec.url);
   return spec;
 }
 

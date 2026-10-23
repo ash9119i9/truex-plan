@@ -4,6 +4,7 @@ import {
   loadConnectorsConfig,
   type ConnectorsConfig,
 } from "./connectors-config";
+import { loadFilesConfig, type FilesConfig } from "./files-config";
 import { loadGoogleConfig, type GoogleConfig } from "./google-config";
 
 // Startup configuration. Read once from the environment and validated before
@@ -21,6 +22,9 @@ export interface AppConfig {
   // Absent when the connector token keys are not set; connector endpoints
   // then answer 503 (CONNECTORS_NOT_CONFIGURED).
   readonly connectors?: ConnectorsConfig;
+  // Absent when CHAT_FILES_S3_BUCKET is not set; runs' files then stay in
+  // the runtime and chats list no files.
+  readonly files?: FilesConfig;
 }
 
 export const APP_CONFIG = Symbol("APP_CONFIG");
@@ -74,6 +78,7 @@ export function loadConfig(env: Env): AppConfig {
   const google = loadGoogleConfig(env, auth?.allowedOrigins, problems);
   const chat = loadChatConfig(env, problems);
   const connectors = loadConnectorsConfig(env, auth?.allowedOrigins, problems);
+  const files = loadFilesConfig(env, problems);
 
   if (problems.length > 0 || !auth || !google) throw new ConfigError(problems);
   return {
@@ -84,5 +89,6 @@ export function loadConfig(env: Env): AppConfig {
     google,
     ...(chat ? { chat } : {}),
     ...(connectors ? { connectors } : {}),
+    ...(files ? { files } : {}),
   };
 }

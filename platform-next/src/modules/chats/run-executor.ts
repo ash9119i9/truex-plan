@@ -11,19 +11,37 @@ import { toWireId } from "../../database/object-id";
 import {
   APPROVAL_DECISIONS,
   type ApprovalAnswer,
+  MAX_ACTIVITY_COMMAND,
+  MAX_ACTIVITY_FILES,
+  MAX_ACTIVITY_PATH,
   type ApprovalDecision,
   type RunErrorInfo,
   type RunUsage,
+  type MessageAttachment,
 } from "./chat";
+import {
+  ChatFilesService,
+  type CaptureResult,
+  type CaptureTarget,
+  type ChatFileView,
+} from "./chat-files";
 import {
   ChatStore,
   LEASE_RENEW_MS,
+  networkKey,
+  type CommandSettleItem,
+  type FileChangeSettleItem,
+  type NetworkSettleItem,
   type SettleItem,
   type SettleResult,
   type Settlement,
+  type SkillSettleItem,
   type ToolSettleItem,
 } from "./chat-store";
 import { ConnectorsService } from "../connectors/connectors.service";
+import { networkBlockOf, reconcileBlock } from "../network/network-grants";
+import type { ChatSkill } from "../skills/skill";
+import { SkillsService } from "../skills/skills.service";
 import {
   AdapterRefusal,
   AdapterUnreachable,
@@ -59,6 +77,15 @@ export interface Dispatch {
   readonly mode: "start" | "recover";
   // A recovered run whose lease is still held waits until it expires.
   readonly notBefore?: Date;
+  // The member's attached files, copied into the workspace before a start
+  // posts the run.
+  readonly attachments?: readonly MessageAttachment[];
+  // The chat's skills (also named in body.skills), pushed to the runtime
+  // before the thread's first run and whenever it reports them missing.
+  readonly skills?: readonly ChatSkill[];
+  // The chat's Allow-once network grants body.network includes (their card
+  // messages); removed from the chat when the run ends.
+  readonly networkOnce?: readonly ObjectId[];
 }
 
 export type Phase =
@@ -79,8 +106,18 @@ export type LiveEvent =
   | { type: "tool"; data: ToolEventData }
   | { type: "connector"; data: ConnectorEventData }
   | { type: "approval"; data: ApprovalEventData }
+  | { type: "activity"; data: ActivityItem }
+  | { type: "skill"; data: { slug: string; name: string } }
+  // A sandbox request the network proxy refused (network-grants.ts). Its
+  // card is answered once the reply is saved.
+  | { type: "network"; data: Omit<NetworkSettleItem, "type"> }
+  | { type: "output"; data: { itemId: string; text: string } }
+  | { type: "progress"; data: ProgressEventData }
   | { type: "usage"; data: RunUsage }
   | { type: "completed"; data: Completed }
+  // The file versions the run stored, after completed and before saved, and
+  // the files it wrote that couldn't be stored.
+  | { type: "files"; data: { files: ChatFileView[]; unsaved: string[] } }
   | { type: "saved"; data: SettleResult }
   | { type: "save_failed"; data: Record<string, never> };
 
@@ -95,6 +132,36 @@ export interface ToolEventData {
   approval?: ApprovalDecision;
 }
 
+// A command or file change in the chat's workspace, as it starts and ends.
+// Output streams separately (`output` events); the item carries what was
+// kept so far.
+export type ActivityItem = CommandSettleItem | FileChangeSettleItem;
+
+// A file change the model is still writing, before it becomes an activity:
+// its files and the lines written so far, or `ended` when it never will.
+// Live only; never saved.
+export type ProgressEventData =
+  | {
+      itemId: string;
+      files: FileChangeSettleItem["files"];
+      lines: number;
+      preview?: FilePreview;
+    }
+  | { itemId: string; ended: true };
+
+// A new file's text while the model writes it. Live events carry the next
+// piece (`offset` is where it starts); a snapshot carries all of it so far
+// (`offset` 0). Never saved.
+export interface FilePreview {
+  path: string;
+  offset: number;
+  text: string;
+  truncated: boolean;
+}
+
+// Characters of preview kept per file being written (the runtime's limit).
+export const MAX_PREVIEW_CHARS = 256 * 1024;
+
 // A write-tool call waiting for the member (`status: "pending"`, with
 // `expiresAt`), or how its approval ended (`auto` when an earlier Allow for
 // this chat answered it). `params` are what the card shows: model-written,
@@ -102,10 +169,21 @@ export interface ToolEventData {
 export interface ApprovalEventData {
   approvalId: string;
   itemId: string;
+  // mcp: a connector tool. command / file_change: the coding profile's
+  // sandboxed command or edit (connector "@workspace").
+  kind: "mcp" | "command" | "file_change";
   connector: string;
   tool: string;
   params: Array<{ name: string; value: string }>;
   status: "pending" | ApprovalDecision;
+  // False when the card must not offer Allow for this chat (push).
+  allowForChat: boolean;
+  // Coding: what Allow for this chat stores (a command's hash, or
+  // "file_change").
+  scope?: string;
+  // file_change cards: the changes as a bounded diff.
+  diff?: string;
+  diffTruncated?: boolean;
   expiresAt?: string;
   auto?: boolean;
 }
@@ -129,6 +207,8 @@ export interface Snapshot {
   // Approvals still waiting for the member, so a reconnecting browser shows
   // their cards.
   approvals: ApprovalEventData[];
+  // File changes still being written (live only, never saved).
+  writing: Array<Extract<ProgressEventData, { lines: number }>>;
 }
 
 export interface Completed {
@@ -151,6 +231,9 @@ export interface LiveSubscriber {
   send(event: LiveEvent): void;
   end(): void;
 }
+
+// Command output a live run keeps per command (the runtime caps at 16 000).
+const MAX_LIVE_OUTPUT = 16_000;
 
 // The first delta of an item goes out at once; later ones every 50 ms.
 export const DELTA_FLUSH_MS = 50;
@@ -186,6 +269,22 @@ const BUSY_ELSEWHERE: RunErrorInfo = {
     "The assistant is still finishing an earlier reply. Try again shortly.",
   retryable: true,
 };
+const ATTACHMENTS_FAILED: RunErrorInfo = {
+  code: "ATTACHMENTS_FAILED",
+  message:
+    "Your attached files couldn't be given to the assistant. Try sending again.",
+  retryable: true,
+};
+const SKILLS_FAILED: RunErrorInfo = {
+  code: "SKILLS_FAILED",
+  message: "This agent's skills couldn't be loaded. Try again.",
+  retryable: true,
+};
+const UPLOADS_UNAVAILABLE: RunErrorInfo = {
+  code: "UPLOADS_DISABLED",
+  message: "This assistant can't open attached files here.",
+  retryable: false,
+};
 const THREAD_LOST: RunErrorInfo = {
   code: "THREAD_LOST",
   message:
@@ -196,6 +295,9 @@ const THREAD_LOST: RunErrorInfo = {
 type OrderEntry =
   | { type: "reply"; itemId: string }
   | { type: "tool"; itemId: string }
+  | { type: "activity"; itemId: string }
+  | { type: "skill"; slug: string }
+  | { type: "network"; key: string }
   | { type: "input"; clientMessageId: string };
 
 // The tool error codes the adapter sends (slice 3 contract); anything else
@@ -220,6 +322,17 @@ class LiveRun {
   private readonly pending = new Map<string, string>();
   // Tool calls by item, placed in `order` when first seen.
   private readonly tools = new Map<string, ToolSettleItem>();
+  // Commands and file changes by item, placed like tool calls.
+  private readonly activities = new Map<string, ActivityItem>();
+  // Skills the model opened, by slug, placed in `order` when first seen.
+  private readonly skills = new Map<string, SkillSettleItem>();
+  // Refused sandbox requests, by networkKey, placed like skills.
+  private readonly networks = new Map<string, NetworkSettleItem>();
+  // File changes the model is still writing, until they become activities.
+  private readonly writing = new Map<
+    string,
+    Extract<ProgressEventData, { lines: number }>
+  >();
   // Approvals waiting for the member, by approvalId, and the ones that ended
   // (so a replayed request never reopens a card).
   private readonly approvals = new Map<string, ApprovalEventData>();
@@ -239,6 +352,8 @@ class LiveRun {
   completed: Completed | undefined;
   saved: SettleResult | undefined;
   saveFailed = false;
+  files: ChatFileView[] = [];
+  unsaved: string[] = [];
   readonly subscribers = new Set<LiveSubscriber>();
   readonly abort = new AbortController();
   done: Promise<void> = Promise.resolve();
@@ -264,6 +379,7 @@ class LiveRun {
       items: this.settleItems(),
       usage: this.usage,
       approvals: [...this.approvals.values()],
+      writing: [...this.writing.values()],
     };
   }
 
@@ -273,6 +389,9 @@ class LiveRun {
     return this.order.map((entry): SettleItem => {
       if (entry.type === "input") return entry;
       if (entry.type === "tool") return this.tools.get(entry.itemId)!;
+      if (entry.type === "activity") return this.activities.get(entry.itemId)!;
+      if (entry.type === "skill") return this.skills.get(entry.slug)!;
+      if (entry.type === "network") return this.networks.get(entry.key)!;
       return {
         type: "reply",
         itemId: entry.itemId,
@@ -327,6 +446,122 @@ class LiveRun {
     this.broadcast({ type: "tool", data });
   }
 
+  // The model opened one of the chat's skills. Once per run; a slug the
+  // chat doesn't have is ignored.
+  useSkill(slug: string): void {
+    if (this.skills.has(slug)) return;
+    const skill = this.dispatch.skills?.find((entry) => entry.slug === slug);
+    if (!skill) return;
+    this.flush();
+    const item: SkillSettleItem = {
+      type: "skill",
+      slug,
+      name: skill.displayName,
+    };
+    this.skills.set(slug, item);
+    this.order.push({ type: "skill", slug });
+    this.broadcast({ type: "skill", data: { slug, name: item.name } });
+  }
+
+  // The network proxy refused a sandbox request. Once per site and method.
+  blockNetwork(item: NetworkSettleItem): void {
+    const key = networkKey(item);
+    if (this.networks.has(key)) return;
+    this.flush();
+    this.networks.set(key, item);
+    this.order.push({ type: "network", key });
+    const { type: _type, ...data } = item;
+    this.broadcast({ type: "network", data });
+  }
+
+  // A command or file change started or finished. A finished one never goes
+  // back to in progress; its streamed output and approval are kept when the
+  // event does not repeat them.
+  setActivity(item: ActivityItem): void {
+    const before = this.activities.get(item.itemId);
+    if (before && before.status !== "inProgress") return;
+    if (before && item.status === "inProgress") return;
+    if (!before) {
+      this.flush();
+      this.order.push({ type: "activity", itemId: item.itemId });
+    }
+    let merged: ActivityItem = item;
+    if (before?.approval && !item.approval)
+      merged = { ...merged, approval: before.approval };
+    if (
+      before?.type === "command" &&
+      merged.type === "command" &&
+      !merged.output &&
+      before.output
+    )
+      merged = {
+        ...merged,
+        output: before.output,
+        outputTruncated: before.outputTruncated,
+      };
+    this.activities.set(item.itemId, merged);
+    this.writing.delete(item.itemId);
+    this.broadcast({ type: "activity", data: merged });
+  }
+
+  endWriting(): void {
+    for (const itemId of [...this.writing.keys()])
+      this.setProgress({ itemId, ended: true });
+  }
+
+  // Progress of a file change still being written. Ignored once the change
+  // is an activity.
+  setProgress(progress: ProgressEventData): void {
+    if (this.activities.has(progress.itemId)) return;
+    if ("ended" in progress) {
+      if (!this.writing.delete(progress.itemId)) return;
+      this.broadcast({ type: "progress", data: progress });
+      return;
+    }
+    // The snapshot keeps the whole text so far; subscribers get the piece.
+    const kept = this.writing.get(progress.itemId)?.preview;
+    let preview = kept;
+    let piece = progress.preview;
+    if (piece) {
+      const sofar = kept && kept.path === piece.path ? kept.text : "";
+      if (piece.offset === sofar.length && !kept?.truncated)
+        preview = {
+          path: piece.path,
+          offset: 0,
+          text: sofar + piece.text,
+          truncated: piece.truncated,
+        };
+      // Out of order or after the limit: kept text stands, piece dropped.
+      else piece = undefined;
+    }
+    this.writing.set(progress.itemId, {
+      itemId: progress.itemId,
+      files: progress.files,
+      lines: progress.lines,
+      ...(preview ? { preview } : {}),
+    });
+    const { preview: _, ...rest } = progress;
+    this.broadcast({
+      type: "progress",
+      data: piece ? { ...rest, preview: piece } : rest,
+    });
+  }
+
+  // Live command output, bounded like the runtime's own copy.
+  appendOutput(itemId: string, text: string): void {
+    const item = this.activities.get(itemId);
+    if (item?.type !== "command" || item.outputTruncated || !text) return;
+    const room = MAX_LIVE_OUTPUT - item.output.length;
+    const chunk = text.slice(0, Math.max(0, room));
+    this.activities.set(itemId, {
+      ...item,
+      output: item.output + chunk,
+      outputTruncated: text.length > room,
+    });
+    if (chunk)
+      this.broadcast({ type: "output", data: { itemId, text: chunk } });
+  }
+
   // A write-tool call is waiting for the member. Ignored once it ended.
   requestApproval(approval: ApprovalEventData): void {
     if (this.resolvedApprovals.has(approval.approvalId)) return;
@@ -341,9 +576,17 @@ class LiveRun {
     if (this.resolvedApprovals.has(approval.approvalId)) return false;
     this.resolvedApprovals.add(approval.approvalId);
     this.approvals.delete(approval.approvalId);
-    const tool = this.tools.get(approval.itemId);
-    if (tool && approval.status !== "pending")
-      this.tools.set(approval.itemId, { ...tool, approval: approval.status });
+    if (approval.status !== "pending") {
+      const tool = this.tools.get(approval.itemId);
+      if (tool && approval.kind === "mcp")
+        this.tools.set(approval.itemId, { ...tool, approval: approval.status });
+      const activity = this.activities.get(approval.itemId);
+      if (activity && approval.kind !== "mcp")
+        this.activities.set(approval.itemId, {
+          ...activity,
+          approval: approval.status,
+        });
+    }
     this.broadcast({ type: "approval", data: approval });
     return true;
   }
@@ -356,7 +599,10 @@ class LiveRun {
     for (const [approvalId, approval] of [...this.approvals]) {
       if (pending.has(approvalId)) continue;
       const { expiresAt: _expiresAt, ...rest } = approval;
-      const decision = this.tools.get(approval.itemId)?.approval ?? "cancelled";
+      const decision =
+        (approval.kind === "mcp"
+          ? this.tools.get(approval.itemId)?.approval
+          : this.activities.get(approval.itemId)?.approval) ?? "cancelled";
       this.resolveApproval({ ...rest, status: decision });
     }
   }
@@ -457,6 +703,12 @@ export class RunExecutor implements OnApplicationShutdown {
     @Optional()
     @Inject(ConnectorsService)
     private readonly connectors: ConnectorFeedback | null = null,
+    @Optional()
+    @Inject(ChatFilesService)
+    private readonly chatFiles: ChatFilesService | null = null,
+    @Optional()
+    @Inject(SkillsService)
+    private readonly skills: SkillsService | null = null,
   ) {}
 
   get configured(): boolean {
@@ -540,6 +792,11 @@ export class RunExecutor implements OnApplicationShutdown {
     subscriber.send({ type: "snapshot", data: run.snapshot() });
     if (run.completed)
       subscriber.send({ type: "completed", data: run.completed });
+    if (run.files.length > 0 || run.unsaved.length > 0)
+      subscriber.send({
+        type: "files",
+        data: { files: run.files, unsaved: run.unsaved },
+      });
     if (run.saved) subscriber.send({ type: "saved", data: run.saved });
     else if (run.saveFailed) subscriber.send({ type: "save_failed", data: {} });
     if (run.saved || run.saveFailed) {
@@ -725,6 +982,23 @@ export class RunExecutor implements OnApplicationShutdown {
     let after = 0;
     let posts = 0;
     let failures = 0;
+    let skillsResent = false;
+    // A new thread's runtime has never seen the chat's skills: push them
+    // before the first post rather than waiting to be told they're missing.
+    if (
+      dispatch.mode === "start" &&
+      dispatch.body.threadId === null &&
+      dispatch.skills?.length
+    ) {
+      const refused = await this.pushSkills(run, client, dispatch.skills);
+      if (signal.aborted) return null;
+      if (refused) return failed(run, refused);
+    }
+    if (dispatch.mode === "start" && dispatch.attachments?.length) {
+      const refused = await this.copyAttachments(run, client);
+      if (signal.aborted) return null;
+      if (refused) return failed(run, refused);
+    }
     let stream =
       dispatch.mode === "start"
         ? (posts++, client.startRun(dispatch.body, signal))
@@ -757,6 +1031,22 @@ export class RunExecutor implements OnApplicationShutdown {
               stream = client.startRun(dispatch.body, signal);
               continue;
             }
+          }
+          // Refused before the run started (the runtime's storage was reset,
+          // or it is a different runtime): push the missing skills and post
+          // again, once.
+          if (error.code === "SKILLS_MISSING") {
+            if (skillsResent || !dispatch.skills?.length)
+              return failed(run, SKILLS_FAILED);
+            skillsResent = true;
+            const missing = missingOf(error, dispatch.skills);
+            const refused = await this.pushSkills(run, client, missing);
+            if (signal.aborted) return null;
+            if (refused) return failed(run, refused);
+            posts++;
+            after = 0;
+            stream = client.startRun(dispatch.body, signal);
+            continue;
           }
           if (error.code === "THREAD_LOST")
             return failed(run, THREAD_LOST, true);
@@ -794,6 +1084,86 @@ export class RunExecutor implements OnApplicationShutdown {
           posts > 0
             ? client.startRun(dispatch.body, signal)
             : client.events(run.id, dispatch.ref, after, signal);
+      }
+    }
+  }
+
+  // Unpacks the given skills in the chat's runtime, in parallel, retrying a
+  // busy or unreachable runtime twice. Archives come from SkillsService's
+  // cache, so S3 is read once per version per process. Returns the failure
+  // to settle the run with, or null once every skill is there.
+  private async pushSkills(
+    run: LiveRun,
+    client: RuntimeClient,
+    skills: readonly ChatSkill[],
+  ): Promise<RunErrorInfo | null> {
+    const { dispatch } = run;
+    if (!this.skills) return SKILLS_FAILED;
+    const store = this.skills;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await Promise.all(
+          skills.map(async (skill) =>
+            client.putSkill(
+              dispatch.ref,
+              skill.sha256,
+              await store.archive(skill),
+            ),
+          ),
+        );
+        return null;
+      } catch (error) {
+        const code =
+          error instanceof AdapterRefusal ? error.code : errorNameOf(error);
+        this.logger.warn({ message: "skills not pushed", runId: run.id, code });
+        const retryable =
+          error instanceof AdapterUnreachable ||
+          (error instanceof AdapterRefusal && RETRYABLE_START.has(error.code));
+        const delay = RECONNECT_DELAYS_MS[attempt];
+        if (!retryable || attempt >= 2 || delay === undefined)
+          return SKILLS_FAILED;
+        await sleep(delay, run.abort.signal);
+        if (run.abort.signal.aborted) return null;
+      }
+    }
+  }
+
+  // Puts the message's attached files in the workspace before the run is
+  // posted, retrying a busy or unreachable runtime twice. Returns the
+  // failure to settle the run with, or null once every file is there.
+  private async copyAttachments(
+    run: LiveRun,
+    client: RuntimeClient,
+  ): Promise<RunErrorInfo | null> {
+    const { dispatch } = run;
+    if (!this.chatFiles) return ATTACHMENTS_FAILED;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await this.chatFiles.copyAttachments(
+          dispatch.dbName,
+          dispatch.ref,
+          client,
+          dispatch.attachments!,
+        );
+        return null;
+      } catch (error) {
+        const code =
+          error instanceof AdapterRefusal ? error.code : errorNameOf(error);
+        this.logger.warn({
+          message: "attached files not copied",
+          runId: run.id,
+          code,
+        });
+        if (error instanceof AdapterRefusal) {
+          if (error.code === "UPLOADS_DISABLED") return UPLOADS_UNAVAILABLE;
+          if (error.code === "CHAT_BUSY") return BUSY_ELSEWHERE;
+          if (!RETRYABLE_START.has(error.code)) return ATTACHMENTS_FAILED;
+        } else if (!(error instanceof AdapterUnreachable))
+          return ATTACHMENTS_FAILED;
+        const delay = RECONNECT_DELAYS_MS[attempt];
+        if (attempt >= 2 || delay === undefined) return ATTACHMENTS_FAILED;
+        await sleep(delay, run.abort.signal);
+        if (run.abort.signal.aborted) return null;
       }
     }
   }
@@ -863,9 +1233,46 @@ export class RunExecutor implements OnApplicationShutdown {
         if (item) run.setTool(item);
         return null;
       }
+      case "command.started":
+      case "command.completed":
+      case "file_change.started":
+      case "file_change.completed": {
+        const item = activityOf({
+          ...d,
+          type: event.type.startsWith("command") ? "command" : "file_change",
+          ...(event.type.endsWith(".started") ? { status: "inProgress" } : {}),
+        });
+        if (item) run.setActivity(item);
+        return null;
+      }
+      case "command.output": {
+        const itemId = str(d.itemId);
+        if (itemId && typeof d.delta === "string")
+          run.appendOutput(itemId, d.delta);
+        return null;
+      }
+      case "file_change.progress": {
+        const progress = progressOf(d);
+        if (progress) run.setProgress(progress);
+        return null;
+      }
       case "connector.status":
         this.connectorStatus(run, d);
         return null;
+      case "skill.used": {
+        const slug = str(d.slug);
+        if (slug) run.useSkill(slug);
+        return null;
+      }
+      case "network.blocked": {
+        const block = networkBlockOf(d);
+        if (block)
+          run.blockNetwork({
+            type: "network",
+            ...reconcileBlock(block, run.dispatch.body.network),
+          });
+        return null;
+      }
       case "approval.requested": {
         const approval = approvalOf(d, "pending");
         if (approval) run.requestApproval(approval);
@@ -879,9 +1286,19 @@ export class RunExecutor implements OnApplicationShutdown {
       }
       case "run.snapshot": {
         run.flush();
+        // Progress events were missed, and snapshots carry none.
+        run.endWriting();
         for (const item of itemsOf(d.items))
           if (item.type === "input") run.addInput(item.clientMessageId);
           else if (item.type === "tool") run.setTool(item);
+          else if (item.type === "command" || item.type === "file_change")
+            run.setActivity(item);
+          else if (item.type === "skill") run.useSkill(item.slug);
+          else if (item.type === "network")
+            run.blockNetwork({
+              ...item,
+              ...reconcileBlock(item, run.dispatch.body.network),
+            });
           else run.setItem(item.itemId, item.text, item.completed);
         const pending = new Set<string>();
         if (Array.isArray(d.approvals))
@@ -907,7 +1324,7 @@ export class RunExecutor implements OnApplicationShutdown {
         run.setPhase("retrying");
         return null;
       case "usage": {
-        const usage = usageOf(d.last);
+        const usage = turnUsageOf(d);
         if (usage) {
           run.usage = usage;
           run.broadcast({ type: "usage", data: usage });
@@ -934,6 +1351,7 @@ export class RunExecutor implements OnApplicationShutdown {
         chatId,
         runId,
         userId: ownerId,
+        ...(approval.kind !== "mcp" ? { kind: approval.kind } : {}),
         connector: approval.connector,
         tool: approval.tool,
         decision,
@@ -942,16 +1360,24 @@ export class RunExecutor implements OnApplicationShutdown {
         at: new Date(),
       }),
     ];
-    if (decision === "allow_for_chat" && approval.auto !== true)
-      writes.push(
-        this.store.allowToolForChat(
-          dbName,
-          chatId,
-          ownerId,
-          approval.connector,
-          approval.tool,
-        ),
-      );
+    if (decision === "allow_for_chat" && approval.auto !== true) {
+      if (approval.kind === "mcp")
+        writes.push(
+          this.store.allowToolForChat(
+            dbName,
+            chatId,
+            ownerId,
+            approval.connector,
+            approval.tool,
+          ),
+        );
+      else if (approval.scope && approval.allowForChat)
+        writes.push(
+          this.store.allowCodingForChat(dbName, chatId, ownerId, {
+            command: approval.scope,
+          }),
+        );
+    }
     this.logger.log({
       message: "tool approval resolved",
       runId: run.id,
@@ -1015,11 +1441,17 @@ export class RunExecutor implements OnApplicationShutdown {
     const status =
       d.status === "completed" || d.status === "stopped" ? d.status : "failed";
     const error = errorOf(d.error);
-    const items = itemsOf(d.items);
+    const network = run.dispatch.body.network;
+    const items = namedSkills(itemsOf(d.items), run.dispatch.skills).map(
+      (item) =>
+        item.type === "network"
+          ? { ...item, ...reconcileBlock(item, network) }
+          : item,
+    );
     const base = {
       items,
       usage:
-        usageOf((d.usage as Record<string, unknown> | null)?.last) ?? run.usage,
+        turnUsageOf(d.usage as Record<string, unknown> | null) ?? run.usage,
       threadId: str(d.threadId) ?? run.threadId,
       turnId: str(d.turnId) ?? run.turnId,
       firstTextAt: run.firstTextAt,
@@ -1088,6 +1520,16 @@ export class RunExecutor implements OnApplicationShutdown {
     return { ...base, status: "failed", error: RUNTIME_FAILED, items };
   }
 
+  // Stores files a settled run couldn't store when it ended. Null when file
+  // storage or the runtime isn't configured.
+  async retryFiles(
+    target: CaptureTarget,
+    paths: ReadonlySet<string>,
+  ): Promise<CaptureResult | null> {
+    if (!this.chatFiles?.configured || !this.client) return null;
+    return this.chatFiles.capture(target, this.client, { only: paths });
+  }
+
   private async finish(run: LiveRun, outcome: Settlement): Promise<void> {
     run.flush();
     run.completed = {
@@ -1098,6 +1540,29 @@ export class RunExecutor implements OnApplicationShutdown {
     };
     run.broadcast({ type: "completed", data: run.completed });
     const { dbName, chatId, runId, replySeq } = run.dispatch;
+    // The run's files are stored before it is saved, so a member who sees
+    // the saved reply can open them. Bounded by CAPTURE_TIMEOUT_MS; a
+    // file the run wrote that can't be stored is saved on the run as
+    // unsaved, so the member sees it and can retry.
+    if (this.chatFiles?.configured && this.client) {
+      const { stored, unsaved } = await this.chatFiles.capture(
+        {
+          dbName,
+          tenantId: run.dispatch.ref.tenantId,
+          chatId,
+          ownerId: run.dispatch.ownerId,
+          runId,
+          ref: run.dispatch.ref,
+        },
+        this.client,
+        { report: writtenPaths(outcome.items) },
+      );
+      run.files = stored;
+      run.unsaved = unsaved;
+      if (stored.length > 0 || unsaved.length > 0)
+        run.broadcast({ type: "files", data: { files: stored, unsaved } });
+      if (unsaved.length > 0) outcome = { ...outcome, unsavedFiles: unsaved };
+    }
     // The chat's thread is recorded before the chat is released, so the
     // next message continues it.
     await run.acceptedWrite;
@@ -1110,6 +1575,7 @@ export class RunExecutor implements OnApplicationShutdown {
     );
     if (saved) {
       run.saved = saved;
+      this.afterSettle(run, outcome);
       run.broadcast({ type: "saved", data: saved });
     } else {
       run.saveFailed = true;
@@ -1122,6 +1588,55 @@ export class RunExecutor implements OnApplicationShutdown {
       if (this.live.get(run.id) === run) this.live.delete(run.id);
     }, SETTLED_TTL_MS);
     timer.unref();
+  }
+
+  // The run's Allow-once network grants are used up, and each refused
+  // request is recorded for the audit (auto: refused by the run's policy, not
+  // by the member). Not awaited; a failure is logged.
+  private afterSettle(run: LiveRun, outcome: Settlement): void {
+    const { dbName, chatId, runId, ownerId, networkOnce } = run.dispatch;
+    const writes: Promise<void>[] = [];
+    if (networkOnce?.length)
+      writes.push(this.store.consumeNetworkGrants(dbName, chatId, networkOnce));
+    for (const item of outcome.items) {
+      if (item.type !== "network") continue;
+      const key = networkKey(item);
+      this.logger.log({
+        message: "sandbox request blocked",
+        runId: run.id,
+        host: item.host,
+        method: item.method,
+        kind: item.kind,
+        connector: item.connector?.name,
+      });
+      writes.push(
+        this.store.recordApproval(dbName, {
+          _id: `net_block_${run.id}_${key}`,
+          chatId,
+          runId,
+          userId: ownerId,
+          kind: "network",
+          connector: item.connector?.name ?? "web",
+          tool: `${item.method} ${item.host}`,
+          decision: "deny",
+          auto: true,
+          params: [
+            { name: "host", value: item.host },
+            { name: "method", value: item.method },
+            { name: "kind", value: item.kind },
+          ],
+          at: new Date(),
+        }),
+      );
+    }
+    if (writes.length === 0) return;
+    void Promise.all(writes).catch((error: unknown) =>
+      this.logger.warn({
+        message: "saving network records failed",
+        runId: run.id,
+        error: error instanceof Error ? error.name : "unknown",
+      }),
+    );
   }
 
   // Lets live runs finish for up to `drainMs`, then detaches from the rest.
@@ -1142,6 +1657,24 @@ export class RunExecutor implements OnApplicationShutdown {
   async onApplicationShutdown(): Promise<void> {
     await this.drain();
   }
+}
+
+// The files a run's completed edits left in the chat, in edit order: added
+// or updated paths and move destinations, without those it later deleted or
+// moved away.
+export function writtenPaths(items: readonly SettleItem[]): Set<string> {
+  const paths = new Set<string>();
+  for (const item of items) {
+    if (item.type !== "file_change" || item.status !== "completed") continue;
+    for (const file of item.files) {
+      if (file.kind === "delete") paths.delete(file.path);
+      else if (file.kind === "move") {
+        paths.delete(file.path);
+        if (file.movePath) paths.add(file.movePath);
+      } else paths.add(file.path);
+    }
+  }
+  return paths;
 }
 
 function failed(
@@ -1210,10 +1743,115 @@ function toolOf(value: Record<string, unknown>): ToolSettleItem | null {
   };
 }
 
+const ACTIVITY_STATUS = new Set([
+  "inProgress",
+  "completed",
+  "failed",
+  "declined",
+]);
+const FILE_KINDS = new Set(["add", "update", "delete", "move"]);
+
+// A command or file change from an adapter event or item, or null when
+// unreadable. Text is bounded here so the platform is safe on its own.
+function activityOf(value: Record<string, unknown>): ActivityItem | null {
+  const itemId = str(value.itemId);
+  const status = ACTIVITY_STATUS.has(value.status as string)
+    ? (value.status as ActivityItem["status"])
+    : null;
+  if (!itemId || !status) return null;
+  const approval = APPROVAL_DECISIONS.includes(
+    value.approval as ApprovalDecision,
+  )
+    ? { approval: value.approval as ApprovalDecision }
+    : {};
+  if (value.type === "command") {
+    if (typeof value.command !== "string" || !value.command) return null;
+    const output = typeof value.output === "string" ? value.output : "";
+    const int = (v: unknown) =>
+      typeof v === "number" && Number.isSafeInteger(v) ? v : undefined;
+    const exitCode = int(value.exitCode);
+    const durationMs = int(value.durationMs);
+    return {
+      type: "command",
+      itemId,
+      command: value.command.slice(0, MAX_ACTIVITY_COMMAND),
+      status,
+      ...(exitCode !== undefined ? { exitCode } : {}),
+      ...(durationMs !== undefined && durationMs >= 0 ? { durationMs } : {}),
+      output: output.slice(0, MAX_LIVE_OUTPUT),
+      outputTruncated:
+        value.outputTruncated === true || output.length > MAX_LIVE_OUTPUT,
+      ...approval,
+    };
+  }
+  const files: FileChangeSettleItem["files"][number][] = [];
+  if (Array.isArray(value.files))
+    for (const raw of value.files as Array<Record<string, unknown> | null>) {
+      if (files.length >= MAX_ACTIVITY_FILES) break;
+      if (
+        typeof raw?.path !== "string" ||
+        !raw.path ||
+        !FILE_KINDS.has(raw.kind as string)
+      )
+        continue;
+      files.push({
+        path: raw.path.slice(0, MAX_ACTIVITY_PATH),
+        kind: raw.kind as "add" | "update" | "delete" | "move",
+        ...(typeof raw.movePath === "string"
+          ? { movePath: raw.movePath.slice(0, MAX_ACTIVITY_PATH) }
+          : {}),
+      });
+    }
+  return { type: "file_change", itemId, files, status, ...approval };
+}
+
+// File-change progress from an adapter event, or null when malformed.
+function progressOf(value: Record<string, unknown>): ProgressEventData | null {
+  const itemId = str(value.itemId);
+  if (!itemId) return null;
+  if (value.ended === true) return { itemId, ended: true };
+  const lines = value.lines;
+  if (typeof lines !== "number" || !Number.isSafeInteger(lines) || lines < 0)
+    return null;
+  const item = activityOf({
+    ...value,
+    type: "file_change",
+    status: "inProgress",
+  });
+  if (item?.type !== "file_change" || item.files.length === 0) return null;
+  const preview = previewOf(value.preview);
+  return { itemId, files: item.files, lines, ...(preview ? { preview } : {}) };
+}
+
+function previewOf(value: unknown): FilePreview | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const p = value as Record<string, unknown>;
+  if (
+    typeof p.path !== "string" ||
+    p.path.length === 0 ||
+    p.path.length > MAX_ACTIVITY_PATH ||
+    typeof p.text !== "string" ||
+    typeof p.offset !== "number" ||
+    !Number.isSafeInteger(p.offset) ||
+    p.offset < 0 ||
+    p.offset + p.text.length > MAX_PREVIEW_CHARS
+  )
+    return undefined;
+  return {
+    path: p.path,
+    offset: p.offset,
+    text: p.text,
+    truncated: p.truncated === true,
+  };
+}
+
 // At most this many card params, each value cut to this length. The adapter
 // bounds them already; this keeps the platform safe on its own.
 const MAX_APPROVAL_PARAMS = 12;
 const MAX_APPROVAL_PARAM_CHARS = 500;
+// A command is shown whole on its card (the runtime declines longer ones).
+const MAX_APPROVAL_COMMAND_CHARS = 4_000;
+const MAX_APPROVAL_DIFF = 16_000;
 
 // An approval from an adapter event (or snapshot entry), or null when
 // unreadable. `pending` reads a request; `resolved` needs a known decision.
@@ -1235,10 +1873,44 @@ function approvalOf(
       if (!name || typeof p?.value !== "string") continue;
       params.push({
         name,
-        value: p.value.slice(0, MAX_APPROVAL_PARAM_CHARS),
+        value: p.value.slice(
+          0,
+          value.kind === "command" && name === "command"
+            ? MAX_APPROVAL_COMMAND_CHARS
+            : MAX_APPROVAL_PARAM_CHARS,
+        ),
       });
     }
-  const base = { approvalId, itemId, connector, tool, params };
+  const approvalKind: ApprovalEventData["kind"] =
+    value.kind === "command" || value.kind === "file_change"
+      ? value.kind
+      : "mcp";
+  // A command or file change may only come from the workspace; anything
+  // else claiming those kinds is not trusted as one.
+  if (approvalKind !== "mcp" && connector !== "@workspace") return null;
+  const scope =
+    typeof value.scope === "string" &&
+    /^[0-9a-f]{64}$|^file_change$/.test(value.scope)
+      ? { scope: value.scope }
+      : {};
+  const base = {
+    approvalId,
+    itemId,
+    kind: approvalKind,
+    connector,
+    tool,
+    params,
+    allowForChat: value.allowForChat !== false,
+    ...scope,
+    ...(approvalKind === "file_change" && typeof value.diff === "string"
+      ? {
+          diff: value.diff.slice(0, MAX_APPROVAL_DIFF),
+          diffTruncated:
+            value.diffTruncated === true ||
+            value.diff.length > MAX_APPROVAL_DIFF,
+        }
+      : {}),
+  };
   if (kind === "pending") {
     const expiresAt =
       typeof value.expiresAt === "number" && Number.isFinite(value.expiresAt)
@@ -1269,9 +1941,25 @@ function itemsOf(value: unknown): SettleItem[] {
       if (tool) items.push(tool);
       continue;
     }
+    if (item.type === "command" || item.type === "file_change") {
+      const activity = activityOf(item);
+      if (activity) items.push(activity);
+      continue;
+    }
     if (item.type === "input") {
       const clientMessageId = str(item.clientMessageId);
       if (clientMessageId) items.push({ type: "input", clientMessageId });
+      continue;
+    }
+    if (item.type === "network") {
+      const block = networkBlockOf(item);
+      if (block) items.push({ type: "network", ...block });
+      continue;
+    }
+    if (item.type === "skill") {
+      // Named from the chat's snapshot by LiveRun.useSkill.
+      const slug = str(item.slug);
+      if (slug) items.push({ type: "skill", slug, name: slug });
       continue;
     }
     const itemId = str(item.itemId);
@@ -1340,6 +2028,14 @@ function count(value: unknown): number {
     : 0;
 }
 
+// The whole turn's usage (every model call summed by the adapter); older
+// adapters only report the latest call.
+function turnUsageOf(
+  usage: Record<string, unknown> | null | undefined,
+): RunUsage | null {
+  return usageOf(usage?.turn) ?? usageOf(usage?.last);
+}
+
 function usageOf(value: unknown): RunUsage | null {
   if (!value || typeof value !== "object") return null;
   const u = value as Record<string, unknown>;
@@ -1393,6 +2089,10 @@ function errorOf(value: unknown): RunErrorInfo | null {
   return code && known ? { code, ...known } : RUNTIME_FAILED;
 }
 
+function errorNameOf(error: unknown): string {
+  return error instanceof Error ? error.name : typeof error;
+}
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const timer = setTimeout(done, ms);
@@ -1402,5 +2102,31 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       resolve();
     }
     signal?.addEventListener("abort", done, { once: true });
+  });
+}
+
+// The skills a SKILLS_MISSING refusal names, or all of them when it names
+// none this chat knows.
+function missingOf(
+  error: AdapterRefusal,
+  skills: readonly ChatSkill[],
+): readonly ChatSkill[] {
+  const named = error.details?.missing;
+  const missing = Array.isArray(named)
+    ? skills.filter((skill) => named.includes(skill.sha256))
+    : [];
+  return missing.length ? missing : skills;
+}
+
+// Skill items named as the chat's snapshot names them; a slug the chat
+// doesn't have is dropped.
+function namedSkills(
+  items: readonly SettleItem[],
+  skills: readonly ChatSkill[] | undefined,
+): SettleItem[] {
+  return items.flatMap((item): SettleItem[] => {
+    if (item.type !== "skill") return [item];
+    const skill = skills?.find((entry) => entry.slug === item.slug);
+    return skill ? [{ ...item, name: skill.displayName }] : [];
   });
 }

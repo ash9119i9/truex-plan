@@ -12,8 +12,10 @@ import { CurrentTenantModule } from "./modules/current-tenant/current-tenant.mod
 import { HealthModule } from "./modules/health/health.module";
 import { MembershipsModule } from "./modules/memberships/memberships.module";
 import { ModelsModule } from "./modules/models/models.module";
+import { NetworkModule } from "./modules/network/network.module";
 import { OperatorModule } from "./modules/operator/operator.module";
 import { SessionsModule } from "./modules/sessions/sessions.module";
+import { SkillsModule } from "./modules/skills/skills.module";
 import { TenantsModule } from "./modules/tenants/tenants.module";
 import { UsersModule } from "./modules/users/users.module";
 
@@ -39,6 +41,8 @@ export class AppModule {
         AgentsModule,
         ChatsModule,
         ConnectorsModule,
+        SkillsModule,
+        NetworkModule,
       ],
     };
   }

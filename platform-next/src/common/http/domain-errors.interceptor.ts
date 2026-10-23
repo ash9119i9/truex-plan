@@ -19,6 +19,7 @@ const HTTP: Record<DomainErrorCode, { status: number; code: ErrorCode }> = {
   CHAT_BUSY: { status: 409, code: "CHAT_BUSY" },
   STEER_LIMIT: { status: 409, code: "STEER_LIMIT" },
   CHAT_READ_ONLY: { status: 409, code: "CHAT_READ_ONLY" },
+  TOO_LARGE: { status: 413, code: "PAYLOAD_TOO_LARGE" },
   RATE_LIMITED: { status: 429, code: "RATE_LIMITED" },
   UNAVAILABLE: { status: 503, code: "UNAVAILABLE" },
   CONNECTORS_NOT_CONFIGURED: {

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { ObjectId, type Collection } from "mongodb";
 import { DomainError } from "../../common/domain-error";
+import { timed } from "../../common/http/server-timing";
 import { TtlCache } from "../../common/ttl-cache";
 import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import type { ConnectorsConfig } from "../../config/connectors-config";
@@ -26,6 +27,7 @@ import {
   type ConnectorFlow,
 } from "./connector-oauth-flow";
 import { ConnectorsCatalogService } from "./connectors-catalog.service";
+import type { RunNetworkConnector } from "../network/network-policy";
 import type { McpServerSpec } from "./mcp-server-spec";
 import {
   verifyConnection,
@@ -72,6 +74,9 @@ const REFRESH_WAIT_MS = 15_000;
 // lastUsedAt is a coarse signal; writing it on every run would add a write.
 const LAST_USED_MS = 60 * 60_000;
 
+// What a token refresh needs from outside the row.
+type RefreshInputs = [DiscoveredEndpoints, string];
+
 // The outcome of getting a usable access token for a stored connection.
 type UsableTokens =
   | { ok: true; tokens: ConnectorTokens }
@@ -117,8 +122,11 @@ export interface MissingConnector {
   available: boolean;
 }
 
+// `network`: the connections whose connector has egress data, for the run's
+// sandbox network policy (network-policy.ts), with the same token as the MCP
+// spec. Only connections already in `specs`: active, the chat owner's own.
 export type RunSpecsResult =
-  | { ok: true; specs: McpServerSpec[] }
+  | { ok: true; specs: McpServerSpec[]; network: RunNetworkConnector[] }
   | { ok: false; missing: MissingConnector[] };
 
 // One connector a run attaches: its catalog ID and the chat's access choice.
@@ -638,7 +646,7 @@ export class ConnectorsService {
     options: RunSpecsOptions = {},
   ): Promise<RunSpecsResult> {
     this.requireConfig();
-    if (connectors.length === 0) return { ok: true, specs: [] };
+    if (connectors.length === 0) return { ok: true, specs: [], network: [] };
     const fetchImpl = options.fetchImpl;
     const connectorIds = connectors.map(refIdOf);
     const [enabled, rows] = await Promise.all([
@@ -690,8 +698,9 @@ export class ConnectorsService {
       approvedByConnector.set(approval.connector, tools);
     }
     const specs: McpServerSpec[] = [];
+    const network: RunNetworkConnector[] = [];
     for (let i = 0; i < ready.length; i++) {
-      const { connector, readOnly } = ready[i]!;
+      const { connector, row, readOnly } = ready[i]!;
       const result = usable[i]!;
       if (!result.ok) {
         if (result.reason === "unavailable")
@@ -714,16 +723,30 @@ export class ConnectorsService {
       };
       const enabledTools = enabledToolsOf(connector, readOnly);
       if (enabledTools !== undefined) spec.enabledTools = enabledTools;
-      const approved = approvedByConnector.get(connector.slug);
+      const critical = connector.criticalTools ?? [];
+      // A critical tool is never allowed for the chat.
+      const approved = approvedByConnector
+        .get(connector.slug)
+        ?.filter((tool) => !critical.includes(tool));
       if (approved && approved.length > 0) spec.approvedTools = approved;
+      if (critical.length > 0) spec.criticalTools = [...critical];
       specs.push(spec);
+      if (connector.egress)
+        network.push(
+          networkConnectorOf(
+            connector,
+            row,
+            readOnly,
+            result.tokens.accessToken,
+          ),
+        );
     }
     if (missing.length > 0) return { ok: false, missing };
     this.touch(
       dbName,
       ready.map(({ row }) => row),
     );
-    return { ok: true, specs };
+    return { ok: true, specs, network };
   }
 
   // Records use at most once an hour per connection, off the request path.
@@ -772,7 +795,9 @@ export class ConnectorsService {
     const key = `${dbName}/${row._id.toHexString()}`;
     let pending = this.refreshing.get(key);
     if (!pending) {
-      pending = this.refreshShared(dbName, connector, row, fetchImpl)
+      pending = timed("token-refresh", () =>
+        this.refreshShared(dbName, connector, row, fetchImpl),
+      )
         .catch((error: unknown) => {
           if (error instanceof TokenDecryptError)
             return this.unreadable(dbName, connector, row);
@@ -793,6 +818,16 @@ export class ConnectorsService {
     const config = this.requireConfig();
     const connections = this.connections(dbName);
     const deadline = Date.now() + REFRESH_WAIT_MS;
+    // The provider's token endpoint and the client secret, fetched while the
+    // lease is claimed rather than after it: discovery is two HTTPS calls.
+    // Started early only when the refresh token may still work; unused when
+    // another process refreshes first. A failure surfaces where refreshHeld
+    // awaits it.
+    let early: Promise<RefreshInputs> | undefined;
+    const inputs = (): Promise<RefreshInputs> =>
+      (early ??= this.refreshInputs(connector, config, fetchImpl));
+    if (!refreshTokenExpired(stale, Date.now()))
+      inputs().catch(() => undefined);
     for (;;) {
       const now = new Date();
       // Take the lease, unless another holder's is still live. Matching the
@@ -823,7 +858,14 @@ export class ConnectorsService {
           await this.releaseLease(dbName, claimed._id, leaseId);
           return { ok: true, tokens: this.open(config, claimed) };
         }
-        return this.refreshHeld(dbName, connector, claimed, leaseId, fetchImpl);
+        return this.refreshHeld(
+          dbName,
+          connector,
+          claimed,
+          leaseId,
+          inputs,
+          fetchImpl,
+        );
       }
       // No claim: another process holds the lease, or the row changed state.
       const current = await connections.findOne({ _id: stale._id });
@@ -844,16 +886,14 @@ export class ConnectorsService {
     connector: ConnectorDoc,
     row: McpConnectionDoc,
     leaseId: ObjectId,
+    inputs: () => Promise<RefreshInputs>,
     fetchImpl?: FetchLike,
   ): Promise<UsableTokens> {
     const config = this.requireConfig();
     const connections = this.connections(dbName);
     const current = this.open(config, row);
     const now = new Date();
-    const refreshExpired =
-      row.refreshExpiresAt !== undefined &&
-      row.refreshExpiresAt.getTime() <= now.getTime();
-    if (!current.refreshToken || refreshExpired) {
+    if (!current.refreshToken || refreshTokenExpired(row, now.getTime())) {
       // Nothing to refresh with. A still-valid token is used to the end of
       // its life; an expired one means the user signs in again.
       await this.releaseLease(dbName, row._id, leaseId);
@@ -864,10 +904,7 @@ export class ConnectorsService {
 
     let grant: TokenGrant;
     try {
-      const [endpoints, clientSecret] = await Promise.all([
-        this.discover(connector, config, fetchImpl),
-        this.secrets.resolve(connector.auth.clientSecret),
-      ]);
+      const [endpoints, clientSecret] = await inputs();
       grant = await refreshGrant({
         tokenEndpoint: endpoints.tokenEndpoint,
         refreshToken: current.refreshToken,
@@ -951,6 +988,17 @@ export class ConnectorsService {
       slug: connector.slug,
     });
     return { ok: true, tokens };
+  }
+
+  private refreshInputs(
+    connector: ConnectorDoc,
+    config: ConnectorsConfig,
+    fetchImpl?: FetchLike,
+  ): Promise<RefreshInputs> {
+    return Promise.all([
+      this.discover(connector, config, fetchImpl),
+      this.secrets.resolve(connector.auth.clientSecret),
+    ]);
   }
 
   // A stored token no configured key opens (its key was retired too early):
@@ -1131,6 +1179,28 @@ function viewOf(row: McpConnectionDoc | undefined): ConnectionView {
   return view;
 }
 
+// One connection's entry in a run's network policy. The egress data is the
+// catalog's; only the token and the account are the member's.
+function networkConnectorOf(
+  connector: ConnectorDoc,
+  row: McpConnectionDoc,
+  readOnly: boolean,
+  token: string,
+): RunNetworkConnector {
+  const egress = connector.egress!;
+  const entry: RunNetworkConnector = {
+    name: connector.slug,
+    displayName: connector.displayName,
+    access: readOnly ? "read_only" : "read_write",
+    hosts: [...egress.hosts],
+    reads: egress.reads,
+    critical: egress.critical,
+  };
+  if (row.account?.login) entry.account = row.account.login;
+  if (egress.credential) entry.credential = { ...egress.credential, token };
+  return entry;
+}
+
 function missingOf(connector: ConnectorDoc): MissingConnector {
   return {
     slug: connector.slug,
@@ -1152,6 +1222,13 @@ export function enabledToolsOf(
     return connector.allowedTools;
   const write = new Set(connector.writeTools);
   return connector.allowedTools.filter((tool) => !write.has(tool));
+}
+
+// Whether the row's refresh token is past its known expiry.
+function refreshTokenExpired(row: McpConnectionDoc, now: number): boolean {
+  return (
+    row.refreshExpiresAt !== undefined && row.refreshExpiresAt.getTime() <= now
+  );
 }
 
 // Whether a run should refresh before using the row's token.

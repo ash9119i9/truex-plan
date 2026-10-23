@@ -3,6 +3,7 @@ import type { IndexDescription, ObjectId } from "mongodb";
 import { canonicalJson } from "../../common/canonical-json";
 import { integer, invalid, objectWith, oneOf } from "../../common/validation";
 import { parseWireId } from "../../database/object-id";
+import { MAX_AGENT_SKILLS } from "../skills/skill";
 import {
   parseAgentDescription,
   parseAgentName,
@@ -88,6 +89,10 @@ export interface AgentDoc {
   // The directory connectors this agent uses. Absent on documents created
   // before connectors existed, read as an empty list everywhere.
   connectors?: AgentConnector[];
+  // Catalog skills, in the member's order. A new chat snapshots each enabled
+  // one's current version. Absent on documents created before skills
+  // existed, read as an empty list everywhere.
+  skillIds?: ObjectId[];
   status: AgentStatus;
   // Bumped by every change; edits must name the revision they started from.
   revision: number;
@@ -112,6 +117,8 @@ export interface CreateAgentInput {
   // AgentConnector[] by the service against the enabled catalog; empty when
   // none were given.
   connectors: AgentConnectorRequest[];
+  // Catalog skill IDs; checked by the service against the catalog.
+  skillIds: ObjectId[];
 }
 
 export interface UpdateAgentInput {
@@ -122,6 +129,9 @@ export interface UpdateAgentInput {
   // Absent (undefined) leaves the agent's connectors unchanged; a list (even
   // empty) replaces them. Resolved to AgentConnector[] by the service.
   connectors?: AgentConnectorRequest[];
+  // Absent leaves the agent's skills unchanged; a list (even empty) replaces
+  // them.
+  skillIds?: ObjectId[];
 }
 
 // Generated once per create by the client and reused on every retry.
@@ -153,6 +163,22 @@ function parseConnectorRequests(value: unknown): AgentConnectorRequest[] {
   return requests;
 }
 
+// Skill IDs: at most MAX_AGENT_SKILLS, no repeats. Shape only.
+function parseSkillIds(value: unknown): ObjectId[] {
+  if (!Array.isArray(value)) invalid("skillIds must be an array.");
+  if (value.length > MAX_AGENT_SKILLS)
+    invalid(`An agent can use at most ${MAX_AGENT_SKILLS} skills.`);
+  const ids: ObjectId[] = [];
+  for (const entry of value) {
+    const id = parseWireId(entry);
+    if (!id) invalid("skillIds must be skill IDs.");
+    if (ids.some((seen) => seen.equals(id)))
+      invalid("skillIds must not repeat a skill.");
+    ids.push(id);
+  }
+  return ids;
+}
+
 function parseConnectorRequest(value: unknown): AgentConnectorRequest {
   if (typeof value === "string") {
     if (!CONNECTOR_SLUG.test(value))
@@ -181,6 +207,7 @@ export function parseCreateAgent(body: unknown): CreateAgentInput {
       "look",
       "tint",
       "connectors",
+      "skillIds",
     ],
     "The request body",
   );
@@ -203,6 +230,7 @@ export function parseCreateAgent(body: unknown): CreateAgentInput {
       raw.connectors === undefined
         ? []
         : parseConnectorRequests(raw.connectors),
+    skillIds: raw.skillIds === undefined ? [] : parseSkillIds(raw.skillIds),
   };
 }
 
@@ -217,6 +245,7 @@ export function parseUpdateAgent(body: unknown): UpdateAgentInput {
       "look",
       "tint",
       "connectors",
+      "skillIds",
     ],
     "The request body",
   );
@@ -237,14 +266,21 @@ export function parseUpdateAgent(body: unknown): UpdateAgentInput {
     raw.connectors === undefined
       ? undefined
       : parseConnectorRequests(raw.connectors);
-  if (Object.keys(changes).length === 0 && connectors === undefined)
+  const skillIds =
+    raw.skillIds === undefined ? undefined : parseSkillIds(raw.skillIds);
+  if (
+    Object.keys(changes).length === 0 &&
+    connectors === undefined &&
+    skillIds === undefined
+  )
     invalid(
-      "Give at least one of name, description, modelId, look, tint or connectors.",
+      "Give at least one of name, description, modelId, look, tint, connectors or skillIds.",
     );
   return {
     revision,
     changes,
     ...(connectors !== undefined ? { connectors } : {}),
+    ...(skillIds !== undefined ? { skillIds } : {}),
   };
 }
 
@@ -268,6 +304,10 @@ export function requestHashOf(input: CreateAgentInput): string {
           slug: c.slug,
           access: c.access,
         })),
+        // Only when set, so creates without skills hash as they always did.
+        ...(input.skillIds.length
+          ? { skillIds: input.skillIds.map((id) => id.toHexString()) }
+          : {}),
       }),
     )
     .digest("hex");

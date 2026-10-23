@@ -1147,10 +1147,13 @@ describe("directory connectors (integration)", () => {
   // ── 7b. Write access: read_only tools and approvedTools ──────────
 
   // A connector whose allowedTools has a write tool, so read_only can drop it.
-  async function connectWriteConnector(): Promise<ObjectId> {
+  async function connectWriteConnector(
+    overrides: Partial<ConnectorDoc> = {},
+  ): Promise<ObjectId> {
     const id = await insertConnector("writer", {
       allowedTools: ["get_issue", "list_issues", "create_branch"],
       writeTools: ["create_branch"],
+      ...overrides,
     });
     // A live connection for the writer connector, with a non-expiring token
     // sealed under the writer's AAD so runSpecs can decrypt it and build a
@@ -1237,6 +1240,137 @@ describe("directory connectors (integration)", () => {
     assert.deepEqual(writer?.approvedTools, ["create_branch"]);
     // github had no approvals, so the field is omitted entirely.
     assert.equal(github?.approvedTools, undefined);
+  });
+
+  test("criticalTools go with the spec and are never forwarded as approved", async () => {
+    const writerId = await connectWriteConnector({
+      allowedTools: ["get_issue", "create_branch", "delete_branch"],
+      writeTools: ["create_branch", "delete_branch"],
+      criticalTools: ["delete_branch"],
+    });
+    const result = await connectors.runSpecs(
+      DB_NAME,
+      alice.userId,
+      [writerId],
+      {
+        toolApprovals: [
+          { connector: "writer", tool: "create_branch" },
+          // Stored before the tool became critical: dropped.
+          { connector: "writer", tool: "delete_branch" },
+        ],
+      },
+    );
+    assert.equal(result.ok, true);
+    const writer = result.ok ? result.specs[0] : undefined;
+    assert.deepEqual(writer?.approvedTools, ["create_branch"]);
+    assert.deepEqual(writer?.criticalTools, ["delete_branch"]);
+  });
+
+  // ── 7c. Sandbox network: egress connections in the run policy ────
+
+  const EGRESS = {
+    hosts: ["git.example.com", "api.example.com"],
+    credential: {
+      auth: ["bearer" as const],
+      urlPrefixes: ["https://api.example.com/"],
+      tokenPattern: "tok_[a-z]{8}",
+    },
+    reads: [{ methods: ["GET" as const, "HEAD" as const] }],
+    critical: [{ methods: ["DELETE" as const] }],
+  };
+
+  // An active, non-expiring connection for `owner` to `id`.
+  async function connectAs(
+    owner: Member,
+    id: ObjectId,
+    slug: string,
+    accessToken: string,
+    extra: Partial<McpConnectionDoc> = {},
+  ): Promise<void> {
+    const aad: SecretAad = {
+      tenantId: tenantId.toHexString(),
+      ownerId: owner.userId.toHexString(),
+      connectorId: id.toHexString(),
+    };
+    const now = new Date();
+    await database
+      .tenantDb(DB_NAME)
+      .collection<McpConnectionDoc>(CONNECTIONS_COLLECTION)
+      .insertOne({
+        _id: new ObjectId(),
+        connectorId: id,
+        ownerId: owner.userId,
+        tenantId,
+        slug,
+        status: "active",
+        secret: sealTokens(config, aad, { accessToken }),
+        toolCount: 1,
+        lastVerifiedAt: now,
+        revision: 1,
+        createdAt: now,
+        updatedAt: now,
+        ...extra,
+      });
+  }
+
+  test("an egress connector's active connection joins the run's network with the owner's token", async () => {
+    const id = await insertConnector("gitsite", { egress: EGRESS });
+    await connectAs(alice, id, "gitsite", "alice-token", {
+      account: { login: "alice-gh" },
+    });
+    const result = await connectors.runSpecs(DB_NAME, alice.userId, [
+      { connectorId: id, access: "read_only" },
+    ]);
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.ok ? result.network : null, [
+      {
+        name: "gitsite",
+        displayName: "gitsite",
+        account: "alice-gh",
+        access: "read_only",
+        hosts: ["git.example.com", "api.example.com"],
+        reads: EGRESS.reads,
+        critical: EGRESS.critical,
+        credential: { ...EGRESS.credential, token: "alice-token" },
+      },
+    ]);
+  });
+
+  test("another member's connection never reaches the run's network", async () => {
+    const id = await insertConnector("gitsite", { egress: EGRESS });
+    const bob = await member("bob", tenantId);
+    await connectAs(bob, id, "gitsite", "bob-token");
+    // Alice has no connection of her own: the run is refused, nothing leaks.
+    const refused = await connectors.runSpecs(DB_NAME, alice.userId, [id]);
+    assert.equal(refused.ok, false);
+    assert.doesNotMatch(JSON.stringify(refused), /bob-token/);
+    // With her own connection, only her token is used.
+    await connectAs(alice, id, "gitsite", "alice-token");
+    const ok = await connectors.runSpecs(DB_NAME, alice.userId, [id]);
+    assert.equal(ok.ok, true);
+    assert.equal(
+      ok.ok ? ok.network[0]?.credential?.token : undefined,
+      "alice-token",
+    );
+    assert.doesNotMatch(JSON.stringify(ok), /bob-token/);
+  });
+
+  test("a needs_reconnect connection puts nothing in the network", async () => {
+    const id = await insertConnector("gitsite", { egress: EGRESS });
+    await connectAs(alice, id, "gitsite", "stale-token", {
+      status: "needs_reconnect",
+    });
+    const result = await connectors.runSpecs(DB_NAME, alice.userId, [id]);
+    assert.equal(result.ok, false);
+    assert.equal("network" in result, false);
+  });
+
+  test("a connector without egress is MCP only", async () => {
+    const writerId = await connectWriteConnector();
+    const result = await connectors.runSpecs(DB_NAME, alice.userId, [writerId]);
+    assert.equal(result.ok, true);
+    assert.equal(result.ok ? result.specs.length : 0, 1);
+    assert.deepEqual(result.ok ? result.network : null, []);
   });
 
   // ── 8. verifyStored & disconnect ─────────────────────────────────

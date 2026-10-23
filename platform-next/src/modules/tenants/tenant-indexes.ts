@@ -17,7 +17,14 @@ import { CONNECTION_INDEXES } from "../connectors/connection";
 // tenant still behind cannot store a connection (the upsert would need the
 // unique index to resolve a race); ensure-tenant-indexes before enabling a
 // connector.
-export const TENANT_INDEX_VERSION = 3;
+// 4: chat_path_version_unique on chat_files, for stored chat files. A tenant
+// still behind stores no files (the first insert would build the collection
+// without its unique index); ensure-tenant-indexes before setting
+// CHAT_FILES_S3_BUCKET.
+// 5: owner_state and staged_ttl on chat_uploads, for attached files. A
+// tenant still behind keeps staged uploads forever and counts them by a
+// collection scan; ensure-tenant-indexes before setting CHAT_UPLOADS_ENABLED.
+export const TENANT_INDEX_VERSION = 5;
 
 const TENANT_INDEXES = {
   ...CHAT_INDEXES,

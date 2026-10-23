@@ -10,6 +10,7 @@ import {
   parseSend,
   parseStartChat,
   titleOf,
+  titleOfFiles,
 } from "../../src/modules/chats/chat";
 import { chatPrompt } from "../../src/modules/chats/chat-prompt";
 import { signGatewayToken } from "../../src/modules/chats/gateway-token";
@@ -31,6 +32,24 @@ describe("chat config", () => {
     const config = loadChatConfig(full, problems);
     assert.deepEqual(problems, []);
     assert.equal(config?.adapterUrl, "http://127.0.0.1:4400");
+  });
+
+  test("CHAT_SANDBOX_NETWORK is off unless set to 1", () => {
+    const problems: string[] = [];
+    assert.equal("sandboxNetwork" in loadChatConfig(full, problems)!, false);
+    assert.equal(
+      "sandboxNetwork" in
+        loadChatConfig({ ...full, CHAT_SANDBOX_NETWORK: "0" }, problems)!,
+      false,
+    );
+    assert.equal(
+      loadChatConfig({ ...full, CHAT_SANDBOX_NETWORK: "1" }, problems)
+        ?.sandboxNetwork,
+      true,
+    );
+    assert.deepEqual(problems, []);
+    loadChatConfig({ ...full, CHAT_SANDBOX_NETWORK: "yes" }, problems);
+    assert.match(problems[0] ?? "", /CHAT_SANDBOX_NETWORK must be 0 or 1/);
   });
 
   test("a partial or invalid setup stops startup without echoing secrets", () => {
@@ -119,6 +138,11 @@ describe("chat input", () => {
 
   test("titles are the first 60 characters on one line", () => {
     assert.equal(titleOf("  Plan\n\nthe   launch "), "Plan the launch");
+    assert.equal(titleOfFiles(["notes.txt", "notes.txt"]), "notes.txt");
+    assert.equal(
+      titleOfFiles(["a.pdf", "notes.txt", "a.pdf"]),
+      "a.pdf, notes.txt",
+    );
     const long = titleOf("é".repeat(80));
     assert.equal([...long].length, 60);
     assert.ok(long.endsWith("…"));

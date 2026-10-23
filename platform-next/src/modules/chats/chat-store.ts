@@ -11,9 +11,15 @@ import { isDuplicateKeyError } from "../../database/mongo-errors";
 import {
   CHATS_COLLECTION,
   MESSAGES_COLLECTION,
+  MAX_ACTIVITY_COMMAND,
+  MAX_ACTIVITY_FILES,
+  MAX_ACTIVITY_OUTPUT,
+  MAX_CHAT_COMMAND_APPROVALS,
   MAX_CHAT_TOOL_APPROVALS,
   RUNS_COLLECTION,
   TOOL_APPROVALS_COLLECTION,
+  type ActivityFile,
+  type ActivityStatus,
   type ApprovalDecision,
   type ChatDoc,
   type MessageDoc,
@@ -25,6 +31,12 @@ import {
   type SteerDoc,
   type ToolApprovalDoc,
 } from "./chat";
+import {
+  MAX_CHAT_NETWORK_GRANTS,
+  type ChatNetworkGrant,
+  type MessageNetwork,
+  type NetworkDecision,
+} from "../network/network-grants";
 
 // How long a run stays claimed by the process streaming it without a lease
 // renewal. The executor renews every LEASE_RENEW_MS.
@@ -48,7 +60,49 @@ export type SettleItem =
       readonly completed: boolean;
     }
   | { readonly type: "input"; readonly clientMessageId: string }
-  | ToolSettleItem;
+  | ToolSettleItem
+  | CommandSettleItem
+  | FileChangeSettleItem
+  | SkillSettleItem
+  | NetworkSettleItem;
+
+// A sandbox request the network proxy refused, once per site and method in a
+// run (network-grants.ts). Saved as a tool message whose card the chat owner
+// answers.
+export type NetworkSettleItem = { readonly type: "network" } & Omit<
+  MessageNetwork,
+  "decision" | "decidedAt"
+>;
+
+// A skill the model opened (`skills.read`), once per run, named as it was
+// when the chat started.
+export interface SkillSettleItem {
+  readonly type: "skill";
+  readonly slug: string;
+  readonly name: string;
+}
+
+// A command in the chat's workspace (coding). `inProgress` only while the
+// run streams; one still running at settle is saved failed.
+export interface CommandSettleItem {
+  readonly type: "command";
+  readonly itemId: string;
+  readonly command: string;
+  readonly status: "inProgress" | ActivityStatus;
+  readonly exitCode?: number;
+  readonly durationMs?: number;
+  readonly output: string;
+  readonly outputTruncated: boolean;
+  readonly approval?: ApprovalDecision;
+}
+
+export interface FileChangeSettleItem {
+  readonly type: "file_change";
+  readonly itemId: string;
+  readonly files: readonly ActivityFile[];
+  readonly status: "inProgress" | ActivityStatus;
+  readonly approval?: ApprovalDecision;
+}
 
 // A connector tool call (slice 4/5 contract). `inProgress` only while the
 // run streams; a call still running at settle is saved failed / UNKNOWN.
@@ -74,6 +128,8 @@ export interface Settlement {
   readonly turnId: string | null;
   readonly firstTextAt?: Date;
   readonly threadLost: boolean;
+  // Files the run wrote that couldn't be stored (see ChatFilesService).
+  readonly unsavedFiles?: readonly string[];
 }
 
 export interface SettleResult {
@@ -97,6 +153,9 @@ type PlannedMessage = Pick<
   | "textHash"
   | "runtimeItemId"
   | "tool"
+  | "activity"
+  | "skill"
+  | "network"
 >;
 
 // The messages a settled run writes after its own, in order: each non-empty
@@ -129,6 +188,45 @@ function toolMessage(item: ToolSettleItem): PlannedMessage {
   };
 }
 
+// A command's or file change's saved record. One the runtime never finished
+// is saved failed.
+function activityMessage(
+  item: CommandSettleItem | FileChangeSettleItem,
+): PlannedMessage {
+  const status: ActivityStatus =
+    item.status === "inProgress" ? "failed" : item.status;
+  const approval = item.approval ? { approval: item.approval } : {};
+  return {
+    role: "tool",
+    text: "",
+    state: status === "completed" ? "complete" : "failed",
+    runtimeItemId: item.itemId,
+    activity:
+      item.type === "command"
+        ? {
+            kind: "command",
+            command: item.command.slice(0, MAX_ACTIVITY_COMMAND),
+            status,
+            ...(item.exitCode !== undefined ? { exitCode: item.exitCode } : {}),
+            ...(item.durationMs !== undefined
+              ? { durationMs: item.durationMs }
+              : {}),
+            output: item.output.slice(0, MAX_ACTIVITY_OUTPUT),
+            outputTruncated:
+              item.outputTruncated || item.output.length > MAX_ACTIVITY_OUTPUT,
+            ...approval,
+          }
+        : {
+            kind: "file_change",
+            files: item.files
+              .slice(0, MAX_ACTIVITY_FILES)
+              .map((file) => ({ ...file })),
+            status,
+            ...approval,
+          },
+  };
+}
+
 export function plannedMessages(
   run: Pick<RunDoc, "steers">,
   outcome: Pick<Settlement, "status" | "items">,
@@ -145,6 +243,33 @@ export function plannedMessages(
   outcome.items.forEach((item, index) => {
     if (item.type === "tool") {
       planned.push(toolMessage(item));
+      return;
+    }
+    if (item.type === "command" || item.type === "file_change") {
+      planned.push(activityMessage(item));
+      return;
+    }
+    if (item.type === "skill") {
+      planned.push({
+        role: "tool",
+        text: "",
+        state: "complete",
+        // Unique per run (the runtime reports each skill once).
+        runtimeItemId: `skill:${item.slug}`,
+        skill: { slug: item.slug, name: item.name },
+      });
+      return;
+    }
+    if (item.type === "network") {
+      const { type: _type, ...network } = item;
+      planned.push({
+        role: "tool",
+        text: "",
+        state: "complete",
+        // Unique per run (the runtime reports each block once).
+        runtimeItemId: `network:${networkKey(item)}`,
+        network,
+      });
       return;
     }
     if (item.type === "reply") {
@@ -172,6 +297,14 @@ export function plannedMessages(
     if (!used.has(steer.clientMessageId))
       planned.push(userMessage(steer, "not_sent"));
   return planned;
+}
+
+// One card per site and method in a run, whatever the command retried (the
+// adapter's blockKey).
+export function networkKey(
+  item: Pick<NetworkSettleItem, "kind" | "host" | "method">,
+): string {
+  return `${item.kind}:${item.host}:${item.kind === "unlisted" ? "" : item.method}`;
 }
 
 function userMessage(steer: SteerDoc, state: MessageState): PlannedMessage {
@@ -329,6 +462,108 @@ export class ChatStore {
     );
   }
 
+  // Allow for this chat on a coding card: a command's scope (that exact
+  // command). Bounded like tool approvals.
+  async allowCodingForChat(
+    dbName: string,
+    chatId: ObjectId,
+    ownerId: ObjectId,
+    allow: { command: string },
+  ): Promise<void> {
+    const now = new Date();
+    await this.collections(dbName).chats.updateOne(
+      {
+        _id: chatId,
+        ownerId,
+        [`codingApprovals.commands.${MAX_CHAT_COMMAND_APPROVALS - 1}`]: {
+          $exists: false,
+        },
+      },
+      {
+        $addToSet: { "codingApprovals.commands": allow.command },
+        $set: { updatedAt: now },
+      },
+    );
+  }
+
+  // The owner's allow on a network card. Once per card (messageId), and at
+  // most MAX_CHAT_NETWORK_GRANTS. False when the chat already holds that many
+  // or is not the owner's.
+  async addNetworkGrant(
+    dbName: string,
+    chatId: ObjectId,
+    ownerId: ObjectId,
+    grant: ChatNetworkGrant,
+  ): Promise<boolean> {
+    const result = await this.collections(dbName).chats.updateOne(
+      {
+        _id: chatId,
+        ownerId,
+        networkGrants: {
+          $not: { $elemMatch: { messageId: grant.messageId } },
+        },
+        [`networkGrants.${MAX_CHAT_NETWORK_GRANTS - 1}`]: { $exists: false },
+      },
+      { $push: { networkGrants: grant }, $set: { updatedAt: grant.at } },
+    );
+    if (result.modifiedCount === 1) return true;
+    // Already there (a retried answer) counts as added.
+    const existing = await this.collections(dbName).chats.countDocuments(
+      { _id: chatId, ownerId, "networkGrants.messageId": grant.messageId },
+      { limit: 1 },
+    );
+    return existing === 1;
+  }
+
+  // Removes the `once` grants a run used, when it ends.
+  async consumeNetworkGrants(
+    dbName: string,
+    chatId: ObjectId,
+    messageIds: readonly ObjectId[],
+  ): Promise<void> {
+    if (messageIds.length === 0) return;
+    await this.collections(dbName).chats.updateOne(
+      { _id: chatId },
+      {
+        $pull: {
+          networkGrants: {
+            scope: "once",
+            messageId: { $in: [...messageIds] },
+          },
+        },
+      },
+    );
+  }
+
+  // Records the owner's answer on a network card's message, once. Returns
+  // the saved network (with the decision that won) or null when the message
+  // is not one of the owner's network cards in this chat.
+  async decideNetwork(
+    dbName: string,
+    chatId: ObjectId,
+    ownerId: ObjectId,
+    messageId: ObjectId,
+    decision: NetworkDecision,
+    at: Date,
+  ): Promise<MessageNetwork | null> {
+    const { messages } = this.collections(dbName);
+    const filter = {
+      _id: messageId,
+      chatId,
+      ownerId,
+      role: "tool" as const,
+      network: { $exists: true },
+    };
+    await messages.updateOne(
+      { ...filter, "network.decision": { $exists: false } },
+      { $set: { "network.decision": decision, "network.decidedAt": at } },
+    );
+    const saved = await messages.findOne(filter, {
+      projection: { network: 1 },
+    });
+    return saved?.network ?? null;
+  }
+
   async markUncertain(dbName: string, runId: ObjectId): Promise<void> {
     await this.collections(dbName).runs.updateOne(
       { _id: runId, status: { $in: ["accepted", "running"] } },
@@ -398,6 +633,9 @@ export class ChatStore {
             ...(outcome.usage ? { usage: outcome.usage } : {}),
             ...(outcome.threadId ? { threadId: outcome.threadId } : {}),
             ...(outcome.turnId ? { turnId: outcome.turnId } : {}),
+            ...(outcome.unsavedFiles?.length
+              ? { unsavedFiles: [...outcome.unsavedFiles] }
+              : {}),
           },
         },
         { returnDocument: "after", session },

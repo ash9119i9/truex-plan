@@ -4,6 +4,7 @@ import { AuditModule } from "../audit/audit.module";
 import { ConnectorsModule } from "../connectors/connectors.module";
 import { MembershipsModule } from "../memberships/memberships.module";
 import { ModelsModule } from "../models/models.module";
+import { SkillsModule } from "../skills/skills.module";
 import { TenantsModule } from "../tenants/tenants.module";
 import { UsersModule } from "../users/users.module";
 import { OperatorService } from "./operator.service";
@@ -18,6 +19,7 @@ import { OperatorService } from "./operator.service";
     ModelsModule,
     AgentsModule,
     ConnectorsModule,
+    SkillsModule,
   ],
   providers: [OperatorService],
   exports: [OperatorService],

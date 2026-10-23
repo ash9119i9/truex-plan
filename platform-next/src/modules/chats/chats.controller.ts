@@ -27,6 +27,7 @@ import { DomainErrorsInterceptor } from "../../common/http/domain-errors.interce
 import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import { parseWireId, toWireId } from "../../database/object-id";
 import { MembershipsService } from "../memberships/memberships.service";
+import { parseNetworkDecision } from "../network/network-grants";
 import {
   InvalidSessionError,
   SessionsService,
@@ -37,7 +38,9 @@ import {
   parseRename,
   parseSend,
   parseStartChat,
+  type MessageActivity,
 } from "./chat";
+import type { ChatFileView } from "./chat-files";
 import type { SettleItem, SettleResult } from "./chat-store";
 import {
   ChatsService,
@@ -167,6 +170,47 @@ export class ChatsController {
     return receipt;
   }
 
+  // Every stored version of the files the chat's replies made, newest
+  // first. Empty when file storage is not configured.
+  @Get(":id/files")
+  async files(
+    @CurrentTenant() context: TenantContext,
+    @Param("id") id: string,
+  ): Promise<{ files: ChatFileView[] }> {
+    return { files: await this.chats.files(context, idOf(id, "chat")) };
+  }
+
+  // One version's bytes. Always an attachment the browser won't sniff or
+  // run: previews read it with fetch and render it themselves.
+  @Get(":id/files/:fileId/content")
+  async fileContent(
+    @CurrentTenant() context: TenantContext,
+    @Param("id") id: string,
+    @Param("fileId") fileId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { doc, body } = await this.chats.openFile(
+      context,
+      idOf(id, "chat"),
+      idOf(fileId, "file"),
+    );
+    res.writeHead(200, {
+      "content-type": doc.contentType,
+      "content-length": doc.size,
+      "content-disposition": contentDisposition(
+        doc.path.slice(doc.path.lastIndexOf("/") + 1),
+      ),
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "sandbox; default-src 'none'",
+      "cache-control": "private, no-store",
+    });
+    body.on("error", (error: Error) => {
+      this.logger.warn({ message: "file read failed", error: error.name });
+      res.destroy();
+    });
+    body.pipe(res);
+  }
+
   @Patch(":id")
   async rename(
     @CurrentTenant() context: TenantContext,
@@ -201,6 +245,22 @@ export class ChatsController {
     return this.chats.stop(context, idOf(id, "chat"), idOf(runId, "reply"));
   }
 
+  // Tries again to save the files a reply couldn't: the versions stored
+  // and the paths still unsaved. 409 CHAT_BUSY while the chat answers.
+  @Post(":id/runs/:runId/files/retry")
+  @HttpCode(200)
+  retryFiles(
+    @CurrentTenant() context: TenantContext,
+    @Param("id") id: string,
+    @Param("runId") runId: string,
+  ): Promise<{ files: ChatFileView[]; unsaved: string[] }> {
+    return this.chats.retryFiles(
+      context,
+      idOf(id, "chat"),
+      idOf(runId, "reply"),
+    );
+  }
+
   // The member's answer to a write-tool approval card. 200 with the decision;
   // 409 APPROVAL_RESOLVED when it was already answered; 404
   // APPROVAL_NOT_FOUND when it expired or the reply finished. Params are
@@ -225,6 +285,27 @@ export class ChatsController {
       idOf(id, "chat"),
       idOf(runId, "reply"),
       approvalId,
+      decision,
+    );
+  }
+
+  // The owner's answer to a network card on a saved reply (a sandbox request
+  // the network proxy refused). 200 with the decision; 409 APPROVAL_RESOLVED
+  // when it was already answered differently; 404 when it isn't one of the
+  // owner's cards; 400 when the card didn't offer that answer.
+  @Post(":id/messages/:messageId/network")
+  @HttpCode(200)
+  answerNetwork(
+    @CurrentTenant() context: TenantContext,
+    @Param("id") id: string,
+    @Param("messageId") messageId: string,
+    @Body() body: unknown,
+  ): Promise<{ decision: string }> {
+    const decision = parseNetworkDecision(body);
+    return this.chats.answerNetwork(
+      context,
+      idOf(id, "chat"),
+      idOf(messageId, "message"),
       decision,
     );
   }
@@ -285,35 +366,37 @@ export class ChatsController {
           // In order: the replies, tool calls, and the steers the
           // assistant read.
           items: saved.messages.flatMap((m): SettleItem[] =>
-            m.role === "tool" && m.tool && m.runtimeItemId
-              ? [
-                  {
-                    type: "tool",
-                    itemId: m.runtimeItemId,
-                    connector: m.tool.connector,
-                    tool: m.tool.name,
-                    status: m.tool.status,
-                    ...(m.tool.durationMs !== undefined
-                      ? { durationMs: m.tool.durationMs }
-                      : {}),
-                    ...(m.tool.errorCode
-                      ? { errorCode: m.tool.errorCode }
-                      : {}),
-                    ...(m.tool.approval ? { approval: m.tool.approval } : {}),
-                  },
-                ]
-              : m.role === "assistant"
+            m.role === "tool" && m.activity && m.runtimeItemId
+              ? [activitySettleItem(m.runtimeItemId, m.activity)]
+              : m.role === "tool" && m.tool && m.runtimeItemId
                 ? [
                     {
-                      type: "reply",
-                      itemId: m.runtimeItemId ?? toWireId(m._id),
-                      text: m.text,
-                      completed: m.state === "complete",
+                      type: "tool",
+                      itemId: m.runtimeItemId,
+                      connector: m.tool.connector,
+                      tool: m.tool.name,
+                      status: m.tool.status,
+                      ...(m.tool.durationMs !== undefined
+                        ? { durationMs: m.tool.durationMs }
+                        : {}),
+                      ...(m.tool.errorCode
+                        ? { errorCode: m.tool.errorCode }
+                        : {}),
+                      ...(m.tool.approval ? { approval: m.tool.approval } : {}),
                     },
                   ]
-                : m.state === "complete" && m.clientMessageId
-                  ? [{ type: "input", clientMessageId: m.clientMessageId }]
-                  : [],
+                : m.role === "assistant"
+                  ? [
+                      {
+                        type: "reply",
+                        itemId: m.runtimeItemId ?? toWireId(m._id),
+                        text: m.text,
+                        completed: m.state === "complete",
+                      },
+                    ]
+                  : m.state === "complete" && m.clientMessageId
+                    ? [{ type: "input", clientMessageId: m.clientMessageId }]
+                    : [],
           ),
           usage: saved.run.usage ?? null,
           approvals: [],
@@ -376,6 +459,13 @@ export class ChatsController {
 }
 
 // Wire shapes: saved documents become their public views.
+// An attachment header for a file name the model chose: an ASCII fallback
+// plus the exact name (RFC 6266 / 5987).
+export function contentDisposition(name: string): string {
+  const ascii = name.replace(/[^\x20-\x7e]|["\\]/g, "_") || "file";
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
+}
+
 function present(event: { type: string; data: unknown }): unknown {
   if (event.type !== "saved") return event.data;
   const data = event.data as {
@@ -383,4 +473,33 @@ function present(event: { type: string; data: unknown }): unknown {
     messages: Parameters<typeof messageView>[0][];
   };
   return { run: runView(data.run), messages: data.messages.map(messageView) };
+}
+
+// A saved command or file change as the live stream shows it.
+function activitySettleItem(
+  itemId: string,
+  activity: MessageActivity,
+): SettleItem {
+  const approval = activity.approval ? { approval: activity.approval } : {};
+  if (activity.kind === "file_change")
+    return {
+      type: "file_change",
+      itemId,
+      files: activity.files,
+      status: activity.status,
+      ...approval,
+    };
+  return {
+    type: "command",
+    itemId,
+    command: activity.command,
+    status: activity.status,
+    ...(activity.exitCode !== undefined ? { exitCode: activity.exitCode } : {}),
+    ...(activity.durationMs !== undefined
+      ? { durationMs: activity.durationMs }
+      : {}),
+    output: activity.output,
+    outputTruncated: activity.outputTruncated,
+    ...approval,
+  };
 }

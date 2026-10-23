@@ -29,7 +29,9 @@ export class ClientSecretResolver {
     { value: string; expires: number }
   >();
 
-  constructor(private readonly now: () => number = Date.now) {}
+  // A field, not a constructor parameter: Nest would try to inject a
+  // parameter, and the compiled build's metadata names it `Function`.
+  private readonly now: () => number = Date.now;
 
   async resolve(ref: ClientSecretRef): Promise<string> {
     if ("env" in ref) {

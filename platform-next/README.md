@@ -155,21 +155,58 @@ npm run operator -- ensure-tenant-indexes --operator <you> --tenant <id>
 
 ## Configuration
 
-| Variable                                       | Meaning                                                                        |
-| ---------------------------------------------- | ------------------------------------------------------------------------------ |
-| `PORT`                                         | HTTP port (4100 locally; the old platform uses 4000).                          |
-| `MONGODB_URI`                                  | MongoDB connection string.                                                     |
-| `CATALOG_DB_NAME`                              | Shared catalog database; must start with `truex_next_`.                        |
-| `AUTH_ISSUER`, `AUTH_AUDIENCE`                 | Fixed strings checked on every access token; differ per environment.           |
-| `AUTH_SIGNING_KEY_ID`, `AUTH_SIGNING_KEY`      | Ed25519 signing key from `npm run auth:generate-key`. Secret.                  |
-| `AUTH_VERIFY_KEYS`                             | Previous public keys still accepted during a rotation (`id=key,...`).          |
-| `AUTH_ALLOWED_ORIGINS`                         | Exact browser origins allowed to use the refresh cookie.                       |
-| `RUNTIME_ADAPTER_URL`, `RUNTIME_ADAPTER_TOKEN` | The runtime adapter and its shared bearer token (32+ characters). Secret.      |
-| `MODEL_GATEWAY_URL`, `MODEL_GATEWAY_SECRET`    | The model gateway Codex calls, and the token-signing secret it shares. Secret. |
+| Variable                                                               | Meaning                                                                                                                                                                                              |
+| ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                                                                 | HTTP port (4100 locally; the old platform uses 4000).                                                                                                                                                |
+| `MONGODB_URI`                                                          | MongoDB connection string.                                                                                                                                                                           |
+| `CATALOG_DB_NAME`                                                      | Shared catalog database; must start with `truex_next_`.                                                                                                                                              |
+| `AUTH_ISSUER`, `AUTH_AUDIENCE`                                         | Fixed strings checked on every access token; differ per environment.                                                                                                                                 |
+| `AUTH_SIGNING_KEY_ID`, `AUTH_SIGNING_KEY`                              | Ed25519 signing key from `npm run auth:generate-key`. Secret.                                                                                                                                        |
+| `AUTH_VERIFY_KEYS`                                                     | Previous public keys still accepted during a rotation (`id=key,...`).                                                                                                                                |
+| `AUTH_ALLOWED_ORIGINS`                                                 | Exact browser origins allowed to use the refresh cookie.                                                                                                                                             |
+| `RUNTIME_ADAPTER_URL`, `RUNTIME_ADAPTER_TOKEN`                         | The runtime adapter and its shared bearer token (32+ characters). Secret.                                                                                                                            |
+| `MODEL_GATEWAY_URL`, `MODEL_GATEWAY_SECRET`                            | The model gateway Codex calls, and the token-signing secret it shares. Secret.                                                                                                                       |
+| `CHAT_FILES_S3_BUCKET`, `CHAT_FILES_S3_REGION`, `CHAT_FILES_S3_PREFIX` | Optional S3 storage for the files chats produce (region falls back to `AWS_REGION`). Credentials come from the AWS SDK chain (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE` or a role). |
+| `CHAT_UPLOADS_ENABLED`                                                 | `1` lets members attach files to messages. Needs the bucket, and coding on in the runtime adapter.                                                                                                   |
 
 Chat needs all four chat variables or none; with none, chat endpoints answer 503
 and everything else works. v1 runs one platform process: live replies are held
 in that process's memory.
+
+Chat files: after each run the platform copies every new or changed file in
+the chat's runtime workspace into S3 as a new version (at most 20 files and
+100 MiB per run, 20 MiB per file, within 30 s), records it in the tenant's
+`chat_files` collection, and sends a `files` stream event before `saved`.
+Versions are never overwritten. `GET /api/v1/chats/:id/files` lists them and
+`GET /api/v1/chats/:id/files/:fileId/content` returns one, owner only, always
+as an attachment with `nosniff`. A file the run edited that can't be stored
+(storage refused it, or it missed the per-run limits) is sent as `unsaved` in
+the `files` event and kept on the run as `unsavedFiles`; the reply's card shows
+it with Retry, which calls `POST /api/v1/chats/:id/runs/:runId/files/retry`
+(owner only, 409 while the chat answers) and returns the stored versions and
+the paths still unsaved. Objects are keyed
+`<prefix>t/<tenantId>/c/<chatId>/f/<fileId>` with SSE-S3; the identity needs
+`s3:PutObject` and `s3:GetObject` on that prefix. Run
+`ensure-tenant-indexes --all` (index version 4) before setting the bucket.
+Without the bucket, runs work as before and chats list no files.
+
+Attached files (`CHAT_UPLOADS_ENABLED=1`): `GET /api/v1/uploads` returns
+whether uploads are on and the limits. Each file is uploaded on its own with
+`POST /api/v1/uploads?name=<file name>` and the raw bytes as an
+`application/octet-stream` body; the platform checks the name, a type
+allowlist (PDF, Word, Excel, PowerPoint, text, code, images), that the bytes
+match the type, and 20 MiB per file, then stores it in S3 under
+`<prefix>t/<tenantId>/u/<userId>/<uploadId>` and returns its ID ("staged").
+`DELETE /api/v1/uploads/:id` drops a staged upload; one never sent expires
+after a day (TTL index, tenant index version 5). A member holds at most 30
+staged uploads and three in flight. A message names up to 10 staged uploads in
+`attachments` (`POST /api/v1/chats` or `/messages`; text may then be empty).
+Saving the message claims them in the same transaction, records each as the
+next version of `uploads/<name>` in the chat's files (`source: "upload"`), and
+the run writes them into the workspace, checked by SHA-256, before Codex
+starts; the model is told their paths. Files can't be added to a reply being
+written (409 `CHAT_BUSY`), and a chat holds at most 500 MiB of them. The
+frontend forwarder allows a 20 MiB body on this one route.
 
 Invalid configuration stops startup and lists every problem.
 

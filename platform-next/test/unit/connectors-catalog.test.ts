@@ -84,6 +84,46 @@ describe("parseConnectorSpec", () => {
     rejects(definition({ url: "https://host.test/mcp#frag" }));
   });
 
+  test("rejects a url naming an address or a local or metadata host", () => {
+    for (const host of [
+      "127.0.0.1",
+      "10.1.2.3",
+      "169.254.169.254",
+      "[::1]",
+      "0x7f000001",
+      "localhost",
+      "mcp.localhost",
+      "sap.local",
+      "metadata.google.internal",
+    ])
+      rejects(definition({ url: `https://${host}/mcp` }), /private or local/);
+  });
+
+  test("criticalTools are a subset of writeTools", () => {
+    const base = {
+      allowedTools: ["get_repo", "create_branch", "delete_branch"],
+      writeTools: ["create_branch", "delete_branch"],
+    };
+    assert.deepEqual(
+      parseConnectorSpec(
+        definition({ ...base, criticalTools: ["delete_branch"] }),
+      ).criticalTools,
+      ["delete_branch"],
+    );
+    rejects(definition({ ...base, criticalTools: ["get_repo"] }), /writeTools/);
+    rejects(
+      definition({
+        ...base,
+        criticalTools: ["delete_branch", "delete_branch"],
+      }),
+      /twice/,
+    );
+    rejects(
+      definition({ allowedTools: ["x"], criticalTools: ["x"] }),
+      /needs writeTools/,
+    );
+  });
+
   test("rejects a bad slug", () => {
     for (const slug of ["GitHub", "g", "1github", "has-dash", "x".repeat(40)])
       rejects(definition({ slug }), /slug/);

@@ -17,6 +17,8 @@ import { ConnectorsCatalogService } from "../connectors/connectors-catalog.servi
 import { MembershipsService } from "../memberships/memberships.service";
 import { modelView, type ModelDoc, type ModelView } from "../models/model";
 import { ModelsService } from "../models/models.service";
+import { skillView, type SkillDoc, type SkillView } from "../skills/skill";
+import { SkillsService } from "../skills/skills.service";
 import {
   AGENT_QUOTA_COLLECTION,
   AGENTS_COLLECTION,
@@ -55,6 +57,9 @@ export interface ChatAgent {
   // The connectors the chat snapshots at start; [] for built-ins and agents
   // created before connectors existed.
   connectors: AgentConnector[];
+  // The skills the chat snapshots at start; [] for built-ins and agents
+  // created before skills existed.
+  skillIds: ObjectId[];
 }
 
 // One connector on an agent as the caller sees it: product-written display
@@ -84,6 +89,9 @@ export interface AgentView {
   model: ModelView | null;
   // The directory connectors this agent uses, always present ([] when none).
   connectors: AgentConnectorView[];
+  // The skills this agent uses, always present ([] when none). A disabled
+  // one has `available: false`: new chats leave it out.
+  skills: SkillView[];
   // False when a chat could not start with it right now.
   available: boolean;
   revision: number;
@@ -136,6 +144,7 @@ export class AgentsService {
     @Inject(ConnectorsCatalogService)
     private readonly connectors: ConnectorsCatalogService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(SkillsService) private readonly skills: SkillsService,
   ) {}
 
   private db(context: TenantContext): Db {
@@ -190,6 +199,28 @@ export class AgentsService {
     });
   }
 
+  // The skills a create or edit chose, read now so a skill disabled a moment
+  // ago is refused. One the agent already has may stay while disabled (it is
+  // shown as Unavailable), so editing another field never fails over it.
+  private async resolveSkills(
+    ids: readonly ObjectId[],
+    kept: readonly ObjectId[] = [],
+  ): Promise<ObjectId[]> {
+    if (ids.length === 0) return [];
+    const found = await this.skills.findMany(ids);
+    for (const id of ids) {
+      const skill = found.find((entry) => entry._id.equals(id));
+      if (!skill || (!skill.enabled && !kept.some((k) => k.equals(id))))
+        throw new DomainError(
+          "INVALID_INPUT",
+          skill
+            ? `"${skill.displayName}" is not available. Remove it from the agent.`
+            : "One of the skills does not exist.",
+        );
+    }
+    return [...ids];
+  }
+
   // Everything the picker shows: enabled built-ins, then the caller's
   // personal agents, then the tenant's agents. Built-ins and models usually
   // come from memory, so this is normally one indexed tenant query.
@@ -221,13 +252,20 @@ export class AgentsService {
       toWireId(a._id).localeCompare(toWireId(b._id));
     const personal = agents.filter((a) => a.scope === "personal").sort(byName);
     const tenant = agents.filter((a) => a.scope === "tenant").sort(byName);
-    const connectors = await this.enabledConnectorMap(
-      ...agents.map((a) => a.connectors),
-    );
+    const [connectors, skills] = await Promise.all([
+      this.enabledConnectorMap(...agents.map((a) => a.connectors)),
+      this.skillMap(...agents.map((a) => a.skillIds)),
+    ]);
     return [
       ...builtins.map((b) => builtinView(b, models.get(toWireId(b.modelId)))),
       ...[...personal, ...tenant].map((a) =>
-        agentView(a, context, models.get(toWireId(a.modelId)), connectors),
+        agentView(
+          a,
+          context,
+          models.get(toWireId(a.modelId)),
+          connectors,
+          skills,
+        ),
       ),
     ];
   }
@@ -248,6 +286,7 @@ export class AgentsService {
     // connectors are off, any connector at all. Before the locks so a bad
     // request does not touch the quota documents.
     const connectors = await this.resolveConnectors(input.connectors);
+    const skillIds = await this.resolveSkills(input.skillIds);
     await this.prepareLocks(context, input.scope === "tenant");
 
     const now = new Date();
@@ -261,6 +300,7 @@ export class AgentsService {
       look: input.look,
       tint: input.tint,
       ...(connectors.length ? { connectors } : {}),
+      ...(skillIds.length ? { skillIds } : {}),
       status: "active",
       revision: 1,
       clientRequestId: input.clientRequestId,
@@ -292,6 +332,7 @@ export class AgentsService {
         context,
         model,
         await this.enabledConnectorMap(doc.connectors),
+        await this.skillMap(doc.skillIds),
       ),
       created: true,
     };
@@ -330,7 +371,17 @@ export class AgentsService {
     const connectorsChanged =
       connectors !== undefined &&
       !sameConnectors(agent.connectors ?? [], connectors);
-    if (Object.keys(changes).length === 0 && !connectorsChanged)
+    const skillIds =
+      input.skillIds === undefined
+        ? undefined
+        : await this.resolveSkills(input.skillIds, agent.skillIds ?? []);
+    const skillsChanged =
+      skillIds !== undefined && !sameIds(agent.skillIds ?? [], skillIds);
+    if (
+      Object.keys(changes).length === 0 &&
+      !connectorsChanged &&
+      !skillsChanged
+    )
       return this.singleView(context, agent);
     if (changes.modelId && !(await this.models.findEnabled(changes.modelId)))
       throw modelUnavailable();
@@ -349,13 +400,17 @@ export class AgentsService {
             ...(connectorsChanged && connectors!.length
               ? { connectors: connectors! }
               : {}),
+            ...(skillsChanged && skillIds!.length
+              ? { skillIds: skillIds! }
+              : {}),
             updatedAt: new Date(),
           },
           $inc: { revision: 1 },
-          // An edit that clears the connectors removes the field entirely.
-          ...(connectorsChanged && connectors!.length === 0
-            ? { $unset: { connectors: "" } }
-            : {}),
+          // An edit that clears a list removes the field entirely.
+          ...(unsetOf({
+            connectors: connectorsChanged && connectors!.length === 0,
+            skillIds: skillsChanged && skillIds!.length === 0,
+          }) ?? {}),
         },
         { returnDocument: "after", session },
       );
@@ -364,6 +419,7 @@ export class AgentsService {
         fields: [
           ...Object.keys(changes),
           ...(connectorsChanged ? ["connectors"] : []),
+          ...(skillsChanged ? ["skillIds"] : []),
         ]
           .sort()
           .join(","),
@@ -489,6 +545,7 @@ export class AgentsService {
         look: agent.look,
         tint: agent.tint,
         connectors: agent.connectors ?? [],
+        skillIds: agent.skillIds ?? [],
       };
     const added = await this.builtins.findEnabledWithInstructions(agentId);
     return added ? builtinChatAgent(added) : null;
@@ -684,11 +741,30 @@ export class AgentsService {
     context: TenantContext,
     agent: AgentDoc,
   ): Promise<AgentView> {
-    const [model, connectors] = await Promise.all([
+    const [model, connectors, skills] = await Promise.all([
       this.models.findEnabled(agent.modelId),
       this.enabledConnectorMap(agent.connectors),
+      this.skillMap(agent.skillIds),
     ]);
-    return agentView(agent, context, model ?? undefined, connectors);
+    return agentView(agent, context, model ?? undefined, connectors, skills);
+  }
+
+  // The catalog skills keyed by ID, for rendering agent views: every skill,
+  // so disabled ones show as Unavailable. No catalog read when no agent in
+  // view has skills.
+  private async skillMap(
+    ...lists: ReadonlyArray<readonly ObjectId[] | undefined>
+  ): Promise<ReadonlyMap<string, SkillDoc>> {
+    if (!lists.some((list) => list && list.length > 0)) return new Map();
+    const catalog = await this.skills.catalog();
+    // A skill added since the cache loaded is read now.
+    const known = new Map(catalog.map((skill) => [toWireId(skill._id), skill]));
+    const unknown = lists
+      .flatMap((list) => list ?? [])
+      .filter((id) => !known.has(toWireId(id)));
+    for (const skill of await this.skills.findMany(unknown))
+      known.set(toWireId(skill._id), skill);
+    return known;
   }
 
   // The enabled catalog connectors keyed by slug, for rendering agent views.
@@ -732,11 +808,32 @@ function sameConnectors(
   );
 }
 
+function sameIds(
+  current: readonly ObjectId[],
+  next: readonly ObjectId[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((id, i) => id.equals(next[i]!))
+  );
+}
+
+// `$unset` for the fields that are true, or undefined when none are.
+function unsetOf(
+  fields: Record<string, boolean>,
+): { $unset: Record<string, ""> } | undefined {
+  const names = Object.keys(fields).filter((name) => fields[name]);
+  return names.length
+    ? { $unset: Object.fromEntries(names.map((name) => [name, ""])) }
+    : undefined;
+}
+
 function agentView(
   agent: AgentDoc,
   context: TenantContext,
   model: ModelDoc | undefined,
   enabledConnectors: ReadonlyMap<string, ConnectorDoc>,
+  catalogSkills: ReadonlyMap<string, SkillDoc>,
 ): AgentView {
   const mine = agent.ownerId.equals(context.userId);
   const active = agent.status === "active";
@@ -749,6 +846,11 @@ function agentView(
     tint: agent.tint,
     model: model ? modelView(model) : null,
     connectors: connectorViewsOf(agent.connectors, enabledConnectors),
+    // A skill the catalog never had (it never deletes) is left out.
+    skills: (agent.skillIds ?? []).flatMap((id) => {
+      const skill = catalogSkills.get(toWireId(id));
+      return skill ? [skillView(skill)] : [];
+    }),
     available: active && !!model,
     revision: agent.revision,
     createdByMe: mine,
@@ -801,8 +903,9 @@ function builtinChatAgent(builtin: BuiltinAgentDoc): ChatAgent {
     modelId: builtin.modelId,
     look: builtin.look,
     tint: builtin.tint,
-    // Built-ins never attach connectors; members cannot set them.
+    // Built-ins never attach connectors or skills; members cannot set them.
     connectors: [],
+    skillIds: [],
   };
 }
 
@@ -818,8 +921,9 @@ function builtinView(
     look: agent.look,
     tint: agent.tint,
     model: model ? modelView(model) : null,
-    // Built-ins never attach connectors.
+    // Built-ins never attach connectors or skills.
     connectors: [],
+    skills: [],
     available: !!model,
     revision: agent.revision,
     createdByMe: false,

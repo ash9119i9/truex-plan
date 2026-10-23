@@ -30,10 +30,29 @@ import {
   type RunToolApproval,
 } from "../connectors/connectors.service";
 import type { McpServerSpec } from "../connectors/mcp-server-spec";
+import { invalid } from "../../common/validation";
+import { AuditService } from "../audit/audit.service";
+import {
+  applyNetworkGrants,
+  decisionAllowed,
+  MAX_CHAT_NETWORK_GRANTS,
+  type ChatNetworkGrant,
+  type MessageNetwork,
+  type NetworkDecision,
+} from "../network/network-grants";
+import {
+  buildNetworkPolicy,
+  type RequestMethod,
+  type RunNetworkConnector,
+  type RunNetworkPolicy,
+} from "../network/network-policy";
+import { TenantNetworkService } from "../network/tenant-network.service";
 import { modelView, type ModelDoc, type ModelView } from "../models/model";
 import { ModelsService } from "../models/models.service";
 import {
+  CHAT_FILES_COLLECTION,
   CHAT_LIST_PAGE,
+  CHAT_UPLOADS_COLLECTION,
   HISTORY_PAGE,
   isSettled,
   PLATFORM_INSTRUCTIONS_VERSION,
@@ -41,6 +60,7 @@ import {
   STEERS_PER_RUN,
   textHashOf,
   titleOf,
+  titleOfFiles,
   type AgentSource,
   type ApprovalAnswer,
   type ChatConnector,
@@ -48,6 +68,8 @@ import {
   type ChatToolApproval,
   type MessageDoc,
   type MessageState,
+  type MessageActivity,
+  type MessageSkill,
   type MessageTool,
   type RunDoc,
   type RunErrorInfo,
@@ -57,6 +79,18 @@ import {
   type StartChatInput,
   type SteerDoc,
 } from "./chat";
+import { ChatFilesService, type ChatFileView } from "./chat-files";
+import {
+  AttachmentsGoneError,
+  ChatUploadsService,
+  checkClaims,
+  MAX_CHAT_UPLOAD_BYTES,
+  planAttachments,
+  runtimeImages,
+  runtimeText,
+  type AttachmentPlan,
+  type ChatUploadDoc,
+} from "./chat-uploads";
 import { chatPrompt } from "./chat-prompt";
 import {
   ChatStore,
@@ -65,8 +99,9 @@ import {
   type SettleResult,
 } from "./chat-store";
 import { signGatewayToken } from "./gateway-token";
+import { SkillsService } from "../skills/skills.service";
 import { RunExecutor, type Dispatch } from "./run-executor";
-import { AdapterUnreachable } from "./runtime-client";
+import { AdapterUnreachable, type StartRunBody } from "./runtime-client";
 
 export interface ChatView {
   id: string;
@@ -99,7 +134,26 @@ export interface MessageView {
   clientMessageId?: string;
   // Role `tool` only: the connector-tool-call summary.
   tool?: MessageTool;
+  // Role `tool` only: a command or file change in the chat's workspace.
+  activity?: MessageActivity;
+  // Role `tool` only: a skill the reply used.
+  skill?: MessageSkill;
+  // Role `tool` only: a sandbox request the network proxy refused, with the
+  // owner's answer once given.
+  network?: NetworkView;
+  // Role `user` only: the files attached to it.
+  attachments?: AttachmentView[];
   createdAt: string;
+}
+
+export type NetworkView = Omit<MessageNetwork, "decidedAt">;
+
+export interface AttachmentView {
+  fileId: string;
+  name: string;
+  path: string;
+  size: number;
+  contentType: string;
 }
 
 export interface SteerView {
@@ -122,6 +176,8 @@ export interface RunView {
   // The messages added to the reply, while it is unsettled; once it is,
   // they are saved messages.
   steers?: SteerView[];
+  // Files the reply wrote that couldn't be saved; absent when none.
+  unsavedFiles?: string[];
 }
 
 // A chat without its agent's display fields.
@@ -173,6 +229,8 @@ const RECOVERY_FAILED: RunErrorInfo = {
 export class ChatsService {
   private readonly logger = new Logger("Chats");
   private readonly recentSends = new Map<string, number[]>();
+  // Replies whose files are being retried here.
+  private readonly retrying = new Set<string>();
 
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
@@ -185,6 +243,12 @@ export class ChatsService {
     private readonly connectors: ConnectorsService,
     @Inject(ConnectorsCatalogService)
     private readonly connectorCatalog: ConnectorsCatalogService,
+    @Inject(ChatFilesService) private readonly chatFiles: ChatFilesService,
+    @Inject(ChatUploadsService) private readonly uploads: ChatUploadsService,
+    @Inject(SkillsService) private readonly skills: SkillsService,
+    @Inject(TenantNetworkService)
+    private readonly tenantNetwork: TenantNetworkService,
+    @Inject(AuditService) private readonly audit: AuditService,
   ) {}
 
   private db(context: TenantContext): ChatCollections {
@@ -235,9 +299,17 @@ export class ChatsService {
     // committed start still gets its receipt.
     const connectors = agent.connectors;
     let mcp: McpServerSpec[];
+    let network: RunNetworkPolicy | undefined;
+    let staged: ChatUploadDoc[];
     try {
       // A new chat has no per-chat approvals yet, so none are forwarded.
-      mcp = await this.runMcpSpecs(context, connectors, undefined);
+      let resolved: RunConnectors;
+      [resolved, staged] = await Promise.all([
+        this.runMcpSpecs(context, connectors, undefined),
+        this.stagedUploads(context, input.attachments),
+      ]);
+      mcp = resolved.mcp;
+      ({ network } = await this.runNetwork(context, resolved.network));
     } catch (error) {
       refund();
       if (error instanceof DomainError)
@@ -245,14 +317,21 @@ export class ChatsService {
       throw error;
     }
 
+    // The agent's enabled skills at their current versions, from the catalog
+    // cache (no query). Fixed for the chat's life.
+    const skills = await this.skills.snapshot(agent.skillIds);
+
     const now = new Date();
     const chat: ChatDoc = {
       _id: new ObjectId(),
       ownerId: context.userId,
-      title: titleOf(input.text),
+      title: input.text
+        ? titleOf(input.text)
+        : titleOfFiles(staged.map((u) => u.name)),
       agent: { source: agent.source, id: agent.id, revision: agent.revision },
       model: { id: model._id, revision: model.revision },
       ...(connectors.length ? { connectors } : {}),
+      ...(skills.length ? { skills } : {}),
       platformInstructionsVersion: PLATFORM_INSTRUCTIONS_VERSION,
       runtime: { threadId: null, state: "none" },
       activeRun: null,
@@ -269,22 +348,37 @@ export class ChatsService {
       leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
     };
     const { chats, messages, runs } = this.db(context);
+    const plan = this.attachmentPlan(
+      context,
+      chat,
+      message,
+      staged,
+      new Map(),
+      3,
+    );
+    if (plan) {
+      message.attachments = plan.attachments;
+      chat.uploadBytes = plan.bytes;
+    }
     try {
       // The chat, its first message and run in one call, then the commit.
       await timed("save", () =>
-        this.database.withTransaction((session) =>
-          this.database.bulkWrite(
+        this.database.withTransaction(async (session) => {
+          const result = await this.database.bulkWrite(
             [
               insertOf(chats, chat),
               insertOf(messages, message),
               insertOf(runs, run),
+              ...(plan?.writes ?? []),
             ],
             session,
-          ),
-        ),
+            plan !== null,
+          );
+          if (plan) checkClaims(result, plan.claims);
+        }),
       );
     } catch (error) {
-      if (!isDuplicateKeyError(error)) throw error;
+      if (!isDuplicateKeyError(error) && !isAttachmentsGone(error)) throw error;
       // A retry, or the same send racing itself: not a new message.
       refund();
       const raced = await timed("replay", () =>
@@ -296,6 +390,7 @@ export class ChatsService {
     this.executor.begin(
       this.dispatchOf(context, chat, run, message, agent, model, "start", {
         mcp,
+        ...(network ? { network } : {}),
         toolNames: await this.connectorNames(chat.connectors),
         writeToolNames: await this.writeToolNames(chat.connectors),
       }),
@@ -345,6 +440,12 @@ export class ChatsService {
         this.replaySend(context, chat, input),
       );
       if (replay) return replay;
+      // Files go into the workspace before a run starts, never mid-reply.
+      if (input.attachments.length > 0)
+        throw new DomainError(
+          "CHAT_BUSY",
+          "Files can't be added to a reply while it's being written. Wait for it to finish, then send them.",
+        );
       return this.steer(
         context,
         chat,
@@ -390,11 +491,32 @@ export class ChatsService {
     // one tenant read otherwise). A missing connection refuses the send with
     // nothing written, through refuse so a committed retry still replays.
     let mcp: McpServerSpec[];
+    let network: RunNetworkPolicy | undefined;
+    let networkOnce: ObjectId[] = [];
+    let staged: ChatUploadDoc[];
+    let versions: Map<string, number>;
     try {
-      mcp = await this.runMcpSpecs(
+      let resolved: RunConnectors;
+      [resolved, staged] = await Promise.all([
+        this.runMcpSpecs(context, chat.connectors ?? [], chat.toolApprovals),
+        this.stagedUploads(context, input.attachments),
+      ]);
+      mcp = resolved.mcp;
+      ({ network, networkOnce } = await this.runNetwork(
         context,
-        chat.connectors ?? [],
-        chat.toolApprovals,
+        resolved.network,
+        chat.networkGrants,
+      ));
+      const bytes = staged.reduce((sum, u) => sum + u.size, 0);
+      if ((chat.uploadBytes ?? 0) + bytes > MAX_CHAT_UPLOAD_BYTES)
+        throw new DomainError(
+          "LIMIT_REACHED",
+          `This chat already holds ${MAX_CHAT_UPLOAD_BYTES / (1024 * 1024)} MB of attached files. Start a new chat to attach more.`,
+        );
+      versions = await this.chatFiles.latestVersionNumbers(
+        context.dbName,
+        chat._id,
+        staged.map((u) => `uploads/${u.name}`),
       );
     } catch (error) {
       refund();
@@ -410,6 +532,16 @@ export class ChatsService {
       leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
     };
     const { chats, messages, runs } = this.db(context);
+    const plan = this.attachmentPlan(
+      context,
+      chat,
+      turn.message,
+      staged,
+      versions,
+      3,
+    );
+    if (plan) turn.message.attachments = plan.attachments;
+    const bytes = plan?.bytes ?? 0;
     try {
       await timed("save", () =>
         this.database.withTransaction(async (session) => {
@@ -428,29 +560,53 @@ export class ChatsService {
                   nextSeq: chat.nextSeq,
                   "runtime.threadId": chat.runtime.threadId,
                   "runtime.state": { $ne: "lost" },
+                  // And only while the attached files still fit.
+                  ...(bytes
+                    ? {
+                        $or: [
+                          { uploadBytes: { $exists: false } },
+                          {
+                            uploadBytes: {
+                              $lte: MAX_CHAT_UPLOAD_BYTES - bytes,
+                            },
+                          },
+                        ],
+                      }
+                    : {}),
                 },
                 update: {
                   $set: { activeRun, lastMessageAt: now, updatedAt: now },
-                  $inc: { nextSeq: 1 },
+                  $inc: {
+                    nextSeq: 1,
+                    ...(bytes ? { uploadBytes: bytes } : {}),
+                  },
                 },
               },
               insertOf(messages, turn.message),
               insertOf(runs, turn.run),
+              ...(plan?.writes ?? []),
             ],
             session,
+            plan !== null,
           );
           // Aborts the inserts with it.
-          if (result.matchedCount !== 1) throw chatBusy();
+          const claimed = plan
+            ? result.updateResults?.get(0)?.matchedCount
+            : result.matchedCount;
+          if (claimed !== 1) throw chatBusy();
+          if (plan) checkClaims(result, plan.claims);
         }),
       );
     } catch (error) {
       const busy = error instanceof DomainError && error.code === "CHAT_BUSY";
-      if (!busy && !isDuplicateKeyError(error)) throw error;
+      const gone = isAttachmentsGone(error);
+      if (!busy && !gone && !isDuplicateKeyError(error)) throw error;
       refund();
       const raced = await timed("replay", () =>
         this.replaySend(context, chat, input),
       );
       if (raced) return raced;
+      if (gone) throw error;
       // Not this message: the chat moved on since it was read (its seq was
       // taken, or a run claimed it).
       throw chatBusy();
@@ -466,6 +622,8 @@ export class ChatsService {
         "start",
         {
           mcp,
+          ...(network ? { network } : {}),
+          ...(networkOnce.length ? { networkOnce } : {}),
           toolNames: await this.connectorNames(chat.connectors),
           writeToolNames: await this.writeToolNames(chat.connectors),
         },
@@ -725,6 +883,79 @@ export class ChatsService {
     return this.history(context, chat, beforeSeq);
   }
 
+  // Every stored version of the chat's files, newest first.
+  async files(
+    context: TenantContext,
+    chatId: ObjectId,
+  ): Promise<ChatFileView[]> {
+    await this.findOwned(context, chatId);
+    return this.chatFiles.list(context.dbName, chatId);
+  }
+
+  // Tries again to store the files a settled reply couldn't. Returns the
+  // versions stored and the paths that still failed; a path no longer in
+  // the chat (or stored meanwhile by a later reply) is dropped. Refused
+  // while the chat answers, so a retry never reads a file mid-edit, and one
+  // at a time per reply in this process.
+  async retryFiles(
+    context: TenantContext,
+    chatId: ObjectId,
+    runId: ObjectId,
+  ): Promise<{ files: ChatFileView[]; unsaved: string[] }> {
+    this.requireRuntime();
+    const chat = await this.findOwned(context, chatId);
+    const { runs } = this.db(context);
+    const owned = { _id: runId, chatId, ownerId: context.userId };
+    const run = await runs.findOne(owned);
+    if (!run) throw new DomainError("NOT_FOUND", "This reply does not exist.");
+    const paths = run.unsavedFiles ?? [];
+    if (paths.length === 0) return { files: [], unsaved: [] };
+    if (!isSettled(run.status) || chat.activeRun) throw chatBusy();
+    const key = toWireId(runId);
+    if (this.retrying.has(key))
+      throw new DomainError(
+        "CONFLICT",
+        "These files are already being saved. Wait a moment.",
+      );
+    this.retrying.add(key);
+    try {
+      const result = await this.executor.retryFiles(
+        {
+          dbName: context.dbName,
+          tenantId: toWireId(context.tenantId),
+          chatId,
+          ownerId: context.userId,
+          runId,
+          ref: {
+            tenantId: toWireId(context.tenantId),
+            chatId: toWireId(chatId),
+          },
+        },
+        new Set(paths),
+      );
+      if (!result)
+        throw new DomainError(
+          "UNAVAILABLE",
+          "Files can't be saved on this server.",
+        );
+      const { stored, unsaved } = result;
+      await runs.updateOne(
+        owned,
+        unsaved.length
+          ? { $set: { unsavedFiles: unsaved, updatedAt: new Date() } }
+          : { $unset: { unsavedFiles: "" }, $set: { updatedAt: new Date() } },
+      );
+      return { files: stored, unsaved };
+    } finally {
+      this.retrying.delete(key);
+    }
+  }
+
+  // One stored file version's bytes; the owner filter is on the file read.
+  openFile(context: TenantContext, chatId: ObjectId, fileId: ObjectId) {
+    return this.chatFiles.open(context.dbName, chatId, context.userId, fileId);
+  }
+
   async rename(
     context: TenantContext,
     chatId: ObjectId,
@@ -952,11 +1183,19 @@ export class ChatsService {
     // keep the adapter's request-hash surface identical so the thread
     // reattaches rather than restarting. Only for a chat that snapshotted
     // connectors.
-    const mcp = await this.recoverMcpSpecs(
+    const recovered = await this.recoverMcpSpecs(
       context,
       chat.connectors,
       chat.toolApprovals,
     );
+    const mcp = recovered.mcp;
+    // Best effort: a recovery never reposts the turn, so a run reattaches
+    // without a policy when the tenant's list cannot be read.
+    const { network, networkOnce } = await this.runNetwork(
+      context,
+      recovered.network,
+      chat.networkGrants,
+    ).catch(() => ({ network: undefined, networkOnce: [] }));
     const toolNames = await this.connectorNames(chat.connectors);
     const writeToolNames = await this.writeToolNames(chat.connectors);
     const lapsed =
@@ -977,6 +1216,8 @@ export class ChatsService {
     this.executor.begin(
       this.dispatchOf(context, chat, run, message, agent, model, "recover", {
         mcp,
+        ...(network ? { network } : {}),
+        ...(networkOnce.length ? { networkOnce } : {}),
         toolNames,
         writeToolNames,
         ...(lapsed ? {} : { notBefore: active.leaseExpiresAt }),
@@ -996,8 +1237,8 @@ export class ChatsService {
     context: TenantContext,
     connectors: readonly ChatConnector[] | undefined,
     toolApprovals: readonly ChatToolApproval[] | undefined,
-  ): Promise<McpServerSpec[]> {
-    if (!connectors || connectors.length === 0) return [];
+  ): Promise<RunConnectors> {
+    if (!connectors || connectors.length === 0) return { mcp: [], network: [] };
     const result = await timed("connectors", () =>
       this.connectors.runSpecs(
         context.dbName,
@@ -1006,7 +1247,7 @@ export class ChatsService {
         { toolApprovals: approvalRefs(toolApprovals) },
       ),
     );
-    if (result.ok) return result.specs;
+    if (result.ok) return { mcp: result.specs, network: result.network };
     const names = result.missing.map((m) => m.displayName);
     throw new DomainError(
       "CONNECTION_REQUIRED",
@@ -1027,8 +1268,8 @@ export class ChatsService {
     context: TenantContext,
     connectors: readonly ChatConnector[] | undefined,
     toolApprovals: readonly ChatToolApproval[] | undefined,
-  ): Promise<McpServerSpec[]> {
-    if (!connectors || connectors.length === 0) return [];
+  ): Promise<RunConnectors> {
+    if (!connectors || connectors.length === 0) return { mcp: [], network: [] };
     try {
       const result = await this.connectors.runSpecs(
         context.dbName,
@@ -1036,7 +1277,7 @@ export class ChatsService {
         runConnectorRefs(connectors),
         { toolApprovals: approvalRefs(toolApprovals) },
       );
-      if (result.ok) return result.specs;
+      if (result.ok) return { mcp: result.specs, network: result.network };
     } catch (error) {
       this.logger.warn({
         message: "recovery could not resolve connector tokens",
@@ -1044,7 +1285,154 @@ export class ChatsService {
         error: error instanceof Error ? error.name : "unknown",
       });
     }
-    return this.placeholderSpecs(connectors, toolApprovals);
+    // No token, so no connection reaches the sandbox network.
+    return {
+      mcp: await this.placeholderSpecs(connectors, toolApprovals),
+      network: [],
+    };
+  }
+
+  // The run's sandbox network policy, or undefined when the operator has not
+  // turned the sandbox network on (CHAT_SANDBOX_NETWORK). The tenant's list
+  // comes from a short cache, so this is normally no round trip.
+  // The chat's network grants widen it (applyNetworkGrants checks each
+  // again); `networkOnce` are the Allow-once grants used, removed when the
+  // run ends.
+  private async runNetwork(
+    context: TenantContext,
+    connectors: readonly RunNetworkConnector[],
+    grants?: readonly ChatNetworkGrant[],
+  ): Promise<{ network?: RunNetworkPolicy; networkOnce: ObjectId[] }> {
+    if (!this.config.chat?.sandboxNetwork) return { networkOnce: [] };
+    const tenantHosts = await timed("network", () =>
+      this.tenantNetwork.runHosts(context.dbName),
+    );
+    const { policy, onceIds } = applyNetworkGrants(
+      buildNetworkPolicy({ tenantHosts, connectors }),
+      grants,
+    );
+    return { network: policy, networkOnce: onceIds };
+  }
+
+  // The owner's answer to a network card on a saved reply: Allow once, Allow
+  // for this chat or Keep blocked. The first answer wins; the same answer
+  // again returns it (a retry also completes a grant a crash left unsaved).
+  // An allow takes effect from the chat's next reply. Owner only: another
+  // member's chat is NOT_FOUND.
+  async answerNetwork(
+    context: TenantContext,
+    chatId: ObjectId,
+    messageId: ObjectId,
+    decision: NetworkDecision,
+  ): Promise<{ decision: NetworkDecision }> {
+    const chat = await timed("chat", () => this.findOwned(context, chatId));
+    const at = new Date();
+    const card = await this.db(context).messages.findOne(
+      { _id: messageId, chatId, ownerId: context.userId, role: "tool" },
+      { projection: { network: 1, runId: 1 } },
+    );
+    const block = card?.network;
+    if (!card || !block)
+      throw new DomainError(
+        "APPROVAL_NOT_FOUND",
+        "This blocked request was not found.",
+      );
+    if (!decisionAllowed(block.grant, decision))
+      invalid(
+        block.grant === "none"
+          ? "This request can't be allowed."
+          : "This request can only be allowed once.",
+      );
+    const saved = await this.store.decideNetwork(
+      context.dbName,
+      chatId,
+      context.userId,
+      messageId,
+      decision,
+      at,
+    );
+    if (!saved?.decision) throw new Error("network decision not saved");
+    if (saved.decision !== decision)
+      throw new DomainError(
+        "APPROVAL_RESOLVED",
+        "This request was already answered.",
+      );
+    if (decision !== "keep_blocked") {
+      const grant: ChatNetworkGrant = {
+        messageId,
+        host: block.host,
+        ...(block.kind === "write" && block.connector
+          ? {
+              connector: block.connector.name,
+              method: block.method as RequestMethod,
+            }
+          : {}),
+        scope: decision === "allow_for_chat" ? "chat" : "once",
+        at,
+      };
+      const added = await this.store.addNetworkGrant(
+        context.dbName,
+        chat._id,
+        context.userId,
+        grant,
+      );
+      if (!added)
+        throw new DomainError(
+          "LIMIT_REACHED",
+          `This chat already allows ${MAX_CHAT_NETWORK_GRANTS} requests. Start a new chat to allow more.`,
+        );
+    }
+    await this.store.recordApproval(context.dbName, {
+      _id: `net_${toWireId(messageId)}`,
+      chatId,
+      runId: card.runId,
+      userId: context.userId,
+      kind: "network",
+      connector: block.connector?.name ?? "web",
+      tool: `${block.method} ${block.host}`,
+      decision:
+        decision === "allow_once"
+          ? "allow"
+          : decision === "allow_for_chat"
+            ? "allow_for_chat"
+            : "deny",
+      auto: false,
+      params: [
+        { name: "host", value: block.host },
+        { name: "method", value: block.method },
+        { name: "kind", value: block.kind },
+      ],
+      at,
+    });
+    // An allow widens what the chat's sandbox may reach: a security event,
+    // recorded by the answer that decided (a retry is not a second one).
+    const decidedHere = saved.decidedAt?.getTime() === at.getTime();
+    if (decision !== "keep_blocked" && decidedHere)
+      await this.audit.record({
+        action: "chat.network.allow",
+        actor: { kind: "user", userId: context.userId },
+        result: "success",
+        tenantId: context.tenantId,
+        details: {
+          chatId: toWireId(chatId),
+          host: block.host,
+          method: block.method,
+          kind: block.kind,
+          connector: block.connector?.name ?? null,
+          scope: decision === "allow_for_chat" ? "chat" : "once",
+        },
+      });
+    if (decidedHere)
+      this.logger.log({
+        message: "network request answered",
+        chatId: toWireId(chatId),
+        host: block.host,
+        method: block.method,
+        kind: block.kind,
+        connector: block.connector?.name,
+        decision,
+      });
+    return { decision };
   }
 
   // Specs built from the catalog alone, with a placeholder Authorization, for
@@ -1081,8 +1469,13 @@ export class ChatsService {
       };
       const enabledTools = enabledToolsOf(connector, access === "read_only");
       if (enabledTools !== undefined) spec.enabledTools = enabledTools;
-      const approved = approvedByConnector.get(connector.slug);
+      const critical = connector.criticalTools ?? [];
+      // A critical tool is never allowed for the chat.
+      const approved = approvedByConnector
+        .get(connector.slug)
+        ?.filter((tool) => !critical.includes(tool));
       if (approved && approved.length > 0) spec.approvedTools = approved;
+      if (critical.length > 0) spec.criticalTools = [...critical];
       specs.push(spec);
     }
     return specs;
@@ -1116,6 +1509,43 @@ export class ChatsService {
     return names;
   }
 
+  // The staged uploads a message names. Timed as its own step only when it
+  // names some, so a text-only message's timing is unchanged.
+  private stagedUploads(
+    context: TenantContext,
+    ids: readonly ObjectId[],
+  ): Promise<ChatUploadDoc[]> {
+    return ids.length
+      ? timed("uploads", () => this.uploads.staged(context, ids))
+      : Promise.resolve([]);
+  }
+
+  // The writes that attach the staged uploads to this message, or null when
+  // it has none. `offset`: the number of writes before them in the save.
+  private attachmentPlan(
+    context: TenantContext,
+    chat: ChatDoc,
+    message: MessageDoc,
+    staged: readonly ChatUploadDoc[],
+    latest: ReadonlyMap<string, number>,
+    offset: number,
+  ): AttachmentPlan | null {
+    if (staged.length === 0) return null;
+    const db = this.database.tenantDb(context.dbName);
+    return planAttachments({
+      uploads: staged,
+      chatId: chat._id,
+      ownerId: context.userId,
+      runId: message.runId,
+      messageId: message._id,
+      latest,
+      now: message.createdAt,
+      uploadsNamespace: `${db.databaseName}.${CHAT_UPLOADS_COLLECTION}`,
+      filesNamespace: `${db.databaseName}.${CHAT_FILES_COLLECTION}`,
+      offset,
+    });
+  }
+
   private dispatchOf(
     context: TenantContext,
     chat: ChatDoc,
@@ -1126,6 +1556,8 @@ export class ChatsService {
     mode: Dispatch["mode"],
     options: {
       mcp?: readonly McpServerSpec[];
+      network?: RunNetworkPolicy;
+      networkOnce?: readonly ObjectId[];
       toolNames?: readonly string[];
       writeToolNames?: readonly string[];
       notBefore?: Date;
@@ -1135,7 +1567,8 @@ export class ChatsService {
     const tenantId = toWireId(context.tenantId);
     const chatId = toWireId(chat._id);
     const modelId = toWireId(chat.model.id);
-    const { mcp, toolNames, writeToolNames, notBefore } = options;
+    const { mcp, network, networkOnce, toolNames, writeToolNames, notBefore } =
+      options;
     // Recovery without a model or agent can still reattach or read history;
     // posting then fails validation in the adapter and settles as failed. The
     // tool names make the v3+ prompt list the chat's connectors; v4 also
@@ -1152,16 +1585,35 @@ export class ChatsService {
       ref: { tenantId, chatId },
       mode,
       ...(notBefore ? { notBefore } : {}),
+      ...(message.attachments?.length
+        ? { attachments: message.attachments }
+        : {}),
+      ...(chat.skills?.length ? { skills: chat.skills } : {}),
+      ...(networkOnce?.length ? { networkOnce } : {}),
       body: {
         runId: toWireId(run._id),
         tenantId,
         chatId,
         threadId: chat.runtime.threadId,
-        input: { text: message.text, clientMessageId: run.clientMessageId },
+        input: {
+          text: runtimeText(message.text, message.attachments),
+          clientMessageId: run.clientMessageId,
+          ...imagesOf(message.attachments),
+        },
         agentPrompt: prompt,
         // Included only when non-empty, so a text-only turn is byte-identical
         // to before. Never logged (it carries per-user Authorization headers).
         ...(mcp && mcp.length ? { mcp } : {}),
+        // Only with CHAT_SANDBOX_NETWORK=1. Never logged (connector tokens).
+        ...(network ? { network } : {}),
+        // The member's coding Allow-for-this-chat answers. Included only when
+        // the chat has some; the runtime uses them only with coding on.
+        ...codingApprovalsOf(chat),
+        ...(chat.skills?.length
+          ? {
+              skills: chat.skills.map(({ sha256, slug }) => ({ sha256, slug })),
+            }
+          : {}),
         model: {
           modelName: model?.modelName ?? "unavailable",
           gatewayUrl: `${chatConfig.gatewayUrl}/p/${modelId}/v1`,
@@ -1491,6 +1943,13 @@ function joinNames(names: readonly string[]): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
+// A run's connector resolution: the MCP servers, and the connections whose
+// connector has egress data for the sandbox network policy.
+interface RunConnectors {
+  mcp: McpServerSpec[];
+  network: RunNetworkConnector[];
+}
+
 // A chat's snapshotted connectors as the refs runSpecs takes: the catalog ID
 // with the chat's access choice (absent = read_write).
 function runConnectorRefs(
@@ -1523,11 +1982,31 @@ function summaryOf(agent: ChatAgent): AgentSummary {
   };
 }
 
+function isAttachmentsGone(error: unknown): boolean {
+  return error instanceof AttachmentsGoneError;
+}
+
 function insertOf<T extends Document>(
   collection: Collection<T>,
   document: T,
 ): AnyClientBulkWriteModel<Document> {
   return { namespace: collection.namespace, name: "insertOne", document };
+}
+
+function codingApprovalsOf(
+  chat: Pick<ChatDoc, "codingApprovals">,
+): Pick<StartRunBody, "codingApprovals"> {
+  const commands = chat.codingApprovals?.commands ?? [];
+  if (commands.length === 0) return {};
+  return { codingApprovals: { commands: [...commands] } };
+}
+
+// Included only when the message has images, so other turns are unchanged.
+function imagesOf(attachments: MessageDoc["attachments"]): {
+  images?: string[];
+} {
+  const images = runtimeImages(attachments);
+  return images.length ? { images } : {};
 }
 
 export function messageView(message: MessageDoc): MessageView {
@@ -1542,8 +2021,27 @@ export function messageView(message: MessageDoc): MessageView {
       ? { clientMessageId: message.clientMessageId }
       : {}),
     ...(message.tool ? { tool: message.tool } : {}),
+    ...(message.activity ? { activity: message.activity } : {}),
+    ...(message.skill ? { skill: message.skill } : {}),
+    ...(message.network ? { network: networkView(message.network) } : {}),
+    ...(message.attachments?.length
+      ? {
+          attachments: message.attachments.map((a) => ({
+            fileId: toWireId(a.fileId),
+            name: a.name,
+            path: a.path,
+            size: a.size,
+            contentType: a.contentType,
+          })),
+        }
+      : {}),
     createdAt: message.createdAt.toISOString(),
   };
+}
+
+function networkView(network: MessageNetwork): NetworkView {
+  const { decidedAt: _at, ...view } = network;
+  return view;
 }
 
 export function runView(run: RunDoc): RunView {
@@ -1562,6 +2060,7 @@ export function runView(run: RunDoc): RunView {
     ...(!isSettled(run.status) && run.steers?.length
       ? { steers: run.steers.map(steerView) }
       : {}),
+    ...(run.unsavedFiles?.length ? { unsavedFiles: run.unsavedFiles } : {}),
   };
 }
 

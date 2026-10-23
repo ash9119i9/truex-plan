@@ -1,5 +1,6 @@
 import "reflect-metadata";
 import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { NestFactory } from "@nestjs/core";
 import { AppModule } from "../app.module";
@@ -15,6 +16,7 @@ import {
   type EnsureTenantIndexesCommand,
   type ProvisionTenantCommand,
 } from "../modules/operator/operator.service";
+import { toolchainPackages } from "../modules/skills/skill-bundle";
 
 // A definition file is a small JSON document; anything larger is a mistake.
 const MAX_DEFINITION_BYTES = 1_000_000;
@@ -33,13 +35,31 @@ const USAGE = `Usage:
   operator connector-put --operator <name> --file <definition.json>
   operator connector-enable|connector-disable --operator <name> --slug <slug>
   operator connector-list --operator <name>
+  operator skill-put --operator <name> --folder <skill folder> [--toolchain <requirements.in>]
+  operator skill-enable|skill-disable --operator <name> --slug <slug>
+  operator skill-list --operator <name>
 
 Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
 the same arguments is safe. Models are never deleted: disable them instead.
 ensure-tenant-indexes --all builds the indexes of every provisioned tenant
 behind this release; run it as a deploy step after an index change.
 --allow-dev-credentials accepts a plaintext apiKey and an http loopback
-baseUrl, for local development only.`;
+baseUrl, for local development only.
+skill-put publishes the folder as the skill's newest version (new chats get it
+within a minute; existing chats keep theirs). --toolchain lists the Python
+packages the runtime image ships; it defaults to the repository's
+runtime-adapter/toolchain/requirements.in.`;
+
+// The repository's toolchain list, from src/cli or dist/cli.
+const DEFAULT_TOOLCHAIN = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "runtime-adapter",
+  "toolchain",
+  "requirements.in",
+);
 
 // Long enough for a cold connection to a remote cluster.
 const CONNECT_TIMEOUT_MS = 30_000;
@@ -67,19 +87,27 @@ export type OperatorCommand =
   | ({ command: "builtin-agent-put" } & DefinitionCommand)
   | ({ command: "connector-put" } & DefinitionCommand)
   | {
+      command: "skill-put";
+      operator: string;
+      folder: string;
+      // Null: the default list.
+      toolchain: string | null;
+    }
+  | {
       command: "model-set-enabled" | "builtin-agent-set-enabled";
       operator: string;
       slug: string;
       enabled: boolean;
     }
   | {
-      command: "connector-set-enabled";
+      command: "connector-set-enabled" | "skill-set-enabled";
       operator: string;
       slug: string;
       enabled: boolean;
     }
   | {
-      command: "model-list" | "builtin-agent-list" | "connector-list";
+      command:
+        "model-list" | "builtin-agent-list" | "connector-list" | "skill-list";
       operator: string;
     };
 
@@ -112,6 +140,8 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         user: { type: "string" },
         role: { type: "string" },
         file: { type: "string" },
+        folder: { type: "string" },
+        toolchain: { type: "string" },
         slug: { type: "string" },
         all: { type: "boolean" },
         "allow-dev-credentials": { type: "boolean" },
@@ -205,9 +235,26 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         slug: required(values, "slug"),
         enabled: positionals[0] === "connector-enable",
       };
+    case "skill-put":
+      return {
+        command: "skill-put",
+        operator,
+        folder: required(values, "folder"),
+        toolchain:
+          values.toolchain === undefined ? null : required(values, "toolchain"),
+      };
+    case "skill-enable":
+    case "skill-disable":
+      return {
+        command: "skill-set-enabled",
+        operator,
+        slug: required(values, "slug"),
+        enabled: positionals[0] === "skill-enable",
+      };
     case "model-list":
     case "builtin-agent-list":
     case "connector-list":
+    case "skill-list":
       return { command: positionals[0], operator };
     default:
       throw new UsageError(`Unknown command "${positionals[0]}".`);
@@ -228,6 +275,17 @@ export function readDefinition(file: string): unknown {
     return JSON.parse(text) as unknown;
   } catch {
     throw new UsageError(`${file} is not valid JSON.`);
+  }
+}
+
+// The Python packages a skill's scripts may import. An explicit file must
+// be readable; without one, a missing default list means none are known.
+export function readToolchain(file: string | null): Set<string> | null {
+  try {
+    return toolchainPackages(readFileSync(file ?? DEFAULT_TOOLCHAIN, "utf8"));
+  } catch {
+    if (file) throw new UsageError(`Cannot read ${file}.`);
+    return null;
   }
 }
 
@@ -267,6 +325,16 @@ export async function runOperatorCommand(
       return operator.setConnectorEnabled(command);
     case "connector-list":
       return { connectors: await operator.listConnectors() };
+    case "skill-put":
+      return operator.putSkill({
+        operator: command.operator,
+        folder: command.folder,
+        toolchain: readToolchain(command.toolchain),
+      });
+    case "skill-set-enabled":
+      return operator.setSkillEnabled(command);
+    case "skill-list":
+      return { skills: await operator.listSkills() };
   }
   if (command.command === "ensure-tenant-indexes") {
     const tenants = await operator.ensureTenantIndexes(command);
