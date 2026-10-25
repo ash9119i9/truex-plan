@@ -1,0 +1,64 @@
+
+> platform-next@0.1.0 bench:perf
+> tsx bench/perf-audit.ts
+
+
+## Seeding
+seeded: 100k chats, 100k messages, 5k file versions
+seeded: 20k tenant registry rows
+
+## Query plans (executionStats)
+sidebar page 1                     LIMIT>FETCH>IXSCAN                 keys=     31 docs=     31 returned=   31
+sidebar cursor page 2              LIMIT>FETCH>IXSCAN                 keys=     61 docs=     61 returned=   31
+history page (50 + 1)              LIMIT>FETCH>IXSCAN                 keys=     51 docs=     51 returned=   51
+recovery: lapsed chats             LIMIT>FETCH>IXSCAN                 keys=     50 docs=     50 returned=   50
+chat files listing (300)           SORT>FETCH>IXSCAN                  keys=   5000 docs=   5000 returned=  300
+file capture: latest versions      FETCH>DISTINCT_SCAN                keys=     40 docs=     40 returned=   40
+tenant registry listReady          PROJECTION_SIMPLE>FETCH>IXSCAN     keys=  20000 docs=  20000 returned=19800
+
+## Repeated-run latency (loopback, warm cache)
+sidebar page 1                     p50=    0.29ms p95=    0.53ms
+history page                       p50=    0.24ms p95=    0.31ms
+chat files listing                 p50=    2.88ms p95=    3.22ms
+file capture: latest versions      p50=    0.23ms p95=    0.27ms
+tenant registry listReady          p50=   15.96ms p95=   17.14ms
+
+## Candidate index experiments
+chat files listing (+index)        LIMIT>FETCH>IXSCAN                 keys=    300 docs=    300 returned=  300
+chat files listing (+index)        p50=    0.75ms p95=    0.87ms
+tenant registry listReady (+index) PROJECTION_SIMPLE>FETCH>IXSCAN     keys=  19800 docs=  19800 returned=19800
+tenant registry listReady (+index) p50=   15.29ms p95=   16.11ms
+sweep 500 tenants: sequential 67.7ms, 20-way parallel 19.7ms
+
+## monitorCommands cost (20k findOne)
+monitorCommands=false 1216ms
+monitorCommands=true  1248ms
+seeded: 100k chats, 100k messages, 5k file versions
+
+## HTTP requests through the real app (100k chats, one chat of 100k messages)
+/me                                              p50=    0.58ms p95=    0.97ms  db= 2 calls     0.10ms  body=0KB gzip=0KB (111%)
+/tenant                                          p50=    0.47ms p95=    0.56ms  db= 2 calls     0.20ms  body=0KB gzip=0KB (124%)
+/models                                          p50=    0.23ms p95=    0.29ms  db= 0 calls     0.00ms  body=0KB gzip=0KB (102%)
+/agents                                          p50=    0.41ms p95=    0.54ms  db= 1 calls     0.10ms  body=0KB gzip=0KB (67%)
+/chats                                           p50=    0.68ms p95=    0.74ms  db= 1 calls     0.20ms  body=13KB gzip=1KB (6%)
+/chats?before=1792833945509&beforeId=6adc806e0242e5a426163ced p50=    0.63ms p95=    0.70ms  db= 1 calls     0.20ms  body=13KB gzip=1KB (6%)
+/chats/6adc806e0242e5a426164287                  p50=    0.90ms p95=    1.01ms  db= 3 calls     0.40ms  body=18KB gzip=1KB (6%)
+/chats/6adc806e0242e5a426164287/messages?before=50000 p50=    0.81ms p95=    0.95ms  db= 3 calls     0.40ms  body=18KB gzip=1KB (5%)
+/chats/6adc806e0242e5a426164287/files            p50=    0.33ms p95=    0.39ms  db= 1 calls     0.10ms  body=0KB gzip=0KB (267%)
+
+## Stream heartbeat authorization (per open stream, every 15 s)
+3 catalog reads  p50=    0.26ms p95=    0.32ms  -> 3895 beats/s per core; 10k open streams = 2000 catalog reads/s (0.2 cores of this work)
+
+## Pool: 50 concurrent /chats opened 0 connections; server current=10
+
+## MongoDB client options in use
+maxPoolSize                100
+minPoolSize                0
+maxConnecting              2
+waitQueueTimeoutMS         0
+maxIdleTimeMS              0
+connectTimeoutMS           30000
+socketTimeoutMS            0
+serverSelectionTimeoutMS   2000
+retryWrites                true
+monitorCommands            true

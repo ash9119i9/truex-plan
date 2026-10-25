@@ -13,6 +13,7 @@
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"test/**/*.test.ts\"",
+    "bench:perf": "tsx bench/perf-audit.ts",
     "format": "prettier --write \"{src,test}/**/*.ts\"",
     "format:check": "prettier --check \"{src,test}/**/*.ts\"",
     "operator": "node dist/cli/operator.js",
