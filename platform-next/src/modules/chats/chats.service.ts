@@ -66,6 +66,7 @@ import {
   type ChatConnector,
   type ChatDoc,
   type ChatToolApproval,
+  type FollowUpsAssignment,
   type MessageDoc,
   type MessageState,
   type MessageActivity,
@@ -92,6 +93,7 @@ import {
   type ChatUploadDoc,
 } from "./chat-uploads";
 import { chatPrompt } from "./chat-prompt";
+import type { FollowUpItem } from "./followups";
 import {
   ChatStore,
   LEASE_MS,
@@ -178,6 +180,9 @@ export interface RunView {
   steers?: SteerView[];
   // Files the reply wrote that couldn't be saved; absent when none.
   unsavedFiles?: string[];
+  // The rows a completed reply offered, while Follow Ups are on. Only the
+  // items: status, shape and stage stay in the database for the report.
+  followUps?: { items: FollowUpItem[] };
 }
 
 // A chat without its agent's display fields.
@@ -333,6 +338,7 @@ export class ChatsService {
       ...(connectors.length ? { connectors } : {}),
       ...(skills.length ? { skills } : {}),
       platformInstructionsVersion: PLATFORM_INSTRUCTIONS_VERSION,
+      followUps: this.followUpsForNewChat(),
       runtime: { threadId: null, state: "none" },
       activeRun: null,
       nextSeq: 2,
@@ -403,7 +409,7 @@ export class ChatsService {
         await this.connectorViews(chat.connectors),
       ),
       message: messageView(message),
-      run: runView(run),
+      run: runView(run, this.followUpsEnabled),
       created: true,
     };
   }
@@ -642,7 +648,7 @@ export class ChatsService {
         ? chatView(latest, summaryOf(agent), model, connectors)
         : chatState(latest, model, false, connectors),
       message: messageView(turn.message),
-      run: runView(turn.run),
+      run: runView(turn.run, this.followUpsEnabled),
       created: true,
     };
   }
@@ -796,7 +802,7 @@ export class ChatsService {
         false,
         await this.connectorViews(chat.connectors),
       ),
-      run: runView(run),
+      run: runView(run, this.followUpsEnabled),
       steer: steerView(steer),
       created,
     };
@@ -1590,6 +1596,7 @@ export class ChatsService {
         : {}),
       ...(chat.skills?.length ? { skills: chat.skills } : {}),
       ...(networkOnce?.length ? { networkOnce } : {}),
+      ...(chat.followUps ? { followUps: chat.followUps } : {}),
       body: {
         runId: toWireId(run._id),
         tenantId,
@@ -1660,6 +1667,17 @@ export class ChatsService {
       userMessageId: message._id,
       clientMessageId: input.clientMessageId,
       status: "accepted",
+      // A send that becomes a steer never reaches here, so it drops the
+      // claim as the plan requires.
+      ...(input.followUp
+        ? {
+            origin: {
+              source: "suggestion" as const,
+              fromRunId: input.followUp.fromRunId,
+              slot: input.followUp.slot,
+            },
+          }
+        : {}),
       timings: { acceptedAt: now },
       createdAt: now,
       updatedAt: now,
@@ -1697,7 +1715,7 @@ export class ChatsService {
     return {
       chat: await this.view(context, chat),
       message: messageView(message),
-      run: runView(run),
+      run: runView(run, this.followUpsEnabled),
       created: false,
     };
   }
@@ -1742,7 +1760,7 @@ export class ChatsService {
       : [];
     return {
       messages: shown.map(messageView),
-      runs: runDocs.map(runView),
+      runs: runDocs.map((run) => runView(run, this.followUpsEnabled)),
       hasMore,
     };
   }
@@ -1811,6 +1829,22 @@ export class ChatsService {
     return connectorViewsOf(
       connectors,
       await this.enabledConnectorMap(connectors),
+    );
+  }
+
+  // Decided once, in the chat-creation transaction: a retried first send
+  // returns the chat already created with its original assignment.
+  private followUpsForNewChat(): FollowUpsAssignment {
+    const chat = this.config.chat;
+    if (!chat || chat.followUps === false) return "off";
+    const percent = chat.followUpsHoldoutPercent ?? 0;
+    return percent > 0 && Math.random() * 100 < percent ? "holdout" : "on";
+  }
+
+  // The kill switch: FOLLOW_UPS=off hides stored rows from every API view.
+  private get followUpsEnabled(): boolean {
+    return (
+      this.config.chat !== undefined && this.config.chat.followUps !== false
     );
   }
 
@@ -2044,7 +2078,7 @@ function networkView(network: MessageNetwork): NetworkView {
   return view;
 }
 
-export function runView(run: RunDoc): RunView {
+export function runView(run: RunDoc, showFollowUps = false): RunView {
   const t = run.timings;
   return {
     id: toWireId(run._id),
@@ -2061,6 +2095,17 @@ export function runView(run: RunDoc): RunView {
       ? { steers: run.steers.map(steerView) }
       : {}),
     ...(run.unsavedFiles?.length ? { unsavedFiles: run.unsavedFiles } : {}),
+    ...(showFollowUps && run.followUps?.items.length
+      ? {
+          followUps: {
+            items: run.followUps.items.map(({ slot, intent, text }) => ({
+              slot,
+              intent,
+              text,
+            })),
+          },
+        }
+      : {}),
   };
 }
 

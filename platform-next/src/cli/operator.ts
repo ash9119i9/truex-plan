@@ -14,6 +14,7 @@ import {
   OperatorService,
   type AssignRoleCommand,
   type EnsureTenantIndexesCommand,
+  type FollowUpsReportCommand,
   type ProvisionTenantCommand,
 } from "../modules/operator/operator.service";
 import { toolchainPackages } from "../modules/skills/skill-bundle";
@@ -38,11 +39,15 @@ const USAGE = `Usage:
   operator skill-put --operator <name> --folder <skill folder> [--toolchain <requirements.in>]
   operator skill-enable|skill-disable --operator <name> --slug <slug>
   operator skill-list --operator <name>
+  operator followups-report --operator <name> [--since 7d] [--tenant <id>] [--min-sets 200] [--close 0.6]
 
 Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
 the same arguments is safe. Models are never deleted: disable them instead.
 ensure-tenant-indexes --all builds the indexes of every provisioned tenant
 behind this release; run it as a deploy step after an index change.
+followups-report prints counts and rates only (never message text). --since
+takes d, h or m (default 7d); --min-sets hides small cells; --close sets the
+word-overlap threshold for "typed something close" (default 0.6).
 --allow-dev-credentials accepts a plaintext apiKey and an http loopback
 baseUrl, for local development only.
 skill-put publishes the folder as the skill's newest version (new chats get it
@@ -109,7 +114,8 @@ export type OperatorCommand =
       command:
         "model-list" | "builtin-agent-list" | "connector-list" | "skill-list";
       operator: string;
-    };
+    }
+  | ({ command: "followups-report" } & FollowUpsReportCommand);
 
 function required(values: Record<string, unknown>, flag: string): string {
   const value = values[flag];
@@ -145,6 +151,9 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         slug: { type: "string" },
         all: { type: "boolean" },
         "allow-dev-credentials": { type: "boolean" },
+        since: { type: "string" },
+        "min-sets": { type: "string" },
+        close: { type: "string" },
       },
     });
   } catch (error) {
@@ -256,9 +265,65 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
     case "connector-list":
     case "skill-list":
       return { command: positionals[0], operator };
+    case "followups-report": {
+      const sinceMs = sinceMsOf(values.since);
+      const minSets = positiveInt(values["min-sets"], "min-sets", 200);
+      const close = fraction(values.close, "close", 0.6);
+      return {
+        command: "followups-report",
+        operator,
+        since: new Date(Date.now() - sinceMs),
+        ...(values.tenant !== undefined
+          ? { tenantId: tenantIdOf(values) }
+          : {}),
+        minSets,
+        close,
+      };
+    }
     default:
       throw new UsageError(`Unknown command "${positionals[0]}".`);
   }
+}
+
+// DURATION: 7d, 24h or 30m. The plan uses days; hours and minutes keep a
+// quick check against the dev database practical.
+export function durationMs(value: string | undefined): number {
+  if (value === undefined) return 7 * 24 * 60 * 60_000;
+  const match = /^(\d{1,4})([dhm])$/.exec(value);
+  if (!match) throw new UsageError("--since must look like 7d, 24h or 30m.");
+  const amount = Number(match[1]);
+  if (amount < 1)
+    throw new UsageError("--since must be at least 1d, 1h or 1m.");
+  const unit =
+    match[2] === "d" ? 86_400_000 : match[2] === "h" ? 3_600_000 : 60_000;
+  const ms = amount * unit;
+  if (ms > 366 * 86_400_000)
+    throw new UsageError("--since must be at most 366 days.");
+  return ms;
+}
+
+function sinceMsOf(value: unknown): number {
+  return durationMs(typeof value === "string" ? value : undefined);
+}
+
+function positiveInt(value: unknown, flag: string, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (
+    typeof value !== "string" ||
+    !/^\d{1,6}$/.test(value) ||
+    Number(value) < 1
+  )
+    throw new UsageError(`--${flag} must be a whole number of at least 1.`);
+  return Number(value);
+}
+
+function fraction(value: unknown, flag: string, fallback: number): number {
+  if (value === undefined) return fallback;
+  const number =
+    typeof value === "string" && value.trim() !== "" ? Number(value) : NaN;
+  if (!Number.isFinite(number) || number < 0 || number > 1)
+    throw new UsageError(`--${flag} must be a number from 0 to 1.`);
+  return number;
 }
 
 export function readDefinition(file: string): unknown {
@@ -336,6 +401,8 @@ export async function runOperatorCommand(
     case "skill-list":
       return { skills: await operator.listSkills() };
   }
+  if (command.command === "followups-report")
+    return operator.followUpsReport(command);
   if (command.command === "ensure-tenant-indexes") {
     const tenants = await operator.ensureTenantIndexes(command);
     return {

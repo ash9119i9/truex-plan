@@ -90,6 +90,9 @@ interface ChatBody {
     usage: Record<string, number> | null;
     timings: Record<string, string>;
     steers?: Array<{ clientMessageId: string; text: string }>;
+    followUps?: {
+      items: Array<{ slot: number; intent: string; text: string }>;
+    };
   }>;
   hasMore: boolean;
 }
@@ -117,7 +120,12 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
   // RecoverySweep.runOnce); the stream heartbeat, which re-checks access,
   // is short so revocation shows within a test.
   async function boot(
-    chat: { recoverySweepMs?: number; streamHeartbeatMs?: number } = {},
+    chat: {
+      recoverySweepMs?: number;
+      streamHeartbeatMs?: number;
+      followUps?: boolean;
+      followUpsHoldoutPercent?: number;
+    } = {},
   ): Promise<void> {
     running = await startApp({
       mongodbUri: mongo.getUri(),
@@ -387,7 +395,8 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       .collection<ChatDoc>(CHATS_COLLECTION)
       .findOne({ _id: new ObjectId(receipt.chat.id) });
     assert.ok(chat);
-    assert.equal(chat.platformInstructionsVersion, "v4");
+    assert.equal(chat.platformInstructionsVersion, "v5");
+    assert.equal(chat.followUps, "on");
     assert.ok(
       JSON.stringify(request.body).includes(
         `This chat started on ${chat.createdAt.toISOString().slice(0, 10)} (UTC).`,
@@ -395,6 +404,205 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       "the thread uses the persisted chat date",
     );
     assert.equal(gateway.refused, 0);
+  });
+
+  test("a completed reply's block is stripped and its rows stored", async () => {
+    gateway.defaultBehavior = {
+      kind: "reply",
+      text: "The BAPI only stages the order.\n\n[truex-suggestions]\nshape: how-to; stage: build\nact: Draft an ABAP report\nverify: Check the authorisation objects\n[/truex-suggestions]",
+      chunk: 16,
+    };
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    const saved = savedOf(await finish(alice, receipt));
+    assert.equal(saved.run.status, "completed");
+    assert.equal(saved.messages[0]?.text, "The BAPI only stages the order.");
+    assert.deepEqual(saved.run.followUps, {
+      items: [
+        { slot: 1, intent: "act", text: "Draft an ABAP report" },
+        { slot: 2, intent: "verify", text: "Check the authorisation objects" },
+      ],
+    });
+    assert.doesNotMatch(JSON.stringify(saved.messages), /truex-suggestions/);
+
+    const body = await getChat(alice, receipt.chat.id);
+    assert.equal(body.messages[1]?.text, "The BAPI only stages the order.");
+    assert.equal(body.runs[0]?.followUps?.items.length, 2);
+    const raw = await runDoc(receipt.run.id);
+    assert.deepEqual(raw?.followUps, {
+      status: "ok",
+      shape: "how-to",
+      stage: "build",
+      items: [
+        { slot: 1, intent: "act", text: "Draft an ABAP report" },
+        { slot: 2, intent: "verify", text: "Check the authorisation objects" },
+      ],
+    });
+  });
+
+  test("a half block on a stopped reply is stripped and stores no rows", async () => {
+    gateway.script.push({
+      kind: "held",
+      before:
+        "Partial answer.\n[truex-suggestions]\nshape: explain; stage: none\nact: Half a row",
+      after: " never written.",
+    });
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    const events = await streamUntil(receipt, "Partial answer", async () => {
+      await json(
+        await call(
+          alice,
+          "POST",
+          `/chats/${receipt.chat.id}/runs/${receipt.run.id}/stop`,
+        ),
+        202,
+      );
+    });
+    gateway.release();
+    const saved = savedOf(events);
+    assert.equal(saved.run.status, "stopped");
+    assert.equal(saved.messages[0]?.text, "Partial answer.");
+    assert.doesNotMatch(
+      JSON.stringify(saved.messages),
+      /truex-suggestions|Half a row/,
+    );
+    assert.equal(saved.run.followUps, undefined);
+    const raw = await runDoc(receipt.run.id);
+    assert.equal(raw?.followUps, undefined);
+  });
+
+  test("a Follow Up click stores its origin; a steer drops it", async () => {
+    gateway.defaultBehavior = {
+      kind: "reply",
+      text: "First answer.\n\n[truex-suggestions]\nshape: how-to; stage: build\nact: Draft the report\n[/truex-suggestions]",
+    };
+    const first = await json<Receipt>(await startChat(alice), 202);
+    savedOf(await finish(alice, first));
+    const click = {
+      clientMessageId: clientId(),
+      text: "Draft the report",
+      followUp: { fromRunId: first.run.id, slot: 1 },
+    };
+    const clicked = await json<Receipt>(
+      await call(alice, "POST", `/chats/${first.chat.id}/messages`, click),
+      202,
+    );
+    savedOf(await finish(alice, clicked));
+    // The claim is analytics only: it never reaches the runtime, so it can
+    // change neither the prompt nor any tool approval.
+    const runtimeBody = JSON.stringify(gateway.requests.at(-1)?.body ?? {});
+    assert.doesNotMatch(runtimeBody, /followUp|fromRunId/);
+    assert.match(runtimeBody, /Draft the report/);
+    const origin = (await runDoc(clicked.run.id))?.origin;
+    assert.deepEqual(
+      {
+        source: origin?.source,
+        fromRunId: origin?.fromRunId.toHexString(),
+        slot: origin?.slot,
+      },
+      { source: "suggestion", fromRunId: first.run.id, slot: 1 },
+    );
+    // A retried send with the same clientMessageId is the same one run.
+    const replay = await call(
+      alice,
+      "POST",
+      `/chats/${first.chat.id}/messages`,
+      click,
+    );
+    assert.equal(replay.status, 200);
+    assert.equal(((await replay.json()) as Receipt).run.id, clicked.run.id);
+
+    // Into a running reply, the message is a steer: no origin is stored.
+    gateway.script.push({ kind: "held", before: "Working", after: "." });
+    const second = await json<Receipt>(await startChat(alice), 202);
+    const events = await streamUntil(second, "Working", async () => {
+      const steer = await call(
+        alice,
+        "POST",
+        `/chats/${second.chat.id}/messages`,
+        {
+          clientMessageId: clientId(),
+          text: "Steer with a claim",
+          followUp: { fromRunId: second.run.id, slot: 1 },
+        },
+      );
+      assert.equal(steer.status, 202);
+      assert.ok("steer" in ((await steer.json()) as object));
+      await json(
+        await call(
+          alice,
+          "POST",
+          `/chats/${second.chat.id}/runs/${second.run.id}/stop`,
+        ),
+        202,
+      );
+    });
+    gateway.release();
+    assert.equal(savedOf(events).run.status, "stopped");
+    assert.equal((await runDoc(second.run.id))?.origin, undefined);
+  });
+
+  test("FOLLOW_UPS=off hides stored rows and stripping continues", async () => {
+    gateway.defaultBehavior = {
+      kind: "reply",
+      text: "Answer before the switch.\n\n[truex-suggestions]\nshape: how-to; stage: build\nact: A row\n[/truex-suggestions]",
+    };
+    const first = await json<Receipt>(await startChat(alice), 202);
+    assert.equal(
+      savedOf(await finish(alice, first)).run.followUps?.items.length,
+      1,
+    );
+    assert.equal((await chatDoc(first.chat.id))?.followUps, "on");
+
+    await running.close();
+    await boot({ followUps: false });
+    try {
+      const body = await getChat(alice, first.chat.id);
+      assert.equal(body.runs[0]?.followUps, undefined);
+      assert.equal(body.messages[1]?.text, "Answer before the switch.");
+
+      const next = await json<Receipt>(await startChat(alice), 202);
+      const saved = savedOf(await finish(alice, next));
+      assert.equal(saved.messages[0]?.text, "Answer before the switch.");
+      assert.equal(saved.run.followUps, undefined);
+      assert.equal((await chatDoc(next.chat.id))?.followUps, "off");
+      assert.equal((await runDoc(next.run.id))?.followUps, undefined);
+      const prompt = JSON.stringify(gateway.requests.at(-1)?.body ?? {});
+      assert.doesNotMatch(prompt, /truex-suggestions/);
+    } finally {
+      await running.close();
+      await boot();
+    }
+  });
+
+  test("a retried first send keeps its holdout draw", async () => {
+    await running.close();
+    await boot({ followUpsHoldoutPercent: 50 });
+    const originalRandom = Math.random;
+    try {
+      Math.random = () => 0.1;
+      const input = {
+        agentId: builtinId,
+        clientMessageId: clientId(),
+        text: "Is this chat a holdout?",
+      };
+      const first = await json<Receipt>(
+        await call(alice, "POST", "/chats", input),
+        202,
+      );
+      Math.random = originalRandom;
+      savedOf(await finish(alice, first));
+      const retry = await json<Receipt>(
+        await call(alice, "POST", "/chats", input),
+        200,
+      );
+      assert.equal(retry.chat.id, first.chat.id);
+      assert.equal((await chatDoc(first.chat.id))?.followUps, "holdout");
+      assert.equal((await runDoc(first.run.id))?.followUps, undefined);
+    } finally {
+      Math.random = originalRandom;
+      await running.close();
+      await boot();
+    }
   });
 
   // Server-Timing entries in order, each with its MongoDB call count. A
@@ -1757,6 +1965,11 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       .collection<ChatDoc>(CHATS_COLLECTION);
   const chatDoc = (id: string) =>
     chatsCollection().findOne({ _id: ObjectId.createFromHexString(id) });
+  const runDoc = (id: string) =>
+    database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<RunDoc>(RUNS_COLLECTION)
+      .findOne({ _id: ObjectId.createFromHexString(id) });
   const lapse = (id: string) =>
     chatsCollection().updateOne(
       { _id: ObjectId.createFromHexString(id) },
@@ -2087,7 +2300,8 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     gateway.script.push({
       kind: "held",
       before: "Finished while",
-      after: " the platform was down.",
+      after:
+        " the platform was down.\n\n[truex-suggestions]\nshape: explain; stage: none\nact: Recovered row\n[/truex-suggestions]",
     });
     const receipt = await json<Receipt>(await startChat(alice), 202);
     await until("the model was called", () => gateway.requests.length === 1);
@@ -2123,6 +2337,9 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       body.messages[1]?.text,
       "Finished while the platform was down.",
     );
+    assert.equal(body.runs[0]?.followUps?.items[0]?.text, "Recovered row");
+    const raw = await runDoc(receipt.run.id);
+    assert.equal(raw?.followUps?.status, "ok");
     assert.equal(gateway.requests.length, 1, "not resent");
   });
 

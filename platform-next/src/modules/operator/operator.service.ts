@@ -9,6 +9,10 @@ import {
   type BuiltinListing,
 } from "../agents/builtin-agents.service";
 import type { AuditActor } from "../audit/audit";
+import {
+  buildFollowUpsReport,
+  type FollowUpsReport,
+} from "../chats/followups-report";
 import { AuditService } from "../audit/audit.service";
 import { parseConnectorSpec, type ConnectorDoc } from "../connectors/connector";
 import {
@@ -53,6 +57,15 @@ export interface AssignRoleCommand {
 export interface EnsureTenantIndexesCommand {
   operator: string;
   tenantId?: ObjectId;
+}
+
+export interface FollowUpsReportCommand {
+  operator: string;
+  since: Date;
+  // Absent scans every ready tenant.
+  tenantId?: ObjectId;
+  minSets: number;
+  close: number;
 }
 
 export interface PutModelCommand {
@@ -549,6 +562,28 @@ export class OperatorService {
       await this.recordRefusal(base, error);
       throw error;
     }
+  }
+
+  // One read-only pass over the tenant databases. Prints counts and rates
+  // only; never a suggestion's or a member's text. Not audited: it changes
+  // nothing.
+  async followUpsReport(
+    command: FollowUpsReportCommand,
+  ): Promise<FollowUpsReport> {
+    const ready = await this.tenants.listReady();
+    const selected = command.tenantId
+      ? ready.filter((tenant) => tenant._id.equals(command.tenantId))
+      : ready;
+    if (command.tenantId && selected.length === 0)
+      throw new DomainError("NOT_FOUND", "No provisioned tenant has this ID.");
+    return buildFollowUpsReport(
+      selected.map((tenant) => this.database.tenantDb(tenant.dbName)),
+      {
+        since: command.since,
+        minSets: command.minSets,
+        close: command.close,
+      },
+    );
   }
 
   // Brings one ready tenant's indexes, or every ready tenant behind this

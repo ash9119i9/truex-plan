@@ -3,6 +3,11 @@
 // the components only render. Every request names this tab's tenant through
 // api(); the live reply stream is in tenant-chat-stream.ts.
 import { api } from "./api.ts";
+import {
+  FOLLOW_UP_INTENTS,
+  FOLLOW_UPS_MAX_CHARS,
+  type FollowUpItem,
+} from "./suggestions.ts";
 import type {
   AgentSource,
   AgentTint,
@@ -153,6 +158,9 @@ export interface ChatRun {
   steers?: SteerView[];
   // Files the reply wrote that couldn't be saved; absent when none.
   unsavedFiles?: string[];
+  // The rows a completed reply offered, while Follow Ups are on; absent
+  // otherwise.
+  followUps?: { items: FollowUpItem[] };
 }
 
 // One open chat: its summary and the loaded, contiguous tail of messages.
@@ -377,6 +385,28 @@ export function parseSteer(value: unknown): SteerView | null {
   return { clientMessageId, text, createdAt };
 }
 
+const FOLLOW_UP_INTENT_VALUES = [...FOLLOW_UP_INTENTS, "ask"] as const;
+
+function parseFollowUpItems(value: unknown): FollowUpItem[] {
+  const followUps = record(value);
+  return list(followUps?.items, (raw) => {
+    const item = record(raw);
+    const slot = item?.slot;
+    const intent = oneOf(item?.intent, FOLLOW_UP_INTENT_VALUES);
+    const text = str(item?.text, FOLLOW_UPS_MAX_CHARS);
+    if (
+      typeof slot !== "number" ||
+      !Number.isInteger(slot) ||
+      slot < 1 ||
+      slot > 3 ||
+      !intent ||
+      !text
+    )
+      return null;
+    return { slot, intent, text };
+  });
+}
+
 export function parseRun(value: unknown): ChatRun | null {
   const r = record(value);
   const runId = id(r?.id);
@@ -398,6 +428,7 @@ export function parseRun(value: unknown): ChatRun | null {
       })
     : null;
   const unsavedFiles = parseUnsaved(r.unsavedFiles);
+  const followUps = parseFollowUpItems(r.followUps);
   return {
     id: runId,
     status,
@@ -406,6 +437,7 @@ export function parseRun(value: unknown): ChatRun | null {
     timings,
     ...(steers ? { steers } : {}),
     ...(unsavedFiles.length ? { unsavedFiles } : {}),
+    ...(followUps.length ? { followUps: { items: followUps } } : {}),
   };
 }
 
@@ -528,17 +560,26 @@ export const startChat = async (
 
 // A message to an open chat. The platform decides whether it starts a new
 // run or steers the one still replying, so the receipt is one or the other.
+// A click on a Follow Up row: the run and slot it came from. Analytics only;
+// the platform verifies it against the stored rows when reporting.
+export interface FollowUpOrigin {
+  fromRunId: string;
+  slot: number;
+}
+
 export const sendMessage = async (
   chat: ChatSummary,
   text: string,
   clientMessageId: string,
   attachments: readonly string[] = [],
+  followUp?: FollowUpOrigin,
 ): Promise<MessageReceipt> =>
   messageReceiptOf(
     await api(chatPath(chat.id, "/messages"), {
       clientMessageId,
       text,
       ...withUploads(attachments),
+      ...(followUp ? { followUp } : {}),
     }),
     chat,
   );

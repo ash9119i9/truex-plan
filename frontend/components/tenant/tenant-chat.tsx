@@ -65,10 +65,12 @@ import {
   type ChatSummary,
   type ChatThread,
   type LiveReply,
+  type FollowUpOrigin,
   type PendingSend,
   type RunningReply,
   type SendFailure,
 } from "@/lib/tenant-chat";
+import type { FollowUpItem } from "@/lib/suggestions";
 import { followRun } from "@/lib/tenant-chat-stream";
 import {
   discardUpload,
@@ -622,6 +624,20 @@ export function TenantChat() {
     void dispatch(key, drafts[key] ?? "");
   };
 
+  // A Follow Up row sends its text as the next message, with where it came
+  // from. Resolves true once accepted, so the row can keep its progress
+  // state; a failure re-enables the rows. The composer's draft text and
+  // files are never sent or cleared by a row; a failure puts the row's text
+  // in the composer only when it is empty.
+  const sendFollowUp = async (runId: string, item: FollowUpItem) => {
+    if (!openId || openThread?.chat.activeRunId || sendingRef.current)
+      return false;
+    return dispatch(openId, item.text, false, {
+      fromRunId: runId,
+      slot: item.slot,
+    });
+  };
+
   // Sends a message's text again as a brand-new message (a not-sent steer's
   // Resend): a fresh intent, so it gets a new clientMessageId and goes
   // through the normal send path.
@@ -737,17 +753,24 @@ export function TenantChat() {
     }
   };
 
-  const dispatch = async (key: string, text: string, resent = false) => {
+  const dispatch = async (
+    key: string,
+    text: string,
+    resent = false,
+    followUp?: FollowUpOrigin,
+  ): Promise<boolean> => {
     const chat = openThread?.chat ?? null;
     // A resend is the text of a steer that was never read; it has no files.
-    const sentFiles = resent ? [] : (draftFiles[key] ?? []);
+    // A Follow Up row sends only its own text and leaves the draft alone.
+    const sentFiles = resent || followUp ? [] : (draftFiles[key] ?? []);
     const busyNow = !!(openId && chat?.activeRunId);
-    if (sendingRef.current || !canSendMessage(text, sentFiles, busyNow)) return;
+    if (sendingRef.current || !canSendMessage(text, sentFiles, busyNow))
+      return false;
     // A reply in progress is steered, not blocked; only a read-only or
     // missing chat refuses.
-    if (openId && (!chat || readOnlyNote(chat))) return;
+    if (openId && (!chat || readOnlyNote(chat))) return false;
     const agent = openId ? null : selected;
-    if (!openId && !agent?.available) return;
+    if (!openId && !agent?.available) return false;
     sendingRef.current = true;
     setSending(true);
     setFailure(null);
@@ -785,19 +808,21 @@ export function TenantChat() {
         agent,
         attachments: pendingAttachments(sentFiles),
       });
-    setDrafts((all) => {
-      const { [key]: _sent, ...rest } = all;
-      return rest;
-    });
-    if (sentFiles.length)
-      setDraftFiles((all) => {
+    if (!followUp) {
+      setDrafts((all) => {
         const { [key]: _sent, ...rest } = all;
         return rest;
       });
-    setFileErrors((all) => (all[key] ? { ...all, [key]: "" } : all));
+      if (sentFiles.length)
+        setDraftFiles((all) => {
+          const { [key]: _sent, ...rest } = all;
+          return rest;
+        });
+      setFileErrors((all) => (all[key] ? { ...all, [key]: "" } : all));
+    }
     try {
       const receipt = openId
-        ? await sendMessage(chat!, text, clientMessageId, attachments)
+        ? await sendMessage(chat!, text, clientMessageId, attachments, followUp)
         : {
             kind: "send" as const,
             receipt: await startChat(
@@ -811,7 +836,7 @@ export function TenantChat() {
       setChats((list) => withChat(list, receipt.receipt.chat));
       // The person moved to another chat meanwhile: the reply runs anyway
       // and the list shows it.
-      if (openRef.current !== openId) return;
+      if (openRef.current !== openId) return true;
       if (receipt.kind === "steer") {
         // The steer joined the running turn: the run carries it (so a reload
         // shows it) and the optimistic bubble stays until `input` fixes it.
@@ -824,7 +849,7 @@ export function TenantChat() {
           }),
         );
         setOpened({ state: "ready" });
-        return;
+        return true;
       }
       const sent = receipt.receipt;
       const chatId = sent.chat.id;
@@ -861,6 +886,7 @@ export function TenantChat() {
         setLive({ chatId, reply: liveReply(sent.run.id, since) });
       // A repeat of a message answered meanwhile: show what was saved.
       else void load(chatId, true);
+      return true;
     } catch (error) {
       setDrafts((all) => (all[key] ? all : { ...all, [key]: text }));
       if (sentFiles.length)
@@ -879,13 +905,14 @@ export function TenantChat() {
       const required = connectionRequired(error);
       if (required) {
         if (openRef.current === openId) setConnectCard({ key, required });
-        return;
+        return false;
       }
       const failed = sendFailure(error);
       if (openRef.current === openId) {
         setFailure({ key, failure: failed });
         if (failed.reload && openId) void load(openId, true);
       }
+      return false;
     } finally {
       setPending(null);
       sendingRef.current = false;
@@ -1252,6 +1279,7 @@ export function TenantChat() {
               onLoadOlder={loadOlder}
               onReconnect={reconnect}
               onResend={resend}
+              onFollowUp={sendFollowUp}
               onApprove={(approvalId, decision) =>
                 void approve(approvalId, decision)
               }

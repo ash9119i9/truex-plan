@@ -1,6 +1,6 @@
 # Implementation Plan: Follow Up suggestions with behaviour tracking
 
-Status: planned 2026-10-25, not started. Build starts only when the user says "build". Tasks: [followup-suggestions-todo.md](followup-suggestions-todo.md). Mockup: [../docs/mockups/follow-up-suggestions.html](../docs/mockups/follow-up-suggestions.html).
+Status: built 2026-10-25. Server, browser, report and runbook are implemented and pass their checks. Task 1/10 were attempted against the live dev gateway: all enabled model profiles currently fail upstream, so no model results exist yet (see `platform-next/bench/FOLLOWUPS_MODEL_BLOCKER.md`). Tasks: [followup-suggestions-todo.md](followup-suggestions-todo.md). Mockup: [../docs/mockups/follow-up-suggestions.html](../docs/mockups/follow-up-suggestions.html). Runbook: [../docs/FOLLOW_UPS.md](../docs/FOLLOW_UPS.md).
 
 ## Overview
 
@@ -101,26 +101,28 @@ Phases: 0 check it works (weeks 1–2) → 1 learn, report only (months 1–2) �
 Full tasks with acceptance criteria and verification: [followup-suggestions-todo.md](followup-suggestions-todo.md).
 
 ### Phase 0: Prove the format
-- [ ] Task 1: Probe block compliance on the real models
+- [ ] Task 1: Probe block compliance on the real models (harness built; attempted 2026-10-25, blocked upstream — see the blocker note)
 
 ### Phase 1: Server foundation
-- [ ] Task 2: Block contract and server parser
-- [ ] Task 3: Prompt v5 and per-chat assignment
-- [ ] Task 4: Strip and store at settle
+- [x] Task 2: Block contract and server parser
+- [x] Task 3: Prompt v5 and per-chat assignment
+- [x] Task 4: Strip and store at settle
 
 ### Checkpoint A: rows exist in data, saved answers are clean
+Code and tests pass; the synthetic fixture confirmed stored rows and clean text. A real-model local chat remains for the operator.
 
 ### Phase 2: In the chat
-- [ ] Task 5: Hide the block while streaming
-- [ ] Task 6: Follow Up rows
-- [ ] Task 7: Click sends with origin
+- [x] Task 5: Hide the block while streaming
+- [x] Task 6: Follow Up rows
+- [x] Task 7: Click sends with origin
 
 ### Checkpoint B: end-to-end in the real app
+The synthetic fixture browser run confirmed rows, reload and click→origin. Approval paths still need the pre-ship pass below.
 
 ### Phase 3: Learn from it
-- [ ] Task 8: Operator report
-- [ ] Task 9: Runbook and thresholds doc
-- [ ] Task 10: Quality eval on real models
+- [x] Task 8: Operator report
+- [x] Task 9: Runbook and thresholds doc
+- [ ] Task 10: Quality eval on real models (harness built; blocked by the same upstream profiles)
 
 ### Checkpoint C: ready to ship
 

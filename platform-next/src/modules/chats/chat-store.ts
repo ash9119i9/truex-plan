@@ -130,6 +130,9 @@ export interface Settlement {
   readonly threadLost: boolean;
   // Files the run wrote that couldn't be stored (see ChatFilesService).
   readonly unsavedFiles?: readonly string[];
+  // Set by the executor before settle: rows from the last answer, for a
+  // completed run in a chat with Follow Ups on.
+  readonly followUps?: RunDoc["followUps"];
 }
 
 export interface SettleResult {
@@ -636,6 +639,7 @@ export class ChatStore {
             ...(outcome.unsavedFiles?.length
               ? { unsavedFiles: [...outcome.unsavedFiles] }
               : {}),
+            ...(outcome.followUps ? { followUps: outcome.followUps } : {}),
           },
         },
         { returnDocument: "after", session },

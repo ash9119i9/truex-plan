@@ -82,7 +82,11 @@ description, modelId, look?, tint?}`. 201 when created, 200 when a retry
     answers again. 409 `STEER_LIMIT` past 5 per reply, 409 `CHAT_BUSY` when
     it could not be added, 409 `CHAT_READ_ONLY` when the chat's
     history, model or built-in agent is gone, or the chat is archived; 429
-    over about 20 messages a minute. Text is 1–32 000 characters.
+    over about 20 messages a minute. Text is 1–32 000 characters. An optional
+    `followUp: {fromRunId, slot}` records that the text came from a Follow Up
+    row (shape-checked only; a steer drops it). Runs in the chat response
+    carry `followUps.items` for the latest rows. See
+    [docs/FOLLOW_UPS.md](docs/FOLLOW_UPS.md).
   - `GET /api/v1/chats/:id/runs/:runId/stream`: server-sent events for one
     reply: `snapshot` (text so far), `status`, `delta` (batched every 50 ms),
     `item`, `usage`, `completed` (outcome known) and `saved` (outcome stored;
@@ -168,6 +172,8 @@ npm run operator -- ensure-tenant-indexes --operator <you> --tenant <id>
 | `MODEL_GATEWAY_URL`, `MODEL_GATEWAY_SECRET`                            | The model gateway Codex calls, and the token-signing secret it shares. Secret.                                                                                                                       |
 | `CHAT_FILES_S3_BUCKET`, `CHAT_FILES_S3_REGION`, `CHAT_FILES_S3_PREFIX` | Optional S3 storage for the files chats produce (region falls back to `AWS_REGION`). Credentials come from the AWS SDK chain (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE` or a role). |
 | `CHAT_UPLOADS_ENABLED`                                                 | `1` lets members attach files to messages. Needs the bucket, and coding on in the runtime adapter.                                                                                                   |
+| `FOLLOW_UPS`                                                           | `on` (default) or `off`. Off gives new chats no Follow Up rule and hides stored rows; stripping continues.                                                                                            |
+| `FOLLOW_UPS_HOLDOUT_PERCENT`                                           | `0`–`50` (default `0`): share of new chats assigned to the no-rows holdout. Fixed at chat creation.                                                                                                   |
 
 Chat needs all four chat variables or none; with none, chat endpoints answer 503
 and everything else works. v1 runs one platform process: live replies are held

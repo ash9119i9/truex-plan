@@ -179,3 +179,104 @@
     padding: 10px 16px 4px;
   }
 }
+
+/* ---- Follow Up rows (latest completed answer) ---- */
+.tchat-followup {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.tchat-followup-label {
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.tchat-followup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.tchat-followup-list li + li {
+  border-top: 1px solid var(--line);
+}
+.tchat-fu-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 4px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
+}
+.tchat-fu-kind {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-3);
+  transition: color 0.15s;
+}
+.tchat-fu-text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.tchat-fu-go {
+  flex: none;
+  margin-top: 2px;
+  color: var(--ink-3);
+  opacity: 0.45;
+  transition:
+    opacity 0.15s,
+    transform 0.15s,
+    color 0.15s;
+}
+.tchat-fu-row:hover,
+.tchat-fu-row:focus-visible {
+  background: var(--surface-3);
+}
+.tchat-fu-row:hover .tchat-fu-go,
+.tchat-fu-row:focus-visible .tchat-fu-go {
+  opacity: 1;
+  color: var(--accent-fg);
+  transform: translateX(2px);
+}
+.tchat-fu-row:hover .tchat-fu-kind,
+.tchat-fu-row:focus-visible .tchat-fu-kind {
+  color: var(--accent-fg);
+}
+.tchat-fu-row[data-intent="act"] .tchat-fu-kind {
+  color: var(--accent-fg);
+}
+.tchat-fu-row:disabled {
+  cursor: default;
+  color: var(--ink-3);
+  background: none;
+}
+.tchat-fu-row:disabled .tchat-fu-go {
+  opacity: 0;
+}
+.tchat-fu-row.is-picked {
+  color: var(--ink);
+}
+.tchat-fu-row.is-picked .tchat-fu-go {
+  opacity: 1;
+  animation: tchat-fu-spin 1s linear infinite;
+  transform: none;
+}
+@keyframes tchat-fu-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

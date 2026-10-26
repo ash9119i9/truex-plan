@@ -15,10 +15,12 @@ import {
   MAX_ACTIVITY_FILES,
   MAX_ACTIVITY_PATH,
   type ApprovalDecision,
+  type FollowUpsAssignment,
   type RunErrorInfo,
   type RunUsage,
   type MessageAttachment,
 } from "./chat";
+import { parseFollowUps, type ParsedFollowUps } from "./followups";
 import {
   ChatFilesService,
   type CaptureResult,
@@ -86,6 +88,10 @@ export interface Dispatch {
   // The chat's Allow-once network grants body.network includes (their card
   // messages); removed from the chat when the run ends.
   readonly networkOnce?: readonly ObjectId[];
+  // Decided at chat creation. Absent (an older chat) is off. Rows are stored
+  // only for a completed run of an "on" chat; stripping happens for every
+  // run whatever this says.
+  readonly followUps?: FollowUpsAssignment;
 }
 
 export type Phase =
@@ -1531,6 +1537,9 @@ export class RunExecutor implements OnApplicationShutdown {
   }
 
   private async finish(run: LiveRun, outcome: Settlement): Promise<void> {
+    // Before anything is shown or saved: the block never reaches a saved
+    // message, on the live, reconcile or recovery path (all settle here).
+    outcome = withFollowUpRows(outcome, run.dispatch.followUps);
     run.flush();
     run.completed = {
       status: outcome.status,
@@ -1657,6 +1666,37 @@ export class RunExecutor implements OnApplicationShutdown {
   async onApplicationShutdown(): Promise<void> {
     await this.drain();
   }
+}
+
+// Removes the suggestion block from every reply the run produced and, for a
+// completed run in an "on" chat, keeps the rows from its final non-empty
+// answer. Runs of holdout, off and pre-v5 chats are stripped all the same.
+export function withFollowUpRows(
+  outcome: Settlement,
+  assignment: FollowUpsAssignment | undefined,
+): Settlement {
+  const items: SettleItem[] = [];
+  let final: ParsedFollowUps | null = null;
+  for (const item of outcome.items) {
+    if (item.type !== "reply") {
+      items.push(item);
+      continue;
+    }
+    const parsed = parseFollowUps(item.text);
+    if (parsed.text.trim().length > 0) final = parsed;
+    items.push(
+      parsed.text === item.text ? item : { ...item, text: parsed.text },
+    );
+  }
+  if (assignment !== "on" || outcome.status !== "completed")
+    return { ...outcome, items };
+  return {
+    ...outcome,
+    items,
+    followUps: final
+      ? final.followUps
+      : { status: "missing", shape: "unknown", stage: "unknown", items: [] },
+  };
 }
 
 // The files a run's completed edits left in the chat, in edit order: added

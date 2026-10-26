@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { tintOf } from "@/lib/agent-look";
+import { stripSuggestions, type FollowUpItem } from "@/lib/suggestions";
+import { FollowUpRows } from "./follow-up-rows";
 import {
   exchangeKey,
   exchangesOf,
@@ -274,6 +276,7 @@ export const Transcript = memo(function Transcript({
   onLoadOlder,
   onReconnect,
   onResend,
+  onFollowUp,
   onApprove,
   approvalBusy,
   tenantId,
@@ -288,6 +291,8 @@ export const Transcript = memo(function Transcript({
   onReconnect: () => void;
   // Sends a not-sent message's text again as a new message.
   onResend: (text: string) => void;
+  // Sends a Follow Up row as the next message, recording where it came from.
+  onFollowUp: (runId: string, item: FollowUpItem) => Promise<boolean>;
   // Answers a pending write-tool approval card.
   onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
   // The approvalId whose answer is in flight (its card's buttons disabled),
@@ -318,6 +323,24 @@ export const Transcript = memo(function Transcript({
       0,
     ) ?? 0;
   const firstId = thread.messages[0]?.id;
+  // Rows only under the latest completed answer, with no reply running and
+  // no read-only block. `live` covers streaming and pending approvals; the
+  // last message check keeps a stopped/failed or steered-away answer quiet.
+  const followUps = (() => {
+    if (live || thread.chat.activeRunId || thread.chat.readOnly) return null;
+    const last = shown.at(-1);
+    if (!last?.run || last.run.status !== "completed") return null;
+    const items = last.run.followUps?.items ?? [];
+    const answer = last.messages.at(-1);
+    if (
+      !items.length ||
+      !answer ||
+      answer.role !== "assistant" ||
+      answer.state !== "complete"
+    )
+      return null;
+    return { runId: last.run.id, items };
+  })();
 
   // A newly opened chat starts at its end.
   useLayoutEffect(() => {
@@ -398,7 +421,7 @@ export const Transcript = memo(function Transcript({
             )}
           </div>
         )}
-        {shown.map((exchange) => (
+        {shown.map((exchange, index) => (
           <Exchange
             key={exchangeKey(exchange)}
             messages={exchange.messages}
@@ -411,6 +434,8 @@ export const Transcript = memo(function Transcript({
             tenantId={tenantId}
             onReconnect={onReconnect}
             onResend={onResend}
+            followUps={index === shown.length - 1 ? followUps : null}
+            onFollowUp={onFollowUp}
             onApprove={onApprove}
             approvalBusy={approvalBusy}
             files={filesOfRun(files, exchange.runId)}
@@ -432,6 +457,8 @@ function Exchange({
   tenantId,
   onReconnect,
   onResend,
+  followUps,
+  onFollowUp,
   onApprove,
   approvalBusy,
   files,
@@ -446,6 +473,8 @@ function Exchange({
   tenantId: string;
   onReconnect: () => void;
   onResend: (text: string) => void;
+  followUps: { runId: string; items: readonly FollowUpItem[] } | null;
+  onFollowUp: (runId: string, item: FollowUpItem) => Promise<boolean>;
   onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
   approvalBusy: string | null;
   // The files this reply stored (newest version of each path).
@@ -484,6 +513,8 @@ function Exchange({
           hue={hue}
           connectors={connectors}
           onResend={onResend}
+          followUps={followUps}
+          onFollowUp={onFollowUp}
           files={files}
         />
       )}
@@ -1101,6 +1132,8 @@ function SavedExchange({
   hue,
   connectors,
   onResend,
+  followUps,
+  onFollowUp,
   files,
 }: {
   messages: ChatMessage[];
@@ -1109,6 +1142,8 @@ function SavedExchange({
   hue: string;
   connectors: ConnectorRef[];
   onResend: (text: string) => void;
+  followUps: { runId: string; items: readonly FollowUpItem[] } | null;
+  onFollowUp: (runId: string, item: FollowUpItem) => Promise<boolean>;
   files: ChatFile[];
 }) {
   const note = run ? outcomeNote(run.status, run.error) : null;
@@ -1165,6 +1200,14 @@ function SavedExchange({
               usage={index === lastAgentIndex ? usage : ""}
               failed={run?.status === "failed"}
               card={index === lastAgentIndex ? card : null}
+              followUps={
+                index === lastAgentIndex && followUps ? (
+                  <FollowUpRows
+                    items={followUps.items}
+                    onSelect={(item) => onFollowUp(followUps.runId, item)}
+                  />
+                ) : null
+              }
             />
           </AgentReply>
         ),
@@ -1235,6 +1278,7 @@ function SavedBody({
   usage,
   failed,
   card,
+  followUps,
 }: {
   entries: ChatMessage[];
   connectors: ConnectorRef[];
@@ -1243,6 +1287,8 @@ function SavedBody({
   failed: boolean;
   // The reply's file card, after its last paragraph.
   card: ReactNode;
+  // Follow Up rows, under the latest completed answer only.
+  followUps?: ReactNode;
 }) {
   const progress = progressFlags(
     entries.map((m) => (m.role === "tool" ? "tool" : "reply")),
@@ -1285,11 +1331,17 @@ function SavedBody({
           <ProgressNote key={entry.id} text={entry.text} streaming={false} />
         ) : (
           <div key={entry.id} className="answer markdown">
-            <StreamingMarkdown text={entry.text} streaming={false} />
+            <StreamingMarkdown
+              text={stripSuggestions(entry.text)}
+              streaming={false}
+            />
             {messageStateNote(entry) && (
               <p className="msg-foot">{messageStateNote(entry)}</p>
             )}
-            <CopyTextButton text={entry.text} label="Copy answer" />
+            <CopyTextButton
+              text={stripSuggestions(entry.text)}
+              label="Copy answer"
+            />
           </div>
         ),
       )}
@@ -1298,6 +1350,7 @@ function SavedBody({
         <p className={failed ? "msg-foot tchat-failed" : "msg-foot"}>{note}</p>
       )}
       {usage && <p className="msg-foot">{usage}</p>}
+      {followUps}
     </>
   );
 }
@@ -1314,7 +1367,10 @@ function ProgressNote({
 }) {
   return (
     <div className="progress-note markdown">
-      <StreamingMarkdown text={text} streaming={streaming} />
+      <StreamingMarkdown
+        text={stripSuggestions(text, streaming)}
+        streaming={streaming}
+      />
     </div>
   );
 }
@@ -1414,7 +1470,10 @@ function LiveBody({
           <ProgressNote key={item.itemId} text={item.text} streaming={false} />
         ) : item.type === "reply" ? (
           <div key={item.itemId} className="answer markdown">
-            <StreamingMarkdown text={item.text} streaming={streaming} />
+            <StreamingMarkdown
+              text={stripSuggestions(item.text, streaming)}
+              streaming={streaming}
+            />
             {streaming && item.itemId === lastReplyId && (
               <span className="caret" aria-hidden="true" />
             )}

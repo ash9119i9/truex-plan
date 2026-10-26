@@ -24,7 +24,10 @@ import { CONNECTION_INDEXES } from "../connectors/connection";
 // 5: owner_state and staged_ttl on chat_uploads, for attached files. A
 // tenant still behind keeps staged uploads forever and counts them by a
 // collection scan; ensure-tenant-indexes before setting CHAT_UPLOADS_ENABLED.
-export const TENANT_INDEX_VERSION = 5;
+// 6: followups_created on runs, for the Follow Up report. A tenant still
+// behind reports correctly, by a collection scan; ensure-tenant-indexes
+// before running followups-report on a large database.
+export const TENANT_INDEX_VERSION = 6;
 
 const TENANT_INDEXES = {
   ...CHAT_INDEXES,

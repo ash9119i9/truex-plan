@@ -14,6 +14,12 @@ export interface ChatConfig {
   // runtime's coding sandbox. Off by default: an adapter older than the
   // network contract refuses the field, so turn this on after it is deployed.
   readonly sandboxNetwork?: boolean;
+  // FOLLOW_UPS=on|off (default on): whether new chats ask the model for
+  // Follow Up rows. Off also stops the API from returning stored rows.
+  readonly followUps?: boolean;
+  // FOLLOW_UPS_HOLDOUT_PERCENT=0-50 (default 0): share of new chats that get
+  // no rows, for the holdout comparison.
+  readonly followUpsHoldoutPercent?: number;
   // Not read from the environment: tests shorten them. Defaults are
   // RECOVERY_SWEEP_MS (0 turns the sweep off) and STREAM_HEARTBEAT_MS.
   readonly recoverySweepMs?: number;
@@ -82,12 +88,26 @@ export function loadChatConfig(
   const sandboxNetwork = env.CHAT_SANDBOX_NETWORK;
   if (sandboxNetwork !== undefined && !["0", "1"].includes(sandboxNetwork))
     problems.push("CHAT_SANDBOX_NETWORK must be 0 or 1.");
+  const followUps = env.FOLLOW_UPS;
+  if (followUps !== undefined && followUps !== "on" && followUps !== "off")
+    problems.push("FOLLOW_UPS must be on or off.");
+  const holdoutRaw = env.FOLLOW_UPS_HOLDOUT_PERCENT;
+  const holdout = holdoutRaw === undefined ? 0 : Number(holdoutRaw);
+  if (
+    holdoutRaw !== undefined &&
+    (!/^\d{1,2}$/.test(holdoutRaw) || holdout > 50)
+  )
+    problems.push(
+      "FOLLOW_UPS_HOLDOUT_PERCENT must be a whole number from 0 to 50.",
+    );
   if (problems.length > before || !adapterUrl || !gatewayUrl) return undefined;
   return {
     adapterUrl,
     adapterToken: env.RUNTIME_ADAPTER_TOKEN!,
     gatewayUrl,
     gatewaySecret: env.MODEL_GATEWAY_SECRET!,
+    followUps: followUps !== "off",
+    followUpsHoldoutPercent: holdout,
     ...(sandboxNetwork === "1" ? { sandboxNetwork: true } : {}),
   };
 }

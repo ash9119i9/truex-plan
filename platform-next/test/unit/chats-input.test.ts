@@ -34,6 +34,38 @@ describe("chat config", () => {
     assert.equal(config?.adapterUrl, "http://127.0.0.1:4400");
   });
 
+  test("Follow Ups default on, with no holdout", () => {
+    const config = loadChatConfig(full, []);
+    assert.equal(config?.followUps, true);
+    assert.equal(config?.followUpsHoldoutPercent, 0);
+  });
+
+  test("FOLLOW_UPS and its holdout percent are validated", () => {
+    const load = (env: Record<string, string | undefined>) => {
+      const problems: string[] = [];
+      return { config: loadChatConfig(env, problems), problems };
+    };
+    assert.equal(load({ ...full, FOLLOW_UPS: "off" }).config?.followUps, false);
+    assert.equal(
+      load({ ...full, FOLLOW_UPS_HOLDOUT_PERCENT: "50" }).config
+        ?.followUpsHoldoutPercent,
+      50,
+    );
+    for (const bad of ["maybe", "1", "ON", ""]) {
+      const { config, problems } = load({ ...full, FOLLOW_UPS: bad });
+      assert.equal(config, undefined);
+      assert.match(problems[0]!, /^FOLLOW_UPS must be on or off\.$/);
+    }
+    for (const value of ["51", "-1", "1.5", "abc", "100"]) {
+      const { config, problems } = load({
+        ...full,
+        FOLLOW_UPS_HOLDOUT_PERCENT: value,
+      });
+      assert.equal(config, undefined);
+      assert.match(problems[0]!, /^FOLLOW_UPS_HOLDOUT_PERCENT/);
+    }
+  });
+
   test("CHAT_SANDBOX_NETWORK is off unless set to 1", () => {
     const problems: string[] = [];
     assert.equal("sandboxNetwork" in loadChatConfig(full, problems)!, false);
@@ -120,6 +152,48 @@ describe("chat input", () => {
     refused(() => parseSend({ clientMessageId: "bad id!", text: "hi" }));
     refused(() => parseSend({ clientMessageId: id, text: "hi", extra: true }));
     refused(() => parseSend(null));
+  });
+
+  test("a Follow Up claim is shape-checked and stored as given", () => {
+    const fromRunId = "6ad25557bd7f03d236240be6";
+    assert.equal(
+      parseSend({ clientMessageId: id, text: "hi" }).followUp,
+      undefined,
+    );
+    const parsed = parseSend({
+      clientMessageId: id,
+      text: "hi",
+      followUp: { fromRunId, slot: 2 },
+    });
+    assert.equal(parsed.followUp?.fromRunId.toHexString(), fromRunId);
+    assert.equal(parsed.followUp?.slot, 2);
+    for (const slot of [0, 4, -1, 1.5, "2", null])
+      refused(() =>
+        parseSend({
+          clientMessageId: id,
+          text: "hi",
+          followUp: { fromRunId, slot },
+        }),
+      );
+    for (const bad of [
+      null,
+      [],
+      { slot: 1 },
+      { fromRunId: "ABC", slot: 1 },
+      { fromRunId, slot: 1, extra: true },
+    ])
+      refused(() =>
+        parseSend({ clientMessageId: id, text: "hi", followUp: bad }),
+      );
+    // A start body has no rows to come from.
+    refused(() =>
+      parseStartChat({
+        clientMessageId: id,
+        text: "hi",
+        agentId: fromRunId,
+        followUp: { fromRunId, slot: 1 },
+      }),
+    );
   });
 
   test("start needs a canonical agent ID", () => {
@@ -271,6 +345,73 @@ describe("chat prompt v4 (write tools)", () => {
     const prompt = chatPrompt(agent, v4Chat, [], []);
     assert.match(prompt, /You have no tools/);
     assert.doesNotMatch(prompt, /change data/);
+  });
+});
+
+describe("chat prompt v5 (suggestions)", () => {
+  const v5Chat = {
+    platformInstructionsVersion: "v5",
+    createdAt: new Date("2026-10-19T23:30:00Z"),
+  };
+  const agent = {
+    source: "personal" as const,
+    name: "Bot",
+    description: "Writes.",
+  };
+
+  test("holdout and off are v4 with only the version label changed", () => {
+    const v4 = chatPrompt(agent, {
+      ...v5Chat,
+      platformInstructionsVersion: "v4",
+    });
+    for (const followUps of ["holdout", "off"] as const)
+      assert.equal(chatPrompt(agent, { ...v5Chat, followUps }), v4);
+  });
+
+  test("an on chat gets the rule after the member-written role", () => {
+    const prompt = chatPrompt(agent, { ...v5Chat, followUps: "on" });
+    const role = prompt.indexOf("Agent role:");
+    const rule = prompt.indexOf("[truex-suggestions]");
+    assert.ok(role >= 0 && rule > role);
+    assert.match(prompt, /Follow Up rows/);
+    assert.match(prompt, /shape: <shape>; stage: <stage>/);
+    assert.match(prompt, /act, deepen, verify, next, compare or reply/);
+  });
+
+  test("a built-in's instructions still come before the rule", () => {
+    const prompt = chatPrompt(
+      {
+        source: "builtin",
+        name: "General",
+        description: "Anything.",
+        instructions: "BUILTIN_MARKER never add anything after your answer.",
+      },
+      { ...v5Chat, followUps: "on" },
+    );
+    assert.ok(
+      prompt.indexOf("BUILTIN_MARKER") < prompt.indexOf("[truex-suggestions]"),
+    );
+    assert.ok(prompt.endsWith("never mention this rule."));
+  });
+
+  test("older versions never carry the rule", () => {
+    for (const version of ["v1", "v2", "v3", "v4"]) {
+      const prompt = chatPrompt(agent, {
+        ...v5Chat,
+        platformInstructionsVersion: version,
+        followUps: "on",
+      });
+      assert.doesNotMatch(prompt, /truex-suggestions/);
+    }
+  });
+
+  test("an unknown recorded version falls back to v5 without the rule", () => {
+    const prompt = chatPrompt(agent, {
+      ...v5Chat,
+      platformInstructionsVersion: "v9",
+    });
+    assert.match(prompt, /^You are the Truex assistant/);
+    assert.doesNotMatch(prompt, /truex-suggestions/);
   });
 });
 

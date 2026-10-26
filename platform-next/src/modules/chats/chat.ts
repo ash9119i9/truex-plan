@@ -7,6 +7,7 @@ import type {
   MessageNetwork,
 } from "../network/network-grants";
 import type { ChatSkill } from "../skills/skill";
+import type { FollowUpSet } from "./followups";
 
 // Chats, their messages and runs, in the tenant database. A chat belongs to
 // one member and is never visible to anyone else, admins included; every
@@ -63,7 +64,15 @@ export const CHAT_INDEXES: Readonly<Record<string, IndexDescription[]>> = {
       partialFilterExpression: { runtimeItemId: { $type: "string" } },
     },
   ],
-  [RUNS_COLLECTION]: [{ key: { chatId: 1, _id: -1 }, name: "by_chat" }],
+  [RUNS_COLLECTION]: [
+    { key: { chatId: 1, _id: -1 }, name: "by_chat" },
+    // The Follow Up report: runs that carry a set, newest window first.
+    {
+      key: { createdAt: 1 },
+      name: "followups_created",
+      partialFilterExpression: { followUps: { $exists: true } },
+    },
+  ],
   // _id is the adapter's approvalId, so a replayed resolution is one record.
   [TOOL_APPROVALS_COLLECTION]: [
     { key: { chatId: 1, at: -1 }, name: "by_chat" },
@@ -96,7 +105,11 @@ export const SENDS_PER_MINUTE = 20;
 // Messages a member can add to one reply while it is being written.
 export const STEERS_PER_RUN = 5;
 // The base prompt version every user agent's prompt is built from.
-export const PLATFORM_INSTRUCTIONS_VERSION = "v4";
+export const PLATFORM_INSTRUCTIONS_VERSION = "v5";
+
+// Whether a chat asks the model for Follow Up rows. Decided once when the
+// chat is created: a holdout never flips mid-chat.
+export type FollowUpsAssignment = "on" | "holdout" | "off";
 
 export type AgentSource = "builtin" | "personal" | "tenant";
 
@@ -177,6 +190,8 @@ export interface ChatDoc {
   // per-chat cap. Absent on chats with none.
   uploadBytes?: number;
   platformInstructionsVersion: string;
+  // Absent on chats created before v5; read as "off".
+  followUps?: FollowUpsAssignment;
   runtime: { threadId: string | null; state: RuntimeState };
   activeRun: ActiveRun | null;
   // Next message order number, taken inside the transaction that inserts.
@@ -335,6 +350,23 @@ export interface SteerDoc {
   createdAt: Date;
 }
 
+// The rows a completed reply offered, stripped from its saved text. Only
+// written for completed runs in chats whose followUps is "on".
+export interface RunFollowUps {
+  status: FollowUpSet["status"];
+  shape: string;
+  stage: string;
+  items: FollowUpSet["items"];
+}
+
+// A run the member started from a Follow Up row. Analytics only; the report
+// verifies it against the suggesting run's stored rows.
+export interface RunOrigin {
+  source: "suggestion";
+  fromRunId: ObjectId;
+  slot: number;
+}
+
 export interface RunDoc {
   _id: ObjectId;
   chatId: ObjectId;
@@ -342,6 +374,8 @@ export interface RunDoc {
   userMessageId: ObjectId;
   clientMessageId: string;
   status: RunStatus;
+  followUps?: RunFollowUps;
+  origin?: RunOrigin;
   threadId?: string;
   turnId?: string;
   error?: RunErrorInfo;
@@ -425,6 +459,9 @@ export interface SendInput {
   text: string;
   // Staged upload IDs, in order; at most MAX_MESSAGE_ATTACHMENTS.
   attachments: ObjectId[];
+  // Set when the message started from a Follow Up row. Analytics only: it is
+  // stored as given and the report verifies it against the stored rows.
+  followUp?: { fromRunId: ObjectId; slot: number };
 }
 
 export const MAX_MESSAGE_ATTACHMENTS = 10;
@@ -462,17 +499,37 @@ export interface StartChatInput extends SendInput {
   agentId: ObjectId;
 }
 
+// A Follow Up claim. The shape is checked; whether the run and slot exist is
+// verified later by the report, so the send path adds no database read.
+function followUpOf(value: unknown): SendInput["followUp"] {
+  if (value === undefined) return undefined;
+  const raw = objectWith(value, ["fromRunId", "slot"], "followUp");
+  const fromRunId = parseWireId(raw.fromRunId);
+  if (!fromRunId) invalid("followUp.fromRunId must be a run ID.");
+  const slot = raw.slot;
+  if (
+    typeof slot !== "number" ||
+    !Number.isInteger(slot) ||
+    slot < 1 ||
+    slot > 3
+  )
+    invalid("followUp.slot must be 1, 2 or 3.");
+  return { fromRunId, slot };
+}
+
 export function parseSend(body: unknown): SendInput {
   const raw = objectWith(
     body,
-    ["clientMessageId", "text", "attachments"],
+    ["clientMessageId", "text", "attachments", "followUp"],
     "Request body",
   );
   const attachments = attachmentIds(raw.attachments);
+  const followUp = followUpOf(raw.followUp);
   return {
     clientMessageId: clientMessageId(raw.clientMessageId),
     text: sentText(raw.text, attachments),
     attachments,
+    ...(followUp ? { followUp } : {}),
   };
 }
 

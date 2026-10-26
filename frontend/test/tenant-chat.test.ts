@@ -217,6 +217,30 @@ test("starts a chat and sends follow-ups with the message ID", async (t) => {
   });
 });
 
+test("a Follow Up click sends its origin with the message", async (t) => {
+  const sent = mockFetch(t, () =>
+    Response.json(
+      {
+        chat: chat({ activeRunId: RUN }),
+        message: message(3, "user"),
+        run: run({ status: "accepted" }),
+        created: true,
+      },
+      { status: 202 },
+    ),
+  );
+  const open = parseChat(chat())!;
+  await sendMessage(open, "Check the access sequence", "client-id-fu", [], {
+    fromRunId: RUN,
+    slot: 2,
+  });
+  assert.deepEqual(sent[0].body, {
+    clientMessageId: "client-id-fu",
+    text: "Check the access sequence",
+    followUp: { fromRunId: RUN, slot: 2 },
+  });
+});
+
 test("a follow-up receipt without its agent keeps the chat's agent", async (t) => {
   const { agent: _left, ...withoutAgent } = chat({ activeRunId: RUN });
   const replies = [
@@ -727,6 +751,29 @@ test("parseRun reads the steers it is carrying; absent once settled", () => {
   assert.equal(withSteers.steers?.[0].text, "Steer");
   // No steers array (a settled run / an older platform) leaves the field off.
   assert.equal("steers" in parseRun(run())!, false);
+});
+
+test("parseRun keeps only well-formed Follow Up items", () => {
+  const items = [
+    { slot: 1, intent: "act", text: "Draft the report" },
+    { slot: 2, intent: "ask", text: "Which table is it?" },
+    { slot: 0, intent: "act", text: "Bad slot" },
+    { slot: 3, intent: "shout", text: "Bad intent" },
+    { slot: 3, intent: "verify", text: "" },
+    "not an item",
+  ];
+  const parsed = parseRun(run({ followUps: { items } }))!;
+  assert.deepEqual(parsed.followUps, {
+    items: [
+      { slot: 1, intent: "act", text: "Draft the report" },
+      { slot: 2, intent: "ask", text: "Which table is it?" },
+    ],
+  });
+  assert.equal("followUps" in parseRun(run())!, false);
+  assert.equal(
+    "followUps" in parseRun(run({ followUps: { items: [] } }))!,
+    false,
+  );
 });
 
 test("a steer joins the run on the open chat; a foreign one is ignored", () => {

@@ -92,6 +92,7 @@ function seqOf(value: unknown): number {
 export class ChatsController {
   private readonly logger = new Logger("ChatStream");
   private readonly heartbeatMs: number;
+  private readonly followUpsEnabled: boolean;
 
   constructor(
     @Inject(APP_CONFIG) config: AppConfig,
@@ -102,6 +103,8 @@ export class ChatsController {
     private readonly memberships: MembershipsService,
   ) {
     this.heartbeatMs = config.chat?.streamHeartbeatMs ?? STREAM_HEARTBEAT_MS;
+    this.followUpsEnabled =
+      config.chat !== undefined && config.chat.followUps !== false;
   }
 
   @Get()
@@ -354,7 +357,7 @@ export class ChatsController {
     };
     const send = (event: LiveEvent | { type: string; data: unknown }) =>
       write(
-        `event: ${event.type}\ndata: ${JSON.stringify(present(event))}\n\n`,
+        `event: ${event.type}\ndata: ${JSON.stringify(present(event, this.followUpsEnabled))}\n\n`,
       );
 
     const savedReply = (saved: SettleResult) => {
@@ -466,13 +469,19 @@ export function contentDisposition(name: string): string {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
-function present(event: { type: string; data: unknown }): unknown {
+function present(
+  event: { type: string; data: unknown },
+  showFollowUps: boolean,
+): unknown {
   if (event.type !== "saved") return event.data;
   const data = event.data as {
     run: Parameters<typeof runView>[0];
     messages: Parameters<typeof messageView>[0][];
   };
-  return { run: runView(data.run), messages: data.messages.map(messageView) };
+  return {
+    run: runView(data.run, showFollowUps),
+    messages: data.messages.map(messageView),
+  };
 }
 
 // A saved command or file change as the live stream shows it.

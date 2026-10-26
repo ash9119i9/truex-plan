@@ -1,0 +1,461 @@
+[
+  {
+    "name": "full block at end",
+    "text": "The BAPI only stages the order.\n\n[truex-suggestions]\nshape: how-to; stage: build\nact: Draft an ABAP report that calls the BAPI and commits the work\nverify: Check which authorisation objects BAPI_PO_CREATE1 needs\ndeepen: Explain how the return table reports partial failures\n[/truex-suggestions]\n",
+    "expect": {
+      "text": "The BAPI only stages the order.",
+      "status": "ok",
+      "shape": "how-to",
+      "stage": "build",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "Draft an ABAP report that calls the BAPI and commits the work"
+        },
+        {
+          "slot": 2,
+          "intent": "verify",
+          "text": "Check which authorisation objects BAPI_PO_CREATE1 needs"
+        },
+        {
+          "slot": 3,
+          "intent": "deepen",
+          "text": "Explain how the return table reports partial failures"
+        }
+      ]
+    }
+  },
+  {
+    "name": "empty block is a deliberate none",
+    "text": "Hello! How can I help?\n\n[truex-suggestions]\n[/truex-suggestions]\n",
+    "expect": {
+      "text": "Hello! How can I help?",
+      "status": "none",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "shape line only is still none",
+    "text": "Hi there.\n[truex-suggestions]\nshape: chat; stage: none\n[/truex-suggestions]",
+    "expect": {
+      "text": "Hi there.",
+      "status": "none",
+      "shape": "chat",
+      "stage": "none",
+      "items": []
+    }
+  },
+  {
+    "name": "answer without a block is unchanged",
+    "text": "Plain answer with [brackets] and - dashes",
+    "expect": {
+      "text": "Plain answer with [brackets] and - dashes",
+      "status": "missing",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "a block inside a fence is content",
+    "text": "```text\n[truex-suggestions]\nact: Not a row\n[/truex-suggestions]\n```",
+    "expect": {
+      "text": "```text\n[truex-suggestions]\nact: Not a row\n[/truex-suggestions]\n```",
+      "status": "missing",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "half-written block at the end is stripped",
+    "text": "Done.\n\n[truex-suggestions]\nshape: explain; stage: none\nact: Do it",
+    "expect": {
+      "text": "Done.",
+      "status": "missing",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "a marker still arriving is hidden while streaming",
+    "streaming": true,
+    "text": "Answer\n\n[truex-sugg",
+    "expect": {
+      "text": "Answer",
+      "status": "missing",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "an open marker still arriving is hidden while streaming",
+    "streaming": true,
+    "text": "Answer\n[truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "missing",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "unknown shape and stage become unknown",
+    "text": "Answer\n[truex-suggestions]\nshape: howto; stage: deploy\nact: Run it\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "Run it"
+        }
+      ]
+    }
+  },
+  {
+    "name": "unknown and missing intents become ask",
+    "text": "Answer\n[truex-suggestions]\nshape: explain; stage: understand\nsuggest: Try the variant\njust a plain question?\ndeeper: Explain more\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "explain",
+      "stage": "understand",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "ask",
+          "text": "Try the variant"
+        },
+        {
+          "slot": 2,
+          "intent": "ask",
+          "text": "just a plain question?"
+        },
+        {
+          "slot": 3,
+          "intent": "ask",
+          "text": "Explain more"
+        }
+      ]
+    }
+  },
+  {
+    "name": "more than three rows keeps the first three valid",
+    "text": "Answer\n[truex-suggestions]\nshape: how-to; stage: test\nact: One\nverify: Two\ndeepen: Three\nnext: Four\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "how-to",
+      "stage": "test",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "One"
+        },
+        {
+          "slot": 2,
+          "intent": "verify",
+          "text": "Two"
+        },
+        {
+          "slot": 3,
+          "intent": "deepen",
+          "text": "Three"
+        }
+      ]
+    }
+  },
+  {
+    "name": "rows are cleaned, list markers tolerated and duplicates dropped",
+    "text": "Done.\n[truex-suggestions]\nshape: compare; stage: design\n- act: **Compare the two tables**\n* act: compare the two tables\n\"verify: Check the access sequence\"\n**next**: Show the next step\n[/truex-suggestions]",
+    "expect": {
+      "text": "Done.",
+      "status": "ok",
+      "shape": "compare",
+      "stage": "design",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "Compare the two tables"
+        },
+        {
+          "slot": 2,
+          "intent": "verify",
+          "text": "Check the access sequence"
+        },
+        {
+          "slot": 3,
+          "intent": "next",
+          "text": "Show the next step"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a block with no valid rows is invalid",
+    "text": "Answer\n[truex-suggestions]\nshape: reference; stage: locate\nact:\n- \nverify: This row has a control character \u0007\ncompare: ‮reversed‬\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "invalid",
+      "shape": "reference",
+      "stage": "locate",
+      "items": []
+    }
+  },
+  {
+    "name": "invalid rows are skipped while valid rows remain",
+    "text": "Answer\n[truex-suggestions]\nshape: explain; stage: none\nact: This row is far too long to keep because it goes on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on and on\nverify: Keep this one\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "explain",
+      "stage": "none",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "verify",
+          "text": "Keep this one"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a lone surrogate row is refused",
+    "text": "Answer\n[truex-suggestions]\nshape: verify; stage: operate\nverify: Good row\nact: Bad \ud800 row\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "verify",
+      "stage": "operate",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "verify",
+          "text": "Good row"
+        }
+      ]
+    }
+  },
+  {
+    "name": "CRLF is understood",
+    "text": "Answer\r\n[truex-suggestions]\r\nshape: troubleshoot; stage: locate\r\nact: Read the job log\r\n[/truex-suggestions]\r\n",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "troubleshoot",
+      "stage": "locate",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "Read the job log"
+        }
+      ]
+    }
+  },
+  {
+    "name": "nested markers never leak into the answer",
+    "text": "Answer\n[truex-suggestions]\nshape: explain; stage: none\nact: Outer row\n[truex-suggestions]\nshape: verify; stage: test\nverify: Inner row\n[/truex-suggestions]\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "verify",
+      "stage": "test",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "verify",
+          "text": "Inner row"
+        }
+      ]
+    }
+  },
+  {
+    "name": "text after the block is kept",
+    "text": "Top\n[truex-suggestions]\nshape: explain; stage: none\nact: Go\n[/truex-suggestions]\nBottom",
+    "expect": {
+      "text": "Top\n\nBottom",
+      "status": "ok",
+      "shape": "explain",
+      "stage": "none",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "Go"
+        }
+      ]
+    }
+  },
+  {
+    "name": "the old bullet format still parses as ask rows",
+    "text": "Here is the fix.\n\n[truex-suggestions]\n- How do I deploy this?\n- Can you add tests?\n[/truex-suggestions]\n",
+    "expect": {
+      "text": "Here is the fix.",
+      "status": "ok",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "ask",
+          "text": "How do I deploy this?"
+        },
+        {
+          "slot": 2,
+          "intent": "ask",
+          "text": "Can you add tests?"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a repeated marker without a close strips to the end",
+    "text": "Answer\n[truex-suggestions]\nshape: explain; stage: none\nact: One\n[/truex-suggestions]\n[truex-suggestions]\nshape: verify; stage: test\nverify: Two",
+    "expect": {
+      "text": "Answer",
+      "status": "missing",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "quotes and backticks inside a row are kept",
+    "text": "Answer\n[truex-suggestions]\nshape: explain; stage: build\ndeepen: Explain \"COMMIT WORK\"\nact: `SE38` steps for the report\ncompare: \"COMMIT WORK\" vs \"ROLLBACK WORK\"\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "explain",
+      "stage": "build",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "deepen",
+          "text": "Explain \"COMMIT WORK\""
+        },
+        {
+          "slot": 2,
+          "intent": "act",
+          "text": "`SE38` steps for the report"
+        },
+        {
+          "slot": 3,
+          "intent": "compare",
+          "text": "\"COMMIT WORK\" vs \"ROLLBACK WORK\""
+        }
+      ]
+    }
+  },
+  {
+    "name": "wrappers around a whole row are removed as pairs",
+    "text": "Answer\n[truex-suggestions]\nshape: verify; stage: test\nverify: **\"Check the release strategy\"**\nact: _Run BAPI_PO_CREATE1 in test mode_\ndeepen: 'Explain why it doesn't post'\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "verify",
+      "stage": "test",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "verify",
+          "text": "Check the release strategy"
+        },
+        {
+          "slot": 2,
+          "intent": "act",
+          "text": "Run BAPI_PO_CREATE1 in test mode"
+        },
+        {
+          "slot": 3,
+          "intent": "deepen",
+          "text": "Explain why it doesn't post"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a capitalised word before a colon is part of the row",
+    "text": "Answer\n[truex-suggestions]\nshape: explain; stage: understand\nSAP: How does MIGO post a goods receipt?\n\"Note: the BAPI needs a commit\"\nsuggest: Try the variant\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer",
+      "status": "ok",
+      "shape": "explain",
+      "stage": "understand",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "ask",
+          "text": "SAP: How does MIGO post a goods receipt?"
+        },
+        {
+          "slot": 2,
+          "intent": "ask",
+          "text": "Note: the BAPI needs a commit"
+        },
+        {
+          "slot": 3,
+          "intent": "ask",
+          "text": "Try the variant"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a block ending a reply after an unclosed fence is read",
+    "text": "Use this:\n\n```abap\nWRITE 'hi'.\n\n[truex-suggestions]\nshape: how-to; stage: build\nact: Add error handling to the report\n[/truex-suggestions]\n",
+    "expect": {
+      "text": "Use this:\n\n```abap\nWRITE 'hi'.",
+      "status": "ok",
+      "shape": "how-to",
+      "stage": "build",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "Add error handling to the report"
+        }
+      ]
+    }
+  },
+  {
+    "name": "a block inside an unclosed fence with code after it is content",
+    "text": "```text\n[truex-suggestions]\nact: Not a row\n[/truex-suggestions]\nmore code",
+    "expect": {
+      "text": "```text\n[truex-suggestions]\nact: Not a row\n[/truex-suggestions]\nmore code",
+      "status": "missing",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": []
+    }
+  },
+  {
+    "name": "a row of only quotes or markdown is dropped",
+    "text": "Answer.\n\n[truex-suggestions]\nact: ``\nverify: \"\"\ndeepen: ---\nact: Check the release strategy\n[/truex-suggestions]",
+    "expect": {
+      "text": "Answer.",
+      "status": "ok",
+      "shape": "unknown",
+      "stage": "unknown",
+      "items": [
+        {
+          "slot": 1,
+          "intent": "act",
+          "text": "Check the release strategy"
+        }
+      ]
+    }
+  }
+]
