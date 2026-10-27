@@ -9,7 +9,9 @@ dist/
 vendor/codex/
 *.tsbuildinfo
 a.json
-.claude
+# Local agent state stays ignored; the project skills are shared.
+.claude/*
+!.claude/skills/
 # Local copies of the root example documents (models, model, agent, mcps) that
 # may hold real credentials. Tracked ones must use "${ENV_NAME}" references.
 /*.local.json
