@@ -46,7 +46,16 @@ function readTheme(): Theme {
 
 function Arrow() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
       <path d="M5 12h14M13 6l6 6-6 6" />
     </svg>
   );
@@ -54,14 +63,34 @@ function Arrow() {
 
 function Banner({ notice }: { notice: Notice }) {
   return (
-    <div className={`jp-banner ${notice.tone}`} role={notice.tone === "warn" ? "alert" : "status"}>
+    <div
+      className={`jp-banner ${notice.tone}`}
+      role={notice.tone === "warn" ? "alert" : "status"}
+    >
       {notice.tone === "warn" ? (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          aria-hidden="true"
+        >
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7v6M12 16.5v.5" />
         </svg>
       ) : (
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+        <svg
+          width="15"
+          height="15"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
           <path d="M5 12l5 5 9-10" />
         </svg>
       )}
@@ -76,7 +105,11 @@ function Banner({ notice }: { notice: Notice }) {
 export function JoinPage({ token }: { token: string }) {
   const [lookup, setLookup] = useState<InviteLookup | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [params, setParams] = useState<{ joined: boolean; error: string | null; email: string | null }>({
+  const [params, setParams] = useState<{
+    joined: boolean;
+    error: string | null;
+    email: string | null;
+  }>({
     joined: false,
     error: null,
     email: null,
@@ -92,7 +125,9 @@ export function JoinPage({ token }: { token: string }) {
   const load = useCallback(async () => {
     setLoadError(false);
     try {
-      const res = await fetch(`/auth/invites/${encodeURIComponent(token)}`, { cache: "no-store" });
+      const res = await fetch(`/auth/invites/${encodeURIComponent(token)}`, {
+        cache: "no-store",
+      });
       const parsed = res.ok ? parseLookup(await res.json()) : null;
       if (!parsed) throw new Error("bad lookup");
       setLookup(parsed);
@@ -115,7 +150,11 @@ export function JoinPage({ token }: { token: string }) {
       if (joined) {
         q.delete("joined");
         const rest = q.toString();
-        window.history.replaceState(null, "", window.location.pathname + (rest ? `?${rest}` : ""));
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname + (rest ? `?${rest}` : ""),
+        );
       }
     }
     setTheme(readTheme());
@@ -130,7 +169,9 @@ export function JoinPage({ token }: { token: string }) {
 
   const workspace = lookup?.tenantName ?? "";
   useEffect(() => {
-    document.title = workspace ? `Join ${workspace} · truex` : "Join a workspace · truex";
+    document.title = workspace
+      ? `Join ${workspace} · truex`
+      : "Join a workspace · truex";
   }, [workspace]);
 
   function applyTheme(t: Theme) {
@@ -143,13 +184,17 @@ export function JoinPage({ token }: { token: string }) {
     } catch {}
   }
 
-  const kind: InviteKind | null = lookup ? inviteKind(lookup, params.joined, params.error) : null;
+  const kind: InviteKind | null = lookup
+    ? inviteKind(lookup, params.joined, params.error)
+    : null;
   const cleaned = clean(name);
   const nameOk = isValid(cleaned);
   const check = kind ? checkup(kind, nameOk, busy) : null;
   const wrongAccount = kind === "valid" && params.error === "wrong_account";
   const otherError = kind === "valid" ? errorNotice(params.error) : null;
-  const expiry = lookup ? expiryLabel(lookup.expiresAt, lookup.serverNow) : null;
+  const expiry = lookup
+    ? expiryLabel(lookup.expiresAt, lookup.serverNow)
+    : null;
   const showForm = kind === "valid";
   const joinedLike = kind === "joined" || kind === "member";
 
@@ -158,9 +203,17 @@ export function JoinPage({ token }: { token: string }) {
     const viewer = lookup.viewer;
     switch (kind) {
       case "joined":
-        return { tone: "ok", lead: `You're in, ${firstName(viewer?.name ?? "") || "welcome"}.`, rest: `Your seat in ${workspace} is ready.` };
+        return {
+          tone: "ok",
+          lead: `You're in, ${firstName(viewer?.name ?? "") || "welcome"}.`,
+          rest: `Your seat in ${workspace} is ready.`,
+        };
       case "member":
-        return { tone: "ok", lead: `You're already in ${workspace}.`, rest: viewer ? `Signed in as ${viewer.email}.` : undefined };
+        return {
+          tone: "ok",
+          lead: `You're already in ${workspace}.`,
+          rest: viewer ? `Signed in as ${viewer.email}.` : undefined,
+        };
       case "expired":
         return {
           tone: "warn",
@@ -170,7 +223,11 @@ export function JoinPage({ token }: { token: string }) {
       case "used":
       case "revoked":
       case "not_found":
-        return { tone: "warn", lead: "This invite link isn't valid anymore.", rest: "Ask the person who invited you for a new one." };
+        return {
+          tone: "warn",
+          lead: "This invite link isn't valid anymore.",
+          rest: "Ask the person who invited you for a new one.",
+        };
       default:
         if (wrongAccount)
           return {
@@ -191,10 +248,22 @@ export function JoinPage({ token }: { token: string }) {
         initials: initials(n),
         joined: true,
         aura: auraFor(n),
-        sub: kind === "joined" ? "joined just now" : viewer.memberSince ? `member since ${formatMonth(viewer.memberSince, lookup!.serverNow)}` : "member",
+        sub:
+          kind === "joined"
+            ? "joined just now"
+            : viewer.memberSince
+              ? `member since ${formatMonth(viewer.memberSince, lookup!.serverNow)}`
+              : "member",
       };
     }
-    if (showForm && cleaned) return { name: cleaned, initials: initials(cleaned), joined: false, aura: auraFor(cleaned), sub: "member" };
+    if (showForm && cleaned)
+      return {
+        name: cleaned,
+        initials: initials(cleaned),
+        joined: false,
+        aura: auraFor(cleaned),
+        sub: "member",
+      };
     return { name: "", initials: "", joined: false, sub: "seat open" };
   }
 
@@ -237,17 +306,32 @@ export function JoinPage({ token }: { token: string }) {
         <header className="jp-top">
           <div className="jp-brand" aria-label="truex agents">
             <span className="jp-brand-mark" aria-hidden="true">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinejoin="round"
+              >
                 <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
               </svg>
             </span>
             <span className="jp-brand-word">truex</span>
-            <span className="jp-brand-slash" aria-hidden="true">/</span>
+            <span className="jp-brand-slash" aria-hidden="true">
+              /
+            </span>
             <span className="jp-brand-sub">agents</span>
           </div>
           <div className="jp-seg" role="group" aria-label="Theme">
             {(["", "light", "dark"] as const).map((t) => (
-              <button key={t || "auto"} type="button" aria-pressed={theme === t} onClick={() => applyTheme(t)}>
+              <button
+                key={t || "auto"}
+                type="button"
+                aria-pressed={theme === t}
+                onClick={() => applyTheme(t)}
+              >
                 {t === "" ? "Auto" : t === "light" ? "Light" : "Dark"}
               </button>
             ))}
@@ -258,13 +342,23 @@ export function JoinPage({ token }: { token: string }) {
           {loadError ? (
             <>
               <h1>This invite didn&apos;t load</h1>
-              <Banner notice={{ tone: "warn", lead: "Couldn't load this invite.", rest: "Check your connection and try again." }} />
+              <Banner
+                notice={{
+                  tone: "warn",
+                  lead: "Couldn't load this invite.",
+                  rest: "Check your connection and try again.",
+                }}
+              />
               <button type="button" className="jp-btn" onClick={load}>
                 Try again
               </button>
             </>
           ) : !lookup || !kind || !check ? (
-            <div className="jp-card jp-skeleton" aria-busy="true" aria-label="Loading invite">
+            <div
+              className="jp-card jp-skeleton"
+              aria-busy="true"
+              aria-label="Loading invite"
+            >
               <span />
               <span />
               <span />
@@ -278,9 +372,16 @@ export function JoinPage({ token }: { token: string }) {
                   </span>
                   <div className="jp-from-text">
                     <div className="jp-from-line">
-                      <b>{workspace}</b> invited you as <span className="jp-role-pill">{roleLabel(lookup.role)}</span>
+                      <b>{workspace}</b> invited you as{" "}
+                      <span className="jp-role-pill">
+                        {roleLabel(lookup.role)}
+                      </span>
                     </div>
-                    {lookup.sentAt ? <div className="jp-from-sub">sent {formatDay(lookup.sentAt)}</div> : null}
+                    {lookup.sentAt ? (
+                      <div className="jp-from-sub">
+                        sent {formatDay(lookup.sentAt)}
+                      </div>
+                    ) : null}
                   </div>
                   {expiry && (kind === "valid" || kind === "expired") ? (
                     <span className={`jp-exp${expiry.expired ? " bad" : ""}`}>
@@ -303,7 +404,12 @@ export function JoinPage({ token }: { token: string }) {
                 )}
               </h1>
 
-              <form className="jp-card jp-join" noValidate onSubmit={onSubmit} aria-labelledby="jp-sec-h">
+              <form
+                className="jp-card jp-join"
+                noValidate
+                onSubmit={onSubmit}
+                aria-labelledby="jp-sec-h"
+              >
                 <div className="jp-eyebrow" id="jp-sec-h">
                   Set up your seat
                 </div>
@@ -344,20 +450,40 @@ export function JoinPage({ token }: { token: string }) {
                         Email <span className="jp-field-hint">from invite</span>
                       </label>
                       <div className="jp-input-wrap">
-                        <svg className="jp-input-lock" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                        <svg
+                          className="jp-input-lock"
+                          width="14"
+                          height="14"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
+                        >
                           <rect x="4" y="11" width="16" height="10" rx="2" />
                           <path d="M8 11V7a4 4 0 0 1 8 0v4" />
                         </svg>
-                        <input className="jp-input" id="jp-email" type="email" value={lookup.email ?? ""} readOnly />
+                        <input
+                          className="jp-input"
+                          id="jp-email"
+                          type="email"
+                          value={lookup.email ?? ""}
+                          readOnly
+                        />
                       </div>
                     </div>
                     <div className="jp-field">
                       <label className="jp-field-label" htmlFor="jp-name">
                         Your name{" "}
-                        <span className={`jp-field-hint${nameOk ? " ok" : ""}`}>{nameOk ? "looks good" : "shown to teammates"}</span>
+                        <span className={`jp-field-hint${nameOk ? " ok" : ""}`}>
+                          {nameOk ? "looks good" : "shown to teammates"}
+                        </span>
                       </label>
                       <div className="jp-input-wrap">
-                        <span className={`jp-input-av${cleaned ? " is-set" : ""}`} aria-hidden="true">
+                        <span
+                          className={`jp-input-av${cleaned ? " is-set" : ""}`}
+                          aria-hidden="true"
+                        >
                           {cleaned ? initials(cleaned) : "?"}
                         </span>
                         <input
@@ -379,7 +505,11 @@ export function JoinPage({ token }: { token: string }) {
                           }}
                         />
                       </div>
-                      <div className="jp-err" id="jp-name-err" hidden={!nameError}>
+                      <div
+                        className="jp-err"
+                        id="jp-name-err"
+                        hidden={!nameError}
+                      >
                         {NAME_ERROR}
                       </div>
                     </div>
@@ -387,11 +517,25 @@ export function JoinPage({ token }: { token: string }) {
                 ) : null}
 
                 {showForm || joinedLike ? (
-                  <button className="jp-btn" type="submit" disabled={busy || opening}>
+                  <button
+                    className="jp-btn"
+                    type="submit"
+                    disabled={busy || opening}
+                  >
                     <span>
-                      {busy ? "Verifying your invite" : opening ? "Opening…" : joinedLike ? `Open ${workspace}` : `Join ${workspace}`}
+                      {busy
+                        ? "Verifying your invite"
+                        : opening
+                          ? "Opening…"
+                          : joinedLike
+                            ? `Open ${workspace}`
+                            : `Join ${workspace}`}
                     </span>
-                    {busy ? <span className="jp-spin" aria-hidden="true" /> : <Arrow />}
+                    {busy ? (
+                      <span className="jp-spin" aria-hidden="true" />
+                    ) : (
+                      <Arrow />
+                    )}
                   </button>
                 ) : null}
                 <p className="sr-only" aria-live="polite">

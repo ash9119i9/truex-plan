@@ -19,7 +19,7 @@ test("effect replay keeps a login error after URL cleanup and prevents an authen
   });
   const redirects: string[] = [];
   const location = {
-    search: "?error=google_failed",
+    search: "?error=rejected",
     pathname: "/login",
     replace(path: string) {
       redirects.push(path);
@@ -37,21 +37,16 @@ test("effect replay keeps a login error after URL cleanup and prevents an authen
       },
     },
   });
-  t.mock.method(
-    globalThis,
-    "fetch",
-    async () =>
-      new Response(
-        JSON.stringify({
-          user: { id: "user", email: "test@example.invalid" },
-          tenant: { id: "workspace", name: "Workspace" },
-          role: "user",
-          auth: "google",
-          tenants: [],
-        }),
-        { status: 200 },
-      ),
-  );
+  t.mock.method(component("../lib/session.ts"), "fetchMe", async () => ({
+    kind: "ok",
+    me: {
+      user: { id: "user", email: "test@example.invalid", name: "Ada" },
+      tenant: { id: "64b7f0c2a1b2c3d4e5f60719", name: "Workspace" },
+      role: "user",
+      tenants: [],
+      auth: "google",
+    },
+  }));
 
   const states: unknown[] = [];
   let stateIndex = 0;
@@ -77,7 +72,7 @@ test("effect replay keeps a login error after URL cleanup and prevents an authen
   cleanup();
   const finalCleanup = effect();
   await new Promise<void>((resolve) => setImmediate(resolve));
-  assert.deepEqual(states[0], loginNotice("google_failed"));
+  assert.deepEqual(states[0], loginNotice("rejected"));
   assert.equal(states[1], true);
   assert.deepEqual(
     redirects,

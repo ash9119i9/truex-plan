@@ -8,6 +8,10 @@ import { createHash } from "node:crypto";
 export interface ToolRef {
   name: string;
   namespace?: string;
+  // A Responses custom (freeform) tool offered to the provider as a function
+  // taking one string, `input`. Its calls go back to Codex as
+  // custom_tool_call items carrying that string.
+  custom?: boolean;
 }
 
 const MAX_NAME = 64;
@@ -30,6 +34,32 @@ export function systemPrompt(input: any): string[] {
   return [...(input.instructions ? [input.instructions] : []), ...notes];
 }
 
+// Codex offers apply_patch as a custom tool: the model writes the patch text
+// directly, constrained by a Lark grammar. Only OpenAI's Responses API has
+// custom tools, so other providers get a function with one string argument
+// and the grammar in its description. Codex parses and verifies the patch
+// itself, so a malformed one is reported back to the model, not applied.
+export function customToolAsFunction(tool: any): any {
+  const grammar =
+    typeof tool?.format?.definition === "string" ? tool.format.definition : "";
+  return {
+    type: "function",
+    name: tool.name,
+    description: [
+      `The \`${tool.name}\` tool. Pass the complete tool input as the \`input\` string.`,
+      ...(grammar
+        ? [`\`input\` must match this grammar (Lark syntax):\n${grammar}`]
+        : []),
+    ].join("\n\n"),
+    parameters: {
+      type: "object",
+      properties: { input: { type: "string" } },
+      required: ["input"],
+      additionalProperties: false,
+    },
+  };
+}
+
 export class ToolNames {
   private readonly flat = new Map<string, ToolRef>();
 
@@ -40,7 +70,10 @@ export class ToolNames {
     let name = raw.replace(/[^a-zA-Z0-9_-]/g, "_");
     if (name.length > MAX_NAME || this.taken(name, ref))
       name = name.slice(0, MAX_NAME - 9) + "_" + digest(raw);
-    this.flat.set(name, ref);
+    // A history call carries no `custom` flag; keep the one the tool list
+    // registered.
+    const known = this.flat.get(name);
+    this.flat.set(name, known?.custom ? { ...ref, custom: true } : ref);
     return name;
   }
 

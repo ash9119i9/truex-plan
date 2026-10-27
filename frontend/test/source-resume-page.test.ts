@@ -23,7 +23,7 @@ import { ApiRequestError } from "../lib/api.ts";
 // credentials, DOM shim or network service is involved.
 const source = readFileSync(
   process.env.TRUEX_SOURCE_RESUME_PAGE ??
-    new URL("../app/page.tsx", import.meta.url),
+    new URL("../legacy/chat.tsx", import.meta.url),
   "utf8",
 );
 const ast = ts.createSourceFile(

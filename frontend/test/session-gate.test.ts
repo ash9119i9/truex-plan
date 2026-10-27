@@ -6,6 +6,7 @@ import { loginNotice } from "../lib/login.ts";
 
 const react = createRequire(import.meta.url)("react");
 const { SessionGate } = component("auth/session-gate.tsx");
+const session = component("../lib/session.ts");
 const ME = {
   user: { id: "user", email: "test@example.invalid" },
   tenant: { id: "workspace", name: "Workspace" },
@@ -22,13 +23,21 @@ function mountGate(
   initialStatus: number,
   initialBody?: unknown,
 ) {
+  let reloads = 0;
+  let broadcast!: (message: unknown) => void;
+  t.mock.method(session, "openTabChannel", (listener: (m: unknown) => void) => {
+    broadcast = listener;
+    return { post() {}, close() {} };
+  });
   const events = new EventTarget();
   const restoreGlobals: (() => void)[] = [];
   const globals = {
     location: {
       search: "",
       pathname: "/",
-      reload() {},
+      reload() {
+        reloads++;
+      },
       replace() {},
       assign() {},
     },
@@ -49,14 +58,17 @@ function mountGate(
   let body = initialBody;
   let logoutStatus = 204;
   const requests: string[] = [];
-  t.mock.method(globalThis, "fetch", async (path: string) => {
-    requests.push(path);
-    return path === "/auth/logout"
-      ? new Response(null, { status: logoutStatus })
-      : new Response(body === undefined ? null : JSON.stringify(body), {
-          status,
-        });
+  t.mock.method(session, "fetchMe", async () => {
+    requests.push("session");
+    if (status === 401) return { kind: "signedOut" };
+    if (status === 403)
+      return { kind: "blocked", message: "Workspace unavailable" };
+    if (status !== 200) return { kind: "unavailable", message: "Try again" };
+    return { kind: "ok", me: body };
   });
+  t.mock.method(session, "signOut", async () => ({
+    confirmed: logoutStatus === 204,
+  }));
   const states: any[] = [];
   const refs: { current: unknown }[] = [];
   let stateIndex = 0,
@@ -100,6 +112,9 @@ function mountGate(
   });
   return {
     render,
+    unmount: cleanup,
+    broadcast: (message: unknown) => broadcast(message),
+    reloads: () => reloads,
     requests,
     state: () => states[0],
     actions: () => actions,
@@ -128,7 +143,7 @@ test("fresh browsers show sign-in without claiming a session ended, including re
   await gate.recheck();
   assert.equal(gate.render().props.notice, null);
   assert.equal(gate.privateRenders(), 0);
-  assert.deepEqual(gate.requests, ["/api/me", "/api/me"]);
+  assert.deepEqual(gate.requests, ["session", "session"]);
 });
 
 test("an established session ending still shows its notice after later checks", async (t) => {
@@ -142,44 +157,6 @@ test("an established session ending still shows its notice after later checks", 
   await gate.recheck();
   assert.deepEqual(gate.render().props.notice, loginNotice("session_ended"));
   assert.equal(gate.privateRenders(), 1);
-});
-
-test("new Google accounts see name setup before any private view, and resume after checks", async (t) => {
-  const gate = mountGate(t, 200, {
-    ...ME,
-    user: { ...ME.user, name: "Google Name", nameRequired: true },
-  });
-  await settle();
-  const card = gate.render();
-  assert.equal(card.props.user.nameRequired, true);
-  assert.equal(card.props.user.name, "Google Name");
-  assert.equal(typeof card.props.onSignOut, "function");
-  assert.equal(gate.privateRenders(), 0);
-  await gate.recheck();
-  assert.equal(gate.render().props.user.nameRequired, true);
-  assert.equal(gate.privateRenders(), 0);
-  gate.response(200, { ...ME, user: { ...ME.user, name: "Chosen Name" } });
-  await gate.recheck();
-  gate.render();
-  assert.equal(gate.privateRenders(), 1);
-});
-
-test("existing Google accounts and dev accounts retain their existing view", async (t) => {
-  const gate = mountGate(t, 200, {
-    ...ME,
-    auth: "dev",
-    user: { ...ME.user, nameRequired: true },
-  });
-  await settle();
-  gate.render();
-  assert.equal(gate.privateRenders(), 1);
-});
-
-test("an unrelated app's cookie does not count as an ended session", async (t) => {
-  const gate = mountGate(t, 403, { code: "WRONG_APP" });
-  await settle();
-  assert.equal(gate.render().props.notice, null);
-  assert.equal(gate.privateRenders(), 0);
 });
 
 test("a blocked authenticated account losing its session still gets the notice", async (t) => {
@@ -234,4 +211,88 @@ test("an outage during a session retains the private view and a later expiry sho
   gate.response(401);
   await gate.recheck();
   assert.deepEqual(gate.render().props.notice, loginNotice("session_ended"));
+});
+
+test("a late identity check cannot restore a workspace after sign-out", async (t) => {
+  const gate = mountGate(t, 200, ME);
+  await settle();
+  gate.render();
+  let resolve!: (result: unknown) => void;
+  t.mock.method(
+    session,
+    "fetchMe",
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  const check = gate.recheck();
+  gate.actions().signOut();
+  await settle();
+  resolve({ kind: "ok", me: ME });
+  await check;
+  assert.equal(gate.state().kind, "signedOut");
+});
+
+test("effect cleanup invalidates a pending identity check", async (t) => {
+  const gate = mountGate(t, 200, ME);
+  await settle();
+  gate.render();
+  let resolve!: (result: unknown) => void;
+  t.mock.method(
+    session,
+    "fetchMe",
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  const pending = gate.recheck();
+  gate.unmount();
+  resolve({ kind: "blocked", message: "Old response" });
+  await pending;
+  assert.equal(gate.state().kind, "ready");
+});
+
+test("another tab entering a different tenant for the same user does not reload this tab", async (t) => {
+  const gate = mountGate(t, 200, ME);
+  await settle();
+  gate.render();
+  gate.broadcast({ type: "login", key: ME.user.id });
+  assert.equal(gate.reloads(), 0);
+  gate.broadcast({ type: "login", key: "another-person" });
+  assert.equal(gate.reloads(), 1);
+});
+
+test("another tab's logout clears the private view without reloading a still-live cookie", async (t) => {
+  const gate = mountGate(t, 200, ME);
+  await settle();
+  gate.render();
+  gate.broadcast({ type: "logout" });
+  assert.equal(gate.state().kind, "signedOut");
+  assert.equal(gate.reloads(), 0);
+  await gate.recheck();
+  assert.equal(gate.state().kind, "signedOut");
+});
+
+test("returning to the tab rechecks at most once a minute", async (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
+  const gate = mountGate(t, 200, ME);
+  await settle();
+  assert.equal(gate.requests.length, 1);
+  const shown = async () => {
+    globalThis.document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+  };
+  t.mock.timers.tick(5_000);
+  await shown();
+  t.mock.timers.tick(30_000);
+  await shown();
+  assert.equal(gate.requests.length, 1, "no recheck inside a minute");
+  t.mock.timers.tick(25_000);
+  await shown();
+  assert.equal(gate.requests.length, 2);
+  // A back/forward cache restore is never throttled.
+  await gate.recheck();
+  assert.equal(gate.requests.length, 3);
 });

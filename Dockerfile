@@ -64,7 +64,22 @@ RUN npm --prefix agent-core run build \
     && npm --prefix agent-core prune --omit=dev
 
 # Trixie provides glibc 2.41, including symbols needed by Ubuntu 24.04 ARM64 builds.
-FROM node:24-trixie-slim AS runtime
+# Python 3 and the pinned document libraries coding runs use
+# (runtime-adapter/toolchain): hash-checked wheels only, no compilers.
+FROM node:24-trixie-slim AS toolchain
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+COPY runtime-adapter/toolchain/requirements.txt /tmp/toolchain-requirements.txt
+RUN python3 -m venv /opt/truex/python \
+    && /opt/truex/python/bin/python3 -m pip install --no-cache-dir \
+       --disable-pip-version-check --no-input --require-hashes \
+       --only-binary=:all: --no-deps -r /tmp/toolchain-requirements.txt \
+    && rm /tmp/toolchain-requirements.txt \
+    && /opt/truex/python/bin/python3 -I -c "import docx, openpyxl, pptx, pypdf, reportlab"
+ENV RUNTIME_TOOLCHAIN_DIRS=/opt/truex/python
+
+FROM toolchain AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git ripgrep libssl3t64 libcap2 liblzma5 tini \
     && rm -rf /var/lib/apt/lists/*

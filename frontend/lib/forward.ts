@@ -1,6 +1,6 @@
-// Same-origin forwarding of the browser's /auth/* and /api/* requests to the
-// platform. The browser only ever talks to this origin, so the session cookie
-// lands here and is sent with every request, including EventSource.
+// Same-origin forwarding of the browser's /api/* requests to platform-next.
+// The browser only ever talks to this origin, so the refresh cookie lands here
+// and the access token travels in the Authorization header it sends.
 //
 // This is a transport, not a gate. The platform authenticates and authorizes
 // every request itself; nothing here decides who may see what.
@@ -8,12 +8,13 @@
 // Written against the standard Request/Response so it can be tested without
 // Next: the route files under app/ only bind it to a path prefix.
 
-export type Prefix = "/auth" | "/api";
+export type Prefix = "/api";
 
 // Request headers passed upstream. Everything else (host, connection,
 // x-forwarded-*, anything a client forges to claim an identity, ...) is dropped.
 const PASS_REQUEST = [
   "accept",
+  "authorization",
   "cookie",
   "content-type",
   "last-event-id",
@@ -40,16 +41,33 @@ const DROP_RESPONSE = new Set([
 // The platform accepts 2 MB of JSON. A little more is allowed for the envelope;
 // anything larger is refused here instead of being buffered or streamed on.
 export const MAX_BODY_BYTES = 2 * 1024 * 1024 + 4096;
+// An attached file is its own raw request body, up to the platform's 20 MB.
+export const MAX_UPLOAD_BODY_BYTES = 20 * 1024 * 1024 + 4096;
+const UPLOAD_PATH = "/api/v1/uploads";
+export const bodyLimitFor = (method: string, path: string) =>
+  method === "POST" && path === UPLOAD_PATH
+    ? MAX_UPLOAD_BODY_BYTES
+    : MAX_BODY_BYTES;
 // Cold runtime starts can take two and a half minutes (see lib/api.ts); the
-// forwarder waits slightly longer than the browser does. Everything under
-// /auth is a quick database or Google call.
-const DEADLINE_MS: Record<Prefix, number> = {
-  "/api": 190_000,
-  "/auth": 30_000,
-};
-// A health or session check is never worth waiting long for.
+// forwarder waits slightly longer than the browser does.
+const DEADLINE_MS = 190_000;
+// Sign-in is a quick database or Google call.
+const AUTH_DEADLINE_MS = 30_000;
+// An account, tenant or token check is never worth waiting long for.
 const SHORT_DEADLINE_MS = 12_000;
-const SHORT_PATHS = new Set(["/api/me", "/auth/tenants"]);
+const SHORT_PATHS = new Set([
+  "/api/v1/me",
+  "/api/v1/me/tenants",
+  "/api/v1/tenant",
+  "/api/v1/auth/refresh",
+  "/api/v1/auth/logout",
+]);
+const deadlineFor = (path: string) =>
+  SHORT_PATHS.has(path)
+    ? SHORT_DEADLINE_MS
+    : path.startsWith("/api/v1/auth/")
+      ? AUTH_DEADLINE_MS
+      : DEADLINE_MS;
 
 const METHODS_WITH_BODY = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 export const FORWARDED_METHODS = [
@@ -109,16 +127,18 @@ export function safePath(path: string[] | undefined): path is string[] {
   return !!path && path.length > 0 && path.every(safeSegment);
 }
 
-// The admin console has its own app and host. Express routes case-insensitively,
-// so the check is too.
-export const isBlockedPath = (path: string[]) =>
-  path[0]?.toLowerCase() === "admin";
+// The admin console has its own app and host, with or without an API version.
+// Express routes case-insensitively, so the check is too.
+export const isBlockedPath = (path: string[]) => {
+  const [first, second] = path.map((segment) => segment.toLowerCase());
+  return first === "admin" || (first === "v1" && second === "admin");
+};
 
 export function upstreamBase(
   env: Record<string, string | undefined> = process.env,
 ) {
   // Read per request so the environment can change without a rebuild.
-  return (env.PLATFORM_INTERNAL_URL || "http://localhost:4000").replace(
+  return (env.PLATFORM_INTERNAL_URL || "http://localhost:4100").replace(
     /\/+$/,
     "",
   );
@@ -157,6 +177,7 @@ export async function forward(
   req: Request,
   options: ForwardOptions,
 ): Promise<Response> {
+  const startedAt = performance.now();
   const env = options.env ?? process.env;
   const doFetch = options.fetch ?? fetch;
   const { prefix, path } = options;
@@ -186,8 +207,9 @@ export async function forward(
 
   // Oversized requests are refused up front when they announce their size, and
   // cut off mid-stream when they do not.
+  const limit = bodyLimitFor(method, upstreamPath);
   const declared = Number(req.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES)
+  if (Number.isFinite(declared) && declared > limit)
     return json(
       413,
       "The request is too large.",
@@ -197,15 +219,13 @@ export async function forward(
   let exceeded = false;
   const hasBody = METHODS_WITH_BODY.has(method) && req.body !== null;
   const body = hasBody
-    ? req.body!.pipeThrough(limitBody(MAX_BODY_BYTES, () => (exceeded = true)))
+    ? req.body!.pipeThrough(limitBody(limit, () => (exceeded = true)))
     : undefined;
 
   // Ends the upstream request when the browser goes away (a closed tab, a
   // dropped EventSource) and when the deadline passes, so no socket, reader or
   // timer outlives the person.
-  const deadline = SHORT_PATHS.has(upstreamPath)
-    ? SHORT_DEADLINE_MS
-    : DEADLINE_MS[prefix];
+  const deadline = deadlineFor(upstreamPath);
   const controller = new AbortController();
   const abort = () => controller.abort(req.signal.reason);
   if (req.signal.aborted) abort();
@@ -271,6 +291,13 @@ export async function forward(
   for (const cookie of upstream.headers.getSetCookie())
     out.append("set-cookie", cookie);
   if (!out.has("x-request-id")) out.set("x-request-id", requestId);
+  // After the platform's own Server-Timing entries: this hop until the
+  // platform's response headers arrived, so the network panel separates the
+  // forwarder from the platform.
+  out.append(
+    "server-timing",
+    `forward;dur=${(performance.now() - startedAt).toFixed(1)};desc="forwarder incl. platform"`,
+  );
 
   // Per-person data, auth errors and redirects are never cached by the browser
   // or anything in between. An event stream is already no-cache, no-transform.
@@ -280,10 +307,16 @@ export async function forward(
     out.set("cache-control", "no-cache, no-transform");
     out.set("x-accel-buffering", "no");
   } else out.set("cache-control", "no-store");
-  const vary = out.get("vary");
-  if (!vary) out.set("vary", "Cookie");
-  else if (vary !== "*" && !/(^|,)\s*cookie\s*(,|$)/i.test(vary))
-    out.set("vary", `${vary}, Cookie`);
+  // Answers depend on who is asking, by cookie or by token.
+  for (const header of ["Cookie", "Authorization"]) {
+    const vary = out.get("vary");
+    if (!vary) out.set("vary", header);
+    else if (
+      vary !== "*" &&
+      !new RegExp(`(^|,)\\s*${header}\\s*(,|$)`, "i").test(vary)
+    )
+      out.set("vary", `${vary}, ${header}`);
+  }
 
   // 204, 304 and HEAD answers carry no body.
   if (

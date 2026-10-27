@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { UpstreamTimeoutError } from "../upstream";
 import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
-import { ToolNames, systemPrompt } from "../tool-names";
+import { customToolAsFunction, ToolNames, systemPrompt } from "../tool-names";
 import { isContextError } from "./chat";
+import { agentMessageText } from "../agent-message";
 
 // Google Gemini (generativelanguage.googleapis.com, v1beta generateContent).
 // Codex resends the whole conversation each turn, so every request is
@@ -71,12 +72,16 @@ export function toGeminiRequest(
   const declarations: any[] = [];
   for (const tool of input.tools ?? []) {
     if (tool?.type === "function") declarations.push(declaration(tools, tool));
-    else if (tool?.type === "namespace")
+    else if (tool?.type === "namespace") {
       for (const inner of tool.tools ?? [])
         if (inner?.type === "function")
           declarations.push(declaration(tools, inner, tool.name));
-    // web_search, tool_search and custom (freeform) tools run only on
-    // OpenAI's Responses backend, so they are not offered to Gemini.
+    } else if (tool?.type === "custom" && typeof tool.name === "string")
+      declarations.push(
+        declaration(tools, customToolAsFunction(tool), undefined, true),
+      );
+    // web_search and tool_search run only on OpenAI's Responses backend, so
+    // they are not offered to the provider.
   }
   const { system, contents } = toContents(input, tools);
   const body: Record<string, any> = { contents };
@@ -103,9 +108,18 @@ export function toGeminiRequest(
   return { body, tools };
 }
 
-function declaration(names: ToolNames, tool: any, namespace?: string) {
+function declaration(
+  names: ToolNames,
+  tool: any,
+  namespace?: string,
+  custom?: boolean,
+) {
   return {
-    name: names.toProvider({ name: tool.name, namespace }),
+    name: names.toProvider({
+      name: tool.name,
+      namespace,
+      ...(custom ? { custom } : {}),
+    }),
     ...(tool.description ? { description: tool.description } : {}),
     // parametersJsonSchema takes standard JSON Schema (additionalProperties
     // included), unlike the OpenAPI-subset `parameters` field.
@@ -229,6 +243,11 @@ function toContents(input: any, tools: ToolNames) {
       // Outputs without a pending call (compaction, interrupted turns) are dropped.
       if (turn && (turn as Turn).calls.some((c) => c.id === item.call_id))
         (turn as Turn).outputs.set(item.call_id, outputText(item.output));
+    } else if (type === "agent_message") {
+      const text = agentMessageText(item);
+      if (!text) continue;
+      flush();
+      contents.push({ role: "user", parts: [{ text }] });
     } else if (type === "reasoning") {
       // A text signature belongs to the model text just before this item.
       const sig = decodeSignatures(item.encrypted_content)?.textSignature;

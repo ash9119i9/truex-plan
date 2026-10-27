@@ -108,8 +108,14 @@ test("toAnthropicRequest: system merge, tools, tool_use/tool_result pairing", ()
   const sentTools = params.tools as any[];
   assert.deepEqual(
     sentTools.map((t) => t.name),
-    ["shell", "mcp__qlik__list_apps"],
+    ["shell", "mcp__qlik__list_apps", "apply_patch"],
   );
+  // A custom (freeform) tool is offered as a function taking one string.
+  assert.deepEqual(sentTools[2].input_schema.required, ["input"]);
+  // Streamed as written; other tools keep Anthropic's default.
+  assert.equal(sentTools[2].eager_input_streaming, true);
+  assert.equal(sentTools[0].eager_input_streaming, undefined);
+  assert.equal(sentTools[1].eager_input_streaming, undefined);
   assert.deepEqual(sentTools[1].input_schema, {
     type: "object",
     properties: {},
@@ -719,5 +725,60 @@ test("toAnthropicRequest: an MCP server's namespace description reaches the syst
   assert.equal(
     (params.system as any)[0].text,
     "Base\n\nInstructions for the tools named mcp__sap__*:\nUse get_order for order lookups.\n\nDev",
+  );
+});
+
+test("anthropic: apply_patch input streams to Codex while the model writes it", async () => {
+  const patch =
+    "*** Begin Patch\n*** Add File: guide.md\n+# Guide\n*** End Patch\n";
+  const args = JSON.stringify({ input: patch });
+  await withGateway(
+    () =>
+      sse([
+        start(),
+        {
+          type: "content_block_start",
+          index: 0,
+          content_block: {
+            type: "tool_use",
+            id: "toolu_1",
+            name: "apply_patch",
+            input: {},
+          },
+        },
+        ...[args.slice(0, 12), args.slice(12, 40), args.slice(40)].map(
+          (partial_json) => ({
+            type: "content_block_delta",
+            index: 0,
+            delta: { type: "input_json_delta", partial_json },
+          }),
+        ),
+        { type: "content_block_stop", index: 0 },
+        delta("tool_use"),
+        stop,
+      ]),
+    async (post) => {
+      const res = await post({
+        input: [user("Write a guide")],
+        tools: [{ type: "custom", name: "apply_patch" }],
+      });
+      const events = parseEvents(await res.text());
+      const added = events.filter(
+        (e) => e.type === "response.output_item.added",
+      );
+      assert.equal(added.length, 1);
+      assert.equal(added[0].item.type, "custom_tool_call");
+      const deltas = events.filter(
+        (e) => e.type === "response.custom_tool_call_input.delta",
+      );
+      assert.ok(deltas.length >= 2);
+      assert.equal(deltas.map((d) => d.delta).join(""), patch);
+      const done = events.find((e) => e.type === "response.output_item.done");
+      assert.equal(done.item.id, added[0].item.id);
+      assert.equal(done.item.call_id, "toolu_1");
+      assert.equal(done.item.input, patch);
+      // Added, deltas and done come before completed.
+      assert.equal(events.at(-1).type, "response.completed");
+    },
   );
 });

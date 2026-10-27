@@ -1,0 +1,97 @@
+{
+  "slug": "gmail",
+  "displayName": "Gmail",
+  "description": "Search and read your email, and draft replies with your approval. Truex never sends email.",
+  "icon": "gmail",
+  "url": "https://gmailmcp.googleapis.com/mcp/v1",
+  "fixedHeaders": {},
+  "auth": {
+    "type": "oauth_user",
+    "registration": "preregistered",
+    "clientId": "REPLACE_WITH_GOOGLE_CLIENT_ID",
+    "clientSecret": {
+      "env": "GMAIL_OAUTH_CLIENT_SECRET"
+    },
+    "scopes": [
+      "openid",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.compose"
+    ],
+    "discovery": "protected_resource_metadata",
+    "revoke": {
+      "kind": "rfc7009",
+      "url": "https://oauth2.googleapis.com/revoke"
+    },
+    "accountUserinfo": {
+      "field": "email"
+    },
+    "authorizeParams": {
+      "access_type": "offline",
+      "prompt": "consent"
+    },
+    "adminHelp": {
+      "text": "Can't connect a work account? Your Google Workspace admin needs to allow the Truex app under third-party app access.",
+      "url": "https://support.google.com/a/answer/7281227"
+    }
+  },
+  "allowedTools": [
+    "search_threads",
+    "get_thread",
+    "get_message",
+    "list_drafts",
+    "get_draft",
+    "list_labels",
+    "create_draft"
+  ],
+  "writeTools": [
+    "create_draft"
+  ],
+  "toolTimeoutSec": 60,
+  "startupTimeoutSec": 15,
+  "toolTokenEstimate": 12200,
+  "sortOrder": 20,
+  "egress": {
+    "hosts": [
+      "gmailmcp.googleapis.com",
+      "gmail.googleapis.com"
+    ],
+    "credential": {
+      "auth": [
+        "bearer"
+      ],
+      "urlPrefixes": [
+        "https://gmail.googleapis.com/"
+      ],
+      "tokenPattern": "ya29\\.[A-Za-z0-9_.\\-]{20,2048}"
+    },
+    "reads": [
+      {
+        "methods": [
+          "GET",
+          "HEAD"
+        ]
+      }
+    ],
+    "critical": [
+      {
+        "methods": [
+          "DELETE"
+        ]
+      },
+      {
+        "methods": [
+          "POST"
+        ],
+        "hosts": [
+          "gmail.googleapis.com"
+        ],
+        "paths": [
+          "/gmail/v1/users/*/messages/send",
+          "/gmail/v1/users/*/drafts/send",
+          "/upload/gmail/v1/users/*/messages/send"
+        ]
+      }
+    ]
+  }
+}

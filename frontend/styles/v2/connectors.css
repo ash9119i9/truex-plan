@@ -1,0 +1,533 @@
+/* Connected tools (directory connectors / MCP). The design spec has no
+ * connected-tools screen, so this is built from the spec's existing tokens:
+ * the surface/line/ink colours, the shared button classes, and the card and
+ * list-row shapes already used by .hcard and .tap-row. No new animation (the
+ * spec's motion only). Layout-only rules live here; anything shared stays on
+ * the shared classes. */
+
+.connectors {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+.connectors-head {
+  margin-bottom: 20px;
+}
+.connectors-head h1 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.connectors-head p {
+  margin: 0;
+  max-width: 56ch;
+}
+
+/* A calm "not available" / empty / error state, centred. */
+.connectors-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 48px auto;
+  max-width: 44ch;
+  text-align: center;
+  color: var(--ink-2);
+}
+.connectors-state h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.connectors-state p {
+  margin: 0;
+}
+
+/* The connector list: one card per connector, like .hcard but laid out as a
+ * row of logo · text · status · actions. */
+.connectors-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.connector-card {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  grid-template-areas: "logo text status" "logo detail actions";
+  gap: 4px 14px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.connector-logo {
+  grid-area: logo;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: var(--surface-3);
+  color: var(--ink-2);
+}
+.connector-text {
+  grid-area: text;
+  min-width: 0;
+}
+.connector-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.connector-desc {
+  grid-area: detail;
+  margin: 2px 0 0;
+}
+.connector-detail {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* The status chip: a labelled dot. The dot's colour is backed by the label
+ * text, so status is never conveyed by colour alone. */
+.connector-status {
+  grid-area: status;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  justify-self: end;
+  align-self: start;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.connector-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.connector-dot.is-good {
+  background: var(--ok, #2e9e5b);
+}
+.connector-dot.is-warn {
+  background: var(--warn, #c88a1a);
+}
+
+.connector-actions {
+  grid-area: actions;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: end;
+}
+
+/* The admin-approval help line and the manual "remove at provider" hint. */
+.connector-help,
+.connector-hint {
+  grid-area: actions;
+  justify-self: end;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* A single connector's inline error (a failed verify/disconnect), under its
+ * actions. */
+.connector-error {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+}
+
+/* The result banner after a callback return (success or failure), announced
+ * via aria-live. */
+.connector-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 14px;
+}
+.connector-result.is-good {
+  border-color: color-mix(in srgb, var(--ok, #2e9e5b) 40%, var(--line));
+}
+.connector-result.is-bad {
+  border-color: color-mix(in srgb, var(--warn, #c88a1a) 40%, var(--line));
+}
+.connector-result .grow {
+  min-width: 0;
+}
+
+/* The non-tenant fallback callback page: a single centred card. */
+.connectors-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-height: 100dvh;
+  padding: 48px 20px;
+  text-align: center;
+}
+.connectors-fallback .connectors-state {
+  margin: auto;
+}
+
+/* ---- The chat Connect card (blocked send) ---- */
+.connect-card {
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn, #c88a1a) 35%, var(--line));
+  border-radius: 12px;
+  background: var(--surface);
+}
+.connect-card p {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--ink);
+}
+.connect-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ---- The transcript tool-call card ---- */
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-3);
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.tool-card.is-failed {
+  color: var(--error-text, var(--ink));
+  border-color: color-mix(in srgb, var(--warn, #c88a1a) 35%, var(--line));
+}
+.tool-card .tool-card-icon {
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* ---- Progress narration between tool calls (not an answer) ---- */
+.progress-note {
+  margin: 6px 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+.progress-note p {
+  margin: 0;
+}
+
+/* ---- The connector-failed banner in a reply ---- */
+.connector-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--warn, #c88a1a) 35%, var(--line));
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+/* ---- The agent-dialog connector picker ---- */
+.connector-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.connector-pick {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  cursor: pointer;
+}
+.connector-pick:hover {
+  border-color: var(--line-strong);
+}
+.connector-pick.is-checked {
+  border-color: var(--accent-fg);
+  background: var(--surface-2);
+}
+.connector-pick.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.connector-pick input {
+  margin-top: 2px;
+}
+.connector-pick .connector-pick-text {
+  min-width: 0;
+}
+.connector-pick-hint {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+/* "Unavailable" / "Needs coding" beside a skill's name in the picker. */
+.skill-pick-note {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---- The agent-dialog per-connector access choice (write tools) ---- */
+.connector-access {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.connector-access-opt {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.connector-access-opt:hover {
+  border-color: var(--line-strong);
+}
+.connector-access-opt.is-active {
+  border-color: var(--accent-fg);
+  background: var(--surface-2);
+  color: var(--ink);
+}
+
+/* ---- The transcript write-tool approval card ---- */
+/* Sits at the tool row it belongs to while a write tool waits for the member.
+ * Built from the shared surface/line tokens and the shared button classes; no
+ * new animation (the card appears in place, no motion beyond the spec). */
+.approval-card {
+  margin: 6px 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--warn, #c88a1a) 35%, var(--line));
+  border-radius: 12px;
+  background: var(--surface);
+}
+.approval-card:focus-visible {
+  outline: 2px solid var(--accent-fg);
+  outline-offset: 2px;
+}
+.approval-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.approval-params {
+  margin: 0 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.approval-param {
+  display: grid;
+  grid-template-columns: minmax(0, auto) 1fr;
+  gap: 4px 10px;
+  font-size: 13px;
+}
+.approval-param dt {
+  margin: 0;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.approval-param dd {
+  margin: 0;
+  min-width: 0;
+  /* Model-written, untrusted text: wrap and break so it can never overflow
+   * or be mistaken for markup (it is rendered as plain text). */
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--ink);
+}
+.approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.approval-outcome {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+/* The decision shown on a settled tool row ("· Allowed", "· Not run"). */
+.tool-card-approval {
+  color: var(--ink-3);
+}
+
+@media (max-width: 560px) {
+  .connector-card {
+    grid-template-columns: 40px 1fr;
+    grid-template-areas: "logo text" "detail detail" "status status" "actions actions";
+  }
+  .connector-status,
+  .connector-actions,
+  .connector-help,
+  .connector-hint {
+    justify-self: start;
+  }
+}
+
+/* ---- Commands and file changes in the chat's workspace ---- */
+.activity-card {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.activity-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Model-written command text and output: plain text, wrapped, never markup. */
+.activity-command,
+.approval-command,
+.activity-output pre,
+.approval-diff pre {
+  margin: 0;
+  padding: 6px 9px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.approval-command {
+  margin: 0 0 10px;
+}
+.activity-output pre,
+.approval-diff pre {
+  max-height: 320px;
+  overflow: auto;
+  margin-top: 6px;
+}
+.activity-output summary,
+.approval-diff summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.approval-diff {
+  margin: 0 0 10px;
+}
+.approval-files,
+.activity-files {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.activity-files {
+  margin: 0;
+}
+.approval-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---- A sandbox request Truex blocked (network card) ---- */
+.network-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.network-title .tool-card-icon {
+  flex: none;
+  color: var(--ink-3);
+}
+.network-detail {
+  margin: 0 0 10px;
+}
+
+/* ---- Helper agents a reply used ---- */
+.helper-group {
+  margin: 6px 0;
+}
+.helper-summary {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.helper-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.helper-preview {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-3);
+}
+.helper-card > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.helper-card > summary::-webkit-details-marker {
+  display: none;
+}
+.helper-card > summary:focus-visible {
+  outline: 2px solid var(--focus, currentColor);
+  outline-offset: 2px;
+}
+.helper-toggle {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.helper-card[open] .helper-toggle {
+  color: var(--ink-2);
+}
+.helper-result {
+  margin: 0 0 6px;
+  padding: 8px 11px;
+  border-left: 2px solid var(--line);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+}
+.helper-card.is-failed > summary {
+  color: var(--error-text, var(--ink));
+}

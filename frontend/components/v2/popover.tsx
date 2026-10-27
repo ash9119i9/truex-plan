@@ -15,7 +15,14 @@ export type PopoverProps = {
   "aria-label"?: string;
 };
 
-export function Popover({ open, onClose, className, children, ignoreRef, "aria-label": ariaLabel }: PopoverProps) {
+export function Popover({
+  open,
+  onClose,
+  className,
+  children,
+  ignoreRef,
+  "aria-label": ariaLabel,
+}: PopoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   useEffect(() => {
@@ -42,7 +49,12 @@ export function Popover({ open, onClose, className, children, ignoreRef, "aria-l
 
   if (!open) return null;
   return (
-    <div ref={ref} role="dialog" aria-label={ariaLabel} className={className ? `popover ${className}` : "popover"}>
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={ariaLabel}
+      className={className ? `popover ${className}` : "popover"}
+    >
       {children}
     </div>
   );

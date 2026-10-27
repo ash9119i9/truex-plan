@@ -14,7 +14,7 @@ test("login uses the split design and the existing Google authentication endpoin
   const html = render(LoginCard);
   assert.match(html, /au-page join-page au-login/);
   assert.match(html, /Pick up where your <em>agents<\/em> left off/);
-  assert.match(html, /href="\/auth\/google\/start"/);
+  assert.match(html, /href="\/api\/v1\/auth\/google"/);
   assert.match(html, /Continue with Google/);
   assert.match(html, /aria-label="Theme"/);
   assert.match(html, /aria-valuenow="0"/);
@@ -37,7 +37,7 @@ test("login preserves auth errors and sign-out retry, including the busy state",
   assert.match(html, /session may still be active/);
   assert.match(html, /Signing out…/);
   assert.match(html, /disabled=""/);
-  assert.match(html, /href="\/auth\/google\/start"/);
+  assert.match(html, /href="\/api\/v1\/auth\/google"/);
   assert.match(html, /au-progress bad/);
   const signedOut = render(LoginCard, { notice: loginNotice("signed_out") });
   assert.match(signedOut, /role="status"/);

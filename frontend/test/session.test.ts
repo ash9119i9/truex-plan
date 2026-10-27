@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fetchMe, fetchTenants, meKey, parseMe, signOut, switchWorkspace } from "../lib/session.ts";
+import { fetchMe, meKey, toMe, signOut } from "../lib/session.ts";
+import { createAuth } from "../lib/auth.ts";
+import {
+  signInForTest,
+  refreshed,
+  USER_ID,
+  TENANT_ID,
+} from "./auth-fixture.ts";
 import {
   PRIVATE_LOCAL_PREFIXES,
   bumpIdentityGeneration,
@@ -15,114 +22,129 @@ import {
 import { loginNotice, GOOGLE_START } from "../lib/login.ts";
 import { api, ApiRequestError, base } from "../lib/api.ts";
 
-const ME = {
-  user: { id: "u_1", email: "a@gmail.com", name: "Ada" },
-  tenant: { id: "demo", name: "Demo", isUserSpecific: true },
-  role: "user",
-  tenants: [{ id: "demo", name: "Demo", role: "user" }],
-  auth: "google",
+const user = { id: USER_ID, email: "a@example.invalid", name: "Ada" };
+const tenant = { id: TENANT_ID, name: "Demo", role: "user" };
+const discovery = {
+  tenants: [tenant],
+  entry: { outcome: "enterTenant", tenantId: TENANT_ID },
 };
 const reply = (status: number, body?: unknown) =>
-  new Response(body === undefined ? null : JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-const asFetch = (fn: (url: string, init?: RequestInit) => Promise<Response>) =>
-  fn as unknown as typeof fetch;
+  body === undefined
+    ? new Response(null, { status })
+    : Response.json(body, { status });
 
-test("parseMe accepts the platform's answer and rejects anything malformed", () => {
-  const me = parseMe(ME)!;
-  assert.equal(me.user.id, "u_1");
-  assert.equal(me.tenant.isUserSpecific, true);
-  assert.equal(me.auth, "google");
-  assert.equal(meKey(me), "u_1:demo");
-  assert.equal(parseMe({ ...ME, auth: "something" })!.auth, "dev");
+test("discovery accepts valid identity and rejects malformed account data", () => {
+  const result = toMe({ user }, discovery);
+  assert.equal(result.kind, "ok");
+  if (result.kind === "ok")
+    assert.equal(meKey(result.me), `${USER_ID}:${TENANT_ID}`);
   for (const bad of [
     null,
-    "x",
     {},
-    { ...ME, role: "owner" },
-    { ...ME, user: { ...ME.user, id: "" } },
-    { ...ME, user: { ...ME.user, email: undefined } },
-    { ...ME, tenant: { name: "x" } },
-    { ...ME, user: { ...ME.user, id: "x".repeat(200) } },
+    { user: { ...user, id: "bad" } },
+    { user: { ...user, email: null } },
   ])
-    assert.equal(parseMe(bad), null, JSON.stringify(bad));
-  // A bad entry in the workspace list is dropped, not fatal.
-  assert.deepEqual(parseMe({ ...ME, tenants: [{ id: "a", role: "user" }, { id: "b", role: "root" }, null] })!.tenants, [
-    { id: "a", name: "a", role: "user" },
-  ]);
+    assert.equal(toMe(bad, discovery).kind, "unavailable");
+  for (const bad of [
+    null,
+    {},
+    { ...discovery, tenants: [{ ...tenant, role: "owner" }] },
+  ])
+    assert.equal(toMe({ user }, bad).kind, "unavailable");
+  for (const outcome of ["chooseTenant", "noTenant"])
+    assert.equal(
+      toMe({ user }, { ...discovery, entry: { outcome } }).kind,
+      "blocked",
+    );
 });
 
-test("only a real 401 is a sign-out; outages, timeouts and 5xx are not", async () => {
-  const check = (fn: (url: string) => Promise<Response>) => fetchMe(asFetch(fn));
-  assert.equal((await check(async () => reply(200, ME))).kind, "ok");
-  assert.equal((await check(async () => reply(401, { code: "UNAUTHENTICATED" }))).kind, "signedOut");
-  // The admin console's cookie is not a session for this app.
-  assert.equal((await check(async () => reply(403, { code: "WRONG_APP" }))).kind, "signedOut");
-  const disabled = await check(async () => reply(403, { code: "TENANT_DISABLED" }));
-  assert.equal(disabled.kind, "blocked");
-  if (disabled.kind === "blocked") assert.match(disabled.message, /disabled/);
-  for (const status of [500, 502, 503, 504, 429, 404])
-    assert.equal((await check(async () => reply(status, { code: "X" }))).kind, "unavailable", String(status));
-  assert.equal((await check(async () => { throw new TypeError("fetch failed"); })).kind, "unavailable");
-  assert.equal((await check(async () => { throw new DOMException("t", "TimeoutError"); })).kind, "unavailable");
-  assert.equal((await check(async () => reply(200, { nonsense: true }))).kind, "unavailable");
-  assert.equal((await check(async () => new Response("<html>", { status: 200 }))).kind, "unavailable");
-  // It asks the app's own origin, with credentials, and never caches.
-  let seen: { url: string; init?: RequestInit } | undefined;
-  await fetchMe(asFetch(async (url, init) => ((seen = { url, init }), reply(200, ME))));
-  assert.equal(seen!.url, "/api/me");
-  assert.equal(seen!.init!.cache, "no-store");
-  assert.equal(seen!.init!.credentials, "same-origin");
-  assert.ok(seen!.init!.signal);
+test("only an authenticated 401 is sign-out; network and platform failures are outages", async () => {
+  for (const status of [401, 403, 429, 500, 502, 503, 504]) {
+    const auth = createAuth({
+      channel: null,
+      locks: null,
+      fetch: async () => reply(status),
+    });
+    assert.equal(
+      (await fetchMe({ auth })).kind,
+      status === 401 ? "signedOut" : "unavailable",
+    );
+  }
+  for (const error of [
+    new TypeError("offline"),
+    new DOMException("timeout", "TimeoutError"),
+  ]) {
+    const auth = createAuth({
+      channel: null,
+      locks: null,
+      fetch: async () => {
+        throw error;
+      },
+    });
+    assert.equal((await fetchMe({ auth })).kind, "unavailable");
+  }
+});
+
+test("account discovery makes only unscoped, authenticated, uncached calls", async () => {
+  const paths: string[] = [];
+  const auth = createAuth({
+    channel: null,
+    locks: null,
+    fetch: (async (url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/v1/auth/refresh")) return refreshed();
+      paths.push(url);
+      assert.equal(
+        new Headers(init?.headers).get("authorization"),
+        "Bearer token-1",
+      );
+      assert.equal(init?.cache, "no-store");
+      assert.equal(init?.credentials, "same-origin");
+      return Response.json(url.endsWith("/tenants") ? discovery : { user });
+    }) as typeof fetch,
+  });
+  assert.equal((await fetchMe({ auth })).kind, "ok");
+  assert.deepEqual(paths.sort(), ["/api/v1/me", "/api/v1/me/tenants"]);
 });
 
 test("sign-out reports honestly whether the server confirmed it", async () => {
-  assert.deepEqual(await signOut(asFetch(async () => new Response(null, { status: 204 }))), { confirmed: true });
-  assert.deepEqual(await signOut(asFetch(async () => reply(401))), { confirmed: true }, "no session left to end");
-  assert.deepEqual(await signOut(asFetch(async () => reply(503))), { confirmed: false });
-  assert.deepEqual(await signOut(asFetch(async () => reply(403, { code: "CSRF_ORIGIN" }))), { confirmed: false });
-  assert.deepEqual(await signOut(asFetch(async () => { throw new TypeError("offline"); })), { confirmed: false });
-  let call: { url: string; init?: RequestInit } | undefined;
-  await signOut(asFetch(async (url, init) => ((call = { url, init }), new Response(null, { status: 204 }))));
-  assert.equal(call!.url, "/auth/logout");
-  assert.equal(call!.init!.method, "POST");
-});
-
-test("switching workspace distinguishes denied, signed out and unavailable", async () => {
-  assert.deepEqual(await switchWorkspace("acme", asFetch(async () => reply(200, { tenant: { id: "acme" } }))), { ok: true });
-  const denied = await switchWorkspace("acme", asFetch(async () => reply(403, { code: "NOT_A_MEMBER" })));
-  assert.deepEqual({ ...denied, message: "" }, { ok: false, signedOut: false, message: "" });
-  assert.match((denied as { message: string }).message, /not a member/);
-  assert.equal(((await switchWorkspace("acme", asFetch(async () => reply(403, { code: "TENANT_DISABLED" })))) as { message: string }).message, "That workspace is currently disabled.");
-  assert.equal(((await switchWorkspace("acme", asFetch(async () => reply(401)))) as { signedOut: boolean }).signedOut, true);
-  assert.equal(((await switchWorkspace("acme", asFetch(async () => reply(503)))) as { signedOut: boolean }).signedOut, false);
-  let body = "";
-  await switchWorkspace("acme", asFetch(async (_u, init) => ((body = String(init!.body)), reply(200, {}))));
-  assert.equal(body, '{"tenantId":"acme"}');
-});
-
-test("the workspace list comes from the server and bad entries are dropped", async () => {
-  const list = await fetchTenants(asFetch(async () => reply(200, { tenants: [{ id: "a", name: "A", role: "admin" }, { id: "", role: "user" }, { id: "b", role: "root" }] })));
-  assert.deepEqual(list, { kind: "ok", tenants: [{ id: "a", name: "A", role: "admin" }] });
-  assert.equal((await fetchTenants(asFetch(async () => reply(401)))).kind, "signedOut");
-  assert.equal((await fetchTenants(asFetch(async () => reply(500)))).kind, "unavailable");
+  for (const status of [204, 401, 403, 503]) {
+    const auth = createAuth({
+      channel: null,
+      locks: null,
+      fetch: async (url, init) => {
+        assert.equal(url, "/api/v1/auth/logout");
+        assert.equal(init?.method, "POST");
+        return reply(status);
+      },
+    });
+    assert.deepEqual(await signOut(auth), { confirmed: status === 204 });
+  }
 });
 
 // ---- private browser state -------------------------------------------------
 
 class MemoryStore {
   data = new Map<string, string>();
-  get length() { return this.data.size; }
-  key(i: number) { return [...this.data.keys()][i] ?? null; }
-  getItem(k: string) { return this.data.get(k) ?? null; }
-  setItem(k: string, v: string) { this.data.set(k, v); }
-  removeItem(k: string) { this.data.delete(k); }
+  get length() {
+    return this.data.size;
+  }
+  key(i: number) {
+    return [...this.data.keys()][i] ?? null;
+  }
+  getItem(k: string) {
+    return this.data.get(k) ?? null;
+  }
+  setItem(k: string, v: string) {
+    this.data.set(k, v);
+  }
+  removeItem(k: string) {
+    this.data.delete(k);
+  }
 }
 
 test("clearing removes conversation data and keeps preferences", () => {
-  const session = new MemoryStore(), local = new MemoryStore();
+  const session = new MemoryStore(),
+    local = new MemoryStore();
   session.setItem("cursor:u1.t1:s1", "g:4");
   session.setItem("unrelated", "x");
   local.setItem("truex-visualization:u1.t1:s1:v1", "{}");
@@ -130,14 +152,26 @@ test("clearing removes conversation data and keeps preferences", () => {
   local.setItem("truex-developer-mode", "1");
   clearPrivateBrowserState({ session, local });
   assert.deepEqual([...session.data.keys()], ["unrelated"]);
-  assert.deepEqual([...local.data.keys()].sort(), ["truex-developer-mode", "truex-theme"]);
+  assert.deepEqual([...local.data.keys()].sort(), [
+    "truex-developer-mode",
+    "truex-theme",
+  ]);
   assert.ok(PRIVATE_LOCAL_PREFIXES.every((p) => p.startsWith("truex-")));
   // Storage that throws is not an error.
-  clearPrivateBrowserState({ session: { length: 1, key() { throw new Error("denied"); }, removeItem() {} } });
+  clearPrivateBrowserState({
+    session: {
+      length: 1,
+      key() {
+        throw new Error("denied");
+      },
+      removeItem() {},
+    },
+  });
 });
 
 test("entering a different identity clears what the last one left; the same one keeps it", () => {
-  const session = new MemoryStore(), local = new MemoryStore();
+  const session = new MemoryStore(),
+    local = new MemoryStore();
   enterIdentity("u1", "t1", local, { session, local });
   assert.equal(identityScope(), "u1.t1");
   session.setItem("cursor:u1.t1:s1", "g:4");
@@ -156,6 +190,7 @@ test("entering a different identity clears what the last one left; the same one 
 test("a response that arrives after the person changed is dropped", async (t) => {
   t.mock.method(console, "error", () => {});
   t.mock.method(console, "warn", () => {});
+  await signInForTest();
   assert.equal(base, "", "the browser talks to its own origin");
   let release!: () => void;
   const gate = new Promise<void>((r) => (release = r));
@@ -167,7 +202,10 @@ test("a response that arrives after the person changed is dropped", async (t) =>
   const pending = api("/api/sessions");
   bumpIdentityGeneration();
   release();
-  await assert.rejects(pending, (e: unknown) => e instanceof ApiRequestError && e.code === "STALE_IDENTITY");
+  await assert.rejects(
+    pending,
+    (e: unknown) => e instanceof ApiRequestError && e.code === "STALE_IDENTITY",
+  );
   // A request made in the new generation is fine.
   release();
   assert.deepEqual(await api("/api/sessions"), { private: "alice's data" });
@@ -177,13 +215,29 @@ test("a response that arrives after the person changed is dropped", async (t) =>
 test("a 401 asks the session gate to check; 403 and 5xx never do", async (t) => {
   t.mock.method(console, "error", () => {});
   t.mock.method(console, "warn", () => {});
+  await signInForTest();
   let notified = 0;
   const stop = onUnauthenticated(() => notified++);
-  const answer = (status: number) => t.mock.method(globalThis, "fetch", async () => reply(status, { error: "x", code: "C" }));
-  for (const [status, expected] of [[401, 1], [403, 0], [404, 0], [429, 0], [500, 0], [503, 0]] as const) {
+  const answer = (status: number) =>
+    t.mock.method(globalThis, "fetch", async (url: string) =>
+      url.startsWith("/api/v1/auth/refresh")
+        ? refreshed()
+        : reply(status, { error: "x", code: "C" }),
+    );
+  for (const [status, expected] of [
+    [401, 1],
+    [403, 0],
+    [404, 0],
+    [429, 0],
+    [500, 0],
+    [503, 0],
+  ] as const) {
     notified = 0;
     const mocked = answer(status);
-    await assert.rejects(api("/api/sessions"), (e: unknown) => e instanceof ApiRequestError && e.status === status);
+    await assert.rejects(
+      api("/api/sessions"),
+      (e: unknown) => e instanceof ApiRequestError && e.status === status,
+    );
     assert.equal(notified, expected, String(status));
     mocked.mock.restore();
   }
@@ -193,13 +247,18 @@ test("a 401 asks the session gate to check; 403 and 5xx never do", async (t) => 
 });
 
 test("sign-in messages: every server code reads as a sentence, unknown ones generically", () => {
-  assert.equal(GOOGLE_START, "/auth/google/start");
+  assert.equal(GOOGLE_START, "/api/v1/auth/google");
   assert.equal(loginNotice(null), null);
   assert.equal(loginNotice(""), null);
   for (const code of [
-    "session_expired", "google_failed", "email_unverified", "not_invited", "no_tenant",
-    "account_conflict", "account_disabled", "access_removed", "tenant_disabled",
-    "demo_unavailable", "signup_limit", "unavailable", "logout_failed",
+    "expired",
+    "rejected",
+    "cancelled",
+    "account_disabled",
+    "email_in_use",
+    "signup_unavailable",
+    "unavailable",
+    "logout_failed",
   ]) {
     const n = loginNotice(code)!;
     assert.equal(n.tone, "warn", code);
@@ -209,8 +268,14 @@ test("sign-in messages: every server code reads as a sentence, unknown ones gene
   assert.equal(loginNotice("signed_out")!.tone, "info");
   assert.equal(loginNotice("session_ended")!.tone, "info");
   assert.notEqual(loginNotice("session_ended"), loginNotice("session_expired"));
-  for (const unknown of ["__proto__", "constructor", "toString", "brand_new_code", "<img src=x>"])
+  for (const unknown of [
+    "__proto__",
+    "constructor",
+    "toString",
+    "brand_new_code",
+    "<img src=x>",
+  ])
     assert.equal(loginNotice(unknown), loginNotice("anything-else"), unknown);
   assert.match(loginNotice("logout_failed")!.rest!, /may still be active/);
-  assert.match(loginNotice("access_removed")!.lead, /ended/);
+  assert.match(loginNotice("account_disabled")!.lead, /disabled/);
 });

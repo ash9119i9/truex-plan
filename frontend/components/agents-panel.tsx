@@ -56,7 +56,10 @@ export function HelperAvatar({
   size?: "xs" | "lg";
 }) {
   return (
-    <span className={`h-av tone-${tone % 3}${size ? ` ${size}` : ""}`} aria-hidden="true">
+    <span
+      className={`h-av tone-${tone % 3}${size ? ` ${size}` : ""}`}
+      aria-hidden="true"
+    >
       {(name.trim()[0] || "H").toUpperCase()}
     </span>
   );
@@ -404,7 +407,11 @@ function HelperDetail({
         <div className="grow" style={{ minWidth: 0 }}>
           <span className="ag-ident-name">{name}</span>
           <span className="muted sm">
-            {[agent.role && agent.nickname ? agent.role : "", agent.depth > 1 ? `Level ${agent.depth}` : "", taskTitle(agent.task)]
+            {[
+              agent.role && agent.nickname ? agent.role : "",
+              agent.depth > 1 ? `Level ${agent.depth}` : "",
+              taskTitle(agent.task),
+            ]
               .filter(Boolean)
               .join(" · ")}
           </span>
@@ -465,7 +472,9 @@ function HelperDetail({
         {seg === "output" && (
           <>
             {agent.status === "interrupted" && output && (
-              <p className="muted sm">Stopped before finishing. Partial output:</p>
+              <p className="muted sm">
+                Stopped before finishing. Partial output:
+              </p>
             )}
             {output ? (
               <div className="markdown">
@@ -482,7 +491,11 @@ function HelperDetail({
             )}
             <div className="goal-actions" style={{ marginTop: 0 }}>
               {!running && output && (
-                <button type="button" className="btn-soft" onClick={() => void copy()}>
+                <button
+                  type="button"
+                  className="btn-soft"
+                  onClick={() => void copy()}
+                >
                   <Icon name={copied ? "check" : "doc"} size={14} />
                   {copied ? "Copied" : "Copy output"}
                 </button>
@@ -507,7 +520,9 @@ function HelperDetail({
         )}
         {seg === "task" && (
           <>
-            <div className="ag-task">{agent.task || "No task was recorded."}</div>
+            <div className="ag-task">
+              {agent.task || "No task was recorded."}
+            </div>
             <p className="muted sm">Sent by the main agent</p>
           </>
         )}

@@ -1,0 +1,62 @@
+tier,wave,segment,account,country,trigger,first_use_case,entry_point,source,confidence
+A,1,SI,All for One Group,Germany,"~3,000 employees; DACH mid-market SAP leader",Proposal response + program knowledge,SAP practice lead / innovation,Company disclosures; SAP partner listings,medium
+A,1,SI,q.beyond,Germany,Won Vitakraft S/4HANA migration (Sep 2026),Program status + workshop synthesis,SAP practice lead,"Public win announcement, Sep 2026",high
+A,1,SI,DATAGROUP,Germany,ISG midmarket SAP leader 2026,Managed-service knowledge base,SAP/cloud practice,ISG 2026 ranking,medium
+A,1,SI,Birlasoft,India,"~2,200 SAP practitioners; ISG US midmarket leader",Proposal response + junior ramp,SAP practice / alliance,Company disclosures; ISG 2026,medium
+A,1,SI,Coforge,India,Large SAP practice; active S/4HANA pipeline,Delivery knowledge + status packs,SAP practice head,Company disclosures,medium
+A,1,SI,LeverX,USA/global,SAP-focused SI,Program knowledge,Delivery leadership,Company website,medium
+A,1,SI,SNP Group,Germany,Data transformation specialist,Data-mapping assistant,Data migration lead,Company positioning,high
+A,1,SI,Natuvion,Germany,Data migration and transformation,Mapping + cutover documentation,Delivery lead,Company positioning,high
+A,1,SI,cbs Corporate Business Solutions,Germany,SAP S/4HANA consultancy,Program knowledge,Partner / practice lead,Company positioning,medium
+A,1,SI,SEIDOR,Spain,SAP SI; European mid-market,Proposal + delivery,SAP practice,Company disclosures,medium
+A,1,SI,NTT DATA Business Solutions,Germany/global,HARTING RISE win; large SAP practice,Program office + hypercare,SAP transformation lead,"HARTING announcement, Sep 2026",high
+A,1,SI,Abacus Consulting,Pakistan/global,SAP SI with delivery centers,Junior ramp + status packs,SAP practice,Company disclosures,medium
+A,2,Enterprise,HARTING,Germany,RISE/S/4HANA signed Sep 2026 with NTT DATA,Program knowledge + status,CIO / program director,"Public announcement, Sep 2026",high
+A,2,Enterprise,Vitakraft,Germany,"S/4HANA migration with q.beyond, Sep 2026",Workshop synthesis + data mapping,CIO / program lead,"Public announcement, Sep 2026",high
+A,1,Enterprise,Twinings Ovaltine,Switzerland/UK,Consolidating 10 ERPs to RISE,Data mapping + program knowledge,Program director,Public announcement,high
+A,1,Enterprise,Imperial Brands,UK,S/4HANA 'Unify' program,Status + test/defect triage,Transformation office,Public program coverage,medium
+A,1,Enterprise,Co-op,UK,"ECC on RISE; 2,400 stores",Test/defect triage + training,Program office,Public announcement,medium
+A,2,Enterprise,Panasonic Europe,Europe,R/3 to S/4HANA with Camunda,Process workshop synthesis,Transformation lead,Camunda case study,medium
+A,2,Enterprise,Rosenberger,Germany,Go-live Jun 2026; hypercare issues,Defect triage + knowledge,CIO / hypercare lead,Public go-live coverage,high
+A,2,Enterprise,Wesizwe Platinum,South Africa,Reimplementation after cyberattack (2026),Controls documentation + PMO,CIO / program director,Public incident coverage,medium
+A,1,Enterprise,Convatec,UK,S/4HANA with LTIMindtree,Program knowledge + status,Transformation office,LTIMindtree announcement,medium
+A,2,Enterprise,Snohomish County PUD,USA,S/4HANA with Cognizant,PMO + documentation,CIO / program director,Cognizant case study,medium
+A,1,Enterprise,Century Plyboards,India,Go-live Apr 2026,Hypercare defect triage,CIO / program lead,Public go-live coverage,high
+A,1,Enterprise,Elevate Campuses,India,"S/4HANA with KPMG, Apr 2026",Training + documentation,Program director,Public announcement,medium
+A,2,Enterprise,Clorox,USA,$580M S/4HANA completed Feb 2026,Post-implementation optimization,CIO / finance transformation,Public earnings/program coverage,medium
+A,2,Enterprise,Salling Group,Denmark,SAP transformation,Program knowledge,CIO,Public program coverage,medium
+A,2,Enterprise,BEW Berliner Energie und Wärme,Germany,SAP transformation,Status + documentation,Program office,Public program coverage,medium
+A,1,Enterprise,Gardner White,USA,S/4HANA program,Test/defect triage,CIO,Public case coverage,medium
+A,2,Enterprise,FrieslandCampina,Netherlands,SAP program,Data mapping + status,Transformation office,Public program coverage,medium
+A,1,Enterprise,TPAC Packaging India,India,SAP rollout,Training + cutover documentation,Program lead,Public announcement,medium
+A,1,Enterprise,Birla Opus Paints,India,Greenfield SAP,Program knowledge,CIO,Public program coverage,medium
+B,3,Enterprise,BMW,Germany,Large-scale S/4HANA transformation,Program knowledge,Transformation office,Public program coverage,low
+B,3,Enterprise,Hitachi High-Tech,Japan,SAP transformation,Engineering change + program docs,CIO,Public case coverage,low
+B,3,Enterprise,Florida Crystals,USA,S/4HANA program,Status + documentation,CIO,Public case coverage,low
+B,3,Enterprise,badenova,Germany,SAP transformation,Status + documentation,Program office,Public program coverage,low
+B,3,Enterprise,Komm.ONE,Germany,Public-sector SAP transformation,Documentation + status,Program office,Public program coverage,low
+B,3,Enterprise,Ratiodata,Germany,SAP transformation,Program knowledge,CIO,Public program coverage,low
+B,3,Enterprise,Index Living Mall,Thailand,SAP transformation,Program knowledge,CIO,Public program coverage,low
+B,3,Enterprise,Coop Switzerland,Switzerland,SAP transformation,Status + documentation,Program office,Public program coverage,low
+C,3,SI,HCLTech,India,Tier 1 SAP practice,Pilot after references,SAP alliance / innovation,Company disclosures,low
+C,3,SI,Infosys,India,Tier 1 SAP practice,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,TCS,India,Tier 1 SAP practice,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,Wipro,India,Tier 1 SAP practice,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,Cognizant,USA/India,Tier 1 SAP practice; Snohomish PUD,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,Capgemini,France/global,Tier 1 SAP practice,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,Accenture,Ireland/global,Tier 1 SAP practice,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,IBM,USA/global,Tier 1 SAP practice,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,Deloitte,USA/global,Tier 1 SAP advisory,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,EY,UK/global,Tier 1 SAP advisory,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,KPMG,Netherlands/global,Tier 1 SAP advisory; Elevate Campuses,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,EPAM/NEORIS,USA/global,SAP and digital transformation,Pilot after references,SAP alliance,Company disclosures,low
+C,3,SI,KloudData,USA/India,SAP and cloud services,Pilot after references,Delivery leadership,Company disclosures,low
+C,3,Enterprise,GAIL,India,Large SAP program,Program knowledge,CIO,Public program coverage,low
+A,1,SI,YASH Technologies,India/USA,Large SAP practice; SAP Platinum Partner,Proposal response + junior ramp,SAP practice head,Company disclosures; SAP partner listings,medium
+A,1,SI,LTIMindtree,India,Large SAP practice; Convatec S/4HANA program,Program knowledge + status packs,SAP practice / alliance,Company disclosures; Convatec announcement,medium
+A,1,SI,Zensar Technologies,India,SAP services practice serving global clients,Delivery knowledge + status packs,SAP practice head,Company disclosures,medium
+A,1,SI,Bristlecone,India/USA,SAP supply-chain and digital services,Program knowledge + data mapping,Delivery leadership,Company disclosures,medium
+A,1,SI,Godrej Infotech,India,SAP Gold Partner; mid-market SAP practice,Proposal + program knowledge,SAP practice lead,Company disclosures; SAP partner listings,medium
+A,1,SI,KPIT Technologies,India,SAP automotive and engineering services,Program knowledge + test triage,SAP practice lead,Company disclosures,medium
+A,1,SI,Version 1,UK/Ireland,SAP Gold Partner; UK mid-market delivery,Proposal + status packs,SAP practice lead,Company disclosures; SAP partner listings,medium
+A,2,SI,Sopra Steria,France/Europe,Large SAP SI; European public and private sector,Program knowledge + documentation,SAP practice / innovation,Company disclosures; ISG rankings,medium

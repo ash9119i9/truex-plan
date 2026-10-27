@@ -10,7 +10,9 @@ export function Shell({
   className?: string;
 }) {
   return (
-    <div className={["shell", "layout-main", className].filter(Boolean).join(" ")}>
+    <div
+      className={["shell", "layout-main", className].filter(Boolean).join(" ")}
+    >
       {children}
     </div>
   );
@@ -58,7 +60,9 @@ export function Panel({
       aria-hidden={open ? undefined : true}
       inert={!open}
     >
-      <div className={["panel-inner", innerClassName].filter(Boolean).join(" ")}>
+      <div
+        className={["panel-inner", innerClassName].filter(Boolean).join(" ")}
+      >
         {children}
       </div>
     </aside>

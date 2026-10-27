@@ -1,0 +1,964 @@
+import { Inject, Injectable } from "@nestjs/common";
+import {
+  ObjectId,
+  type ClientSession,
+  type Collection,
+  type Db,
+} from "mongodb";
+import type { TenantContext } from "../../common/access/tenant.guard";
+import { DomainError } from "../../common/domain-error";
+import { APP_CONFIG, type AppConfig } from "../../config/app-config";
+import { DatabaseService } from "../../database/database.service";
+import { isDuplicateKeyError } from "../../database/mongo-errors";
+import { toWireId } from "../../database/object-id";
+import { AuditService } from "../audit/audit.service";
+import type { ConnectorDoc } from "../connectors/connector";
+import { ConnectorsCatalogService } from "../connectors/connectors-catalog.service";
+import { MembershipsService } from "../memberships/memberships.service";
+import { modelView, type ModelDoc, type ModelView } from "../models/model";
+import { ModelsService } from "../models/models.service";
+import { skillView, type SkillDoc, type SkillView } from "../skills/skill";
+import { SkillsService } from "../skills/skills.service";
+import {
+  AGENT_QUOTA_COLLECTION,
+  AGENTS_COLLECTION,
+  MAX_AGENTS_PER_USER,
+  MAX_TENANT_AGENTS,
+  requestHashOf,
+  type AgentConnector,
+  type AgentConnectorRequest,
+  type AgentDoc,
+  type AgentScope,
+  type ConnectorAccess,
+  type CreateAgentInput,
+  type UpdateAgentInput,
+} from "./agent";
+import type { AgentTint } from "./agent-fields";
+import type { BuiltinAgentDoc } from "./builtin-agent";
+import {
+  BuiltinAgentsService,
+  type BuiltinListing,
+} from "./builtin-agents.service";
+
+export type AgentSource = "builtin" | AgentScope;
+
+// What a chat needs from its agent. Instructions only for built-ins; this
+// never leaves the server.
+export interface ChatAgent {
+  source: AgentSource;
+  id: ObjectId;
+  revision: number;
+  name: string;
+  description: string;
+  instructions?: string;
+  modelId: ObjectId;
+  look: number;
+  tint: AgentTint;
+  // The connectors the chat snapshots at start; [] for built-ins and agents
+  // created before connectors existed.
+  connectors: AgentConnector[];
+  // The skills the chat snapshots at start; [] for built-ins and agents
+  // created before skills existed.
+  skillIds: ObjectId[];
+  // May start helper agents; false for built-ins.
+  helpers: boolean;
+}
+
+// One connector on an agent as the caller sees it: product-written display
+// fields merged from the catalog. `available: false` means the product team
+// disabled it, so the agent still names it but a chat cannot use it.
+// `access` is the agent's choice (read_write by default); `writeTools` is the
+// catalog's list of data-changing tools ([] when unavailable), so the dialog
+// shows the access choice only when there is something to restrict.
+export interface AgentConnectorView {
+  slug: string;
+  displayName: string;
+  icon: string;
+  available: boolean;
+  access: ConnectorAccess;
+  writeTools: string[];
+}
+
+// One agent as the caller sees it, with what the caller may do to it.
+export interface AgentView {
+  id: string;
+  source: AgentSource;
+  name: string;
+  description: string;
+  look: number;
+  tint: AgentTint;
+  // Null when the agent's model is disabled or gone.
+  model: ModelView | null;
+  // The directory connectors this agent uses, always present ([] when none).
+  connectors: AgentConnectorView[];
+  // The skills this agent uses, always present ([] when none). A disabled
+  // one has `available: false`: new chats leave it out.
+  skills: SkillView[];
+  // May start helper agents during a reply (needs CHAT_SUBAGENTS too).
+  helpers: boolean;
+  // False when a chat could not start with it right now.
+  available: boolean;
+  revision: number;
+  createdByMe: boolean;
+  status: "active" | "archived";
+  canEdit: boolean;
+  canArchive: boolean;
+  canPromote: boolean;
+}
+
+export interface AgentSummary {
+  name: string;
+  look: number;
+  tint: AgentTint;
+  // False for an archived agent or a disabled built-in.
+  available: boolean;
+}
+
+interface QuotaLock {
+  _id: string;
+  version: number;
+}
+
+const NOT_FOUND = "This agent does not exist or you cannot see it.";
+const TENANT_LOCK = "tenant";
+const ownerLock = (userId: ObjectId) => `owner:${userId.toHexString()}`;
+
+// Personal agents of the caller, plus every tenant agent.
+function visibleTo(userId: ObjectId) {
+  return {
+    $or: [
+      { scope: "tenant" as const },
+      { scope: "personal" as const, ownerId: userId },
+    ],
+  };
+}
+
+// Personal and tenant agents. Every read and write is bounded to the
+// caller's tenant database and to the agents the caller can see.
+@Injectable()
+export class AgentsService {
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+    @Inject(ModelsService) private readonly models: ModelsService,
+    @Inject(BuiltinAgentsService)
+    private readonly builtins: BuiltinAgentsService,
+    @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(MembershipsService)
+    private readonly memberships: MembershipsService,
+    @Inject(ConnectorsCatalogService)
+    private readonly connectors: ConnectorsCatalogService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(SkillsService) private readonly skills: SkillsService,
+  ) {}
+
+  private db(context: TenantContext): Db {
+    return this.database.tenantDb(context.dbName);
+  }
+
+  private agents(context: TenantContext): Collection<AgentDoc> {
+    return this.db(context).collection<AgentDoc>(AGENTS_COLLECTION);
+  }
+
+  private locks(context: TenantContext): Collection<QuotaLock> {
+    return this.db(context).collection<QuotaLock>(AGENT_QUOTA_COLLECTION);
+  }
+
+  // The agents collection's indexes are built when the tenant is
+  // provisioned (AGENT_INDEXES). The audit trail's are built once per
+  // process, outside the write transactions that record to it.
+  private ensureIndexes(): Promise<void> {
+    return this.audit.ensureIndexes();
+  }
+
+  // Resolves the connectors a create or edit attached to the connectors stored
+  // on the agent, pinning each by catalog ID and keeping the chosen access.
+  // Refuses when connectors are not configured on this server, or when a slug
+  // names no enabled catalog entry (naming the slug). An empty list resolves
+  // to [] without a catalog read. read_write is stored as the absence of
+  // `access`, so old documents keep their meaning.
+  private async resolveConnectors(
+    requests: readonly AgentConnectorRequest[],
+  ): Promise<AgentConnector[]> {
+    if (requests.length === 0) return [];
+    if (!this.config.connectors)
+      throw new DomainError(
+        "CONNECTORS_NOT_CONFIGURED",
+        "Directory connectors are not available on this server.",
+      );
+    const enabled = new Map(
+      (await this.connectors.enabledConnectors()).map((c) => [c.slug, c]),
+    );
+    return requests.map((request) => {
+      const connector = enabled.get(request.slug);
+      if (!connector)
+        throw new DomainError(
+          "INVALID_INPUT",
+          `"${request.slug}" is not an available connector.`,
+        );
+      return {
+        connectorId: connector._id,
+        slug: request.slug,
+        ...(request.access === "read_only" ? { access: "read_only" } : {}),
+      };
+    });
+  }
+
+  // The skills a create or edit chose, read now so a skill disabled a moment
+  // ago is refused. One the agent already has may stay while disabled (it is
+  // shown as Unavailable), so editing another field never fails over it.
+  private async resolveSkills(
+    ids: readonly ObjectId[],
+    kept: readonly ObjectId[] = [],
+  ): Promise<ObjectId[]> {
+    if (ids.length === 0) return [];
+    const found = await this.skills.findMany(ids);
+    for (const id of ids) {
+      const skill = found.find((entry) => entry._id.equals(id));
+      if (!skill || (!skill.enabled && !kept.some((k) => k.equals(id))))
+        throw new DomainError(
+          "INVALID_INPUT",
+          skill
+            ? `"${skill.displayName}" is not available. Remove it from the agent.`
+            : "One of the skills does not exist.",
+        );
+    }
+    return [...ids];
+  }
+
+  // Everything the picker shows: enabled built-ins, then the caller's
+  // personal agents, then the tenant's agents. Built-ins and models usually
+  // come from memory, so this is normally one indexed tenant query.
+  async list(context: TenantContext): Promise<AgentView[]> {
+    const [builtins, enabledModels, agents] = await Promise.all([
+      this.builtins.enabledAgents(),
+      this.models.enabledModels(),
+      this.agents(context)
+        .find({ status: "active", ...visibleTo(context.userId) })
+        // The largest valid set: the caller's personal agents plus the
+        // tenant's shared ones, both capped at creation.
+        .limit(MAX_AGENTS_PER_USER + MAX_TENANT_AGENTS)
+        .toArray(),
+    ]);
+    const models = new Map(enabledModels.map((m) => [toWireId(m._id), m]));
+    // A model added after the cache loaded is looked up directly, so a new
+    // agent never shows as unavailable just because the cache is behind.
+    const unknown = new Map<string, ObjectId>();
+    for (const ref of [...builtins, ...agents])
+      if (!models.has(toWireId(ref.modelId)))
+        unknown.set(toWireId(ref.modelId), ref.modelId);
+    for (const model of await this.models.findEnabledMany([
+      ...unknown.values(),
+    ]))
+      models.set(toWireId(model._id), model);
+
+    const byName = (a: AgentDoc, b: AgentDoc) =>
+      a.name.localeCompare(b.name) ||
+      toWireId(a._id).localeCompare(toWireId(b._id));
+    const personal = agents.filter((a) => a.scope === "personal").sort(byName);
+    const tenant = agents.filter((a) => a.scope === "tenant").sort(byName);
+    const [connectors, skills] = await Promise.all([
+      this.enabledConnectorMap(...agents.map((a) => a.connectors)),
+      this.skillMap(...agents.map((a) => a.skillIds)),
+    ]);
+    return [
+      ...builtins.map((b) => builtinView(b, models.get(toWireId(b.modelId)))),
+      ...[...personal, ...tenant].map((a) =>
+        agentView(
+          a,
+          context,
+          models.get(toWireId(a.modelId)),
+          connectors,
+          skills,
+        ),
+      ),
+    ];
+  }
+
+  async create(
+    context: TenantContext,
+    input: CreateAgentInput,
+    requestId?: string,
+  ): Promise<{ agent: AgentView; created: boolean }> {
+    await this.ensureIndexes();
+    const requestHash = requestHashOf(input);
+    const replay = await this.replay(context, input, requestHash);
+    if (replay) return { agent: replay, created: false };
+
+    const model = await this.models.findEnabled(input.modelId);
+    if (!model) throw modelUnavailable();
+    // Resolved against the enabled catalog; refuses an unknown slug or, when
+    // connectors are off, any connector at all. Before the locks so a bad
+    // request does not touch the quota documents.
+    const connectors = await this.resolveConnectors(input.connectors);
+    const skillIds = await this.resolveSkills(input.skillIds);
+    await this.prepareLocks(context, input.scope === "tenant");
+
+    const now = new Date();
+    const doc: AgentDoc = {
+      _id: new ObjectId(),
+      scope: input.scope,
+      ownerId: context.userId,
+      name: input.name,
+      description: input.description,
+      modelId: input.modelId,
+      look: input.look,
+      tint: input.tint,
+      ...(connectors.length ? { connectors } : {}),
+      ...(skillIds.length ? { skillIds } : {}),
+      ...(input.helpers ? { helpers: true as const } : {}),
+      status: "active",
+      revision: 1,
+      clientRequestId: input.clientRequestId,
+      requestHash,
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await this.database.withTransaction(async (session) => {
+        await this.checkLimits(
+          context,
+          input.scope === "tenant",
+          true,
+          session,
+        );
+        await this.agents(context).insertOne(doc, { session });
+        await this.record(context, "agent.create", doc, requestId, session);
+      });
+    } catch (error) {
+      // The same request committed first in another attempt.
+      if (!isDuplicateKeyError(error)) throw error;
+      const raced = await this.replay(context, input, requestHash);
+      if (!raced) throw error;
+      return { agent: raced, created: false };
+    }
+    return {
+      agent: agentView(
+        doc,
+        context,
+        model,
+        await this.enabledConnectorMap(doc.connectors),
+        await this.skillMap(doc.skillIds),
+      ),
+      created: true,
+    };
+  }
+
+  async update(
+    context: TenantContext,
+    agentId: ObjectId,
+    input: UpdateAgentInput,
+    requestId?: string,
+  ): Promise<AgentView> {
+    await this.ensureIndexes();
+    const agent = await this.findVisible(context, agentId);
+    if (!agent.ownerId.equals(context.userId))
+      throw new DomainError(
+        "FORBIDDEN",
+        "Only the agent's creator can edit it.",
+      );
+    if (agent.status !== "active")
+      throw new DomainError("CONFLICT", "This agent is archived.");
+    if (agent.revision !== input.revision) throw staleRevision();
+
+    const changes = Object.fromEntries(
+      Object.entries(input.changes).filter(([field, value]) =>
+        field === "modelId"
+          ? !agent.modelId.equals(value as ObjectId)
+          : agent[field as keyof AgentDoc] !== value,
+      ),
+    ) as UpdateAgentInput["changes"];
+    // Connectors are resolved and compared to what the agent already has, so
+    // an edit that re-sends the same connectors is a no-op like any field.
+    const connectors =
+      input.connectors === undefined
+        ? undefined
+        : await this.resolveConnectors(input.connectors);
+    const connectorsChanged =
+      connectors !== undefined &&
+      !sameConnectors(agent.connectors ?? [], connectors);
+    const skillIds =
+      input.skillIds === undefined
+        ? undefined
+        : await this.resolveSkills(input.skillIds, agent.skillIds ?? []);
+    const skillsChanged =
+      skillIds !== undefined && !sameIds(agent.skillIds ?? [], skillIds);
+    const helpersChanged =
+      input.helpers !== undefined && input.helpers !== !!agent.helpers;
+    if (
+      Object.keys(changes).length === 0 &&
+      !connectorsChanged &&
+      !skillsChanged &&
+      !helpersChanged
+    )
+      return this.singleView(context, agent);
+    if (changes.modelId && !(await this.models.findEnabled(changes.modelId)))
+      throw modelUnavailable();
+
+    const updated = await this.database.withTransaction(async (session) => {
+      if (
+        changes.modelId &&
+        !(await this.models.findEnabled(changes.modelId, session))
+      )
+        throw modelUnavailable();
+      const next = await this.agents(context).findOneAndUpdate(
+        { _id: agent._id, revision: input.revision, status: "active" },
+        {
+          $set: {
+            ...changes,
+            ...(connectorsChanged && connectors!.length
+              ? { connectors: connectors! }
+              : {}),
+            ...(skillsChanged && skillIds!.length
+              ? { skillIds: skillIds! }
+              : {}),
+            ...(helpersChanged && input.helpers ? { helpers: true } : {}),
+            updatedAt: new Date(),
+          },
+          $inc: { revision: 1 },
+          // An edit that clears a list removes the field entirely.
+          ...(unsetOf({
+            connectors: connectorsChanged && connectors!.length === 0,
+            skillIds: skillsChanged && skillIds!.length === 0,
+            helpers: helpersChanged && !input.helpers,
+          }) ?? {}),
+        },
+        { returnDocument: "after", session },
+      );
+      if (!next) throw staleRevision();
+      await this.record(context, "agent.update", next, requestId, session, {
+        fields: [
+          ...Object.keys(changes),
+          ...(connectorsChanged ? ["connectors"] : []),
+          ...(skillsChanged ? ["skillIds"] : []),
+          ...(helpersChanged ? ["helpers"] : []),
+        ]
+          .sort()
+          .join(","),
+      });
+      return next;
+    });
+    return this.singleView(context, updated);
+  }
+
+  // Shares a personal agent with the whole tenant. There is no way back:
+  // other members may already have chats with it.
+  async promote(
+    context: TenantContext,
+    agentId: ObjectId,
+    requestId?: string,
+  ): Promise<AgentView> {
+    await this.ensureIndexes();
+    const agent = await this.findVisible(context, agentId);
+    if (!agent.ownerId.equals(context.userId))
+      throw new DomainError(
+        "FORBIDDEN",
+        "Only the agent's creator can share it.",
+      );
+    if (agent.scope === "tenant") return this.singleView(context, agent);
+    if (agent.status !== "active")
+      throw new DomainError("CONFLICT", "This agent is archived.");
+    await this.prepareLocks(context, true);
+
+    const promoted = await this.database.withTransaction(async (session) => {
+      await this.checkLimits(context, true, false, session);
+      const next = await this.agents(context).findOneAndUpdate(
+        { _id: agent._id, scope: "personal", status: "active" },
+        {
+          $set: { scope: "tenant", updatedAt: new Date() },
+          $inc: { revision: 1 },
+        },
+        { returnDocument: "after", session },
+      );
+      if (!next)
+        throw new DomainError(
+          "CONFLICT",
+          "The agent changed while sharing it. Reload and try again.",
+        );
+      await this.record(context, "agent.promote", next, requestId, session);
+      return next;
+    });
+    return this.singleView(context, promoted);
+  }
+
+  // Removes the agent from every picker. Existing chats keep their pinned
+  // copy. Repeating it is safe.
+  async archive(
+    context: TenantContext,
+    agentId: ObjectId,
+    requestId?: string,
+  ): Promise<AgentView> {
+    await this.ensureIndexes();
+    const agent = await this.findVisible(context, agentId);
+    if (!(await this.mayArchiveNow(agent, context)))
+      throw new DomainError(
+        "FORBIDDEN",
+        "Only the agent's creator or a workspace admin can archive it.",
+      );
+    if (agent.status === "archived") return this.singleView(context, agent);
+
+    const archived = await this.database.withTransaction(async (session) => {
+      const now = new Date();
+      const next = await this.agents(context).findOneAndUpdate(
+        { _id: agent._id, status: "active" },
+        {
+          $set: {
+            status: "archived",
+            archivedAt: now,
+            archivedBy: context.userId,
+            updatedAt: now,
+          },
+          $inc: { revision: 1 },
+        },
+        { returnDocument: "after", session },
+      );
+      // Archived by someone else in the meantime: the outcome is the same.
+      if (!next) return null;
+      await this.record(context, "agent.archive", next, requestId, session);
+      return next;
+    });
+    return this.singleView(
+      context,
+      archived ?? (await this.findVisible(context, agentId)),
+    );
+  }
+
+  // The agent a chat runs with. A new chat needs an active agent; an
+  // existing chat keeps working after its user agent is archived (it runs
+  // from its own thread). A disabled built-in stops every chat with it: that
+  // is the product team's switch for a prompt that must not run again.
+  // Returns null for anything the caller cannot use.
+  //
+  // Built-ins come from the catalog cache (no query; a disable takes effect
+  // within BUILTIN_CACHE_TTL_MS). A user agent is one indexed tenant query.
+  // An ID neither knows is checked once more as a built-in added since the
+  // cache loaded.
+  async resolveForChat(
+    context: TenantContext,
+    agentId: ObjectId,
+    options: { allowArchived: boolean },
+  ): Promise<ChatAgent | null> {
+    const cached = await this.builtins.cachedById(agentId);
+    if (cached === "disabled") return null;
+    if (cached !== "unknown") return builtinChatAgent(cached);
+    const agent = await this.agents(context).findOne({
+      _id: agentId,
+      ...visibleTo(context.userId),
+      ...(options.allowArchived ? {} : { status: "active" as const }),
+    });
+    if (agent)
+      return {
+        source: agent.scope,
+        id: agent._id,
+        revision: agent.revision,
+        name: agent.name,
+        description: agent.description,
+        modelId: agent.modelId,
+        look: agent.look,
+        tint: agent.tint,
+        connectors: agent.connectors ?? [],
+        skillIds: agent.skillIds ?? [],
+        helpers: agent.helpers === true,
+      };
+    const added = await this.builtins.findEnabledWithInstructions(agentId);
+    return added ? builtinChatAgent(added) : null;
+  }
+
+  // Display fields for the agents of a page of chats. A chat shows its
+  // agent's current name and look. Built-ins come from the catalog cache;
+  // user agents take one tenant query, skipped when there are none.
+  async summariesFor(
+    context: TenantContext,
+    agentIds: readonly ObjectId[],
+  ): Promise<Map<string, AgentSummary>> {
+    const summaries = new Map<string, AgentSummary>();
+    if (agentIds.length === 0) return summaries;
+    const addBuiltin = (b: BuiltinListing) =>
+      summaries.set(toWireId(b._id), {
+        name: b.name,
+        look: b.look,
+        tint: b.tint,
+        available: b.enabled,
+      });
+    for (const b of await this.builtins.cachedListings())
+      if (agentIds.some((id) => id.equals(b._id))) addBuiltin(b);
+    const rest = agentIds.filter((id) => !summaries.has(toWireId(id)));
+    if (rest.length === 0) return summaries;
+    const agents = await this.agents(context)
+      .find(
+        { _id: { $in: rest }, ...visibleTo(context.userId) },
+        { projection: { name: 1, look: 1, tint: 1, status: 1 } },
+      )
+      .toArray();
+    for (const a of agents)
+      summaries.set(toWireId(a._id), {
+        name: a.name,
+        look: a.look,
+        tint: a.tint,
+        available: a.status === "active",
+      });
+    // Built-ins added since the cache loaded. Rare; one catalog query.
+    const missing = rest.filter((id) => !summaries.has(toWireId(id)));
+    for (const b of await this.builtins.findListings(missing)) addBuiltin(b);
+    return summaries;
+  }
+
+  // The agent if the caller can see it. Another member's personal agent and
+  // an ID that does not exist give the same answer.
+  private async findVisible(
+    context: TenantContext,
+    agentId: ObjectId,
+  ): Promise<AgentDoc> {
+    const agent = await this.agents(context).findOne({
+      _id: agentId,
+      ...visibleTo(context.userId),
+    });
+    if (!agent) throw new DomainError("NOT_FOUND", NOT_FOUND);
+    return agent;
+  }
+
+  private async replay(
+    context: TenantContext,
+    input: CreateAgentInput,
+    requestHash: string,
+  ): Promise<AgentView | null> {
+    const existing = await this.agents(context).findOne({
+      ownerId: context.userId,
+      clientRequestId: input.clientRequestId,
+    });
+    if (!existing) return null;
+    if (existing.requestHash !== requestHash)
+      throw new DomainError(
+        "CONFLICT",
+        "This request ID was already used for a different agent. Start a new request.",
+      );
+    return this.singleView(context, existing);
+  }
+
+  // Lock documents exist before any transaction writes them: concurrent
+  // first-time upserts inside transactions could otherwise fail on the
+  // unique _id instead of retrying.
+  private async prepareLocks(
+    context: TenantContext,
+    tenantScope: boolean,
+  ): Promise<void> {
+    const ids = [
+      ownerLock(context.userId),
+      ...(tenantScope ? [TENANT_LOCK] : []),
+    ];
+    await Promise.all(
+      ids.map(async (_id) => {
+        try {
+          await this.locks(context).updateOne(
+            { _id },
+            { $setOnInsert: { version: 0 } },
+            { upsert: true },
+          );
+        } catch (error) {
+          if (!isDuplicateKeyError(error)) throw error;
+        }
+      }),
+    );
+  }
+
+  // Writing the lock documents makes concurrent creates conflict, so the
+  // driver retries the losers and their counts include the winner's insert.
+  private async checkLimits(
+    context: TenantContext,
+    tenantScope: boolean,
+    countOwner: boolean,
+    session: ClientSession,
+  ): Promise<void> {
+    const agents = this.agents(context);
+    if (countOwner) {
+      await this.locks(context).updateOne(
+        { _id: ownerLock(context.userId) },
+        { $inc: { version: 1 } },
+        { session },
+      );
+      const owned = await agents.countDocuments(
+        { ownerId: context.userId, status: "active" },
+        { session },
+      );
+      if (owned >= MAX_AGENTS_PER_USER)
+        throw new DomainError(
+          "LIMIT_REACHED",
+          `You can have up to ${MAX_AGENTS_PER_USER} agents. Archive one to create another.`,
+        );
+    }
+    if (tenantScope) {
+      await this.locks(context).updateOne(
+        { _id: TENANT_LOCK },
+        { $inc: { version: 1 } },
+        { session },
+      );
+      const shared = await agents.countDocuments(
+        { scope: "tenant", status: "active" },
+        { session },
+      );
+      if (shared >= MAX_TENANT_AGENTS)
+        throw new DomainError(
+          "LIMIT_REACHED",
+          `This workspace already has ${MAX_TENANT_AGENTS} shared agents. Ask an admin to archive one.`,
+        );
+    }
+  }
+
+  private record(
+    context: TenantContext,
+    action: string,
+    agent: AgentDoc,
+    requestId: string | undefined,
+    session: ClientSession,
+    details: Record<string, string> = {},
+  ): Promise<void> {
+    return this.audit.record(
+      {
+        action,
+        actor: { kind: "user", userId: context.userId },
+        result: "success",
+        tenantId: context.tenantId,
+        ...(agent.ownerId.equals(context.userId)
+          ? {}
+          : { targetUserId: agent.ownerId }),
+        details: {
+          agentId: toWireId(agent._id),
+          scope: agent.scope,
+          revision: agent.revision,
+          ...details,
+        },
+        requestId,
+      },
+      session,
+    );
+  }
+
+  // mayArchive with the admin role read now: the context's role can come from
+  // an access token up to ACCESS_TOKEN_TTL_SECONDS old, and a demoted admin
+  // must not archive other people's agents in that time.
+  private async mayArchiveNow(
+    agent: AgentDoc,
+    context: TenantContext,
+  ): Promise<boolean> {
+    if (agent.ownerId.equals(context.userId)) return true;
+    if (agent.scope !== "tenant") return false;
+    const membership = await this.memberships.findActive(
+      context.userId,
+      context.tenantId,
+    );
+    return membership?.role === "admin";
+  }
+
+  // One agent after a write, with its model read now rather than from cache.
+  private async singleView(
+    context: TenantContext,
+    agent: AgentDoc,
+  ): Promise<AgentView> {
+    const [model, connectors, skills] = await Promise.all([
+      this.models.findEnabled(agent.modelId),
+      this.enabledConnectorMap(agent.connectors),
+      this.skillMap(agent.skillIds),
+    ]);
+    return agentView(agent, context, model ?? undefined, connectors, skills);
+  }
+
+  // The catalog skills keyed by ID, for rendering agent views: every skill,
+  // so disabled ones show as Unavailable. No catalog read when no agent in
+  // view has skills.
+  private async skillMap(
+    ...lists: ReadonlyArray<readonly ObjectId[] | undefined>
+  ): Promise<ReadonlyMap<string, SkillDoc>> {
+    if (!lists.some((list) => list && list.length > 0)) return new Map();
+    const catalog = await this.skills.catalog();
+    // A skill added since the cache loaded is read now.
+    const known = new Map(catalog.map((skill) => [toWireId(skill._id), skill]));
+    const unknown = lists
+      .flatMap((list) => list ?? [])
+      .filter((id) => !known.has(toWireId(id)));
+    for (const skill of await this.skills.findMany(unknown))
+      known.set(toWireId(skill._id), skill);
+    return known;
+  }
+
+  // The enabled catalog connectors keyed by slug, for rendering agent views.
+  // Empty (no catalog read) when connectors are off or no agent in view has
+  // any, so the common text-only path adds no work.
+  private async enabledConnectorMap(
+    ...connectorLists: ReadonlyArray<readonly AgentConnector[] | undefined>
+  ): Promise<ReadonlyMap<string, ConnectorDoc>> {
+    const empty = new Map<string, ConnectorDoc>();
+    if (
+      !this.config.connectors ||
+      !connectorLists.some((list) => list && list.length > 0)
+    )
+      return empty;
+    const enabled = await this.connectors.enabledConnectors();
+    return new Map(enabled.map((c) => [c.slug, c]));
+  }
+}
+
+function mayArchive(agent: AgentDoc, context: TenantContext): boolean {
+  return (
+    agent.ownerId.equals(context.userId) ||
+    (agent.scope === "tenant" && context.role === "admin")
+  );
+}
+
+// Whether two connector lists name the same catalog IDs with the same access
+// in the same order: the order the member chose is meaningful (the prompt
+// lists them in it), so a reorder is a change, and so is an access-only edit.
+function sameConnectors(
+  current: readonly AgentConnector[],
+  next: readonly AgentConnector[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every(
+      (ref, i) =>
+        ref.connectorId.equals(next[i]!.connectorId) &&
+        (ref.access ?? "read_write") === (next[i]!.access ?? "read_write"),
+    )
+  );
+}
+
+function sameIds(
+  current: readonly ObjectId[],
+  next: readonly ObjectId[],
+): boolean {
+  return (
+    current.length === next.length &&
+    current.every((id, i) => id.equals(next[i]!))
+  );
+}
+
+// `$unset` for the fields that are true, or undefined when none are.
+function unsetOf(
+  fields: Record<string, boolean>,
+): { $unset: Record<string, ""> } | undefined {
+  const names = Object.keys(fields).filter((name) => fields[name]);
+  return names.length
+    ? { $unset: Object.fromEntries(names.map((name) => [name, ""])) }
+    : undefined;
+}
+
+function agentView(
+  agent: AgentDoc,
+  context: TenantContext,
+  model: ModelDoc | undefined,
+  enabledConnectors: ReadonlyMap<string, ConnectorDoc>,
+  catalogSkills: ReadonlyMap<string, SkillDoc>,
+): AgentView {
+  const mine = agent.ownerId.equals(context.userId);
+  const active = agent.status === "active";
+  return {
+    id: toWireId(agent._id),
+    source: agent.scope,
+    name: agent.name,
+    description: agent.description,
+    look: agent.look,
+    tint: agent.tint,
+    model: model ? modelView(model) : null,
+    connectors: connectorViewsOf(agent.connectors, enabledConnectors),
+    // A skill the catalog never had (it never deletes) is left out.
+    skills: (agent.skillIds ?? []).flatMap((id) => {
+      const skill = catalogSkills.get(toWireId(id));
+      return skill ? [skillView(skill)] : [];
+    }),
+    helpers: agent.helpers === true,
+    available: active && !!model,
+    revision: agent.revision,
+    createdByMe: mine,
+    status: agent.status,
+    canEdit: active && mine,
+    canArchive: active && mayArchive(agent, context),
+    canPromote: active && mine && agent.scope === "personal",
+  };
+}
+
+// An agent's stored connectors as views. A connector that has since been
+// disabled (dropped from the enabled catalog) is still shown, named from the
+// stored slug, with `available: false` — connecting cannot help.
+function connectorViewsOf(
+  connectors: readonly AgentConnector[] | undefined,
+  enabled: ReadonlyMap<string, ConnectorDoc>,
+): AgentConnectorView[] {
+  return (connectors ?? []).map((ref) => {
+    const access: ConnectorAccess =
+      ref.access === "read_only" ? "read_only" : "read_write";
+    const connector = enabled.get(ref.slug);
+    return connector
+      ? {
+          slug: connector.slug,
+          displayName: connector.displayName,
+          icon: connector.icon,
+          available: true,
+          access,
+          writeTools: connector.writeTools ?? [],
+        }
+      : {
+          slug: ref.slug,
+          displayName: ref.slug,
+          icon: "",
+          available: false,
+          access,
+          writeTools: [],
+        };
+  });
+}
+
+function builtinChatAgent(builtin: BuiltinAgentDoc): ChatAgent {
+  return {
+    source: "builtin",
+    id: builtin._id,
+    revision: builtin.revision,
+    name: builtin.name,
+    description: builtin.description,
+    instructions: builtin.instructions,
+    modelId: builtin.modelId,
+    look: builtin.look,
+    tint: builtin.tint,
+    // Built-ins never attach connectors or skills; members cannot set them.
+    connectors: [],
+    skillIds: [],
+    helpers: false,
+  };
+}
+
+function builtinView(
+  agent: BuiltinListing,
+  model: ModelDoc | undefined,
+): AgentView {
+  return {
+    id: toWireId(agent._id),
+    source: "builtin",
+    name: agent.name,
+    description: agent.description,
+    look: agent.look,
+    tint: agent.tint,
+    model: model ? modelView(model) : null,
+    // Built-ins never attach connectors or skills.
+    connectors: [],
+    skills: [],
+    helpers: false,
+    available: !!model,
+    revision: agent.revision,
+    createdByMe: false,
+    status: "active",
+    canEdit: false,
+    canArchive: false,
+    canPromote: false,
+  };
+}
+
+function modelUnavailable(): DomainError {
+  return new DomainError(
+    "MODEL_UNAVAILABLE",
+    "This model is not available. Choose another model.",
+  );
+}
+
+function staleRevision(): DomainError {
+  return new DomainError(
+    "STALE_REVISION",
+    "This agent changed since you opened it. Reload it and try again.",
+  );
+}

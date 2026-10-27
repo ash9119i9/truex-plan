@@ -62,7 +62,12 @@ export function useFollowActivity(options: {
     reset() {
       const s = state.current;
       clearTimeout(s.timer);
-      Object.assign(s, { seen: emptySeen(), want: null, timer: undefined, dismissed: false });
+      Object.assign(s, {
+        seen: emptySeen(),
+        want: null,
+        timer: undefined,
+        dismissed: false,
+      });
     },
     // The user picked a tab themselves.
     manual() {

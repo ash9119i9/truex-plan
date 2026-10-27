@@ -63,7 +63,12 @@ export function mockTrace(turnId = "turn", startedAt = new Date()): TurnTrace {
     privacy: {
       scannedChars: 5_120,
       findings: [
-        { kind: "email", source: "toolOutput", count: 1, sample: "j***@***.com" },
+        {
+          kind: "email",
+          source: "toolOutput",
+          count: 1,
+          sample: "j***@***.com",
+        },
       ],
     },
   };

@@ -6,7 +6,9 @@ import { useEffect, useRef } from "react";
 // no focus filter (fires while typing too). preventDefault on a match.
 export type HotkeyMap = Record<string, (e: KeyboardEvent) => void>;
 
-export function hotkeyCombo(e: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "key">) {
+export function hotkeyCombo(
+  e: Pick<KeyboardEvent, "metaKey" | "ctrlKey" | "key">,
+) {
   return (e.metaKey || e.ctrlKey ? "mod+" : "") + e.key.toLowerCase();
 }
 

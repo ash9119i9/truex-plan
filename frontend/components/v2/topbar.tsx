@@ -35,7 +35,9 @@ export function Topbar({
         {!sidebarShown && <span className="brand-word sm">truex</span>}
         {title && (
           <>
-            <span className="muted" aria-hidden="true">/</span>
+            <span className="muted" aria-hidden="true">
+              /
+            </span>
             <span className="crumb-title">{title}</span>
           </>
         )}
@@ -48,7 +50,9 @@ export function Topbar({
       >
         <span className={busy ? "pulse" : "pulse idle"} aria-hidden="true" />
         {agentName}
-        <span className="muted" aria-hidden="true">·</span>
+        <span className="muted" aria-hidden="true">
+          ·
+        </span>
         <span className="muted">{stateText}</span>
       </button>
       <div className="top-actions">
@@ -63,7 +67,12 @@ export function Topbar({
           <Icon name={isDark ? "sun" : "moon"} size={16} />
         </button>
         {/* Placeholder: no share flow yet. */}
-        <button type="button" className="icon-btn" aria-label="Share" onClick={() => {}}>
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="Share"
+          onClick={() => {}}
+        >
           <Icon name="share" size={16} />
         </button>
       </div>

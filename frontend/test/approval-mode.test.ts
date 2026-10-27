@@ -1,3 +1,6 @@
+import { beforeEach } from "node:test";
+import { signInForTest, TENANT_ID } from "./auth-fixture.ts";
+beforeEach(() => signInForTest());
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -21,7 +24,11 @@ const on: ApprovalModesConfig = {
 function mockFetch(t: any, reply: unknown = {}, status = 200) {
   const calls: { url: string; init: RequestInit }[] = [];
   t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
-    calls.push({ url, init });
+    assert.equal(
+      new URL(url, "http://test").searchParams.get("tenantId"),
+      TENANT_ID,
+    );
+    calls.push({ url: url.replace(/[?&]tenantId=[0-9a-f]+/, ""), init });
     return new Response(JSON.stringify(reply), { status });
   });
   return calls;

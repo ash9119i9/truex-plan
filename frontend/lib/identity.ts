@@ -7,9 +7,20 @@
 // Logging out, or finding that the identity changed, clears it.
 
 let scope = "none";
+// The tenant this tab is showing. api() addresses tenant requests to it.
+let tenant: string | null = null;
 export const identityScope = () => scope;
+export const identityTenant = () => tenant;
 export function setIdentityScope(userId: string, tenantId: string) {
+  if (scope !== `${userId}.${tenantId}`) bumpIdentityGeneration();
   scope = `${userId}.${tenantId}`;
+  tenant = tenantId;
+}
+
+export function clearIdentityScope() {
+  bumpIdentityGeneration();
+  scope = "none";
+  tenant = null;
 }
 
 // Responses that arrive after the person or workspace changed are not applied.

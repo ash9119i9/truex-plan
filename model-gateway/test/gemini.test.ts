@@ -155,7 +155,7 @@ test("toGeminiRequest: system instruction, roles, tools, images and tool pairing
   const decls = body.tools[0].functionDeclarations;
   assert.deepEqual(
     decls.map((d: any) => d.name),
-    ["conversation_files", "mcp__qlik__list_apps"],
+    ["conversation_files", "mcp__qlik__list_apps", "apply_patch"],
   );
   assert.equal(decls[0].parametersJsonSchema.additionalProperties, false);
   assert.deepEqual(decls[1].parametersJsonSchema, {

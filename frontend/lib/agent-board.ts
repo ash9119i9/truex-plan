@@ -15,24 +15,43 @@ export const inkOn = (hex: string): "#FFFFFF" | "#1F2A30" => {
   const n = parseInt(hex.slice(1), 16);
   const c = (s: number) => {
     const v = ((n >> s) & 255) / 255;
-    return v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
   };
-  return .2126 * c(16) + .7152 * c(8) + .0722 * c(0) < .45 ? "#FFFFFF" : "#1F2A30";
+  return 0.2126 * c(16) + 0.7152 * c(8) + 0.0722 * c(0) < 0.45
+    ? "#FFFFFF"
+    : "#1F2A30";
 };
 
 export type BoardKind = "all" | "yours" | "builtin";
-export const BOARD_KINDS = [["all", "All"], ["yours", "Yours"], ["builtin", "Built-in"]] as const;
+export const BOARD_KINDS = [
+  ["all", "All"],
+  ["yours", "Yours"],
+  ["builtin", "Built-in"],
+] as const;
 
-type Filterable = Pick<AgentSummary, "id" | "name" | "description" | "builtin" | "handle">;
+type Filterable = Pick<
+  AgentSummary,
+  "id" | "name" | "description" | "builtin" | "handle"
+>;
 
-export function filterAgents<T extends Filterable>(agents: T[], kind: BoardKind, q: string): T[] {
+export function filterAgents<T extends Filterable>(
+  agents: T[],
+  kind: BoardKind,
+  q: string,
+): T[] {
   const needle = q.trim().toLowerCase();
-  return agents.filter((a) => (kind === "all" || (kind === "builtin") === !!a.builtin)
-    && `${a.name} ${a.handle || a.id} ${a.description}`.toLowerCase().includes(needle));
+  return agents.filter(
+    (a) =>
+      (kind === "all" || (kind === "builtin") === !!a.builtin) &&
+      `${a.name} ${a.handle || a.id} ${a.description}`
+        .toLowerCase()
+        .includes(needle),
+  );
 }
 
 /** The new-agent card shows unless the Built-in filter or a search is active. */
-export const showNewCard = (kind: BoardKind, q: string): boolean => kind !== "builtin" && !q.trim();
+export const showNewCard = (kind: BoardKind, q: string): boolean =>
+  kind !== "builtin" && !q.trim();
 
 /** Card meta line: "opus 5.5 · high", "default" reasoning when unset. */
 export const boardMeta = (model: string, reasoning?: string): string =>

@@ -49,7 +49,10 @@ export interface TokenSplit {
 export function splitTokens(u: TokenCounts | null | undefined): TokenSplit {
   if (!u) return { newInput: 0, cached: 0, output: 0, reasoning: 0, total: 0 };
   const cached = Math.max(0, Math.min(u.cachedInputTokens, u.inputTokens));
-  const reasoning = Math.max(0, Math.min(u.reasoningOutputTokens, u.outputTokens));
+  const reasoning = Math.max(
+    0,
+    Math.min(u.reasoningOutputTokens, u.outputTokens),
+  );
   const split = {
     newInput: Math.max(0, u.inputTokens - cached),
     cached,
@@ -69,7 +72,10 @@ export const tokenSegments = [
   { key: "reasoning", label: "Reasoning" },
 ] as const;
 
-function addCounts(a: TokenCounts | null, b: TokenCounts | null): TokenCounts | null {
+function addCounts(
+  a: TokenCounts | null,
+  b: TokenCounts | null,
+): TokenCounts | null {
   if (!a) return b;
   if (!b) return a;
   return {
@@ -108,7 +114,8 @@ export interface PrivacyLine {
 
 // Only ever says "detected", never "clean": pattern matching can miss things.
 export function privacyLine(findings: PrivacyFinding[]): PrivacyLine {
-  if (!findings.length) return { tone: "ok", text: "No personal data detected" };
+  if (!findings.length)
+    return { tone: "ok", text: "No personal data detected" };
   const [first, ...rest] = findings;
   const more = findingCount(rest);
   return {
@@ -205,7 +212,9 @@ export function timelineLayout(t: TurnTrace, nowMs?: number): Timeline {
   const done = steps.filter((s) => s.durationMs !== null);
   const slowestSpan =
     steps.length > 1 && done.length
-      ? done.reduce((a, b) => ((b.durationMs ?? 0) > (a.durationMs ?? 0) ? b : a))
+      ? done.reduce((a, b) =>
+          (b.durationMs ?? 0) > (a.durationMs ?? 0) ? b : a,
+        )
       : null;
   const lanes = new Map<string, TimelineLane>();
   const rowEnds = new Map<string, number[]>();
@@ -228,7 +237,10 @@ export function timelineLayout(t: TurnTrace, nowMs?: number): Timeline {
     const start = Math.min(Math.max(0, s.startMs), spanMs);
     const dur = s.durationMs ?? Math.max(0, spanMs - start);
     const left = (start / spanMs) * 100;
-    const width = Math.min(100 - left, Math.max(MIN_WIDTH, (dur / spanMs) * 100));
+    const width = Math.min(
+      100 - left,
+      Math.max(MIN_WIDTH, (dur / spanMs) * 100),
+    );
     const step: TimelineStep = {
       id: s.id,
       label: s.label?.trim() || stepKindLabels[s.kind] || "Step",
@@ -270,7 +282,9 @@ export function summarize(traces: TurnTrace[]): TraceSummary {
     .filter((v): v is number => typeof v === "number");
   const s: TraceSummary = {
     turns: traces.length,
-    avgTotalMs: times.length ? times.reduce((a, b) => a + b, 0) / times.length : null,
+    avgTotalMs: times.length
+      ? times.reduce((a, b) => a + b, 0) / times.length
+      : null,
     p95TotalMs: percentile(times, 0.95),
     inputTokens: 0,
     cachedInputTokens: 0,
@@ -304,8 +318,10 @@ export function totalTokens(s: TraceSummary) {
 
 export function windowLabel(mins: number | null) {
   if (!mins) return "Usage limit";
-  if (mins % 10_080 === 0) return mins === 10_080 ? "Weekly limit" : `${mins / 10_080}-week limit`;
-  if (mins % 1440 === 0) return mins === 1440 ? "Daily limit" : `${mins / 1440}-day limit`;
+  if (mins % 10_080 === 0)
+    return mins === 10_080 ? "Weekly limit" : `${mins / 10_080}-week limit`;
+  if (mins % 1440 === 0)
+    return mins === 1440 ? "Daily limit" : `${mins / 1440}-day limit`;
   if (mins % 60 === 0) return `${mins / 60}-hour limit`;
   return `${mins}-minute limit`;
 }
@@ -331,7 +347,10 @@ export interface LimitMeter {
   resets: string | null;
 }
 
-export function limitMeters(r: RateLimitView | null | undefined, now = Date.now()) {
+export function limitMeters(
+  r: RateLimitView | null | undefined,
+  now = Date.now(),
+) {
   if (!r) return [];
   const meters: LimitMeter[] = [];
   if (r.primaryUsedPercent !== null)
@@ -396,8 +415,12 @@ export function applyObservabilityEvent(
       const traces = mergeTraces(state.traces, d.traces);
       return {
         traces,
-        liveUsage: dropLive(state.liveUsage, traces.map((t) => t.turnId)),
-        rateLimits: d.rateLimits !== undefined ? d.rateLimits : state.rateLimits,
+        liveUsage: dropLive(
+          state.liveUsage,
+          traces.map((t) => t.turnId),
+        ),
+        rateLimits:
+          d.rateLimits !== undefined ? d.rateLimits : state.rateLimits,
       };
     }
     case "usage.updated":

@@ -4,11 +4,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from "node:net";
 import {
   MAX_BODY_BYTES,
+  MAX_UPLOAD_BODY_BYTES,
+  bodyLimitFor,
   forward,
   forwardedFor,
   isBlockedPath,
   safePath,
   safeSegment,
+  upstreamBase,
   type Prefix,
 } from "../lib/forward.ts";
 
@@ -81,12 +84,15 @@ test("only safe, non-admin paths are forwarded", async (t) => {
       JSON.stringify(bad),
     );
   // The admin console is not on this origin, however it is spelled.
-  for (const admin of [["admin"], ["Admin", "tenants"], ["ADMIN"], ["admin", "tenants", "x"]]) {
+  for (const admin of [
+    ["admin"], ["Admin", "tenants"], ["ADMIN"], ["admin", "tenants", "x"],
+    ["v1", "admin"], ["V1", "Admin", "tenants"],
+  ])
     assert.equal((await call(up, "/api", admin)).status, 404, admin.join("/"));
-    assert.equal((await call(up, "/auth", admin)).status, 404, admin.join("/"));
-  }
   assert.equal(up.seen.length, 0, "nothing unsafe reached the platform");
   assert.equal(isBlockedPath(["adminx"]), false);
+  assert.equal(isBlockedPath(["v1", "me"]), false);
+  assert.equal(isBlockedPath(["v2", "admin"]), false);
   assert.equal(safeSegment("sess_4f1c-22"), true);
   assert.equal(safeSegment("100%25"), true);
   // A literal "%252E%252E" is only text: it is re-encoded and decoded once upstream.
@@ -119,7 +125,7 @@ test("methods, bodies and headers: only what the platform needs is forwarded", a
         "x-truex-tenant": "other",
         "x-forwarded-for": "6.6.6.6",
         "x-forwarded-host": "evil.example",
-        authorization: "Bearer stolen",
+        authorization: "Bearer token-1",
         connection: "keep-alive",
       },
       body: hasBody ? JSON.stringify({ n: 1 }) : undefined,
@@ -133,8 +139,10 @@ test("methods, bodies and headers: only what the platform needs is forwarded", a
     assert.equal(got.headers["content-type"], "application/json");
     assert.equal(got.headers["x-request-id"], "req-1");
     assert.equal(got.headers["last-event-id"], "g:5");
+    // The access token is how platform-next knows who is asking.
+    assert.equal(got.headers.authorization, "Bearer token-1");
     assert.equal(got.body, hasBody ? '{"n":1}' : "");
-    for (const forged of ["x-truex-user", "x-truex-role", "x-truex-tenant", "x-forwarded-for", "x-forwarded-host", "authorization"])
+    for (const forged of ["x-truex-user", "x-truex-role", "x-truex-tenant", "x-forwarded-for", "x-forwarded-host"])
       assert.equal(got.headers[forged], undefined, `${method} ${forged}`);
     assert.notEqual(got.headers.host, "evil.example");
   }
@@ -149,9 +157,9 @@ test("client-supplied X-Forwarded-For is dropped unless a trusted proxy is confi
   const up = await upstream(ECHO);
   t.after(up.close);
   const headers = { "x-forwarded-for": "203.0.113.9" };
-  await call(up, "/auth", ["tenants"], { headers });
+  await call(up, "/api", ["v1", "me", "tenants"], { headers });
   assert.equal(up.seen.at(-1)!.headers["x-forwarded-for"], undefined);
-  await call(up, "/auth", ["tenants"], { headers, env: { TRUST_FORWARDED_FOR: "on" } });
+  await call(up, "/api", ["v1", "me", "tenants"], { headers, env: { TRUST_FORWARDED_FOR: "on" } });
   assert.equal(up.seen.at(-1)!.headers["x-forwarded-for"], "203.0.113.9");
   assert.equal(forwardedFor("1.2.3.4", "off"), null);
   assert.equal(forwardedFor(null, "on"), null);
@@ -159,10 +167,10 @@ test("client-supplied X-Forwarded-For is dropped unless a trusted proxy is confi
 
 test("responses: separate Set-Cookie values, redirects, 204/304/HEAD, no-store and Vary", async (t) => {
   const up = await upstream((req, res) => {
-    if (req.url === "/auth/google/callback") {
-      res.writeHead(302, {
-        location: "https://app.test/select-tenant",
-        "set-cookie": ["__Host-truex_flow=; Path=/; Max-Age=0", "__Host-truex_session=tok; Path=/; HttpOnly; Secure"],
+    if (req.url === "/api/v1/auth/google/callback?state=s&code=c") {
+      res.writeHead(303, {
+        location: "https://app.test/auth/complete",
+        "set-cookie": ["__Host-truex_oauth=; Path=/; Max-Age=0", "__Host-truex_refresh=tok; Path=/; HttpOnly; SameSite=Strict; Secure"],
         "cache-control": "public, max-age=999",
       });
       return res.end();
@@ -184,12 +192,12 @@ test("responses: separate Set-Cookie values, redirects, 204/304/HEAD, no-store a
   });
   t.after(up.close);
 
-  const redirect = await call(up, "/auth", ["google", "callback"]);
-  assert.equal(redirect.status, 302);
-  assert.equal(redirect.headers.get("location"), "https://app.test/select-tenant");
+  const redirect = await call(up, "/api", ["v1", "auth", "google", "callback"], {}, "http://app.test/api/v1/auth/google/callback?state=s&code=c");
+  assert.equal(redirect.status, 303);
+  assert.equal(redirect.headers.get("location"), "https://app.test/auth/complete");
   assert.deepEqual(redirect.headers.getSetCookie(), [
-    "__Host-truex_flow=; Path=/; Max-Age=0",
-    "__Host-truex_session=tok; Path=/; HttpOnly; Secure",
+    "__Host-truex_oauth=; Path=/; Max-Age=0",
+    "__Host-truex_refresh=tok; Path=/; HttpOnly; SameSite=Strict; Secure",
   ]);
   assert.equal(redirect.headers.get("cache-control"), "no-store", "an upstream public cache header is overridden");
 
@@ -210,10 +218,10 @@ test("responses: separate Set-Cookie values, redirects, 204/304/HEAD, no-store a
   assert.equal(await file.text(), "hello");
   assert.equal(file.headers.get("x-content-type-options"), "nosniff");
   assert.equal(file.headers.get("cache-control"), "no-store");
-  assert.match(file.headers.get("vary")!, /Accept-Encoding, Cookie/);
+  assert.equal(file.headers.get("vary"), "Accept-Encoding, Cookie, Authorization");
   // Already varying on Cookie: not repeated.
   const again = await call(up, "/api", ["vary"]);
-  assert.equal(again.headers.get("vary"), "cookie", "upstream already varied on Cookie; not repeated");
+  assert.equal(again.headers.get("vary"), "cookie, Authorization", "upstream already varied on Cookie; not repeated");
   assert.equal(file.headers.get("vary")!.split(",").filter((v) => /cookie/i.test(v)).length, 1);
   // The body length is the new response's own; an upstream length is not copied.
   assert.equal(file.headers.get("content-encoding"), null);
@@ -261,6 +269,34 @@ test("oversized requests are refused up front and cut off mid-stream", async (t)
   // A body at the limit is fine.
   const fine = await call(up, "/api", ["x"], { method: "POST", body: "z".repeat(1024 * 1024), headers: { "content-type": "application/json" } });
   assert.equal(fine.status, 200);
+});
+
+test("an attached file may be up to 20 MB; nothing else is", async (t) => {
+  assert.equal(bodyLimitFor("POST", "/api/v1/uploads"), MAX_UPLOAD_BODY_BYTES);
+  assert.equal(bodyLimitFor("POST", "/api/v1/chats"), MAX_BODY_BYTES);
+  assert.equal(bodyLimitFor("PATCH", "/api/v1/uploads"), MAX_BODY_BYTES);
+  assert.equal(bodyLimitFor("POST", "/api/v1/uploads/x"), MAX_BODY_BYTES);
+  const up = await upstream(ECHO);
+  t.after(up.close);
+  const file = "u".repeat(5 * 1024 * 1024);
+  const ok = await call(up, "/api", ["v1", "uploads"], {
+    method: "POST",
+    body: file,
+    headers: { "content-type": "application/octet-stream" },
+  });
+  assert.equal(ok.status, 200, "a 5 MB upload passes");
+  const other = await call(up, "/api", ["v1", "chats"], {
+    method: "POST",
+    body: file,
+    headers: { "content-type": "application/json" },
+  });
+  assert.equal(other.status, 413, "the same body to another route is refused");
+  const huge = await call(up, "/api", ["v1", "uploads"], {
+    method: "POST",
+    body: "u".repeat(MAX_UPLOAD_BODY_BYTES + 1),
+    headers: { "content-type": "application/octet-stream" },
+  });
+  assert.equal(huge.status, 413, "past 20 MB is refused");
 });
 
 test("an unreachable or slow platform is an outage, never a sign-out", async (t) => {
@@ -338,4 +374,53 @@ test("a stream cancelled by the reader releases the upstream request", async (t)
     closed,
     new Promise((_, reject) => setTimeout(() => reject(new Error("the upstream stream stayed open")), 3000)),
   ]);
+});
+
+test("this branch forwards to platform-next unless told otherwise", () => {
+  assert.equal(upstreamBase({}), "http://localhost:4100");
+  assert.equal(upstreamBase({ PLATFORM_INTERNAL_URL: "http://next.internal:4100/" }), "http://next.internal:4100");
+});
+
+test("Server-Timing: the platform's entries pass through, followed by the forwarder's own", async (t) => {
+  const up = await upstream((req, res) => {
+    const timing =
+      req.url === "/api/timed"
+        ? {
+            "server-timing":
+              'db;dur=255.0;desc="MongoDB (1 call)", total;dur=260.4',
+          }
+        : {};
+    setTimeout(
+      () =>
+        res
+          .writeHead(200, { "content-type": "application/json", ...timing })
+          .end("{}"),
+      30,
+    );
+  });
+  t.after(up.close);
+
+  const timed = await call(up, "/api", ["timed"]);
+  await timed.text();
+  const entries = timed.headers.get("server-timing")!.split(", ");
+  assert.deepEqual(entries.slice(0, 2), [
+    'db;dur=255.0;desc="MongoDB (1 call)"',
+    "total;dur=260.4",
+  ]);
+  const forwarded =
+    /^forward;dur=(\d+\.\d);desc="forwarder incl\. platform"$/.exec(
+      entries[2] ?? "",
+    );
+  assert.ok(forwarded, entries.join(" | "));
+  assert.ok(
+    Number(forwarded[1]) >= 25,
+    "the wait for the platform is included",
+  );
+
+  const plain = await call(up, "/api", ["plain"]);
+  await plain.text();
+  assert.match(
+    plain.headers.get("server-timing")!,
+    /^forward;dur=\d+\.\d;desc="forwarder incl\. platform"$/,
+  );
 });

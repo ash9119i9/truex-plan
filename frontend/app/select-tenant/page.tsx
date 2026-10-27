@@ -6,6 +6,7 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
+// The tenant chooser is on hold: everyone signs in to the default tenant.
 export default function SelectTenantPage() {
-  redirect("/workspaces");
+  redirect("/");
 }

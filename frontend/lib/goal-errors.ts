@@ -55,7 +55,8 @@ const providerTips: {
   },
   {
     match: /bedrock|amazon|aws/i,
-    quota: "Check the Bedrock service quotas for this model in the AWS console.",
+    quota:
+      "Check the Bedrock service quotas for this model in the AWS console.",
     credentials:
       "Check the IAM permissions and model access for this Bedrock model.",
   },

@@ -15,7 +15,7 @@ See [runtime policy, migration and verification](docs/TRUEX_RUNTIME.md).
 
 ## Local Codex pin
 
-`codex.lock.json` pins OpenAI Codex revision `4a942885c8b4745757a9f86ad2075e16c42483c5`.
+`codex.lock.json` pins OpenAI Codex revision `1ef30bcbe784f1006548adc1542985be32b05109` (upstream `main`, fetched 2026-10-16).
 
 ```sh
 npm run codex:setup

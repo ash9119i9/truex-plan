@@ -2,7 +2,12 @@
 import { Icon } from "./icon";
 
 // Agent menu (Core components §5 "Agent menu anatomy").
-export type AgentMenuAgent = { id: string; name: string; description?: string; hue?: string };
+export type AgentMenuAgent = {
+  id: string;
+  name: string;
+  description?: string;
+  hue?: string;
+};
 
 export type AgentMenuProps = {
   agents: AgentMenuAgent[];
@@ -14,14 +19,24 @@ export type AgentMenuProps = {
   onNew?: () => void;
 };
 
-export function AgentMenu({ agents, currentId, onPick, onEdit, onAll, onNew }: AgentMenuProps) {
+export function AgentMenu({
+  agents,
+  currentId,
+  onPick,
+  onEdit,
+  onAll,
+  onNew,
+}: AgentMenuProps) {
   return (
     <div className="menu">
       <div className="eyebrow pad">Choose agent</div>
       {agents.map((a) => {
         const current = a.id === currentId;
         return (
-          <div key={a.id} className={current ? "menu-row is-active" : "menu-row"}>
+          <div
+            key={a.id}
+            className={current ? "menu-row is-active" : "menu-row"}
+          >
             <button
               type="button"
               className={current ? "menu-item is-active" : "menu-item"}
@@ -29,10 +44,15 @@ export function AgentMenu({ agents, currentId, onPick, onEdit, onAll, onNew }: A
               onClick={() => onPick(a.id)}
             >
               {/* No hue → CSS default var(--accent-soft-2) */}
-              <span className="agent-dot" style={a.hue ? { background: a.hue } : undefined} />
+              <span
+                className="agent-dot"
+                style={a.hue ? { background: a.hue } : undefined}
+              />
               <span className="grow">
                 <span className="strong block">{a.name}</span>
-                {a.description && <span className="muted sm">{a.description}</span>}
+                {a.description && (
+                  <span className="muted sm">{a.description}</span>
+                )}
               </span>
               {current && <Icon name="check" size={15} />}
             </button>

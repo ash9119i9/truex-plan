@@ -19,7 +19,7 @@ function deferred<T>() {
 }
 const source = readFileSync(
   process.env.TRUEX_DISPATCH_SOURCE ??
-    new URL("../app/page.tsx", import.meta.url),
+    new URL("../legacy/chat.tsx", import.meta.url),
   "utf8",
 );
 const ast = ts.createSourceFile(
