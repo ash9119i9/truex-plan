@@ -56,6 +56,7 @@ export function TenantAgentDialog({
   editing,
   models,
   modelsError,
+  helpersAllowed = false,
   onClose,
   onSaved,
 }: {
@@ -64,6 +65,8 @@ export function TenantAgentDialog({
   editing: TenantAgent | null;
   models: TenantModel[];
   modelsError?: string;
+  /** Whether this server lets agents start helper agents. */
+  helpersAllowed?: boolean;
   onClose: () => void;
   onSaved: (agent: TenantAgent) => void;
 }) {
@@ -554,6 +557,37 @@ export function TenantAgentDialog({
                   choose another.
                 </p>
               )}
+            </fieldset>
+          )}
+
+          {(helpersAllowed || editing?.helpers) && (
+            <fieldset className="field">
+              <legend className="field-label">Helpers</legend>
+              <label
+                className={
+                  form.helpers ? "connector-pick is-checked" : "connector-pick"
+                }
+              >
+                <input
+                  type="checkbox"
+                  checked={form.helpers}
+                  onChange={(e) => set("helpers", e.target.checked)}
+                />
+                <span className="connector-pick-text">
+                  <span className="strong block">Use helper agents</span>
+                  <span className="muted sm block">
+                    For work that spans several sources, the agent can run
+                    helpers in parallel to look things up and prepare parts of
+                    the answer. A helper never changes an outside system on its
+                    own — every such change still asks you first.
+                  </span>
+                  {!helpersAllowed && form.helpers && (
+                    <span className="connector-pick-hint">
+                      Helpers are off in this workspace. Chats run without them.
+                    </span>
+                  )}
+                </span>
+              </label>
             </fieldset>
           )}
 

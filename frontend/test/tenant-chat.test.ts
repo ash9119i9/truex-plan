@@ -24,6 +24,9 @@ import {
   exchangeKey,
   fetchChat,
   fetchChats,
+  helperApprovalNote,
+  helperLabel,
+  helpersSummary,
   liveReply,
   messageIds,
   outcomeNote,
@@ -472,6 +475,7 @@ test("a first message shows as the start of its chat", () => {
     available: true,
     connectors: [],
     skills: [],
+    helpers: false,
     revision: 1,
     createdByMe: false,
     status: "active" as const,
@@ -1491,4 +1495,150 @@ test("a used skill shows once, live and from a snapshot or saved message", () =>
     slug: "invoice-check",
     name: "Invoice check",
   });
+});
+
+test("helper agents stream into their own list, merge by id and survive a reconnect", () => {
+  let reply = liveReply(RUN);
+  reply = applyStreamEvent(reply, {
+    type: "agent",
+    data: { agentId: "th1", path: "/root/crm", status: "running" },
+  });
+  reply = applyStreamEvent(reply, {
+    type: "agent",
+    data: {
+      agentId: "th1",
+      path: "/root/crm",
+      status: "running",
+      preview: "Reading deals",
+    },
+  });
+  // Unreadable events change nothing.
+  reply = applyStreamEvent(reply, { type: "agent", data: { agentId: "x" } });
+  reply = applyStreamEvent(reply, {
+    type: "agent",
+    data: { status: "running" },
+  });
+  assert.deepEqual(reply.helpers, [
+    {
+      agentId: "th1",
+      path: "/root/crm",
+      status: "running",
+      preview: "Reading deals",
+    },
+  ]);
+  // Helpers never become reply items.
+  assert.equal(reply.items.length, 0);
+
+  // A snapshot adds what this tab missed and keeps what it had.
+  reply = applyStreamEvent(reply, {
+    type: "snapshot",
+    data: {
+      runId: RUN,
+      phase: "streaming",
+      items: [],
+      agents: [{ agentId: "th2", path: "/root/email", status: "running" }],
+    },
+  });
+  assert.deepEqual(
+    reply.helpers.map((h) => h.agentId),
+    ["th1", "th2"],
+  );
+
+  reply = applyStreamEvent(reply, {
+    type: "completed",
+    data: {
+      status: "completed",
+      error: null,
+      items: [{ itemId: "a", text: "Globex is at risk.", completed: true }],
+      agents: [
+        {
+          agentId: "th1",
+          path: "/root/crm",
+          status: "completed",
+          result: "Globex stalled 21 days.",
+        },
+        { agentId: "th2", path: "/root/email", status: "failed" },
+      ],
+    },
+  });
+  assert.deepEqual(
+    reply.helpers.map((h) => [h.agentId, h.status, h.result ?? null]),
+    [
+      ["th1", "completed", "Globex stalled 21 days."],
+      ["th2", "failed", null],
+    ],
+  );
+});
+
+test("helper text is bounded and at most ten helpers are kept", () => {
+  let reply = liveReply(RUN);
+  for (let i = 0; i < 12; i++)
+    reply = applyStreamEvent(reply, {
+      type: "agent",
+      data: {
+        agentId: `th${i}`,
+        path: "p".repeat(500),
+        status: "running",
+        preview: "v".repeat(500),
+      },
+    });
+  assert.equal(reply.helpers.length, 10);
+  assert.equal(reply.helpers[0]!.path.length, 120);
+  assert.equal(reply.helpers[0]!.preview!.length, 240);
+});
+
+test("a saved helper row parses without its preview; a running or empty one is dropped", () => {
+  const base = {
+    id: "64b7f0c2a1b2c3d4e5f60e01",
+    seq: 3,
+    runId: "64b7f0c2a1b2c3d4e5f60e02",
+    role: "tool",
+    text: "",
+    state: "complete",
+    createdAt: "2026-10-26T10:00:00.000Z",
+  };
+  const saved = parseMessage({
+    ...base,
+    agent: {
+      path: "/root/crm",
+      status: "completed",
+      result: "Globex stalled 21 days.",
+      preview: "should not show",
+    },
+  });
+  assert.deepEqual(saved?.agent, {
+    path: "/root/crm",
+    status: "completed",
+    result: "Globex stalled 21 days.",
+  });
+  assert.equal(
+    parseMessage({ ...base, agent: { path: "/x", status: "running" } }),
+    null,
+  );
+  assert.equal(parseMessage({ ...base, agent: { path: "/x" } }), null);
+});
+
+test("helper labels and the group summary", () => {
+  assert.equal(helperLabel("/root/crm_deals"), "crm deals");
+  assert.equal(helperLabel("/root/"), "root");
+  assert.equal(helperLabel(""), "Helper");
+  assert.equal(
+    helpersSummary([
+      { path: "/a", status: "completed" },
+      { path: "/b", status: "running" },
+    ]),
+    "Checking with 2 helpers · 1 done",
+  );
+  assert.equal(
+    helpersSummary([{ path: "/a", status: "failed" }]),
+    "Checked with 1 helper",
+  );
+});
+
+test("approval cards say when the request followed helper results", () => {
+  assert.equal(helperApprovalNote([]), null);
+  assert.match(
+    helperApprovalNote([{ path: "/root/crm", status: "completed" }]) ?? "",
+    /after helper results/,
+  );
 });

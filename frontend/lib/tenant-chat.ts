@@ -115,6 +115,8 @@ export interface ChatMessage {
   skill?: UsedSkill;
   // Or a sandbox request Truex blocked, with the owner's answer once given.
   network?: NetworkBlock;
+  // Or a helper agent the reply used, with its result.
+  agent?: HelperAgent;
   // A user message's attached files, in order; absent when none.
   attachments?: MessageAttachment[];
   clientMessageId?: string;
@@ -311,6 +313,108 @@ function parseUsedSkill(value: unknown): UsedSkill | null {
   return slug && name ? { slug, name } : null;
 }
 
+// A helper agent the lead started during a reply. `path` is the task name
+// the lead gave it; `result` is the helper's own answer, shown as plain text.
+// `preview` (what it is doing now) exists only while the reply is live.
+export type HelperStatus = "running" | "completed" | "failed" | "stopped";
+const HELPER_STATUSES: readonly HelperStatus[] = [
+  "running",
+  "completed",
+  "failed",
+  "stopped",
+];
+
+export interface HelperAgent {
+  path: string;
+  status: HelperStatus;
+  result?: string;
+  preview?: string;
+}
+
+export interface LiveHelper extends HelperAgent {
+  agentId: string;
+}
+
+// The platform bounds these; they are bounded again here.
+const MAX_HELPERS = 10;
+const MAX_HELPER_PATH = 120;
+const MAX_HELPER_PREVIEW = 240;
+const MAX_HELPER_RESULT = 4000;
+
+const bounded = (value: unknown, max: number): string | undefined =>
+  typeof value === "string" && value.trim() ? value.slice(0, max) : undefined;
+
+function parseHelper(value: unknown): HelperAgent | null {
+  const a = record(value);
+  const status = oneOf(a?.status, HELPER_STATUSES);
+  if (!a || !status) return null;
+  const result = bounded(a.result, MAX_HELPER_RESULT);
+  const preview = bounded(a.preview, MAX_HELPER_PREVIEW);
+  return {
+    path: bounded(a.path, MAX_HELPER_PATH) ?? "",
+    status,
+    ...(result !== undefined ? { result } : {}),
+    ...(preview !== undefined ? { preview } : {}),
+  };
+}
+
+function parseLiveHelper(value: unknown): LiveHelper | null {
+  const agentId = str(record(value)?.agentId, 200);
+  const helper = agentId ? parseHelper(value) : null;
+  return helper && agentId ? { agentId, ...helper } : null;
+}
+
+// A helper's task name for display: the last part of its path, with
+// underscores as spaces ("/root/crm_deals" → "crm deals").
+export function helperLabel(path: string): string {
+  const name = path.split("/").filter(Boolean).at(-1)?.replace(/_/g, " ");
+  return name?.trim() || "Helper";
+}
+
+// The line above a reply's helper cards.
+export function helpersSummary(helpers: readonly HelperAgent[]): string {
+  const total = helpers.length;
+  const running = helpers.filter((h) => h.status === "running").length;
+  const noun = total === 1 ? "helper" : "helpers";
+  return running
+    ? `Checking with ${total} ${noun} · ${total - running} done`
+    : `Checked with ${total} ${noun}`;
+}
+
+// The note on an approval card in a reply that used helpers. Helper results
+// are model-written and may steer the lead, so the member checks the request
+// against what they asked for.
+export function helperApprovalNote(
+  helpers: readonly HelperAgent[],
+): string | null {
+  return helpers.length
+    ? "This request came after helper results. Check it matches what you asked for."
+    : null;
+}
+
+// A saved helper row never carries the live preview.
+function parseSavedHelper(value: unknown): HelperAgent | null {
+  const helper = parseHelper(value);
+  if (!helper || helper.status === "running") return null;
+  const { preview: _preview, ...saved } = helper;
+  return saved;
+}
+
+// Helpers merged by agentId, in start order: a known helper takes the new
+// status and keeps its earlier text unless the update brings new text.
+function withHelpers(
+  current: readonly LiveHelper[],
+  updates: readonly LiveHelper[],
+): LiveHelper[] {
+  const next = [...current];
+  for (const update of updates) {
+    const at = next.findIndex((h) => h.agentId === update.agentId);
+    if (at >= 0) next[at] = { ...next[at]!, ...update };
+    else if (next.length < MAX_HELPERS) next.push(update);
+  }
+  return next;
+}
+
 export function parseMessage(value: unknown): ChatMessage | null {
   const m = record(value);
   const messageId = id(m?.id);
@@ -337,7 +441,12 @@ export function parseMessage(value: unknown): ChatMessage | null {
     role === "tool" && !tool && !activity && !skill
       ? parseNetworkBlock(m.network)
       : null;
-  if (role === "tool" && !tool && !activity && !skill && !network) return null;
+  const agent =
+    role === "tool" && !tool && !activity && !skill && !network
+      ? parseSavedHelper(m.agent)
+      : null;
+  if (role === "tool" && !tool && !activity && !skill && !network && !agent)
+    return null;
   const attachments = role === "user" ? parseAttachments(m.attachments) : [];
   return {
     id: messageId,
@@ -350,6 +459,7 @@ export function parseMessage(value: unknown): ChatMessage | null {
     ...(activity ? { activity } : {}),
     ...(skill ? { skill } : {}),
     ...(network ? { network } : {}),
+    ...(agent ? { agent } : {}),
     ...(attachments.length ? { attachments } : {}),
     ...(clientMessageId ? { clientMessageId } : {}),
     createdAt,
@@ -829,6 +939,9 @@ export interface LiveReply {
   // event, before `saved`), and the paths it wrote that couldn't be stored.
   files: ChatFile[];
   unsaved: string[];
+  // Helper agents the lead started, in start order. Kept apart from items:
+  // a helper's result is never one of the lead's replies.
+  helpers: LiveHelper[];
 }
 
 export function liveReply(runId: string, now = Date.now()): LiveReply {
@@ -844,6 +957,7 @@ export function liveReply(runId: string, now = Date.now()): LiveReply {
     approvals: {},
     files: [],
     unsaved: [],
+    helpers: [],
   };
 }
 
@@ -1074,6 +1188,7 @@ export type StreamEvent =
   | { type: "activity"; data: unknown }
   | { type: "skill"; data: unknown }
   | { type: "network"; data: unknown }
+  | { type: "agent"; data: unknown }
   | { type: "output"; data: unknown }
   | { type: "progress"; data: unknown }
   | { type: "usage"; data: unknown }
@@ -1106,7 +1221,19 @@ export function applyStreamEvent(
           data.approvals === undefined
             ? reply.approvals
             : parseApprovals(data.approvals),
+        // Merged, not replaced: a snapshot without helpers keeps what this
+        // tab already showed.
+        helpers: withHelpers(
+          reply.helpers,
+          list(data.agents, parseLiveHelper).slice(0, MAX_HELPERS),
+        ),
       };
+    }
+    case "agent": {
+      const helper = parseLiveHelper(data);
+      return helper
+        ? { ...reply, helpers: withHelpers(reply.helpers, [helper]) }
+        : reply;
     }
     case "status": {
       const phase = oneOf(data?.phase, PHASES);
@@ -1368,6 +1495,10 @@ export function applyStreamEvent(
         phase: "settled",
         items: items.length ? items : reply.items,
         usage: parseUsage(data.usage) ?? reply.usage,
+        helpers: withHelpers(
+          reply.helpers,
+          list(data.agents, parseLiveHelper).slice(0, MAX_HELPERS),
+        ),
         outcome: { status, error: parseRunError(data.error) },
       };
     }

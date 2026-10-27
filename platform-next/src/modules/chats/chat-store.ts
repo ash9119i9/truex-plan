@@ -119,10 +119,24 @@ export interface ToolSettleItem {
   readonly approval?: ApprovalDecision;
 }
 
+// A helper agent as the runtime reported it. Kept apart from `items`: its
+// result is never one of the lead's replies.
+export interface AgentSettleItem {
+  readonly agentId: string;
+  readonly path: string;
+  readonly status: "running" | "completed" | "failed" | "stopped";
+  // Live only: what the helper is doing now. Never saved.
+  readonly preview?: string;
+  readonly result?: string;
+  readonly usage?: RunUsage;
+}
+
 export interface Settlement {
   readonly status: "completed" | "stopped" | "failed";
   readonly error: RunErrorInfo | null;
   readonly items: readonly SettleItem[];
+  // Present only when helpers ran. Their usage is already in `usage`.
+  readonly agents?: readonly AgentSettleItem[];
   readonly usage: RunUsage | null;
   readonly threadId: string | null;
   readonly turnId: string | null;
@@ -159,7 +173,26 @@ type PlannedMessage = Pick<
   | "activity"
   | "skill"
   | "network"
+  | "agent"
 >;
+
+// A helper's saved row. One still running at settle was stopped with the
+// run (the runtime never lets a helper outlive it).
+function agentMessage(agent: AgentSettleItem): PlannedMessage {
+  return {
+    role: "tool",
+    text: "",
+    state: "complete",
+    // Unique per run: the helper's own thread id.
+    runtimeItemId: `agent:${agent.agentId}`,
+    agent: {
+      path: agent.path,
+      status: agent.status === "running" ? "stopped" : agent.status,
+      ...(agent.result !== undefined ? { result: agent.result } : {}),
+      ...(agent.usage ? { usage: { ...agent.usage } } : {}),
+    },
+  };
+}
 
 // The messages a settled run writes after its own, in order: each non-empty
 // reply, each tool call and each steer where the runtime used it, then the
@@ -232,7 +265,7 @@ function activityMessage(
 
 export function plannedMessages(
   run: Pick<RunDoc, "steers">,
-  outcome: Pick<Settlement, "status" | "items">,
+  outcome: Pick<Settlement, "status" | "items" | "agents">,
   onUnknownInput: (clientMessageId: string) => void = () => undefined,
 ): PlannedMessage[] {
   const steers = new Map(
@@ -296,6 +329,13 @@ export function plannedMessages(
     used.add(steer.clientMessageId);
     planned.push(userMessage(steer, "complete"));
   });
+  // The lead started its helpers to write its answer, so their rows go just
+  // before its last reply (last of all when it wrote none).
+  if (outcome.agents?.length) {
+    const rows = outcome.agents.map(agentMessage);
+    const at = planned.findLastIndex((m) => m.role === "assistant");
+    planned.splice(at < 0 ? planned.length : at, 0, ...rows);
+  }
   for (const steer of run.steers ?? [])
     if (!used.has(steer.clientMessageId))
       planned.push(userMessage(steer, "not_sent"));
@@ -634,6 +674,9 @@ export class ChatStore {
               : {}),
             ...(outcome.error ? { error: outcome.error } : {}),
             ...(outcome.usage ? { usage: outcome.usage } : {}),
+            ...(outcome.agents?.length
+              ? { helperCount: outcome.agents.length }
+              : {}),
             ...(outcome.threadId ? { threadId: outcome.threadId } : {}),
             ...(outcome.turnId ? { turnId: outcome.turnId } : {}),
             ...(outcome.unsavedFiles?.length

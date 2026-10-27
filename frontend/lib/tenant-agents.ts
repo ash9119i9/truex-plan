@@ -36,6 +36,8 @@ export interface TenantAgent {
   connectors: ConnectorRef[];
   // The catalog skills this agent uses (always present, [] when none).
   skills: SkillRef[];
+  // May start helper agents during a reply (where the server allows them).
+  helpers: boolean;
   revision: number;
   createdByMe: boolean;
   status: "active" | "archived";
@@ -58,6 +60,8 @@ export interface AgentForm {
   connectorAccess: Record<string, ConnectorAccess>;
   // Skill IDs the agent uses, at most MAX_SKILLS, unique, in order.
   skillIds: string[];
+  // Let the agent start helper agents during a reply.
+  helpers: boolean;
 }
 
 // Kept in step with platform-next/src/modules/agents/agent-fields.ts.
@@ -115,6 +119,7 @@ export function parseAgent(value: unknown): TenantAgent | null {
     available: a.available === true,
     connectors: parseConnectorRefs(a.connectors),
     skills: parseSkillRefs(a.skills),
+    helpers: a.helpers === true,
     revision,
     createdByMe: a.createdByMe === true,
     status: a.status === "archived" ? "archived" : "active",
@@ -131,13 +136,21 @@ function agentOf(data: unknown): TenantAgent {
   return agent;
 }
 
-export async function fetchTenantAgents(): Promise<TenantAgent[]> {
+// `helpers`: whether this server lets agents start helper agents; the
+// dialog offers the setting only then.
+export async function fetchTenantAgents(): Promise<{
+  agents: TenantAgent[];
+  helpers: boolean;
+}> {
   const data = await api("/api/v1/agents");
   const list = Array.isArray(data?.agents) ? data.agents : [];
-  return list.flatMap((a: unknown) => {
-    const agent = parseAgent(a);
-    return agent ? [agent] : [];
-  });
+  return {
+    agents: list.flatMap((a: unknown) => {
+      const agent = parseAgent(a);
+      return agent ? [agent] : [];
+    }),
+    helpers: data?.helpers === true,
+  };
 }
 
 export async function fetchTenantModels(): Promise<TenantModel[]> {
@@ -192,6 +205,7 @@ export function cleanForm(form: AgentForm): AgentForm {
     connectorSlugs: dedupe(form.connectorSlugs).slice(0, MAX_CONNECTORS),
     connectorAccess: cleanAccess(form),
     skillIds: dedupe(form.skillIds ?? []).slice(0, MAX_SKILLS),
+    helpers: form.helpers === true,
   };
 }
 
@@ -265,6 +279,7 @@ export function formChanges(
     changes.connectorAccess = f.connectorAccess;
   }
   if (!sameSlugs(f.skillIds, current.skillIds)) changes.skillIds = f.skillIds;
+  if (f.helpers !== agent.helpers) changes.helpers = f.helpers;
   return changes;
 }
 
@@ -305,6 +320,7 @@ export function formOf(
             .map((c) => [c.slug, c.access]),
         ),
         skillIds: agent.skills.map((s) => s.id),
+        helpers: agent.helpers,
       }
     : {
         name: "",
@@ -315,6 +331,7 @@ export function formOf(
         connectorSlugs: [],
         connectorAccess: {},
         skillIds: [],
+        helpers: false,
       };
 }
 

@@ -150,6 +150,22 @@ describe("watchdog and provider failures", () => {
     h.model.script.length = 0;
   });
 
+  // Regression: the nvidia profile's 429s surfaced as PROVIDER_ERROR.
+  test("a provider that keeps returning 429 fails with RATE_LIMITED", async () => {
+    const threadId = await firstThread(h, "w3b");
+    for (let i = 0; i < 10; i++)
+      h.model.script.push({ kind: "status", status: 429 });
+    const events = await h.run(h.body({ chatId: "w3b", threadId }));
+    const done = completed(events);
+    assert.equal(done.status, "failed");
+    assert.deepEqual(done.error, {
+      code: "RATE_LIMITED",
+      message: "The model is rate limited right now. Try again shortly.",
+      retryable: true,
+    });
+    h.model.script.length = 0;
+  });
+
   test("a context overflow fails with CONTEXT_FULL", async () => {
     const threadId = await firstThread(h, "w4");
     h.model.script.push({ kind: "failed", code: "context_length_exceeded" });

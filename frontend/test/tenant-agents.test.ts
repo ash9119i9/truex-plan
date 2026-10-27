@@ -34,6 +34,7 @@ const agent = (overrides: Partial<TenantAgent> = {}): TenantAgent => ({
   available: true,
   connectors: [],
   skills: [],
+  helpers: false,
   revision: 3,
   createdByMe: true,
   status: "active",
@@ -76,7 +77,8 @@ test("lists agents for this tab's tenant and drops malformed entries", async (t)
       agent({ id: "64b7f0c2a1b2c3d4e5f60aa2", source: "builtin" }),
     ],
   });
-  const agents = await fetchTenantAgents();
+  const { agents, helpers } = await fetchTenantAgents();
+  assert.equal(helpers, false);
   assert.equal(sent[0]?.url, `/api/v1/agents?tenantId=${TENANT_ID}`);
   assert.deepEqual(
     agents.map((a) => a.source),
@@ -96,6 +98,7 @@ test("create sends the trimmed form, scope and request ID", async (t) => {
       connectorSlugs: [],
       connectorAccess: {},
       skillIds: [],
+      helpers: false,
     },
     "tenant",
     "req-12345678",
@@ -111,6 +114,7 @@ test("create sends the trimmed form, scope and request ID", async (t) => {
     tint: "mint",
     connectors: [],
     skillIds: [],
+    helpers: false,
   });
 });
 
@@ -272,6 +276,7 @@ test("create sends a read_only connector as an object and read_write as a string
       // github read_only (object), jira read_write (string, the default).
       connectorAccess: { github: "read_only" },
       skillIds: [],
+      helpers: false,
     },
     "personal",
     "req-abcdef12",
@@ -333,4 +338,24 @@ test("a read_write connector change sends a plain slug string", async (t) => {
   });
   const body = sent[0]?.body as { connectors: unknown[] };
   assert.deepEqual(body.connectors, ["github"]);
+});
+
+test("helpers: parsed from the agent, sent on create, and an edit sends only a change", () => {
+  assert.equal(parseAgent({ ...agent(), helpers: true })?.helpers, true);
+  assert.equal(parseAgent({ ...agent(), helpers: "yes" })?.helpers, false);
+  const off = agent();
+  assert.equal(formOf(null, []).helpers, false);
+  assert.deepEqual(formChanges(off, { ...formOf(off, []), helpers: true }), {
+    helpers: true,
+  });
+  const on = agent({ helpers: true });
+  assert.deepEqual(formChanges(on, formOf(on, [])), {});
+  assert.deepEqual(formChanges(on, { ...formOf(on, []), helpers: false }), {
+    helpers: false,
+  });
+});
+
+test("the list says whether this server allows helpers", async (t) => {
+  mockFetch(t, { agents: [agent()], helpers: true });
+  assert.equal((await fetchTenantAgents()).helpers, true);
 });

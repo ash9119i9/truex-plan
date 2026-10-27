@@ -40,6 +40,13 @@ export const REQUEST_ERRORS = {
     false,
     "This assistant can't open attached files here.",
   ],
+  // No longer thrown by this adapter (coding + helpers run together). Kept so
+  // the platform still maps it for an older adapter that predates that change.
+  SUBAGENTS_DISABLED: [
+    409,
+    false,
+    "Helper agents aren't available for this assistant.",
+  ],
   RUNTIME_BUSY: [503, true, "The assistant is at capacity. Try again shortly."],
   DRAINING: [503, true, "The assistant is restarting. Try again shortly."],
   RUNTIME_UNAVAILABLE: [503, true, "The assistant did not respond. Try again."],
@@ -99,6 +106,10 @@ export const RUN_ERRORS = {
     false,
     "This conversation can't continue here. Start a new chat.",
   ],
+  SUBAGENT_LIMIT: [
+    false,
+    "This needed more helper agents than one reply allows. Try a narrower request.",
+  ],
 } as const satisfies Record<string, readonly [boolean, string]>;
 
 export type RunErrorCode = keyof typeof RUN_ERRORS;
@@ -122,6 +133,18 @@ export function fromCodexErrorInfo(info: unknown): RunError {
       : info && typeof info === "object"
         ? Object.keys(info)[0]
         : undefined;
+  // A provider 429 arrives as e.g. responseTooManyFailedAttempts with the
+  // status inside, not as rateLimitExceeded.
+  const detail =
+    key && info && typeof info === "object"
+      ? (info as Record<string, unknown>)[key]
+      : undefined;
+  if (
+    detail &&
+    typeof detail === "object" &&
+    (detail as { httpStatusCode?: unknown }).httpStatusCode === 429
+  )
+    return runError("RATE_LIMITED");
   switch (key) {
     case "contextWindowExceeded":
       return runError("CONTEXT_FULL");

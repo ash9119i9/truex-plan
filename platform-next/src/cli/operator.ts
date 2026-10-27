@@ -15,6 +15,7 @@ import {
   type AssignRoleCommand,
   type EnsureTenantIndexesCommand,
   type FollowUpsReportCommand,
+  type HelpersReportCommand,
   type ProvisionTenantCommand,
 } from "../modules/operator/operator.service";
 import { toolchainPackages } from "../modules/skills/skill-bundle";
@@ -40,6 +41,7 @@ const USAGE = `Usage:
   operator skill-enable|skill-disable --operator <name> --slug <slug>
   operator skill-list --operator <name>
   operator followups-report --operator <name> [--since 7d] [--tenant <id>] [--min-sets 200] [--close 0.6]
+  operator helpers-report --operator <name> [--since 7d] [--tenant <id>]
 
 Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
 the same arguments is safe. Models are never deleted: disable them instead.
@@ -48,6 +50,8 @@ behind this release; run it as a deploy step after an index change.
 followups-report prints counts and rates only (never message text). --since
 takes d, h or m (default 7d); --min-sets hides small cells; --close sets the
 word-overlap threshold for "typed something close" (default 0.6).
+helpers-report prints helper-agent counts, rates, latency and tokens for
+chats whose agent allowed helpers (never a helper's task or result).
 --allow-dev-credentials accepts a plaintext apiKey and an http loopback
 baseUrl, for local development only.
 skill-put publishes the folder as the skill's newest version (new chats get it
@@ -115,7 +119,8 @@ export type OperatorCommand =
         "model-list" | "builtin-agent-list" | "connector-list" | "skill-list";
       operator: string;
     }
-  | ({ command: "followups-report" } & FollowUpsReportCommand);
+  | ({ command: "followups-report" } & FollowUpsReportCommand)
+  | ({ command: "helpers-report" } & HelpersReportCommand);
 
 function required(values: Record<string, unknown>, flag: string): string {
   const value = values[flag];
@@ -280,6 +285,15 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         close,
       };
     }
+    case "helpers-report":
+      return {
+        command: "helpers-report",
+        operator,
+        since: new Date(Date.now() - sinceMsOf(values.since)),
+        ...(values.tenant !== undefined
+          ? { tenantId: tenantIdOf(values) }
+          : {}),
+      };
     default:
       throw new UsageError(`Unknown command "${positionals[0]}".`);
   }
@@ -403,6 +417,8 @@ export async function runOperatorCommand(
   }
   if (command.command === "followups-report")
     return operator.followUpsReport(command);
+  if (command.command === "helpers-report")
+    return operator.helpersReport(command);
   if (command.command === "ensure-tenant-indexes") {
     const tenants = await operator.ensureTenantIndexes(command);
     return {

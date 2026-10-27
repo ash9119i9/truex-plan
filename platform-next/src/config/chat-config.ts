@@ -14,6 +14,12 @@ export interface ChatConfig {
   // runtime's coding sandbox. Off by default: an adapter older than the
   // network contract refuses the field, so turn this on after it is deployed.
   readonly sandboxNetwork?: boolean;
+  // CHAT_SUBAGENTS=off|1|2|3 (default off): how many helper agents a reply
+  // may run at once. Off sends nothing. An adapter older than the helper
+  // contract refuses the field, so set it only once that adapter is deployed.
+  // Coding runtimes run helpers too (shared workspace, Codex-exact Option B);
+  // older adapters that predate that refuse the field under coding.
+  readonly subAgents?: number;
   // FOLLOW_UPS=on|off (default on): whether new chats ask the model for
   // Follow Up rows. Off also stops the API from returning stored rows.
   readonly followUps?: boolean;
@@ -88,6 +94,9 @@ export function loadChatConfig(
   const sandboxNetwork = env.CHAT_SANDBOX_NETWORK;
   if (sandboxNetwork !== undefined && !["0", "1"].includes(sandboxNetwork))
     problems.push("CHAT_SANDBOX_NETWORK must be 0 or 1.");
+  const subAgents = env.CHAT_SUBAGENTS;
+  if (subAgents !== undefined && !["off", "1", "2", "3"].includes(subAgents))
+    problems.push("CHAT_SUBAGENTS must be off, 1, 2 or 3.");
   const followUps = env.FOLLOW_UPS;
   if (followUps !== undefined && followUps !== "on" && followUps !== "off")
     problems.push("FOLLOW_UPS must be on or off.");
@@ -109,5 +118,8 @@ export function loadChatConfig(
     followUps: followUps !== "off",
     followUpsHoldoutPercent: holdout,
     ...(sandboxNetwork === "1" ? { sandboxNetwork: true } : {}),
+    ...(subAgents && subAgents !== "off"
+      ? { subAgents: Number(subAgents) }
+      : {}),
   };
 }

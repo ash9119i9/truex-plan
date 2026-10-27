@@ -19,12 +19,20 @@ import { ChatStore, type Settlement } from "../../src/modules/chats/chat-store";
 import { BUILTIN_AGENTS_COLLECTION } from "../../src/modules/agents/builtin-agent";
 import {
   CHATS_COLLECTION,
+  MESSAGES_COLLECTION,
   RUNS_COLLECTION,
   type ChatDoc,
   type RunDoc,
 } from "../../src/modules/chats/chat";
 import { RecoverySweep } from "../../src/modules/chats/recovery-sweep";
-import { RunExecutor } from "../../src/modules/chats/run-executor";
+import {
+  RUNTIME_CLIENT,
+  RunExecutor,
+} from "../../src/modules/chats/run-executor";
+import type {
+  RuntimeClient,
+  StartRunBody,
+} from "../../src/modules/chats/runtime-client";
 import { MEMBERSHIPS_COLLECTION } from "../../src/modules/memberships/membership";
 import { MembershipsService } from "../../src/modules/memberships/memberships.service";
 import { MODELS_COLLECTION } from "../../src/modules/models/model";
@@ -125,6 +133,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       streamHeartbeatMs?: number;
       followUps?: boolean;
       followUpsHoldoutPercent?: number;
+      subAgents?: number;
     } = {},
   ): Promise<void> {
     running = await startApp({
@@ -568,6 +577,91 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       assert.equal((await runDoc(next.run.id))?.followUps, undefined);
       const prompt = JSON.stringify(gateway.requests.at(-1)?.body ?? {});
       assert.doesNotMatch(prompt, /truex-suggestions/);
+    } finally {
+      await running.close();
+      await boot();
+    }
+  });
+
+  test("helpers reach the runtime only with CHAT_SUBAGENTS and the agent's opt-in", async () => {
+    const createAgent = async (helpers?: boolean) =>
+      (
+        await json<{ agent: { id: string; helpers: boolean } }>(
+          await call(alice, "POST", "/agents", {
+            clientRequestId: `req-${clientId()}`,
+            scope: "personal",
+            name: "Scout",
+            description: "Finds sources.",
+            modelId,
+            ...(helpers !== undefined ? { helpers } : {}),
+          }),
+          201,
+        )
+      ).agent;
+    // The start-run body of a chat started through `agentId`. The chat keeps
+    // the agent's opt-in whatever the server flag says.
+    async function bodyFor(
+      agentId: string,
+      optedIn: boolean,
+    ): Promise<StartRunBody> {
+      const client = running.app.get<RuntimeClient>(RUNTIME_CLIENT);
+      const bodies: StartRunBody[] = [];
+      const original = client.startRun.bind(client);
+      client.startRun = (body, signal) => {
+        bodies.push(body);
+        return original(body, signal);
+      };
+      try {
+        const receipt = await json<Receipt>(
+          await startChat(alice, "hi", agentId),
+          202,
+        );
+        await finish(alice, receipt);
+        assert.equal(
+          (await chatDoc(receipt.chat.id))?.helpers,
+          optedIn ? true : undefined,
+        );
+      } finally {
+        client.startRun = original;
+      }
+      assert.equal(bodies.length, 1);
+      return bodies[0]!;
+    }
+
+    const on = await createAgent(true);
+    const off = await createAgent();
+    assert.equal(on.helpers, true);
+    assert.equal(off.helpers, false);
+    // Server flag off: no field, even for an agent that opted in.
+    assert.equal("subAgents" in (await bodyFor(on.id, true)), false);
+    // The list tells the dialog whether to offer the setting.
+    assert.equal(
+      (
+        await json<{ helpers: boolean }>(
+          await call(alice, "GET", "/agents"),
+          200,
+        )
+      ).helpers,
+      false,
+    );
+
+    await running.close();
+    await boot({ subAgents: 2 });
+    try {
+      assert.equal(
+        (
+          await json<{ helpers: boolean }>(
+            await call(alice, "GET", "/agents"),
+            200,
+          )
+        ).helpers,
+        true,
+      );
+      assert.deepEqual((await bodyFor(on.id, true)).subAgents, {
+        maxConcurrent: 2,
+      });
+      assert.equal("subAgents" in (await bodyFor(off.id, false)), false);
+      assert.equal("subAgents" in (await bodyFor(builtinId, false)), false);
     } finally {
       await running.close();
       await boot();
@@ -1643,6 +1737,96 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       body.messages.map((m) => m.seq),
       [1, 2, 3, 4, 9, 10],
     );
+  });
+
+  test("helper agents are saved as tool rows, once, and read back through the API", async () => {
+    const store = running.app.get(ChatStore);
+    const usage = {
+      input: 20,
+      cached: 0,
+      cacheWrite: 0,
+      output: 10,
+      reasoning: 0,
+    };
+    const outcome: Settlement = {
+      status: "completed",
+      error: null,
+      items: [
+        {
+          type: "reply",
+          itemId: "a",
+          text: "Globex is at risk.",
+          completed: true,
+        },
+      ],
+      agents: [
+        {
+          agentId: "th-1",
+          path: "/root/crm",
+          status: "completed",
+          preview: "live only",
+          result: "Globex stalled 21 days.",
+          usage,
+        },
+        { agentId: "th-2", path: "/root/email", status: "running" },
+      ],
+      usage: null,
+      threadId: null,
+      turnId: null,
+      threadLost: false,
+    };
+    const first = await unread(() => startChat(alice));
+    const chatId = ObjectId.createFromHexString(first.chat.id);
+    const runId = ObjectId.createFromHexString(first.run.id);
+    const saved = await store.settle(
+      DEFAULT_TENANT_DB_NAME,
+      chatId,
+      runId,
+      2,
+      outcome,
+    );
+    assert.deepEqual(
+      saved.messages.map((m) => [m.seq, m.role, m.runtimeItemId]),
+      [
+        [2, "tool", "agent:th-1"],
+        [3, "tool", "agent:th-2"],
+        [4, "assistant", "a"],
+      ],
+    );
+    // A repeated save writes no second set of rows.
+    const again = await store.settle(
+      DEFAULT_TENANT_DB_NAME,
+      chatId,
+      runId,
+      2,
+      outcome,
+    );
+    assert.equal(again.messages.length, 3);
+    const stored = await database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection(MESSAGES_COLLECTION)
+      .countDocuments({ runId, runtimeItemId: /^agent:/ });
+    assert.equal(stored, 2);
+    assert.equal((await runDoc(first.run.id))?.helperCount, 2);
+
+    const body = await getChat(alice, first.chat.id);
+    const rows = body.messages.filter((m) => m.role === "tool") as Array<
+      Record<string, unknown>
+    >;
+    assert.deepEqual(rows[0]!.agent, {
+      path: "/root/crm",
+      status: "completed",
+      result: "Globex stalled 21 days.",
+      usage,
+    });
+    // Still running at settle means stopped with the run.
+    assert.deepEqual(rows[1]!.agent, {
+      path: "/root/email",
+      status: "stopped",
+    });
+    // The live preview never reaches storage or the API.
+    assert.ok(!JSON.stringify(body).includes("live only"));
+    assert.ok(!JSON.stringify(rows).includes("runtimeItemId"));
   });
 
   test("a disabled model makes its chats read-only; an archived agent does not", async () => {

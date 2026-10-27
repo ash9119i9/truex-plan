@@ -3,6 +3,7 @@ import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, type Usage } from "../responses";
 import { customToolAsFunction, ToolNames, systemPrompt } from "../tool-names";
 import { isContextError } from "./chat";
+import { agentMessageText } from "../agent-message";
 
 // Anthropic Messages API via the official SDK. Like the Chat adapter, every
 // Codex request carries the full conversation (store=false) and is translated
@@ -274,6 +275,9 @@ function toMessages(input: any, tools: ToolNames) {
       type === "custom_tool_call_output"
     ) {
       conversation.toolResult(toolResult(item));
+    } else if (type === "agent_message") {
+      const text = agentMessageText(item);
+      if (text) conversation.user({ type: "text", text });
     }
     // Compaction and hosted-tool items have no Messages equivalent.
     started ||= conversation.messages.length > 0;

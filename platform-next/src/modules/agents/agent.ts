@@ -93,6 +93,9 @@ export interface AgentDoc {
   // one's current version. Absent on documents created before skills
   // existed, read as an empty list everywhere.
   skillIds?: ObjectId[];
+  // The agent may start helper agents during a reply (only where the server
+  // has CHAT_SUBAGENTS). Absent means off.
+  helpers?: true;
   status: AgentStatus;
   // Bumped by every change; edits must name the revision they started from.
   revision: number;
@@ -119,6 +122,7 @@ export interface CreateAgentInput {
   connectors: AgentConnectorRequest[];
   // Catalog skill IDs; checked by the service against the catalog.
   skillIds: ObjectId[];
+  helpers: boolean;
 }
 
 export interface UpdateAgentInput {
@@ -132,6 +136,8 @@ export interface UpdateAgentInput {
   // Absent leaves the agent's skills unchanged; a list (even empty) replaces
   // them.
   skillIds?: ObjectId[];
+  // Absent leaves the setting unchanged.
+  helpers?: boolean;
 }
 
 // Generated once per create by the client and reused on every retry.
@@ -179,6 +185,11 @@ function parseSkillIds(value: unknown): ObjectId[] {
   return ids;
 }
 
+function parseHelpers(value: unknown): boolean {
+  if (typeof value !== "boolean") invalid("helpers must be true or false.");
+  return value;
+}
+
 function parseConnectorRequest(value: unknown): AgentConnectorRequest {
   if (typeof value === "string") {
     if (!CONNECTOR_SLUG.test(value))
@@ -208,6 +219,7 @@ export function parseCreateAgent(body: unknown): CreateAgentInput {
       "tint",
       "connectors",
       "skillIds",
+      "helpers",
     ],
     "The request body",
   );
@@ -231,6 +243,7 @@ export function parseCreateAgent(body: unknown): CreateAgentInput {
         ? []
         : parseConnectorRequests(raw.connectors),
     skillIds: raw.skillIds === undefined ? [] : parseSkillIds(raw.skillIds),
+    helpers: raw.helpers === undefined ? false : parseHelpers(raw.helpers),
   };
 }
 
@@ -246,6 +259,7 @@ export function parseUpdateAgent(body: unknown): UpdateAgentInput {
       "tint",
       "connectors",
       "skillIds",
+      "helpers",
     ],
     "The request body",
   );
@@ -268,19 +282,23 @@ export function parseUpdateAgent(body: unknown): UpdateAgentInput {
       : parseConnectorRequests(raw.connectors);
   const skillIds =
     raw.skillIds === undefined ? undefined : parseSkillIds(raw.skillIds);
+  const helpers =
+    raw.helpers === undefined ? undefined : parseHelpers(raw.helpers);
   if (
     Object.keys(changes).length === 0 &&
     connectors === undefined &&
-    skillIds === undefined
+    skillIds === undefined &&
+    helpers === undefined
   )
     invalid(
-      "Give at least one of name, description, modelId, look, tint, connectors or skillIds.",
+      "Give at least one of name, description, modelId, look, tint, connectors, skillIds or helpers.",
     );
   return {
     revision,
     changes,
     ...(connectors !== undefined ? { connectors } : {}),
     ...(skillIds !== undefined ? { skillIds } : {}),
+    ...(helpers !== undefined ? { helpers } : {}),
   };
 }
 
@@ -308,6 +326,7 @@ export function requestHashOf(input: CreateAgentInput): string {
         ...(input.skillIds.length
           ? { skillIds: input.skillIds.map((id) => id.toHexString()) }
           : {}),
+        ...(input.helpers ? { helpers: true } : {}),
       }),
     )
     .digest("hex");

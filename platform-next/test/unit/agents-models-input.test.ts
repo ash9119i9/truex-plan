@@ -316,6 +316,30 @@ describe("agent request bodies", () => {
     });
   });
 
+  test("helpers is off by default, a boolean, and part of the request hash", () => {
+    assert.equal(parseCreateAgent(body).helpers, false);
+    assert.equal(parseCreateAgent({ ...body, helpers: true }).helpers, true);
+    for (const bad of ["yes", 1, null])
+      refused(
+        () => parseCreateAgent({ ...body, helpers: bad }),
+        /helpers must be true or false/,
+      );
+    // Creates without helpers hash as before; turning it on is another create.
+    assert.equal(
+      requestHashOf(parseCreateAgent(body)),
+      requestHashOf(parseCreateAgent({ ...body, helpers: false })),
+    );
+    assert.notEqual(
+      requestHashOf(parseCreateAgent(body)),
+      requestHashOf(parseCreateAgent({ ...body, helpers: true })),
+    );
+    assert.deepEqual(parseUpdateAgent({ revision: 2, helpers: false }), {
+      revision: 2,
+      changes: {},
+      helpers: false,
+    });
+  });
+
   test("the request hash includes access, so flipping it is a different create", () => {
     const readWrite = requestHashOf(
       parseCreateAgent({ ...body, connectors: ["github"] }),

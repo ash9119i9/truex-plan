@@ -16,6 +16,9 @@ import { FollowUpRows } from "./follow-up-rows";
 import {
   exchangeKey,
   exchangesOf,
+  helperApprovalNote,
+  helperLabel,
+  helpersSummary,
   isSettled,
   messageStateNote,
   outcomeNote,
@@ -34,6 +37,7 @@ import {
   type ChatRun,
   type ChatSummary,
   type ChatThread,
+  type HelperAgent,
   type LiveReply,
 } from "@/lib/tenant-chat";
 import { Icon } from "@/components/v2/icon";
@@ -850,6 +854,80 @@ function NetworkCard({
   );
 }
 
+const HELPER_STATUS: Record<HelperAgent["status"], string> = {
+  running: "Working",
+  completed: "Done",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+// The helper agents the lead started, as one group placed before its final
+// answer (live and saved alike). Results are model-written: plain text only.
+export function HelperGroup({
+  helpers,
+  live,
+}: {
+  helpers: readonly (HelperAgent & { key: string })[];
+  live: boolean;
+}) {
+  if (!helpers.length) return null;
+  return (
+    <div className="helper-group">
+      <p className="helper-summary" role={live ? "status" : undefined}>
+        {helpersSummary(helpers)}
+      </p>
+      {helpers.map((helper) => (
+        <HelperCard key={helper.key} helper={helper} />
+      ))}
+    </div>
+  );
+}
+
+function HelperCard({ helper }: { helper: HelperAgent }) {
+  const label = helperLabel(helper.path);
+  const status = HELPER_STATUS[helper.status];
+  const head = (
+    <>
+      {helper.status === "running" ? (
+        <span className="spinner" aria-hidden="true" />
+      ) : (
+        <Icon
+          name={
+            helper.status === "completed"
+              ? "check"
+              : helper.status === "failed"
+                ? "x"
+                : "stop"
+          }
+          size={13}
+          className="tool-card-icon"
+        />
+      )}
+      <span className="helper-name">{label}</span>
+      <span className="tool-card-approval">· {status}</span>
+    </>
+  );
+  const failed = helper.status === "failed";
+  if (!helper.result)
+    return (
+      <div className={failed ? "tool-card is-failed" : "tool-card"}>
+        {head}
+        {helper.preview && (
+          <span className="helper-preview">{helper.preview}</span>
+        )}
+      </div>
+    );
+  return (
+    <details className={failed ? "helper-card is-failed" : "helper-card"}>
+      <summary className="tool-card">
+        {head}
+        <span className="helper-toggle">Result</span>
+      </summary>
+      <p className="helper-result">{helper.result}</p>
+    </details>
+  );
+}
+
 // A skill the reply used. Only its name: what the model read stays private.
 function SkillRow({ name }: { name: string }) {
   return (
@@ -872,11 +950,14 @@ function ApprovalCard({
   connectorLabel,
   busy,
   onApprove,
+  helperNote,
 }: {
   approval: ApprovalView;
   connectorLabel: string;
   busy: boolean;
   onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
+  // Set when the reply used helpers: the request followed their results.
+  helperNote: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   // Focus the card when it appears so a keyboard user reaches the buttons
@@ -909,6 +990,7 @@ function ApprovalCard({
       tabIndex={-1}
     >
       <p className="approval-title">{title}</p>
+      {helperNote && <p className="approval-hint">{helperNote}</p>}
       {command !== undefined ? (
         // Plain text only: model-written, shown exactly as it will run.
         <pre className="approval-command">{command}</pre>
@@ -1050,12 +1132,14 @@ function ActivityApprovalRow({
   settled,
   onApprove,
   approvalBusy,
+  helperNote,
 }: {
   activity: Activity;
   pending: ApprovalView | null;
   settled: ApprovalView | null;
   onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
   approvalBusy: string | null;
+  helperNote: string | null;
 }) {
   const label =
     settled && settled.status !== "pending"
@@ -1075,6 +1159,7 @@ function ActivityApprovalRow({
           connectorLabel="Workspace"
           busy={approvalBusy === pending.approvalId}
           onApprove={onApprove}
+          helperNote={helperNote}
         />
       )}
     </>
@@ -1293,10 +1378,19 @@ function SavedBody({
   const progress = progressFlags(
     entries.map((m) => (m.role === "tool" ? "tool" : "reply")),
   );
+  // Helper rows are saved together; they render as one group at the first.
+  const helpers = entries.flatMap((m) =>
+    m.agent ? [{ ...m.agent, key: m.id }] : [],
+  );
+  const firstHelper = entries.findIndex((m) => m.agent);
   return (
     <>
       {entries.map((entry, index) =>
-        entry.role === "tool" && entry.skill ? (
+        entry.agent ? (
+          index === firstHelper ? (
+            <HelperGroup key={entry.id} helpers={helpers} live={false} />
+          ) : null
+        ) : entry.role === "tool" && entry.skill ? (
           <SkillRow key={entry.id} name={entry.skill.name} />
         ) : entry.role === "tool" && entry.network ? (
           <NetworkCard
@@ -1384,12 +1478,14 @@ function ToolApprovalRow({
   settled,
   onApprove,
   approvalBusy,
+  helperNote,
 }: {
   call: ToolCall;
   pending: ApprovalView | null;
   settled: ApprovalView | null;
   onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
   approvalBusy: string | null;
+  helperNote: string | null;
 }) {
   const label =
     settled && settled.status !== "pending"
@@ -1404,6 +1500,7 @@ function ToolApprovalRow({
           connectorLabel={call.connector}
           busy={approvalBusy === pending.approvalId}
           onApprove={onApprove}
+          helperNote={helperNote}
         />
       )}
     </>
@@ -1445,6 +1542,18 @@ function LiveBody({
     ? outcomeNote(live.outcome.status, live.outcome.error)
     : null;
   const lastReplyId = replies.at(-1)?.itemId;
+  const helperNote = helperApprovalNote(live.helpers);
+  // Before the lead's last reply, where the saved rows go; last otherwise.
+  const helperAt = live.helpers.length
+    ? live.items.findLastIndex((i) => i.type === "reply")
+    : -1;
+  const helperGroup = (
+    <HelperGroup
+      key="helpers"
+      helpers={live.helpers.map((h) => ({ ...h, key: h.agentId }))}
+      live={streaming}
+    />
+  );
   const progress = progressFlags(
     live.items.map((item) =>
       item.type === "command" ||
@@ -1465,7 +1574,8 @@ function LiveBody({
           </li>
         </ul>
       )}
-      {live.items.map((item, index) =>
+      {live.items.map((item, index) => [
+        index === helperAt ? helperGroup : null,
         item.type === "reply" && progress[index] ? (
           <ProgressNote key={item.itemId} text={item.text} streaming={false} />
         ) : item.type === "reply" ? (
@@ -1496,6 +1606,7 @@ function LiveBody({
             settled={approvalForItem(live, item.itemId)}
             onApprove={onApprove}
             approvalBusy={approvalBusy}
+            helperNote={helperNote}
           />
         ) : item.type === "command" || item.type === "file_change" ? (
           <ActivityApprovalRow
@@ -1505,6 +1616,7 @@ function LiveBody({
             settled={approvalForItem(live, item.itemId)}
             onApprove={onApprove}
             approvalBusy={approvalBusy}
+            helperNote={helperNote}
           />
         ) : item.type === "skill" ? (
           <SkillRow key={`skill:${item.slug}`} name={item.name} />
@@ -1521,7 +1633,8 @@ function LiveBody({
             text={item.text ?? steerText(run, item.clientMessageId) ?? ""}
           />
         ),
-      )}
+      ])}
+      {helperAt < 0 && helperGroup}
       <FileCard
         runId={live.runId}
         files={files}

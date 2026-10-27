@@ -39,6 +39,7 @@ import {
   type Settlement,
   type SkillSettleItem,
   type ToolSettleItem,
+  type AgentSettleItem,
 } from "./chat-store";
 import { ConnectorsService } from "../connectors/connectors.service";
 import { networkBlockOf, reconcileBlock } from "../network/network-grants";
@@ -119,6 +120,8 @@ export type LiveEvent =
   | { type: "network"; data: Omit<NetworkSettleItem, "type"> }
   | { type: "output"; data: { itemId: string; text: string } }
   | { type: "progress"; data: ProgressEventData }
+  // A helper agent started, is working or finished (its whole state).
+  | { type: "agent"; data: AgentSettleItem }
   | { type: "usage"; data: RunUsage }
   | { type: "completed"; data: Completed }
   // The file versions the run stored, after completed and before saved, and
@@ -215,12 +218,15 @@ export interface Snapshot {
   approvals: ApprovalEventData[];
   // File changes still being written (live only, never saved).
   writing: Array<Extract<ProgressEventData, { lines: number }>>;
+  // Helper agents, only when some ran.
+  agents?: AgentSettleItem[];
 }
 
 export interface Completed {
   status: Settlement["status"];
   error: RunErrorInfo | null;
   items: SettleItem[];
+  agents?: AgentSettleItem[];
   usage: RunUsage | null;
 }
 
@@ -268,6 +274,14 @@ const NOT_SENT: RunErrorInfo = {
   code: "NOT_SENT",
   message: "This message wasn't sent to the assistant. Try again.",
   retryable: true,
+};
+// Only an adapter older than the Codex-exact change (coding + helpers share a
+// workspace) still refuses helpers under coding; a current adapter runs them.
+// Kept so that older adapter surfaces a clear message instead of a raw error.
+const SUBAGENTS_UNAVAILABLE: RunErrorInfo = {
+  code: "SUBAGENTS_DISABLED",
+  message: "Helper agents aren't available for this assistant.",
+  retryable: false,
 };
 const BUSY_ELSEWHERE: RunErrorInfo = {
   code: "RUNTIME_BUSY",
@@ -334,6 +348,8 @@ class LiveRun {
   private readonly skills = new Map<string, SkillSettleItem>();
   // Refused sandbox requests, by networkKey, placed like skills.
   private readonly networks = new Map<string, NetworkSettleItem>();
+  // Helper agents by id, in start order.
+  private readonly agents = new Map<string, AgentSettleItem>();
   // File changes the model is still writing, until they become activities.
   private readonly writing = new Map<
     string,
@@ -386,6 +402,7 @@ class LiveRun {
       usage: this.usage,
       approvals: [...this.approvals.values()],
       writing: [...this.writing.values()],
+      ...this.agentField(),
     };
   }
 
@@ -467,6 +484,34 @@ class LiveRun {
     this.skills.set(slug, item);
     this.order.push({ type: "skill", slug });
     this.broadcast({ type: "skill", data: { slug, name: item.name } });
+  }
+
+  // A helper agent's state from the runtime. "start" adds it once; "update"
+  // changes a known one; "snapshot" (a reconnect or the outcome) does
+  // either. A finished helper keeps its result unless a later turn sends one.
+  setAgent(agent: AgentSettleItem, how: "start" | "update" | "snapshot"): void {
+    const known = this.agents.get(agent.agentId);
+    if (how === "start" && known) return;
+    if (how === "update" && !known) return;
+    if (!known && this.agents.size >= MAX_RUN_AGENTS) return;
+    const next: AgentSettleItem = known
+      ? {
+          ...known,
+          status: agent.status,
+          ...(agent.preview !== undefined ? { preview: agent.preview } : {}),
+          ...(agent.result !== undefined ? { result: agent.result } : {}),
+          ...(agent.usage ? { usage: agent.usage } : {}),
+        }
+      : agent;
+    this.agents.set(agent.agentId, next);
+    this.broadcast({ type: "agent", data: { ...next } });
+  }
+
+  // Present only when a helper ran, so other runs are unchanged.
+  agentField(): { agents?: AgentSettleItem[] } {
+    return this.agents.size
+      ? { agents: [...this.agents.values()].map((agent) => ({ ...agent })) }
+      : {};
   }
 
   // The network proxy refused a sandbox request. Once per site and method.
@@ -1057,6 +1102,8 @@ export class RunExecutor implements OnApplicationShutdown {
           if (error.code === "THREAD_LOST")
             return failed(run, THREAD_LOST, true);
           if (error.code === "CHAT_BUSY") return failed(run, BUSY_ELSEWHERE);
+          if (error.code === "SUBAGENTS_DISABLED")
+            return failed(run, SUBAGENTS_UNAVAILABLE);
           if (
             !RETRYABLE_START.has(error.code) &&
             error.code !== "RUN_NOT_FOUND"
@@ -1265,6 +1312,17 @@ export class RunExecutor implements OnApplicationShutdown {
       case "connector.status":
         this.connectorStatus(run, d);
         return null;
+      case "agent.started":
+      case "agent.activity":
+      case "agent.completed": {
+        const agent = agentOf(d);
+        if (agent)
+          run.setAgent(
+            agent,
+            event.type === "agent.started" ? "start" : "update",
+          );
+        return null;
+      }
       case "skill.used": {
         const slug = str(d.slug);
         if (slug) run.useSkill(slug);
@@ -1318,6 +1376,7 @@ export class RunExecutor implements OnApplicationShutdown {
             run.requestApproval(approval);
           }
         run.closeApprovalsNotIn(pending);
+        for (const agent of agentsOf(d.agents)) run.setAgent(agent, "snapshot");
         if (str(d.threadId)) run.threadId = str(d.threadId);
         if (str(d.turnId)) {
           // A snapshot with a turn replaces a run.accepted no longer buffered.
@@ -1461,6 +1520,7 @@ export class RunExecutor implements OnApplicationShutdown {
       threadId: str(d.threadId) ?? run.threadId,
       turnId: str(d.turnId) ?? run.turnId,
       firstTextAt: run.firstTextAt,
+      ...this.finalAgents(run, d.agents),
     };
     if (status === "failed" && d.delivery === "unknown") {
       // The turn may have run anyway; its saved history decides.
@@ -1475,6 +1535,16 @@ export class RunExecutor implements OnApplicationShutdown {
       error: status === "failed" ? (error ?? RUNTIME_FAILED) : null,
       threadLost: error?.code === "THREAD_LOST",
     };
+  }
+
+  // The helpers as the runtime's outcome lists them (authoritative), merged
+  // into what streamed, so a missed event still reaches the saved rows.
+  private finalAgents(
+    run: LiveRun,
+    value: unknown,
+  ): { agents?: AgentSettleItem[] } {
+    for (const agent of agentsOf(value)) run.setAgent(agent, "snapshot");
+    return run.agentField();
   }
 
   // The run's message in the runtime's saved history, or null when the
@@ -1505,6 +1575,7 @@ export class RunExecutor implements OnApplicationShutdown {
       turnId: turn.turnId,
       firstTextAt: run.firstTextAt,
       threadLost: false,
+      ...run.agentField(),
     };
     if (turn.status === "completed")
       return {
@@ -1545,6 +1616,7 @@ export class RunExecutor implements OnApplicationShutdown {
       status: outcome.status,
       error: outcome.error,
       items: [...outcome.items],
+      ...(outcome.agents?.length ? { agents: [...outcome.agents] } : {}),
       usage: outcome.usage,
     };
     run.broadcast({ type: "completed", data: run.completed });
@@ -1732,6 +1804,7 @@ function failed(
     turnId: run.turnId,
     firstTextAt: run.firstTextAt,
     threadLost,
+    ...run.agentField(),
   };
 }
 
@@ -1739,6 +1812,52 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 && value.length <= 256
     ? value
     : null;
+}
+
+// Helper agents: the adapter bounds these already; they are bounded again
+// here because the runtime is a separate trust boundary.
+const MAX_RUN_AGENTS = 10;
+const MAX_AGENT_PATH = 120;
+const MAX_AGENT_PREVIEW = 240;
+const MAX_AGENT_RESULT = 4000;
+const AGENT_STATUSES = new Set(["running", "completed", "failed", "stopped"]);
+
+function boundedText(value: unknown, max: number): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  return value.length > max ? value.slice(0, max) : value;
+}
+
+// A helper from an adapter event or list entry, or null when unreadable.
+function agentOf(value: unknown): AgentSettleItem | null {
+  if (!value || typeof value !== "object") return null;
+  const v = value as Record<string, unknown>;
+  const agentId = str(v.agentId);
+  if (!agentId) return null;
+  const status =
+    typeof v.status === "string" && AGENT_STATUSES.has(v.status)
+      ? (v.status as AgentSettleItem["status"])
+      : "running";
+  const preview = boundedText(v.preview, MAX_AGENT_PREVIEW);
+  const result = boundedText(v.result, MAX_AGENT_RESULT);
+  const usage = usageOf(v.usage);
+  return {
+    agentId,
+    path: boundedText(v.path, MAX_AGENT_PATH) ?? "",
+    status,
+    ...(preview !== undefined ? { preview } : {}),
+    ...(result !== undefined ? { result } : {}),
+    ...(usage ? { usage } : {}),
+  };
+}
+
+function agentsOf(value: unknown): AgentSettleItem[] {
+  if (!Array.isArray(value)) return [];
+  const agents: AgentSettleItem[] = [];
+  for (const entry of value.slice(0, MAX_RUN_AGENTS)) {
+    const agent = agentOf(entry);
+    if (agent) agents.push(agent);
+  }
+  return agents;
 }
 
 // A tool call from an adapter event or item, or null when unreadable.
@@ -2118,6 +2237,11 @@ const RUN_ERRORS: Record<string, Omit<RunErrorInfo, "code">> = {
   THREAD_LOST: { message: THREAD_LOST.message, retryable: false },
   THREAD_MISMATCH: {
     message: "This conversation can't continue here. Start a new chat.",
+    retryable: false,
+  },
+  SUBAGENT_LIMIT: {
+    message:
+      "This needed more helper agents than one reply allows. Try a narrower request.",
     retryable: false,
   },
 };

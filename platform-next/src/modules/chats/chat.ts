@@ -177,6 +177,9 @@ export interface ChatDoc {
   // The skill versions the agent's enabled skills had at chat start. Later
   // publishes or disables never change them. Absent on chats without skills.
   skills?: ChatSkill[];
+  // The agent allowed helper agents at chat start. Absent means off; an
+  // agent edit later never changes a running chat.
+  helpers?: true;
   // Tools the member allowed for this whole chat (Allow for this chat), sent
   // to the adapter as approvedTools. Absent on chats with none; grown by
   // $addToSet when an approval resolves allow_for_chat (non-auto).
@@ -228,6 +231,16 @@ export interface MessageTool {
   // allow, allow_for_chat, deny, expired or cancelled. Absent for a read-only
   // call that needed no approval.
   approval?: ApprovalDecision;
+}
+
+// A helper agent the lead started during a reply (Codex multi-agent V2),
+// saved on a role `tool` message. `path` is the lead's task name; `result`
+// is the helper's own bounded answer, kept as data and shown as text.
+export interface MessageAgent {
+  path: string;
+  status: "completed" | "failed" | "stopped";
+  result?: string;
+  usage?: RunUsage;
 }
 
 // A skill the assistant opened during a reply, saved on a role `tool`
@@ -295,6 +308,8 @@ export interface MessageDoc {
   skill?: MessageSkill;
   // Tool messages only: a sandbox request the network proxy refused.
   network?: MessageNetwork;
+  // Tool messages only: a helper agent the reply used.
+  agent?: MessageAgent;
   // User messages only: the files attached to it, in order. Each is a stored
   // chat file (its upload version) the run copies into the workspace first.
   attachments?: MessageAttachment[];
@@ -379,7 +394,10 @@ export interface RunDoc {
   threadId?: string;
   turnId?: string;
   error?: RunErrorInfo;
+  // Includes the helpers' usage when helpers ran.
   usage?: RunUsage;
+  // How many helper agents the run started. Absent when none.
+  helperCount?: number;
   timings: RunTimings;
   stopRequested?: boolean;
   // At most STEERS_PER_RUN, in arrival order.

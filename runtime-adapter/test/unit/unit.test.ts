@@ -925,6 +925,24 @@ describe("Codex error mapping", () => {
         .code,
       "PROVIDER_ERROR",
     );
+    // A provider 429 after retries (seen on the nvidia profile).
+    assert.equal(
+      fromCodexErrorInfo({
+        responseTooManyFailedAttempts: { httpStatusCode: 429 },
+      }).code,
+      "RATE_LIMITED",
+    );
+    assert.equal(
+      fromCodexErrorInfo({ httpConnectionFailed: { httpStatusCode: 429 } })
+        .code,
+      "RATE_LIMITED",
+    );
+    assert.equal(
+      fromCodexErrorInfo({
+        responseTooManyFailedAttempts: { httpStatusCode: 503 },
+      }).code,
+      "PROVIDER_ERROR",
+    );
     assert.equal(fromCodexErrorInfo(null).code, "PROVIDER_ERROR");
     assert.equal(fromCodexErrorInfo("somethingNew").code, "PROVIDER_ERROR");
   });
@@ -1270,5 +1288,117 @@ describe("path mask", () => {
     assert.ok(!r.shown.includes("/mnt") && !r.tail.startsWith("/workspace"));
     const all = r.shown + splitStreamed(mask, r.tail, true).shown;
     assert.equal(all, "x".repeat(OUTPUT_TAIL_LIMIT) + "$WORKSPACE" + "y");
+  });
+});
+
+describe("sub-agents contract and config", () => {
+  const model = {
+    modelName: "fixture-model",
+    gatewayUrl: "https://g/v1",
+    gatewayToken: "token-0123456789abcdef",
+    contextWindow: 100_000,
+    autoCompactTokenLimit: 80_000,
+  };
+
+  test("subAgents is optional and absent by default", () => {
+    assert.equal("subAgents" in parseStartRun(valid(), DEFAULT_LIMITS), false);
+    assert.equal(
+      "subAgents" in
+        parseStartRun({ ...valid(), subAgents: null }, DEFAULT_LIMITS),
+      false,
+    );
+    assert.deepEqual(
+      parseStartRun(
+        { ...valid(), subAgents: { maxConcurrent: 3 } },
+        DEFAULT_LIMITS,
+      ).subAgents,
+      { maxConcurrent: 3 },
+    );
+  });
+
+  test("subAgents rejects anything but 1-3 helpers", () => {
+    for (const bad of [0, 4, 1.5, "2", -1, null])
+      rejects(
+        { ...valid(), subAgents: { maxConcurrent: bad } },
+        /maxConcurrent/,
+      );
+    rejects({ ...valid(), subAgents: {} }, /maxConcurrent/);
+    rejects({ ...valid(), subAgents: [] }, /subAgents must be a JSON object/);
+    rejects(
+      { ...valid(), subAgents: { maxConcurrent: 2, enabled: true } },
+      /Unknown field "enabled"/,
+    );
+  });
+
+  test("without subAgents the params are byte for byte unchanged", () => {
+    assert.deepEqual(
+      threadStartParams(model, "p", "/ws", [], undefined, [], undefined),
+      threadStartParams(model, "p", "/ws"),
+    );
+    assert.deepEqual(
+      threadResumeParams("tid", model, "/ws", [], undefined, undefined),
+      threadResumeParams("tid", model, "/ws"),
+    );
+    assert.ok(
+      !JSON.stringify(threadStartParams(model, "p", "/ws")).includes(
+        "multi_agent_v2",
+      ),
+    );
+    // The legacy engine stays off either way.
+    assert.equal(
+      threadStartParams(model, "p", "/ws").config["features.multi_agent"],
+      false,
+    );
+  });
+
+  test("subAgents turns on V2 with the lead counted and bounded waits", () => {
+    for (const params of [
+      threadStartParams(model, "p", "/ws", [], undefined, [], {
+        maxConcurrent: 2,
+      }),
+      threadResumeParams("tid", model, "/ws", [], undefined, {
+        maxConcurrent: 2,
+      }),
+    ]) {
+      const v2 = (params.config as Record<string, unknown>)[
+        "features.multi_agent_v2"
+      ] as Record<string, unknown>;
+      assert.equal(v2.enabled, true);
+      assert.equal(v2.max_concurrent_threads_per_session, 3);
+      assert.equal(v2.hide_spawn_agent_metadata, true);
+      assert.ok((v2.max_wait_timeout_ms as number) < DEFAULT_LIMITS.silenceMs);
+      assert.ok(
+        (v2.min_wait_timeout_ms as number) <=
+          (v2.default_wait_timeout_ms as number),
+      );
+      assert.ok(
+        (v2.default_wait_timeout_ms as number) <=
+          (v2.max_wait_timeout_ms as number),
+      );
+      assert.match(
+        String(v2.subagent_developer_instructions),
+        /Never change data/,
+      );
+      assert.match(String(v2.multi_agent_mode_hint_text), /fork_turns "none"/);
+      // Nothing else of the text-only profile changes.
+      assert.equal(params.config["features.shell_tool"], false);
+      assert.equal(params.config["features.multi_agent"], false);
+    }
+  });
+
+  test("a coding run gives helpers the shared-workspace rules, not read-only", () => {
+    const coding = { config: {}, instructions: "coding instructions" };
+    const v2 = (
+      threadStartParams(model, "p", "/ws", [], coding, [], {
+        maxConcurrent: 2,
+      }).config as Record<string, unknown>
+    )["features.multi_agent_v2"] as Record<string, unknown>;
+    const rules = String(v2.subagent_developer_instructions);
+    // Codex-exact Option B: helpers may write in the shared workspace, but
+    // not make external connector changes.
+    assert.match(rules, /share one workspace/);
+    assert.match(rules, /write files/);
+    assert.doesNotMatch(rules, /Never change data/);
+    assert.match(String(v2.multi_agent_mode_hint_text), /share your workspace/);
   });
 });

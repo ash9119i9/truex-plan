@@ -180,6 +180,9 @@ export interface StartRunRequest {
   readonly skills?: readonly SkillSpec[];
   // The sandbox network policy. Absent means no network, as before.
   readonly network?: NetworkPolicy;
+  // Helper agents (Codex multi-agent V2): how many may run at once. Absent
+  // means no helpers, byte for byte today's params. Not with coding.
+  readonly subAgents?: { readonly maxConcurrent: number };
 }
 
 export interface ChatRef {
@@ -528,6 +531,7 @@ export function parseStartRun(
       "codingApprovals",
       "skills",
       "network",
+      "subAgents",
     ],
     "Request body",
   );
@@ -596,6 +600,24 @@ export function parseStartRun(
     ...(b.network !== undefined && b.network !== null
       ? { network: network(b.network) }
       : {}),
+    ...(b.subAgents !== undefined && b.subAgents !== null
+      ? { subAgents: subAgents(b.subAgents) }
+      : {}),
+  };
+}
+
+// At most this many helpers at once; the lead is not counted.
+export const MAX_SUB_AGENTS = 3;
+
+function subAgents(value: unknown): { maxConcurrent: number } {
+  const s = object(value, ["maxConcurrent"], "subAgents");
+  return {
+    maxConcurrent: integer(
+      s.maxConcurrent,
+      "subAgents.maxConcurrent",
+      1,
+      MAX_SUB_AGENTS,
+    ),
   };
 }
 

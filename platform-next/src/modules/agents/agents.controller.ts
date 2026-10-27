@@ -21,6 +21,7 @@ import {
 import { DomainError } from "../../common/domain-error";
 import { DomainErrorsInterceptor } from "../../common/http/domain-errors.interceptor";
 import { requestIdOf } from "../../common/http/request-id";
+import { APP_CONFIG, type AppConfig } from "../../config/app-config";
 import { parseWireId } from "../../database/object-id";
 import { parseCreateAgent, parseUpdateAgent } from "./agent";
 import { AgentsService, type AgentView } from "./agents.service";
@@ -40,13 +41,21 @@ function agentIdOf(value: string): ObjectId {
 @UseGuards(TenantGuard)
 @UseInterceptors(DomainErrorsInterceptor)
 export class AgentsController {
-  constructor(@Inject(AgentsService) private readonly agents: AgentsService) {}
+  constructor(
+    @Inject(AgentsService) private readonly agents: AgentsService,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+  ) {}
 
+  // `helpers`: whether this server lets agents start helper agents
+  // (CHAT_SUBAGENTS). Without it the dialog hides the setting.
   @Get()
   async list(
     @CurrentTenant() context: TenantContext,
-  ): Promise<{ agents: AgentView[] }> {
-    return { agents: await this.agents.list(context) };
+  ): Promise<{ agents: AgentView[]; helpers: boolean }> {
+    return {
+      agents: await this.agents.list(context),
+      helpers: (this.config.chat?.subAgents ?? 0) > 0,
+    };
   }
 
   // 201 for a new agent; 200 when a retried request returns the one it

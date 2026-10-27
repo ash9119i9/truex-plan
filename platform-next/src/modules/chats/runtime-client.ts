@@ -63,6 +63,8 @@ export interface StartRunBody extends ChatRef {
   // The chat's skills, the same list on every run. Included only when
   // non-empty.
   readonly skills?: readonly RunSkill[];
+  // Helper agents (CHAT_SUBAGENTS only): how many may run at once.
+  readonly subAgents?: { readonly maxConcurrent: number };
   readonly model: {
     readonly modelName: string;
     readonly gatewayUrl: string;

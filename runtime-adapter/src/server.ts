@@ -85,6 +85,12 @@ export function createAdapterServer(options: ServerOptions): Server {
       // Attached images live in uploads/, which only coding chats have.
       if (request.input.images?.length && !options.manager.codingEnabled)
         throw new AdapterError("UPLOADS_DISABLED");
+      // Coding + helpers run together (Codex's own design: one shared
+      // workspace, capability narrowed per helper by a role). Helpers may read
+      // and write files / run commands in the sandbox like the lead; only a
+      // helper's MCP connector write still asks (chat.ts onApprovalRequest).
+      // The kill switch is the platform's CHAT_SUBAGENTS=off (no subAgents
+      // reaches the adapter), see tasks/subagents-research/06-codex-exact-design.md.
       // Checked on every run, not only the first: a resumed thread reads its
       // skills from disk, and the runtime's storage may have been reset.
       if (request.skills?.length) {

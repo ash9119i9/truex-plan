@@ -12,6 +12,7 @@ import type {
 } from "../contract";
 import {
   threadResumeParams,
+  SUBAGENT_MAX_WAIT_MS,
   threadStartParams,
   toolOutputTokenLimit,
   type SkillRoot,
@@ -105,6 +106,12 @@ const HISTORY_TURNS = 20;
 const REJECTED = new Set([-32600, -32601, -32602]);
 // Events that arrive before turn/start answers; normally a handful.
 const EARLY_LIMIT = 1000;
+// Helper events kept until the lead's item names their helper (lifecycle
+// only; on the pin the item comes first, so normally none).
+const STRAY_LIMIT = 200;
+// Helpers one run may start in total. The concurrency cap alone does not
+// bound this: a finished helper frees its slot (subagents probe).
+const MAX_SUBAGENTS_PER_RUN = 6;
 
 type Usage = Record<string, unknown>;
 
@@ -176,7 +183,41 @@ interface Active {
     codex: CodexProcess;
     request: ServerRequest;
   }>;
+  // Helper agents (absent without `subAgents`), by thread id.
+  readonly subAgents: StartRunRequest["subAgents"];
+  readonly children: Map<string, Child>;
+  // The lead's collaboration calls in flight (wait_agent above all): the
+  // lead is silent through them even when no helper is running.
+  readonly collabCalls: Set<string>;
+  // Helper events seen before the lead's item that names the helper.
+  strays: Notification[];
+  // Set while the run's outcome waits for its helpers to stop.
+  childrenDone: (() => void) | undefined;
+  childTimer: NodeJS.Timeout | undefined;
+  // The lead's latest usage update; `usage` adds the helpers to its turn.
+  leadUsage: { last: unknown; total: unknown; contextWindow: unknown } | null;
 }
+
+// One helper agent: a Codex thread of its own on this process. Its usage is
+// the growth of its own thread total, like the lead's turn.
+interface Child {
+  readonly threadId: string;
+  readonly path: string;
+  turnId: string | undefined;
+  status: "running" | "completed" | "failed" | "stopped";
+  prevTotal: Record<string, unknown> | null;
+  usage: Record<string, number> | null;
+  stopSent: boolean;
+  archived: boolean;
+  // The helper's latest answer, bounded; the lead receives it in full.
+  result: string | undefined;
+}
+
+// What the member sees of a helper: a short preview while it works and its
+// answer, both bounded. Its raw stream is never forwarded.
+const AGENT_PREVIEW_CHARS = 240;
+const AGENT_PATH_CHARS = 120;
+const AGENT_RESULT_CHARS = 4000;
 
 interface CodingAllows {
   readonly commands: Set<string>;
@@ -367,6 +408,13 @@ export class ChatRuntime {
       skillUse: undefined,
       network: this.host.coding ? request.network : undefined,
       earlyRequests: [],
+      subAgents: request.subAgents,
+      children: new Map(),
+      collabCalls: new Set(),
+      strays: [],
+      childrenDone: undefined,
+      childTimer: undefined,
+      leadUsage: null,
     };
     this.active = active;
     try {
@@ -443,6 +491,10 @@ export class ChatRuntime {
   interrupt(reason: "stopped" | RunErrorCode): void {
     const active = this.active;
     if (!active || isFinished(active.run.status) || active.interrupting) return;
+    // The lead's turn has ended and its outcome is set; only helpers are
+    // still being stopped, within stopMs. Interrupting the lead now would
+    // turn a finished reply into "stopped" and restart the process.
+    if (active.childrenDone) return this.stopChildren(active);
     active.interrupting = true;
     if (reason !== "stopped") active.failReason = reason;
     const run = active.run;
@@ -450,6 +502,7 @@ export class ChatRuntime {
     if (run.status === "starting") return; // handled once the turn is accepted
     run.status = "stopping";
     this.sendInterrupt(active);
+    this.stopChildren(active);
     // After the interrupt, so the model cannot act on the refusal first.
     this.endApprovals(active, "cancelled");
   }
@@ -608,6 +661,7 @@ export class ChatRuntime {
     const fingerprint = threadFingerprint(
       mcp,
       this.host.coding ? request.network : undefined,
+      request.subAgents,
     );
     if (
       recorded &&
@@ -638,6 +692,7 @@ export class ChatRuntime {
           mcp,
           coding,
           this.skillRoots(request),
+          request.subAgents,
         ),
       );
       await this.writeRecord(started.thread.id);
@@ -660,6 +715,7 @@ export class ChatRuntime {
             this.workspace,
             mcp,
             coding,
+            request.subAgents,
           ),
         );
         this.rolloutPath = pathOf(resumed.thread);
@@ -847,6 +903,12 @@ export class ChatRuntime {
   private onNotification(active: Active, n: Notification): void {
     const run = active.run;
     if (isFinished(run.status)) return;
+    // A helper's events carry its own thread id (subagents probe). Only runs
+    // with helpers look, so a run without them is handled exactly as before.
+    const from =
+      typeof n.params.threadId === "string" ? n.params.threadId : undefined;
+    if (active.subAgents && from && run.threadId && from !== run.threadId)
+      return this.onOtherThread(active, from, n);
     // A connector's startup status carries no turn id and can arrive during
     // thread/start or thread/resume (before any turn). Surface it immediately;
     // it is not tied to a turn.
@@ -932,6 +994,23 @@ export class ChatRuntime {
           this.onActivityItem(active, n.method, item);
           return;
         }
+        if (active.subAgents && item.type === "collabAgentToolCall") {
+          const callId = String(item.id ?? "");
+          if (n.method === "item/started") active.collabCalls.add(callId);
+          else active.collabCalls.delete(callId);
+        }
+        // Codex sends no thread/started for a helper; this item names it.
+        if (
+          item.type === "subAgentActivity" &&
+          item.kind === "started" &&
+          typeof item.agentThreadId === "string"
+        )
+          this.registerChild(
+            active,
+            item.agentThreadId,
+            // The task name is the model's; it is shown, so it is bounded.
+            bounded(String(item.agentPath ?? ""), AGENT_PATH_CHARS),
+          );
         this.activity(active);
         if (n.method === "item/completed" && item.type === "agentMessage")
           run.completeItem(String(item.id), String(item.text ?? ""));
@@ -961,13 +1040,12 @@ export class ChatRuntime {
           asRecord(usage.last),
         );
         active.prevTotal = total;
-        active.usage = {
+        active.leadUsage = {
           last: usage.last,
           total: usage.total,
-          turn: active.turnUsage,
           contextWindow: usage.modelContextWindow ?? null,
         };
-        run.emit("usage", active.usage);
+        this.publishUsage(active);
         return;
       }
       case "turn/completed": {
@@ -995,10 +1073,241 @@ export class ChatRuntime {
 
   private onTurnCompleted(active: Active, turn: Record<string, unknown>): void {
     const status = turn.status;
-    if (status === "completed") return this.finish(active, "completed", null);
-    if (status === "interrupted") return this.settleStopped(active);
     const error = turn.error as { codexErrorInfo?: unknown } | null;
-    this.finish(active, "failed", fromCodexErrorInfo(error?.codexErrorInfo));
+    this.afterChildren(active, () => {
+      if (status === "completed") return this.finish(active, "completed", null);
+      if (status === "interrupted") return this.settleStopped(active);
+      this.finish(active, "failed", fromCodexErrorInfo(error?.codexErrorInfo));
+    });
+  }
+
+  // The run's usage: the lead's last call, thread total and context window,
+  // and a turn sum that includes every helper (billing and limits). Without
+  // helpers it is exactly the lead's update, as before.
+  private publishUsage(active: Active): void {
+    let turn = active.turnUsage;
+    for (const child of active.children.values())
+      if (child.usage) turn = sumUsage(turn, child.usage);
+    const lead = active.leadUsage;
+    active.usage = {
+      last: lead ? lead.last : null,
+      total: lead ? lead.total : null,
+      turn,
+      contextWindow: lead ? lead.contextWindow : null,
+    };
+    active.run.emit("usage", active.usage);
+  }
+
+  // Helper agents (Codex multi-agent V2), as observed on the pin in
+  // test/codex/subagents-probe.test.ts. A helper's stream counts as run
+  // activity and its usage is billed; its text, tools and connector status
+  // are not the lead's and are not shown.
+  private onOtherThread(
+    active: Active,
+    threadId: string,
+    n: Notification,
+  ): void {
+    const child = active.children.get(threadId);
+    if (child) return this.onChildNotification(active, child, n);
+    if (active.strays.length < STRAY_LIMIT && !n.method.endsWith("/delta"))
+      active.strays.push(n);
+  }
+
+  private registerChild(active: Active, threadId: string, path: string): void {
+    if (!active.subAgents || active.children.has(threadId)) return;
+    const child: Child = {
+      threadId,
+      path,
+      turnId: undefined,
+      status: "running",
+      prevTotal: null,
+      usage: null,
+      stopSent: false,
+      archived: false,
+      result: undefined,
+    };
+    active.children.set(threadId, child);
+    active.run.startAgent(threadId, path);
+    this.host.log("subagent_started", {
+      runId: active.run.runId,
+      count: active.children.size,
+    });
+    const early = active.strays.filter((n) => n.params.threadId === threadId);
+    active.strays = active.strays.filter((n) => n.params.threadId !== threadId);
+    for (const n of early) this.onChildNotification(active, child, n);
+    if (active.children.size > MAX_SUBAGENTS_PER_RUN) {
+      this.host.log("subagent_limit", { runId: active.run.runId });
+      this.interrupt("SUBAGENT_LIMIT");
+    }
+  }
+
+  private onChildNotification(
+    active: Active,
+    child: Child,
+    n: Notification,
+  ): void {
+    switch (n.method) {
+      case "turn/started": {
+        const turn = n.params.turn as { id?: unknown } | undefined;
+        if (typeof turn?.id === "string") child.turnId = turn.id;
+        child.status = "running";
+        child.stopSent = false;
+        // A stop asked for before this turn started still applies.
+        if (active.interrupting || active.childrenDone)
+          this.stopChild(active, child);
+        active.run.agentActivity(child.threadId);
+        return this.activity(active);
+      }
+      case "item/started":
+      case "item/completed": {
+        this.activity(active);
+        const item = n.params.item as Record<string, unknown> | undefined;
+        // Connector and tool names come from the chat's own spec.
+        if (n.method === "item/started" && item?.type === "mcpToolCall")
+          return active.run.agentActivity(
+            child.threadId,
+            bounded(
+              `${String(item.server ?? "")}: ${String(item.tool ?? "")}`,
+              AGENT_PREVIEW_CHARS,
+            ),
+          );
+        if (n.method === "item/completed" && item?.type === "agentMessage") {
+          const text = String(item.text ?? "");
+          if (!text.trim()) return;
+          child.result = bounded(text, AGENT_RESULT_CHARS);
+          active.run.agentActivity(
+            child.threadId,
+            bounded(text, AGENT_PREVIEW_CHARS),
+          );
+        }
+        return;
+      }
+      case "thread/tokenUsage/updated": {
+        const usage = n.params.tokenUsage as
+          Record<string, unknown> | undefined;
+        if (!usage) return;
+        const total = asRecord(usage.total);
+        child.usage = addTurnUsage(
+          child.usage,
+          child.prevTotal,
+          total,
+          asRecord(usage.last),
+        );
+        child.prevTotal = total;
+        return this.publishUsage(active);
+      }
+      case "turn/completed": {
+        const turn = n.params.turn as { status?: unknown } | undefined;
+        child.status =
+          turn?.status === "completed"
+            ? "completed"
+            : turn?.status === "interrupted"
+              ? "stopped"
+              : "failed";
+        this.host.log("subagent_finished", {
+          runId: active.run.runId,
+          status: child.status,
+        });
+        active.run.completeAgent(
+          child.threadId,
+          child.status,
+          child.result,
+          child.usage,
+        );
+        if (active.childrenDone && !this.hasRunningChild(active))
+          this.releaseChildren(active);
+        return;
+      }
+      default:
+        if (n.method.startsWith("item/")) this.activity(active);
+    }
+  }
+
+  private hasRunningChild(active: Active): boolean {
+    for (const child of active.children.values())
+      if (child.status === "running") return true;
+    return false;
+  }
+
+  // Interrupting the lead does not stop its helpers (probe), so each one is
+  // interrupted on its own turn.
+  private stopChildren(active: Active): void {
+    for (const child of active.children.values()) this.stopChild(active, child);
+  }
+
+  private stopChild(active: Active, child: Child): void {
+    const codex = active.codex;
+    if (child.status !== "running" || !child.turnId || child.stopSent) return;
+    if (!codex?.isAlive) return;
+    child.stopSent = true;
+    void codex
+      .request("turn/interrupt", {
+        threadId: child.threadId,
+        turnId: child.turnId,
+      })
+      .catch(() => undefined);
+  }
+
+  // Archived once the run settles, so nothing of a helper runs on.
+  private closeChildren(active: Active): void {
+    const codex = active.codex;
+    for (const child of active.children.values()) {
+      if (child.archived) continue;
+      child.archived = true;
+      if (codex?.isAlive)
+        void codex
+          .request("thread/archive", { threadId: child.threadId })
+          .catch(() => undefined);
+    }
+  }
+
+  // The run settles only once no helper is running. A helper still working
+  // when the lead's turn ends would be billed work nobody sees (its answer
+  // never reaches the next reply, probe), so it is stopped first; the outcome
+  // waits at most `stopMs` for that.
+  private afterChildren(active: Active, outcome: () => void): void {
+    if (active.childrenDone) return;
+    if (!this.hasRunningChild(active)) {
+      this.closeChildren(active);
+      return outcome();
+    }
+    active.childrenDone = outcome;
+    this.clearWatchdog(active);
+    this.stopChildren(active);
+    active.childTimer = setTimeout(() => {
+      this.host.log("subagent_stop_timeout", { runId: active.run.runId });
+      this.releaseChildren(active);
+    }, this.host.limits.stopMs);
+  }
+
+  private releaseChildren(active: Active): void {
+    const outcome = active.childrenDone;
+    if (!outcome) return;
+    active.childrenDone = undefined;
+    if (active.childTimer) clearTimeout(active.childTimer);
+    active.childTimer = undefined;
+    this.endChildren(active);
+    this.closeChildren(active);
+    outcome();
+  }
+
+  // Helpers still running when the run ends are reported stopped: their
+  // own turn/completed would arrive after the run's last event.
+  private endChildren(active: Active): void {
+    for (const child of active.children.values()) {
+      if (child.status !== "running") continue;
+      child.status = "stopped";
+      this.host.log("subagent_finished", {
+        runId: active.run.runId,
+        status: child.status,
+      });
+      active.run.completeAgent(
+        child.threadId,
+        "stopped",
+        child.result,
+        child.usage,
+      );
+    }
   }
 
   private sendInterrupt(active: Active): void {
@@ -1196,7 +1505,7 @@ export class ChatRuntime {
   // plus a grace), because Codex sends no notification while a tool runs; once
   // the last call completes it falls back to the ordinary `silenceMs`.
   private rearmWatchdog(active: Active): void {
-    if (active.interrupting) return;
+    if (active.interrupting || active.childrenDone) return;
     // The approval's own timer bounds a wait for the member.
     if (active.approvals.size > 0) return this.clearWatchdog(active);
     let ms = active.limits.silenceMs;
@@ -1211,6 +1520,10 @@ export class ChatRuntime {
     }
     if (active.run.inFlightCommandCount > 0)
       ms = Math.max(ms, COMMAND_WATCHDOG_MS);
+    // The lead is silent while it waits on a helper, or in wait_agent with
+    // none running; a wait ends within SUBAGENT_MAX_WAIT_MS either way.
+    if (this.hasRunningChild(active) || active.collabCalls.size > 0)
+      ms = Math.max(ms, SUBAGENT_MAX_WAIT_MS + TOOL_WATCHDOG_GRACE_MS);
     this.armWatchdog(active, ms);
   }
 
@@ -1239,6 +1552,8 @@ export class ChatRuntime {
     this.clearWatchdog(active);
     if (active.stopTimer) clearTimeout(active.stopTimer);
     active.stopTimer = undefined;
+    if (active.childTimer) clearTimeout(active.childTimer);
+    active.childTimer = undefined;
   }
 
   private finish(
@@ -1247,6 +1562,10 @@ export class ChatRuntime {
     error: RunError | null,
   ): void {
     if (isFinished(active.run.status)) return;
+    // Nothing of a helper outlives the run, on paths that did not wait too.
+    this.stopChildren(active);
+    this.endChildren(active);
+    this.closeChildren(active);
     // Before the terminal event, so each approval's end is recorded.
     this.endApprovals(active, "cancelled");
     this.clearTimers(active);
@@ -1306,6 +1625,12 @@ export class ChatRuntime {
       return decline("run_ended");
     if (meta.codex_approval_kind !== "mcp_tool_call")
       return decline("not_tool_approval");
+    // Helpers gather, the lead acts: a helper never changes data.
+    if (
+      typeof params.threadId === "string" &&
+      active.children.has(params.threadId)
+    )
+      return decline("helper_write");
     if (params.threadId !== run.threadId || params.turnId !== run.turnId)
       return decline("other_turn");
     if (!active.mcpByName.has(connector)) return decline("unknown_connector");
@@ -1323,7 +1648,13 @@ export class ChatRuntime {
       params: approvalParams(meta),
       allowForChat: !critical,
     };
-    if (!critical && active.allowed.get(connector)?.has(call.tool))
+    // Once a helper ran, its result may carry injected text that steers the
+    // lead, so every write in the run asks, even one allowed for the chat.
+    if (
+      !critical &&
+      active.children.size === 0 &&
+      active.allowed.get(connector)?.has(call.tool)
+    )
       return this.autoAllow(active, codex, request, approval);
     this.awaitMember(active, codex, request, approval);
   }
@@ -1346,6 +1677,16 @@ export class ChatRuntime {
     if (!coding) return decline("coding_off");
     if (isFinished(run.status) || active.interrupting)
       return decline("run_ended");
+    // A helper writes files and runs ordinary commands in the shared sandbox
+    // without asking; only a rule-matched command (git push/reset/clean)
+    // reaches here. Those publish or destroy history, so a helper never runs
+    // one unsupervised — the lead makes every such change (Option B, matching
+    // the MCP helper-write guard in onApprovalRequest).
+    if (
+      typeof params.threadId === "string" &&
+      active.children.has(params.threadId)
+    )
+      return decline("helper_command");
     if (params.threadId !== run.threadId || params.turnId !== run.turnId)
       return decline("other_turn");
     const itemId = typeof params.itemId === "string" ? params.itemId : "";
@@ -1665,17 +2006,19 @@ function bounded(text: string, max: number): string {
 // and in request order, so no extra sorting is needed.
 // The network policy (tokens included) is part of it: the pin starts a
 // thread's network proxy when it loads the thread, so a changed policy needs
-// a fresh load too.
+// a fresh load too. So is the helper setting: Codex reads it when it loads
+// the thread.
 function threadFingerprint(
   mcp: readonly McpServerSpec[],
   network: NetworkPolicy | undefined,
+  subAgents?: StartRunRequest["subAgents"],
 ): string {
   const base = mcpFingerprint(mcp);
-  if (!network) return base;
-  return createHash("sha256")
-    .update(base)
-    .update(JSON.stringify(network))
-    .digest("hex");
+  if (!network && !subAgents) return base;
+  const hash = createHash("sha256").update(base);
+  if (network) hash.update(JSON.stringify(network));
+  if (subAgents) hash.update(`subAgents:${subAgents.maxConcurrent}`);
+  return hash.digest("hex");
 }
 
 function mcpFingerprint(mcp: readonly McpServerSpec[]): string {
@@ -1739,6 +2082,17 @@ function tokens(value: unknown): number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0
     ? value
     : 0;
+}
+
+// The field-wise sum of two usage records (a lead turn and a helper).
+export function sumUsage(
+  a: Record<string, number> | null,
+  b: Record<string, number>,
+): Record<string, number> {
+  const sum: Record<string, number> = {};
+  for (const field of USAGE_FIELDS)
+    sum[field] = (a?.[field] ?? 0) + (b[field] ?? 0);
+  return sum;
 }
 
 // Adds one tokenUsage update to the turn. The growth since the previous

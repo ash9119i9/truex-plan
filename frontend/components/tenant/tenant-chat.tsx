@@ -173,6 +173,8 @@ export function TenantChat() {
     null,
   );
   const [agentsAttempt, setAgentsAttempt] = useState(0);
+  // Whether this server lets agents start helper agents.
+  const [helpersAllowed, setHelpersAllowed] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -200,7 +202,8 @@ export function TenantChat() {
           });
           return;
         }
-        setAgents(agentsResult.value);
+        setAgents(agentsResult.value.agents);
+        setHelpersAllowed(agentsResult.value.helpers);
         setAgentsLoad({ state: "ready" });
       },
     );
@@ -1456,6 +1459,7 @@ export function TenantChat() {
         editing={dialog?.editing ?? null}
         models={models}
         modelsError={modelsError}
+        helpersAllowed={helpersAllowed}
         onClose={() => setDialog(null)}
         onSaved={(agent) => {
           agentChanged(agent);

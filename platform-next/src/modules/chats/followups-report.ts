@@ -296,11 +296,11 @@ export function overlapScore(left: string, right: string): number {
   return shared / (a.size + b.size - shared);
 }
 
-function rate(numerator: number, denominator: number): number | null {
+export function rate(numerator: number, denominator: number): number | null {
   return denominator > 0 ? numerator / denominator : null;
 }
 
-function percentile(
+export function percentile(
   values: readonly number[],
   fraction: number,
 ): number | null {

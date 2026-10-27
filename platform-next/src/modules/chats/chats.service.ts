@@ -70,6 +70,7 @@ import {
   type MessageDoc,
   type MessageState,
   type MessageActivity,
+  type MessageAgent,
   type MessageSkill,
   type MessageTool,
   type RunDoc,
@@ -143,6 +144,8 @@ export interface MessageView {
   // Role `tool` only: a sandbox request the network proxy refused, with the
   // owner's answer once given.
   network?: NetworkView;
+  // Role `tool` only: a helper agent the reply used, with its result.
+  agent?: MessageAgent;
   // Role `user` only: the files attached to it.
   attachments?: AttachmentView[];
   createdAt: string;
@@ -337,6 +340,7 @@ export class ChatsService {
       model: { id: model._id, revision: model.revision },
       ...(connectors.length ? { connectors } : {}),
       ...(skills.length ? { skills } : {}),
+      ...(agent.helpers ? { helpers: true as const } : {}),
       platformInstructionsVersion: PLATFORM_INSTRUCTIONS_VERSION,
       followUps: this.followUpsForNewChat(),
       runtime: { threadId: null, state: "none" },
@@ -1621,6 +1625,11 @@ export class ChatsService {
               skills: chat.skills.map(({ sha256, slug }) => ({ sha256, slug })),
             }
           : {}),
+        // Only when the server has CHAT_SUBAGENTS and the chat's agent
+        // allowed helpers, so any other run is byte-identical.
+        ...(chatConfig.subAgents && chat.helpers
+          ? { subAgents: { maxConcurrent: chatConfig.subAgents } }
+          : {}),
         model: {
           modelName: model?.modelName ?? "unavailable",
           gatewayUrl: `${chatConfig.gatewayUrl}/p/${modelId}/v1`,
@@ -2057,6 +2066,7 @@ export function messageView(message: MessageDoc): MessageView {
     ...(message.tool ? { tool: message.tool } : {}),
     ...(message.activity ? { activity: message.activity } : {}),
     ...(message.skill ? { skill: message.skill } : {}),
+    ...(message.agent ? { agent: message.agent } : {}),
     ...(message.network ? { network: networkView(message.network) } : {}),
     ...(message.attachments?.length
       ? {

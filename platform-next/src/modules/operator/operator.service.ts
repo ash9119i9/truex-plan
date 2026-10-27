@@ -13,6 +13,10 @@ import {
   buildFollowUpsReport,
   type FollowUpsReport,
 } from "../chats/followups-report";
+import {
+  buildHelpersReport,
+  type HelpersReport,
+} from "../chats/helpers-report";
 import { AuditService } from "../audit/audit.service";
 import { parseConnectorSpec, type ConnectorDoc } from "../connectors/connector";
 import {
@@ -66,6 +70,13 @@ export interface FollowUpsReportCommand {
   tenantId?: ObjectId;
   minSets: number;
   close: number;
+}
+
+export interface HelpersReportCommand {
+  operator: string;
+  since: Date;
+  // Absent scans every ready tenant.
+  tenantId?: ObjectId;
 }
 
 export interface PutModelCommand {
@@ -583,6 +594,19 @@ export class OperatorService {
         minSets: command.minSets,
         close: command.close,
       },
+    );
+  }
+
+  async helpersReport(command: HelpersReportCommand): Promise<HelpersReport> {
+    const ready = await this.tenants.listReady();
+    const selected = command.tenantId
+      ? ready.filter((tenant) => tenant._id.equals(command.tenantId))
+      : ready;
+    if (command.tenantId && selected.length === 0)
+      throw new DomainError("NOT_FOUND", "No provisioned tenant has this ID.");
+    return buildHelpersReport(
+      selected.map((tenant) => this.database.tenantDb(tenant.dbName)),
+      { since: command.since },
     );
   }
 

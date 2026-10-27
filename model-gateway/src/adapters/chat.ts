@@ -4,6 +4,7 @@ import type { AdapterContext } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
 import { customToolAsFunction, ToolNames, systemPrompt } from "../tool-names";
 import { chatCacheOptions } from "../prompt-cache";
+import { agentMessageText } from "../agent-message";
 
 // OpenAI Chat Completions (and the many providers that copy it).
 // Codex sends the full conversation every turn with store=false, so each
@@ -116,6 +117,9 @@ function toMessages(input: any, tools: ToolNames): ChatMessage[] {
         tool_call_id: item.call_id,
         content: outputText(item.output),
       });
+    } else if (type === "agent_message") {
+      const text = agentMessageText(item);
+      if (text) messages.push({ role: "user", content: text });
     }
     // Reasoning, compaction and hosted-tool items have no Chat equivalent.
     const last = messages.at(-1);

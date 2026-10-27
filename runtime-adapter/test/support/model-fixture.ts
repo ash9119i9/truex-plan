@@ -35,6 +35,11 @@ export interface ModelRequest {
 export class ModelFixture {
   readonly requests: ModelRequest[] = [];
   readonly script: Behavior[] = [];
+  // Consulted before the script. Several Codex threads (a lead and its
+  // helpers) share one fixture and their requests interleave, so a test can
+  // answer by request content instead of by arrival order. Returning
+  // undefined falls through to the script.
+  router: ((body: Record<string, unknown>) => Behavior | undefined) | undefined;
   defaultBehavior: Behavior = {
     kind: "reply",
     text: "Hello from the fixture.",
@@ -57,7 +62,10 @@ export class ModelFixture {
       });
       this.open.add(res);
       res.on("close", () => this.open.delete(res));
-      await this.respond(this.script.shift() ?? this.defaultBehavior, res);
+      await this.respond(
+        this.router?.(body) ?? this.script.shift() ?? this.defaultBehavior,
+        res,
+      );
     });
     this.server.listen(0, "127.0.0.1");
     await once(this.server, "listening");

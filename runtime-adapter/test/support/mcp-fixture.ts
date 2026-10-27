@@ -14,6 +14,8 @@ import { createServer, type Server } from "node:http";
 export interface McpRequestLog {
   readonly rpcMethod: string | undefined;
   readonly authorization: string | undefined;
+  // The tool a `tools/call` named.
+  readonly tool?: string;
 }
 
 export const TOOLS = [
@@ -56,6 +58,10 @@ export class McpFixture {
   // Replaces a tool's result text, to return results larger than Codex's
   // fallback 10 KB cap.
   resultText: string | undefined;
+  // Answers per call, by tool and arguments; falls back to resultText.
+  resultFor:
+    | ((name: string, args: Record<string, unknown>) => string | undefined)
+    | undefined;
   private server!: Server;
   url = "";
 
@@ -69,9 +75,13 @@ export class McpFixture {
       } catch {
         // Non-JSON body: fall through with an empty message.
       }
+      const tool = (msg.params as { name?: unknown } | undefined)?.name;
       this.log.push({
         rpcMethod: msg.method as string | undefined,
         authorization: req.headers.authorization,
+        ...(msg.method === "tools/call" && typeof tool === "string"
+          ? { tool }
+          : {}),
       });
       if (req.method !== "POST") return res.writeHead(405).end();
       if (this.unauthorized && msg.method === "initialize") {
@@ -104,12 +114,21 @@ export class McpFixture {
         case "tools/list":
           return reply({ tools: TOOLS });
         case "tools/call": {
-          const name = (msg.params as { name: string }).name;
+          const { name, arguments: args = {} } = msg.params as {
+            name: string;
+            arguments?: Record<string, unknown>;
+          };
           if (this.callDelayMs > 0)
             await new Promise((r) => setTimeout(r, this.callDelayMs));
           return reply({
             content: [
-              { type: "text", text: this.resultText ?? `RESULT_FROM_${name}` },
+              {
+                type: "text",
+                text:
+                  this.resultFor?.(name, args) ??
+                  this.resultText ??
+                  `RESULT_FROM_${name}`,
+              },
             ],
             isError: false,
           });
@@ -143,6 +162,7 @@ export class McpFixture {
     this.log.length = 0;
     this.initializeDelayMs = 0;
     this.resultText = undefined;
+    this.resultFor = undefined;
   }
 
   // Idempotent: a test may stop the server mid-test ("server goes down") and

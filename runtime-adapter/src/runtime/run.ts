@@ -56,6 +56,21 @@ export type RunItem =
 // goes to the platform and applies from the next reply.
 export type NetworkItem = { type: "network" } & NetworkBlock;
 
+// A helper agent the lead started. Kept apart from `items` on purpose: the
+// platform reads an unknown item with `itemId` and `text` as a reply, and a
+// helper's result is never the lead's reply.
+export interface AgentState {
+  readonly agentId: string;
+  readonly path: string;
+  status: "running" | "completed" | "failed" | "stopped";
+  preview?: string;
+  result?: string;
+  usage?: Record<string, number>;
+}
+
+// Live previews per helper; its result and status always get through.
+const MAX_AGENT_ACTIVITY = 50;
+
 // A command Codex ran (or was asked to) in the chat's sandbox. `command` is
 // what the approval card showed; `output` is capped (Codex keeps the rest).
 export interface CommandItem {
@@ -190,6 +205,9 @@ export class Run {
   private readonly heldBlocks: NetworkItem[] = [];
   // Approvals waiting for the member, by approvalId, in request order.
   private readonly pending = new Map<string, PendingApproval>();
+  // Helper agents by id, in start order, and their preview counts.
+  private readonly agents = new Map<string, AgentState>();
+  private readonly agentPreviews = new Map<string, number>();
   private readonly subscribers = new Set<Subscriber>();
 
   constructor(
@@ -260,6 +278,64 @@ export class Run {
     this.usedSkills.add(slug);
     this.order.push({ type: "skill", slug });
     this.emit("skill.used", { slug });
+  }
+
+  // A helper started. Its path is the lead's task name, e.g. "/root/deals".
+  startAgent(agentId: string, path: string): void {
+    if (this.finishedAt !== undefined || this.agents.has(agentId)) return;
+    this.agents.set(agentId, { agentId, path, status: "running" });
+    this.emit("agent.started", { agentId, path });
+  }
+
+  // A helper is working: running again after a follow-up, or a new preview.
+  // Repeats are dropped and previews are capped per helper.
+  agentActivity(agentId: string, preview?: string): void {
+    const agent = this.agents.get(agentId);
+    if (!agent || this.finishedAt !== undefined) return;
+    const resumed = agent.status !== "running";
+    const fresh = preview !== undefined && preview !== agent.preview;
+    if (!resumed && !fresh) return;
+    const shown = this.agentPreviews.get(agentId) ?? 0;
+    if (!resumed && shown >= MAX_AGENT_ACTIVITY) return;
+    agent.status = "running";
+    if (fresh) {
+      agent.preview = preview;
+      this.agentPreviews.set(agentId, shown + 1);
+    }
+    this.emit("agent.activity", {
+      agentId,
+      status: "running",
+      ...(fresh ? { preview } : {}),
+    });
+  }
+
+  // A helper's turn ended. Sent again if a follow-up runs it once more.
+  completeAgent(
+    agentId: string,
+    status: "completed" | "failed" | "stopped",
+    result: string | undefined,
+    usage: Record<string, number> | null,
+  ): void {
+    const agent = this.agents.get(agentId);
+    if (!agent || this.finishedAt !== undefined) return;
+    agent.status = status;
+    if (result !== undefined) agent.result = result;
+    if (usage) agent.usage = { ...usage };
+    this.emit("agent.completed", {
+      agentId,
+      status,
+      ...(agent.result !== undefined ? { result: agent.result } : {}),
+      ...(agent.usage ? { usage: { ...agent.usage } } : {}),
+    });
+  }
+
+  agentList(): AgentState[] {
+    return [...this.agents.values()].map((agent) => structuredClone(agent));
+  }
+
+  // Present only when a helper ran, so runs without helpers are unchanged.
+  private agentField(): { agents?: AgentState[] } {
+    return this.agents.size > 0 ? { agents: this.agentList() } : {};
   }
 
   // A sandbox request was refused. Recorded once per site and method (a
@@ -570,6 +646,7 @@ export class Run {
       threadId: this.threadId,
       turnId: this.turnId,
       items: this.itemList(),
+      ...this.agentField(),
       usage,
       timings: this.timings,
     });
@@ -591,6 +668,7 @@ export class Run {
           threadId: this.threadId,
           turnId: this.turnId,
           items: this.itemList(),
+          ...this.agentField(),
           approvals: this.pendingApprovals,
         },
       });

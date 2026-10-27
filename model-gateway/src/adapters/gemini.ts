@@ -4,6 +4,7 @@ import type { AdapterContext, GatewayProfile } from "../adapter";
 import { ResponsesStream, sendError, sseData, type Usage } from "../responses";
 import { customToolAsFunction, ToolNames, systemPrompt } from "../tool-names";
 import { isContextError } from "./chat";
+import { agentMessageText } from "../agent-message";
 
 // Google Gemini (generativelanguage.googleapis.com, v1beta generateContent).
 // Codex resends the whole conversation each turn, so every request is
@@ -242,6 +243,11 @@ function toContents(input: any, tools: ToolNames) {
       // Outputs without a pending call (compaction, interrupted turns) are dropped.
       if (turn && (turn as Turn).calls.some((c) => c.id === item.call_id))
         (turn as Turn).outputs.set(item.call_id, outputText(item.output));
+    } else if (type === "agent_message") {
+      const text = agentMessageText(item);
+      if (!text) continue;
+      flush();
+      contents.push({ role: "user", parts: [{ text }] });
     } else if (type === "reasoning") {
       // A text signature belongs to the model text just before this item.
       const sig = decodeSignatures(item.encrypted_content)?.textSignature;

@@ -14,11 +14,34 @@ Inputs: 01-core-engine, 02-protocol, 03-tui, 04-truex.
   creation, transactional cleanup, shared rollout budget, cascade close.
 - Children inherit the live turn's model, provider, sandbox, approval policy and cwd. Roles only narrow.
 - Children stream on the **same app-server connection**, tagged with their own `threadId`.
-  `thread/started` carries `source.subAgent.thread_spawn {parent_thread_id, depth, agent_path,
-  agent_nickname, agent_role}`. The parent gets `subAgentActivity` items (started / interacted /
-  interrupted / completed).
+  No `thread/started` is emitted for a child (observed, see below). The parent gets
+  `subAgentActivity` items (started / completed) carrying `agentThreadId` and `agentPath`.
 - V2 children reject direct client input (`turn/start`, `steer`, inject). `turn/interrupt` and
   `thread/archive` on a child are allowed (02 §3c).
+
+## Observed on the pin (Phase 0, 2026-10-26)
+
+Source: `runtime-adapter/test/codex/subagents-probe.test.ts` (7 tests, fixture model and MCP
+fixture). These replace the inferred facts above wherever they differ.
+
+| # | Fact | Consequence |
+|---|---|---|
+| O1 | V2 runs with our provider setup. The lead is offered `collaboration.{spawn_agent, wait_agent, send_message, followup_task, list_agents, interrupt_agent}`. No `close_agent`. | Go. |
+| O2 | A depth-1 helper gets **no collaboration tools** (no nesting) and **the lead's MCP tools**. No shell, file or image tools. | Depth is safe on the fixture model; re-check on each real model. |
+| O3 | Helper prompt = lead base prompt, then `subagent_developer_instructions`, then Codex's own multi-agent blocks, then the task as an `agent_message`. With `fork_turns: "none"` the member's text does not reach it. | Helper rules must override the persona and the Follow Up block. |
+| O4 | The task and the answer travel as `agent_message` input items. The task payload sits in `encrypted_content`, but as plain text. | **model-gateway dropped these items in all three adapters**, so in production the helper got no task and the lead got no answer. Fixed: sent as user text (`model-gateway/src/agent-message.ts`). |
+| O5 | No `thread/started` for a child. The only child→lead link is the lead's `subAgentActivity.agentThreadId`. | Registry is built from `subAgentActivity` "started". Child events that arrive first must be buffered or attributed by path. |
+| O6 | Child `item/*`, `turn/*`, `thread/tokenUsage/updated` and `mcpServer/startupStatus/updated` carry the child's `threadId`/`turnId`. | Today's turn filter drops helper usage (unbilled). Child connector status is shown as the lead's. |
+| O7 | Spawning past `max_concurrent_threads_per_session` returns a tool error to the model. | Cap is safe. |
+| O8 | A **completed helper frees its slot**. One reply spawned 3 helpers one after another with a cap of 1. | Cap bounds concurrency only. The adapter must enforce a total per run. |
+| O9 | A helper keeps running after the lead's turn completes. Its "completed" `subAgentActivity` arrives on the lead **after** `turn/completed`, tagged with the finished turn id. Its answer does **not** reach the next reply. | No leak, but the work is billed and lost. Helpers must be stopped at settle. |
+| O10 | `turn/interrupt` on the lead does **not** stop helpers. `turn/interrupt` on the child does (status `interrupted`); after `thread/archive` no more child items arrive. | Stop and settle must interrupt and archive each child explicitly, using the child's turn id. |
+| O11 | A helper's write tool raises `mcpServer/elicitation/request` with the **child's** `threadId`/`turnId`. Unanswered, the write never runs. | "Helpers never write" is enforceable in the adapter by thread id. |
+| O12 | `fork_turns: "none"` sends prompt + rules + task only (~5 KB). `"all"` resends the whole chat (a 20 KB earlier message made it ~25 KB). | Lead hint must ask for `"none"` with a self-contained task; measure compliance on real models. |
+| O13 | `features.rollout_budget {enabled, limit_tokens, reminder_at_remaining_tokens}` is shared by lead and helpers. The model sees a `<rollout_budget>` block. When spent, **every** turn in the tree fails with `codexErrorInfo: "sessionBudgetExceeded"`. Marked under development upstream. | Usable as a hard per-run token ceiling. The adapter must map the failure to a clear run error, and pin tests guard the unstable feature. |
+
+Not yet observed: a real gateway model end to end (does it follow helper rules, drop the Follow
+Up block, choose `fork_turns: "none"`), coding chats, process restart with open helpers.
 
 ## What Truex adds (adapter + platform + frontend)
 
@@ -43,14 +66,15 @@ features.multi_agent_v2.enabled = true
 features.multi_agent_v2.max_concurrent_threads_per_session = maxConcurrent + 1   # root counts
 features.multi_agent_v2.hide_spawn_agent_metadata = true   # no model/role switching: one gateway provider
 features.multi_agent_v2.default_wait_timeout_ms = 30000
-features.multi_agent_v2.max_wait_timeout_ms = 300000      # bounded below run limits
+features.multi_agent_v2.max_wait_timeout_ms = < silenceMs  # the lead is silent while it waits
 features.multi_agent_v2.subagent_developer_instructions = <Truex child instructions>
 features.multi_agent_v2.root_agent_usage_hint_text = <when to delegate>
-agents.max_depth = 1                                       # defensive; V2 gates child tools by model
 ```
 
-Exact key spelling and override shape are verified in Phase 0. When `subAgents` is absent,
-`features.multi_agent` stays `false`, as today.
+`enabled`, `max_concurrent_threads_per_session` and `subagent_developer_instructions` are verified
+on the pin. `agents.max_depth` is dropped: V2 ignores it, and O2 shows helpers get no
+collaboration tools anyway. When `subAgents` is absent, `features.multi_agent` stays `false`, as
+today.
 
 Why `hide_spawn_agent_metadata`: the adapter configures exactly one gateway provider with one
 token (04 §4), so any `model` override from the model would fail. Specialist roles come later.
@@ -68,9 +92,9 @@ member stop                 → interrupt the parent turn and every live child; 
 ```
 
 Children must not outlive the run. The run is the unit of billing, idle-sweep safety
-(`activeRun` gates the sweep) and audit. Codex delivers a child's completion with
-`trigger_turn=false`, so a child that finishes after the parent turn ends would never wake the
-parent. Stopping it is the honest outcome.
+(`activeRun` gates the sweep) and audit. O9 confirms a child that finishes after the parent turn
+ends never wakes the parent and its answer is lost, so stopping it is the honest outcome. O10
+confirms the cascade is the adapter's job: interrupting the parent leaves children running.
 
 ## Event contract (adapter → platform → browser)
 

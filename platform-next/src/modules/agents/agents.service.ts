@@ -60,6 +60,8 @@ export interface ChatAgent {
   // The skills the chat snapshots at start; [] for built-ins and agents
   // created before skills existed.
   skillIds: ObjectId[];
+  // May start helper agents; false for built-ins.
+  helpers: boolean;
 }
 
 // One connector on an agent as the caller sees it: product-written display
@@ -92,6 +94,8 @@ export interface AgentView {
   // The skills this agent uses, always present ([] when none). A disabled
   // one has `available: false`: new chats leave it out.
   skills: SkillView[];
+  // May start helper agents during a reply (needs CHAT_SUBAGENTS too).
+  helpers: boolean;
   // False when a chat could not start with it right now.
   available: boolean;
   revision: number;
@@ -301,6 +305,7 @@ export class AgentsService {
       tint: input.tint,
       ...(connectors.length ? { connectors } : {}),
       ...(skillIds.length ? { skillIds } : {}),
+      ...(input.helpers ? { helpers: true as const } : {}),
       status: "active",
       revision: 1,
       clientRequestId: input.clientRequestId,
@@ -377,10 +382,13 @@ export class AgentsService {
         : await this.resolveSkills(input.skillIds, agent.skillIds ?? []);
     const skillsChanged =
       skillIds !== undefined && !sameIds(agent.skillIds ?? [], skillIds);
+    const helpersChanged =
+      input.helpers !== undefined && input.helpers !== !!agent.helpers;
     if (
       Object.keys(changes).length === 0 &&
       !connectorsChanged &&
-      !skillsChanged
+      !skillsChanged &&
+      !helpersChanged
     )
       return this.singleView(context, agent);
     if (changes.modelId && !(await this.models.findEnabled(changes.modelId)))
@@ -403,6 +411,7 @@ export class AgentsService {
             ...(skillsChanged && skillIds!.length
               ? { skillIds: skillIds! }
               : {}),
+            ...(helpersChanged && input.helpers ? { helpers: true } : {}),
             updatedAt: new Date(),
           },
           $inc: { revision: 1 },
@@ -410,6 +419,7 @@ export class AgentsService {
           ...(unsetOf({
             connectors: connectorsChanged && connectors!.length === 0,
             skillIds: skillsChanged && skillIds!.length === 0,
+            helpers: helpersChanged && !input.helpers,
           }) ?? {}),
         },
         { returnDocument: "after", session },
@@ -420,6 +430,7 @@ export class AgentsService {
           ...Object.keys(changes),
           ...(connectorsChanged ? ["connectors"] : []),
           ...(skillsChanged ? ["skillIds"] : []),
+          ...(helpersChanged ? ["helpers"] : []),
         ]
           .sort()
           .join(","),
@@ -546,6 +557,7 @@ export class AgentsService {
         tint: agent.tint,
         connectors: agent.connectors ?? [],
         skillIds: agent.skillIds ?? [],
+        helpers: agent.helpers === true,
       };
     const added = await this.builtins.findEnabledWithInstructions(agentId);
     return added ? builtinChatAgent(added) : null;
@@ -851,6 +863,7 @@ function agentView(
       const skill = catalogSkills.get(toWireId(id));
       return skill ? [skillView(skill)] : [];
     }),
+    helpers: agent.helpers === true,
     available: active && !!model,
     revision: agent.revision,
     createdByMe: mine,
@@ -906,6 +919,7 @@ function builtinChatAgent(builtin: BuiltinAgentDoc): ChatAgent {
     // Built-ins never attach connectors or skills; members cannot set them.
     connectors: [],
     skillIds: [],
+    helpers: false,
   };
 }
 
@@ -924,6 +938,7 @@ function builtinView(
     // Built-ins never attach connectors or skills.
     connectors: [],
     skills: [],
+    helpers: false,
     available: !!model,
     revision: agent.revision,
     createdByMe: false,
