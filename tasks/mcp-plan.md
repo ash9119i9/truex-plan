@@ -354,7 +354,7 @@ Design spec first. If a screen is not in `truex-design-spec.html`, it is mocked 
 - Write tools and the approval flow (Allow once / Always allow)
 - Custom and SAP connectors
 - `api_key`, `client_credentials` and `token_exchange` auth types
-- DCR/CIMD registration
+- DCR/CIMD registration, registry-sourced catalog and tool probe (`backlog/features/05-connector-catalog-at-scale.md`, added 2026-10-27)
 - The MCP proxy: Truex MCP gateway so provider tokens never reach Codex, with server-side policy (`backlog/security/05-truex-mcp-gateway.md`, added 2026-10-21)
 - A tenant-admin enable step
 - A per-chat toggle

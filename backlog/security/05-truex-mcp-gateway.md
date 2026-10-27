@@ -53,6 +53,7 @@ Token refresh moves next to the gateway, so a run longer than the 15-minute refr
 
 - The planned MCP broker for thousands of tools (`docs/TOKEN_OPTIMIZATION_PLAN.md`, phase 2: `find_tools` / `call_tool`). The gateway is where it would live; build them as one service.
 - `backlog/security/02-connector-secrets-in-aws.md`: the gateway is the only service that needs the client secrets and token keys.
+- `backlog/features/05-connector-catalog-at-scale.md`: how the catalog grows (CIMD/DCR, MCP Registry candidates, tool probe). The gateway injects tokens for whatever that catalog holds.
 
 ## Build or adopt
 
