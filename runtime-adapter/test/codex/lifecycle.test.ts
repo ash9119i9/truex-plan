@@ -63,9 +63,11 @@ describe("chat lifecycle (real Codex)", () => {
     const request = h.model.lastRequest();
     assert.equal(request.authorized, true);
     assert.deepEqual(
-      request.body.tools ?? [],
-      [],
-      "the model is offered no tools",
+      ((request.body.tools ?? []) as Array<{ name?: string }>).map(
+        (tool) => tool.name,
+      ),
+      ["update_plan"],
+      "the model is offered only the plan checklist tool",
     );
     assert.ok(JSON.stringify(request.body).includes("AGENT_PROMPT_MARKER"));
     // The app-server copies its system skills into each chat's home; none

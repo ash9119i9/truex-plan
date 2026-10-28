@@ -133,7 +133,11 @@ describe("skills (real Codex)", () => {
         .sort(),
       ["list", "read"],
     );
-    assert.equal(tools.length, 1, "no other tool is offered");
+    assert.deepEqual(
+      tools.map((t) => t.name).sort(),
+      ["skills", "update_plan"],
+      "no other tool is offered",
+    );
     const text = JSON.stringify(body);
     assert.ok(text.includes("Check SAP purchase orders for approval issues."));
     assert.ok(text.includes("Month-end general ledger close checklist."));
@@ -221,10 +225,15 @@ describe("skills (real Codex)", () => {
     );
   });
 
-  test("a run without skills offers no tools, byte for byte as before", async () => {
+  test("a run without skills offers only update_plan", async () => {
     const events = await h.run(h.body({ chatId: "plain1" }));
     assert.equal(completed(events).status, "completed");
-    assert.deepEqual(h.model.lastRequest().body.tools ?? [], []);
+    assert.deepEqual(
+      (
+        (h.model.lastRequest().body.tools ?? []) as Array<{ name?: string }>
+      ).map((tool) => tool.name),
+      ["update_plan"],
+    );
     assert.doesNotMatch(
       JSON.stringify(h.model.lastRequest().body),
       /po-check|skills\.read/,

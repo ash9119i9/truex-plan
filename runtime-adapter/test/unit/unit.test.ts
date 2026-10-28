@@ -13,8 +13,18 @@ import {
 } from "../../src/contract";
 import { AdapterError, fromCodexErrorInfo } from "../../src/errors";
 import { Run, type RunEvent } from "../../src/runtime/run";
-import { addTurnUsage } from "../../src/runtime/chat";
-import { threadResumeParams, threadStartParams } from "../../src/codex/config";
+import {
+  addTurnUsage,
+  parsePlan,
+  PLAN_EXPLANATION_CHARS,
+  PLAN_MAX_STEPS,
+  PLAN_STEP_CHARS,
+} from "../../src/runtime/chat";
+import {
+  PLANNING_INSTRUCTIONS,
+  threadResumeParams,
+  threadStartParams,
+} from "../../src/codex/config";
 import { detectToolchains } from "../../src/codex/coding";
 import {
   commandScope,
@@ -912,6 +922,202 @@ describe("run buffer", () => {
   });
 });
 
+describe("plan checklist", () => {
+  const steps = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      step: `Step ${i + 1}`,
+      status: "pending",
+    }));
+
+  test("parsePlan keeps well-formed steps and a trimmed explanation", () => {
+    assert.deepEqual(
+      parsePlan({
+        explanation: "  Two parts. ",
+        plan: [
+          { step: "Research", status: "inProgress" },
+          { step: "Write", status: "pending" },
+          { step: "Check", status: "completed" },
+        ],
+      }),
+      {
+        explanation: "Two parts.",
+        steps: [
+          { step: "Research", status: "inProgress" },
+          { step: "Write", status: "pending" },
+          { step: "Check", status: "completed" },
+        ],
+      },
+    );
+  });
+
+  test("parsePlan drops malformed steps and never throws", () => {
+    assert.deepEqual(
+      parsePlan({
+        explanation: 42,
+        plan: [
+          null,
+          "Research",
+          { step: "", status: "pending" },
+          { step: "   ", status: "pending" },
+          { step: "Snake case", status: "in_progress" },
+          { step: 7, status: "pending" },
+          { step: "Kept", status: "completed", extra: true },
+        ],
+      }),
+      { explanation: null, steps: [{ step: "Kept", status: "completed" }] },
+    );
+    assert.deepEqual(parsePlan({}), { explanation: null, steps: [] });
+    assert.deepEqual(parsePlan({ plan: "nope", explanation: "  " }), {
+      explanation: null,
+      steps: [],
+    });
+  });
+
+  test("parsePlan truncates oversized input instead of rejecting it", () => {
+    const plan = parsePlan({
+      explanation: "e".repeat(PLAN_EXPLANATION_CHARS + 100),
+      plan: [
+        { step: "s".repeat(PLAN_STEP_CHARS + 100), status: "pending" },
+        ...steps(PLAN_MAX_STEPS + 10),
+      ],
+    });
+    assert.equal(plan.steps.length, PLAN_MAX_STEPS);
+    assert.equal(plan.steps[0]!.step.length, PLAN_STEP_CHARS);
+    assert.ok(plan.steps[0]!.step.endsWith("…"));
+    assert.equal(plan.explanation!.length, PLAN_EXPLANATION_CHARS);
+    // Control and bidi characters never reach the member.
+    assert.equal(
+      parsePlan({ plan: [{ step: "a‮b\u0007c", status: "pending" }] }).steps[0]!
+        .step,
+      "abc",
+    );
+  });
+
+  // Regression: a cut at the cap split an emoji, leaving half of a surrogate
+  // pair (an invalid string) in the step and the explanation.
+  test("parsePlan never cuts an emoji in half at the cap", () => {
+    const loneSurrogate =
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    // An emoji is two UTF-16 units; one extra leading unit puts a pair
+    // across the cut for one of the two parities.
+    for (const lead of ["", "a"]) {
+      const plan = parsePlan({
+        explanation: lead + "😀".repeat(PLAN_EXPLANATION_CHARS),
+        plan: [
+          { step: lead + "😀".repeat(PLAN_STEP_CHARS), status: "pending" },
+        ],
+      });
+      const step = plan.steps[0]!.step;
+      assert.ok(
+        !loneSurrogate.test(step),
+        `step, lead=${JSON.stringify(lead)}`,
+      );
+      assert.ok(step.endsWith("😀…"));
+      assert.ok(step.length <= PLAN_STEP_CHARS);
+      assert.ok(!loneSurrogate.test(plan.explanation!), "explanation");
+      assert.ok(plan.explanation!.endsWith("😀…"));
+      assert.ok(plan.explanation!.length <= PLAN_EXPLANATION_CHARS);
+    }
+  });
+
+  test("parsePlan strips every C0, DEL/C1 and bidi override or isolate character, and only those", () => {
+    const text = (s: string) =>
+      parsePlan({ plan: [{ step: `a${s}b`, status: "pending" }] }).steps[0]!
+        .step;
+    // Each stripped range at both ends.
+    for (const ch of [
+      "\u0000",
+      "\u0008",
+      "\u000B",
+      "\u001F",
+      "\u007F",
+      "\u009F",
+      "\u202A",
+      "\u202E",
+      "\u2066",
+      "\u2069",
+    ])
+      assert.equal(text(ch), "ab", `U+${ch.codePointAt(0)!.toString(16)}`);
+    // Their neighbours are kept: tab, newline, space, no-break space and
+    // the characters just outside the bidi ranges.
+    for (const ch of ["\t", "\n", " ", "\u00A0", "\u202F", "\u2065", "\u206A"])
+      assert.equal(text(ch), `a${ch}b`, `U+${ch.codePointAt(0)!.toString(16)}`);
+  });
+
+  test("the latest plan replaces the last, in the snapshot and the outcome", () => {
+    const run = new Run("r", "t", "c", "h", 100);
+    const events: RunEvent[] = [];
+    run.subscribe(0, { send: (e) => events.push(e), end: () => undefined });
+    const first = {
+      explanation: null,
+      steps: [{ step: "A", status: "inProgress" as const }],
+    };
+    const second = {
+      explanation: "Changed.",
+      steps: [
+        { step: "A", status: "completed" as const },
+        { step: "B", status: "inProgress" as const },
+      ],
+    };
+    run.updatePlan(first);
+    run.updatePlan(second);
+    assert.deepEqual(
+      events.filter((e) => e.type === "plan.updated").map((e) => e.data),
+      [first, second],
+    );
+
+    // A late subscriber whose cursor fell out of the buffer gets a snapshot.
+    const small = new Run("r", "t", "c", "h", 1);
+    small.updatePlan(first);
+    small.updatePlan(second);
+    const snapshot: RunEvent[] = [];
+    small.subscribe(0, { send: (e) => snapshot.push(e), end: () => undefined });
+    assert.equal(snapshot[0]!.type, "run.snapshot");
+    assert.deepEqual(snapshot[0]!.data.plan, second);
+
+    run.finish("completed", null, null);
+    run.updatePlan(first);
+    const done = events.filter((e) => e.type === "run.completed");
+    assert.equal(done.length, 1);
+    assert.deepEqual(done[0]!.data.plan, second);
+    assert.equal(events.at(-1)!.type, "run.completed", "nothing after finish");
+
+    // A plan after finish never changes what a late reader is shown.
+    small.finish("stopped", null, null);
+    small.updatePlan(first);
+    const late: RunEvent[] = [];
+    small.subscribe(0, { send: (e) => late.push(e), end: () => undefined });
+    assert.deepEqual(
+      late.map((e) => [e.type, e.data.plan]),
+      [
+        ["run.snapshot", second],
+        ["run.completed", second],
+      ],
+    );
+  });
+
+  test("an empty plan is passed through; a run that never planned has no plan field", () => {
+    const run = new Run("r", "t", "c", "h", 100);
+    const events: RunEvent[] = [];
+    run.subscribe(0, { send: (e) => events.push(e), end: () => undefined });
+    run.updatePlan({ explanation: null, steps: [] });
+    run.finish("completed", null, null);
+    assert.deepEqual(events.at(-1)!.data.plan, {
+      explanation: null,
+      steps: [],
+    });
+
+    const plain = new Run("r", "t", "c", "h", 100);
+    const plainEvents: RunEvent[] = [];
+    plain.subscribe(0, {
+      send: (e) => plainEvents.push(e),
+      end: () => undefined,
+    });
+    plain.finish("completed", null, null);
+    assert.ok(!("plan" in plainEvents.at(-1)!.data));
+  });
+});
+
 describe("Codex error mapping", () => {
   test("uses the typed error info, never the message", () => {
     assert.equal(
@@ -990,6 +1196,20 @@ describe("codex MCP config", () => {
       { ...spec, approvedTools: ["create_branch"] },
     ]);
     assert.ok(!JSON.stringify(start).includes("create_branch"));
+  });
+
+  // Threads created before the planning guidance existed get it on their
+  // next resume; Codex keeps a thread's earlier copy, so only the params show
+  // that it is resent.
+  test("start and resume both carry the planning guidance, text and coding", () => {
+    const coding = { config: {}, instructions: "CODING_RULES" };
+    for (const params of [
+      threadStartParams(model, "prompt", "/ws"),
+      threadResumeParams("tid", model, "/ws"),
+      threadStartParams(model, "prompt", "/ws", [], coding),
+      threadResumeParams("tid", model, "/ws", [], coding),
+    ])
+      assert.ok(params.developerInstructions.includes(PLANNING_INSTRUCTIONS));
   });
 
   test("text-only params carry no mcp_servers keys", () => {

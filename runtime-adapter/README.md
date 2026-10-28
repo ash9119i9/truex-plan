@@ -91,9 +91,10 @@ run), `event: <type>` and JSON `data`. A `: hb` comment is written every 15 s.
 | `file_change.started` / `file_change.completed` | `{itemId, files, status?, approval?}`                                                                         | Coding: an apply_patch; `files` are `{path, kind, movePath?}` relative to the workspace, `kind` `add`/`update`/`delete`/`move`.                                                                                                                                                                                                                                                                                                                                                                                     |
 | `file_change.progress`                          | `{itemId, files, lines, preview?}` or `{itemId, ended: true}`                                                 | Coding: a patch the model is still writing (Codex `apply_patch_streaming_events`), about every 500 ms. `preview` `{path, offset, text, truncated}` is the next piece (at most 64 Ki characters) of the first new file's text: `offset` is where `text` starts, always the end of the previous piece; at most 256 Ki characters in all, then `truncated: true`. Edits carry no text. Not an item: never in snapshots or `run.completed.items`. It stops at `file_change.started` for the same `itemId`, or with `ended` when Codex rejected the patch. |
 | `skill.used`                                    | `{slug}`                                                                                                      | The model opened one of the run's skills (`skills.read`). Once per skill per run.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `plan.updated`                                  | `{explanation, steps}`                                                                                        | The model called `update_plan`. Always the whole plan: replace the last one. `steps` are `{step, status}` (`pending`, `inProgress`, `completed`), at most 50 of 500 chars; `explanation` is at most 2 000 chars or `null`. Malformed steps are dropped; helpers' plans never appear. Not an item.                                                                                                                                                                                                                   |
 | `connector.status`                              | `{connector, status, reason?}`                                                                                | A connector's startup state changed. `status` is `starting`, `ready` or `failed`; `reason` is `auth`, `unreachable` or `unknown`.                                                                                                                                                                                                                                                                                                                                                                                   |
-| `run.snapshot`                                  | `{status, threadId, turnId, items, approvals}`                                                                | Only on reconnect when the cursor is older than the buffer.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| `run.completed`                                 | `{status, error, delivery, threadId, turnId, items, usage, timings}`                                          | Always last. `status` is `completed`, `stopped` or `failed`. `delivery` is `none` (nothing ran; safe to resend), `accepted` or `unknown` (a turn request went out and its answer was lost; reconcile with history, never resend).                                                                                                                                                                                                                                                                                   |
+| `run.snapshot`                                  | `{status, threadId, turnId, items, approvals, plan?}`                                                         | Only on reconnect when the cursor is older than the buffer.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `run.completed`                                 | `{status, error, delivery, threadId, turnId, items, usage, timings, plan?}`                                   | Always last. `status` is `completed`, `stopped` or `failed`. `delivery` is `none` (nothing ran; safe to resend), `accepted` or `unknown` (a turn request went out and its answer was lost; reconcile with history, never resend).                                                                                                                                                                                                                                                                                   |
 
 Both `run.snapshot.items` and `run.completed.items` are an **ordered** list, in
 the order Codex produced them — a reply `{type: "reply", itemId, text,
@@ -107,6 +108,10 @@ A reply appears once it has any text (empty replies never appear), and `text`
 includes partial text Codex drops after a stop. A tool call appears when it
 starts and shows `status: "inProgress"` until it completes. The run's own first
 input is **not** in the list.
+
+`plan` on both is the last `plan.updated`, exactly as the model sent it, also
+when the run is `stopped` or `failed` (steps may then still be `pending` or
+`inProgress`). It is absent when the run never planned.
 
 Rules:
 
@@ -127,11 +132,14 @@ Rules:
   thread; a `threadId` that differs from the record fails with `THREAD_MISMATCH`.
 - **Instructions are fixed at creation.** On resume the adapter never sends
   `agentPrompt`; resuming with new instructions would replace the thread's
-  original prompt.
+  original prompt. The adapter's own planning guidance (developer
+  instructions) is sent on start and every resume; the model receives one copy
+  per request, not one per resume.
 - **Text only by default.** The adapter alone builds the Codex configuration.
   Shell, files, images, goals, user-input requests, web search, hooks, host
-  skills, project docs and sub-agents are disabled; only the run's own skills
-  are offered. Only MCP approvals are relayed;
+  skills, project docs and sub-agents are disabled; only Codex's `update_plan`
+  checklist tool and the run's own skills are offered. Only MCP approvals are
+  relayed;
   every other request from Codex is refused. `RUNTIME_CODING_ENABLED=1` turns
   on the coding profile for every run (see below).
 - **Watchdog.** No model output within `firstResponseMs` (default and maximum
@@ -402,7 +410,11 @@ path), so a Codex upgrade that changes one fails the suite:
 - An interrupt repeated after the first is acknowledged (before the turn completes) never gets a reply.
 - Interrupted or killed turns keep the user message but drop partial assistant text.
 - A provider that sends nothing fails only through the adapter's watchdog.
-- With the adapter's configuration the model is offered zero tools.
+- With the adapter's configuration the model is offered only `update_plan`.
+- A malformed `update_plan` call fails only that tool call: the model gets a
+  parse error and the turn continues.
+- A resumed thread's requests carry one copy of the developer instructions,
+  however often it was resumed.
 - `clientUserMessageId` survives a restart as `userMessage.clientId`.
 - History can be read from an unloaded thread; resume without instructions keeps the original prompt.
 - Retries multiply: 1 request retry × 2 stream retries means up to 6 provider

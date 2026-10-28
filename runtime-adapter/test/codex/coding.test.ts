@@ -55,6 +55,7 @@ describe("coding profile (real Codex)", () => {
     assert.deepEqual(toolNames(request), [
       "custom:apply_patch",
       "exec_command",
+      "update_plan",
       "write_stdin",
     ]);
     const text = JSON.stringify(request);
@@ -407,9 +408,9 @@ describe("coding off (the default)", () => {
     assert.equal(body.error.code, "UPLOADS_DISABLED");
   });
 
-  test("runs offer no tools and write no profile files", async () => {
+  test("runs offer only update_plan and write no profile files", async () => {
     await h.run(h.body({ chatId: "plain" }));
-    assert.deepEqual(h.model.lastRequest().body.tools ?? [], []);
+    assert.deepEqual(toolNames(h.model.lastRequest().body), ["update_plan"]);
     const home = join(h.stateDir, "t", "tenant1", "c", "plain", "home");
     await assert.rejects(readFile(join(home, "model-catalog.json")));
     await assert.rejects(readFile(join(home, "rules", "default.rules")));

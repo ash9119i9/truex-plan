@@ -12,7 +12,7 @@ import { PERMISSION_PROFILE } from "./coding";
 const PROVIDER = "truex_gateway";
 
 // Verified against the pin (test/codex/lifecycle.test.ts): with these settings
-// the model is offered zero tools and no Codex context blocks.
+// the model is offered only `update_plan` and no Codex context blocks.
 const TEXT_ONLY = {
   // Pinned on explicitly: a steer cuts the reply being written instead of
   // being appended to it. It is "under development" upstream, so pinning it
@@ -31,6 +31,11 @@ const TEXT_ONLY = {
   "features.view_image": false,
   "features.goals": false,
   "tools.experimental_request_user_input": { enabled: false },
+  // Codex's checklist tool (core/src/tools/handlers/plan.rs): the model
+  // publishes a plan for a complex task and updates it as it works. It only
+  // emits `turn/plan/updated`; it reads and changes nothing. Off by default
+  // upstream. Shared by start and resume, so a resumed thread keeps it.
+  "tools.update_plan": { enabled: true },
   "skills.bundled.enabled": false,
   web_search: "disabled",
   project_doc_max_bytes: 0,
@@ -161,16 +166,24 @@ const CODING_APPROVAL_POLICY = {
   },
 } as const;
 
+// Truex's version of Codex's `## Planning` guidance for `update_plan`. Truex
+// replaces Codex's base prompt, so Codex's own guidance never reaches the
+// model; this travels with the tool instead, as developer instructions on
+// start and on every resume (sessionSettings), so old threads get it too.
+export const PLANNING_INSTRUCTIONS =
+  "You have an update_plan tool that shows the member a checklist of your steps and their progress. Use it when the request needs several distinct steps, such as researching more than one source, comparing options, or drafting a document with several sections, or when the member asks for more than one thing at once. Do not use it for a simple question, a single lookup or a short reply, and never pad a plan with obvious steps. Write each step in 5 to 7 words, without repeating details from the request. Keep exactly one step in_progress while you work, and mark a step completed only once its work is done. When the work is writing the reply itself, write the part of the reply for the step in progress, then call update_plan to mark it completed and start the next. Before you finish, call update_plan so that every step is completed. If the plan changes, call update_plan again with the new plan and a short explanation of why; otherwise leave the explanation out. The member already sees the checklist, so never repeat the plan in your reply; mention only what changed or what comes next.";
+
 function access(mcp: readonly McpServerSpec[], coding?: CodingSettings) {
   if (coding)
     return {
       approvalPolicy: CODING_APPROVAL_POLICY,
       permissions: PERMISSION_PROFILE,
-      developerInstructions: coding.instructions,
+      developerInstructions: `${coding.instructions}\n\n${PLANNING_INSTRUCTIONS}`,
     };
   return {
     approvalPolicy: mcp.length > 0 ? MCP_APPROVAL_POLICY : "never",
     sandbox: "read-only",
+    developerInstructions: PLANNING_INSTRUCTIONS,
   };
 }
 
@@ -289,8 +302,9 @@ export function threadStartParams(
   };
 }
 
-// No instructions on resume: Codex keeps the thread's original prompt, and
-// sending new ones would replace it (verified against the pin). The MCP config
+// No base instructions on resume: Codex keeps the thread's original prompt,
+// and sending new ones would replace it (verified against the pin). Developer
+// instructions (planning, coding) are resent via sessionSettings. The MCP config
 // IS resent every time: a resume without it gives the model no MCP tools
 // (mcp-probe 3).
 export function threadResumeParams(
