@@ -326,6 +326,27 @@ describe("helper agents (real Codex)", () => {
     assert.equal("agents" in completed(events), false);
     assert.equal(ofType(events, "agent.started").length, 0);
   });
+
+  test("a helper's plan stays on its own thread and never becomes the lead's", async () => {
+    let childCalls = 0;
+    const seen = route([spawn("plans"), wait()], () =>
+      ++childCalls === 1
+        ? {
+            kind: "call",
+            name: "update_plan",
+            args: { plan: [{ step: "HELPER_STEP", status: "in_progress" }] },
+          }
+        : { kind: "reply", text: CHILD_RESULT },
+    );
+    const events = await h.run(body());
+    h.model.router = undefined;
+    const done = completed(events);
+    assert.equal(done.status, "completed");
+    assert.ok(seen.child >= 2, "the helper called update_plan, then replied");
+    assert.deepEqual(ofType(events, "plan.updated"), []);
+    assert.ok(!("plan" in done), "no plan on the lead's outcome");
+    assert.ok(!JSON.stringify(events).includes("HELPER_STEP"));
+  });
 });
 
 // Codex-exact design, Option B (tasks/subagents-research/06-codex-exact-design.md):

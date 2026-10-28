@@ -190,7 +190,8 @@ describe("pinned Codex multi-agent V2", () => {
     assert.ok(await until(() => !!completed(leadId, turnId)), "lead finished");
     model.router = undefined;
 
-    // The lead is offered exactly the V2 collaboration tools.
+    // The lead is offered exactly the V2 collaboration tools and the plan
+    // checklist.
     assert.deepEqual(toolNames(seen.lead[0]!).sort(), [
       "collaboration.followup_task",
       "collaboration.interrupt_agent",
@@ -198,11 +199,14 @@ describe("pinned Codex multi-agent V2", () => {
       "collaboration.send_message",
       "collaboration.spawn_agent",
       "collaboration.wait_agent",
+      "update_plan",
     ]);
-    // A depth-1 helper on the fixture model gets no tools at all: no shell,
-    // no files, and no collaboration tools (no nesting).
+    // A depth-1 helper on the fixture model gets only the plan checklist it
+    // inherits from the lead's config: no shell, no files and no
+    // collaboration tools (no nesting). Its plan updates arrive on its own
+    // thread, which the adapter does not relay.
     assert.equal(seen.child.length, 1);
-    assert.deepEqual(toolNames(seen.child[0]!), []);
+    assert.deepEqual(toolNames(seen.child[0]!), ["update_plan"]);
 
     // The helper inherits the lead's base prompt, then the helper rules.
     const childDev = inputItems(seen.child[0]!)

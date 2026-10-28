@@ -68,6 +68,19 @@ export interface AgentState {
   usage?: Record<string, number>;
 }
 
+// The lead's checklist (Codex `update_plan`), bounded by the adapter
+// (chat.ts `parsePlan`). Kept apart from `items` like `agents`: one per run,
+// the latest snapshot wins, and it has no place in the reply's order.
+export interface PlanStep {
+  readonly step: string;
+  readonly status: "pending" | "inProgress" | "completed";
+}
+
+export interface RunPlan {
+  readonly explanation: string | null;
+  readonly steps: readonly PlanStep[];
+}
+
 // Live previews per helper; its result and status always get through.
 const MAX_AGENT_ACTIVITY = 50;
 
@@ -208,6 +221,8 @@ export class Run {
   // Helper agents by id, in start order, and their preview counts.
   private readonly agents = new Map<string, AgentState>();
   private readonly agentPreviews = new Map<string, number>();
+  // The lead's latest plan; undefined until the model first calls update_plan.
+  private plan: RunPlan | undefined;
   private readonly subscribers = new Set<Subscriber>();
 
   constructor(
@@ -336,6 +351,22 @@ export class Run {
   // Present only when a helper ran, so runs without helpers are unchanged.
   private agentField(): { agents?: AgentState[] } {
     return this.agents.size > 0 ? { agents: this.agentList() } : {};
+  }
+
+  // The model published its checklist again. Each update is a full snapshot
+  // and replaces the last one; an empty plan is kept as an empty plan.
+  updatePlan(plan: RunPlan): void {
+    if (this.finishedAt !== undefined) return;
+    this.plan = structuredClone(plan);
+    this.emit("plan.updated", {
+      explanation: plan.explanation,
+      steps: structuredClone(plan.steps),
+    });
+  }
+
+  // Present only once the model planned, so runs without a plan are unchanged.
+  private planField(): { plan?: RunPlan } {
+    return this.plan ? { plan: structuredClone(this.plan) } : {};
   }
 
   // A sandbox request was refused. Recorded once per site and method (a
@@ -647,6 +678,7 @@ export class Run {
       turnId: this.turnId,
       items: this.itemList(),
       ...this.agentField(),
+      ...this.planField(),
       usage,
       timings: this.timings,
     });
@@ -669,6 +701,7 @@ export class Run {
           turnId: this.turnId,
           items: this.itemList(),
           ...this.agentField(),
+          ...this.planField(),
           approvals: this.pendingApprovals,
         },
       });

@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Truex skills: what to use, and when</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@1,6..72,400..500&family=JetBrains+Mono:wght@400;500&display=swap">
+<!-- Colors, type and radius come from the app's design tokens; no literal colors in this page. -->
+<link rel="stylesheet" href="../../frontend/styles/v2/tokens.css">
+<style>
+  * { box-sizing: border-box; }
+  /* tokens.css locks html/body to the viewport for the chat app; this page scrolls normally. */
+  html, body { height: auto; overflow: auto; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.6 var(--font-sans); -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 1080px; margin: 0 auto; padding: 56px 24px 80px; }
+  :focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 2px; border-radius: 8px; }
+
+  .eyebrow { font: 500 11px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 10px; }
+  h1 {
+    font: var(--display-weight) 36px/1.15 var(--font-display); letter-spacing: var(--display-track);
+    margin: 0 0 14px;
+  }
+  h1 em { font-family: var(--font-accent); font-style: var(--accent-style); font-weight: var(--accent-weight); color: var(--accent-fg); }
+  h2 { font: 600 19px/1.3 var(--font-display); letter-spacing: -.01em; margin: 48px 0 6px; }
+  .lead { color: var(--ink-2); font-size: 16px; max-width: 64ch; margin: 0; }
+  .sub { color: var(--ink-2); margin: 0 0 18px; max-width: 70ch; }
+  code, kbd { font: 500 12.5px var(--font-mono); }
+  kbd { color: var(--ink-2); background: var(--surface-3); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); padding: 20px 22px;
+  }
+  .what { display: grid; gap: 16px; grid-template-columns: repeat(3, 1fr); margin-top: 28px; }
+  .what h3 { font: 600 14px var(--font-display); margin: 0 0 4px; }
+  .what p { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+  /* Flow strip */
+  .flow { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 0; margin: 0; }
+  .flow li { display: flex; align-items: center; gap: 8px; }
+  .flow li + li::before { content: "→"; color: var(--ink-3); }
+  .step {
+    display: inline-flex; flex-direction: column; padding: 8px 14px; border-radius: 12px;
+    background: var(--accent-soft); border: 1px solid var(--accent-soft-2);
+  }
+  .step b { font-weight: 600; font-size: 14px; }
+  .step span { font-size: 12px; color: var(--ink-2); }
+  .anytime { margin: 14px 0 0; font-size: 14px; color: var(--ink-2); }
+
+  /* Quick pick */
+  .pick { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }
+  .pick .card { padding: 16px 18px; }
+  .pick h3 { font: 600 14px var(--font-display); margin: 0 0 6px; }
+  .pick p { margin: 0; font-size: 14px; color: var(--ink-2); }
+  .pick code { color: var(--ink); }
+
+  /* Table */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; min-width: 760px; font-size: 14px; }
+  caption { text-align: left; padding: 14px 18px; color: var(--ink-3); font-size: 13px; border-bottom: 1px solid var(--line); }
+  th, td { text-align: left; vertical-align: top; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  thead th { font: 500 11px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); background: var(--surface-3); }
+  tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
+  tr.group th {
+    background: var(--surface-3); font: 600 12px var(--font-display); color: var(--ink-2);
+    padding: 8px 18px; letter-spacing: .02em;
+  }
+  td.name { white-space: nowrap; }
+  td.name code { color: var(--accent-fg); font-size: 13px; }
+  td.name small { display: block; color: var(--ink-3); font-size: 12px; margin-top: 2px; white-space: normal; }
+  td.what-col { color: var(--ink); }
+  td.when-col { color: var(--ink-2); }
+
+  .chip { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+  .chip.auto { background: var(--success-bg); color: var(--success-text); }
+  .chip.manual { background: var(--warning-bg); color: var(--warning-text); }
+  .chip.new { background: var(--info-bg); color: var(--info-text); margin-left: 6px; }
+
+  .note { margin-top: 14px; font-size: 13px; color: var(--ink-3); }
+  .rules { padding-left: 20px; margin: 0; color: var(--ink-2); }
+  .rules li { margin: 4px 0; }
+
+  footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--ink-3); font-size: 13px; }
+
+  @media (max-width: 760px) {
+    main { padding: 36px 16px 64px; }
+    h1 { font-size: 28px; }
+    .what, .pick { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Truex · Team guide</p>
+    <h1>Skills: what to use, <em>and when</em></h1>
+    <p class="lead">A skill is a saved set of instructions for the AI coding agent. Instead of explaining how we plan, build, test and review every time, you pick the right skill and the agent follows our way of working.</p>
+  </header>
+
+  <section class="what" aria-label="The basics">
+    <div class="card">
+      <h3>How to use one</h3>
+      <p>In Claude Code, type <kbd>/</kbd> and the skill name, for example <code>/truex-build</code>. Most skills also start on their own when you describe the job ("fix this bug", "review my change").</p>
+    </div>
+    <div class="card">
+      <h3>Use only what the change needs</h3>
+      <p>A one-line fix doesn't need an idea session. Pick the steps that fit the size of the work. The quick picks below show where to start.</p>
+    </div>
+    <div class="card">
+      <h3>You stay in charge</h3>
+      <p>Skills that write tests show you a list first and wait for your OK. No skill commits or pushes code unless you ask.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="flow-h">
+    <h2 id="flow-h">The usual order</h2>
+    <p class="sub">Most work moves left to right. Skip the steps your change doesn't need.</p>
+    <ol class="flow">
+      <li><span class="step"><b>Idea</b><span>make it clear</span></span></li>
+      <li><span class="step"><b>Plan</b><span>split into tasks</span></span></li>
+      <li><span class="step"><b>Build</b><span>one task at a time</span></span></li>
+      <li><span class="step"><b>Check</b><span>try to break it</span></span></li>
+      <li><span class="step"><b>Review</b><span>second pair of eyes</span></span></li>
+    </ol>
+    <p class="anytime">Something broke at any step? Use <code>/truex-debugging-and-error-recovery</code>, then go back to where you were.</p>
+  </section>
+
+  <section aria-labelledby="pick-h">
+    <h2 id="pick-h">Not sure where to start?</h2>
+    <p class="sub">Find your situation. Every path ends with checking and review.</p>
+    <div class="pick">
+      <div class="card">
+        <h3>I'm fixing a bug</h3>
+        <p><code>truex-debugging-and-error-recovery</code> → <code>truex-build</code> (a test that shows the bug first) → <code>truex-harden</code> → <code>truex-code-review-and-quality</code></p>
+      </div>
+      <div class="card">
+        <h3>I'm making a small change</h3>
+        <p><code>truex-build</code> → <code>truex-harden</code> → <code>truex-code-review-and-quality</code></p>
+      </div>
+      <div class="card">
+        <h3>I'm building a feature</h3>
+        <p><code>truex-planning-and-task-breakdown</code> → <code>truex-build</code> for each task → <code>truex-harden</code> → <code>truex-code-review-and-quality</code></p>
+      </div>
+      <div class="card">
+        <h3>I have a big or fuzzy idea</h3>
+        <p><code>truex-idea-refine</code> → <code>truex-planning-and-task-breakdown</code> → then the same as a feature</p>
+      </div>
+    </div>
+    <p class="note">Add these only when your change calls for them: <code>truex-frontend</code> and <code>truex-browser-testing-with-devtools</code> for screen changes, <code>truex-backend-performance</code> for slow or busy server code, <code>truex-observability-and-instrumentation</code> for new endpoints or background work, <code>truex-secure</code> for anything touching logins, workspaces, tokens, connectors or uploads.</p>
+  </section>
+
+  <section aria-labelledby="all-h">
+    <h2 id="all-h">All skills</h2>
+    <p class="sub">Fourteen skills, grouped by when you'd reach for them. Every skill name starts with <code>truex-</code>, so type <code>/truex-</code> to see them all. The ones marked <span class="chip new">New</span> were written from scratch for this project; the rest are adapted to it.</p>
+    <div class="table-wrap" tabindex="0" role="region" aria-labelledby="all-h">
+      <table>
+        <caption>Each skill, what it does, and when to use it</caption>
+        <thead>
+          <tr>
+            <th scope="col">Skill</th>
+            <th scope="col">What it does</th>
+            <th scope="col">Use it when</th>
+            <th scope="col">How it starts</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="group"><th colspan="4" scope="colgroup">1 · Shape the work</th></tr>
+          <tr>
+            <td class="name"><code>truex-idea-refine</code><small>Saves to <code>docs/ideas/</code></small></td>
+            <td class="what-col">Turns a rough idea into a clear one: the problem, a few options, the one we pick, and what we're not doing.</td>
+            <td class="when-col">You have an idea but it's still fuzzy, or the feature is big.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-planning-and-task-breakdown</code><small>Saves to <code>tasks/</code></small></td>
+            <td class="what-col">Splits the work into small tasks, each with a simple way to check it's done. Gives you a plan and a todo list.</td>
+            <td class="when-col">The work will take more than one sitting, or touches several parts of the app.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+
+          <tr class="group"><th colspan="4" scope="colgroup">2 · Build it</th></tr>
+          <tr>
+            <td class="name"><code>truex-build</code><span class="chip new">New</span></td>
+            <td class="what-col">Builds one task from the todo list: writes the test first, then the code, then stops so you can look. Never commits.</td>
+            <td class="when-col">You have a todo list and want the next task done.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-test-driven-development</code></td>
+            <td class="what-col">The habit behind building: write a test that fails, then make it pass. For bugs, first write a test that shows the bug.</td>
+            <td class="when-col">Any time code changes what the app does, including bug fixes.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-frontend</code><span class="chip new">New</span></td>
+            <td class="what-col">Our rules for screens in <code>frontend/</code>: keep the chat smooth while replies stream, keep pages light, and make them work with a keyboard and screen reader.</td>
+            <td class="when-col">You change anything in <code>frontend/</code>, or the chat feels slow or jumpy.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+
+          <tr class="group"><th colspan="4" scope="colgroup">3 · Check it</th></tr>
+          <tr>
+            <td class="name"><code>truex-harden</code><span class="chip new">New</span></td>
+            <td class="what-col">Tries to break what you built and finds the cases your tests missed. Shows you a list first and writes only the tests you approve.</td>
+            <td class="when-col">A task or feature is built and you want to know what can go wrong.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-browser-testing-with-devtools</code><small>Needs Chrome DevTools connected (one-time setup)</small></td>
+            <td class="what-col">Opens the app in Chrome and checks what people actually see: the page, errors, network calls and speed.</td>
+            <td class="when-col">You changed something visible in the app.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-backend-performance</code></td>
+            <td class="what-col">Measures where the server is slow, fixes it, and shows before-and-after numbers.</td>
+            <td class="when-col">Something on the server is slow, or you're changing a busy path such as chat streaming, database queries or the model gateway.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-observability-and-instrumentation</code></td>
+            <td class="what-col">Adds the logs and numbers that let us see what a feature is doing once it's live.</td>
+            <td class="when-col">You add a new endpoint, background job, retry, or call to another service.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-code-review-and-quality</code></td>
+            <td class="what-col">A careful second look at a change: is it correct, easy to read, safe and fast enough.</td>
+            <td class="when-col">Before you merge anything.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+
+          <tr class="group"><th colspan="4" scope="colgroup">4 · Fix problems</th></tr>
+          <tr>
+            <td class="name"><code>truex-debugging-and-error-recovery</code></td>
+            <td class="what-col">Finds the real cause when something breaks, instead of guessing at fixes.</td>
+            <td class="when-col">A test, the build or the app fails, at any step.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+
+          <tr class="group"><th colspan="4" scope="colgroup">5 · Security (you choose these)</th></tr>
+          <tr>
+            <td class="name"><code>truex-secure</code><span class="chip new">New</span></td>
+            <td class="what-col">Tries to get past Truex's protections: one workspace seeing another's data, misused tokens, or tricking the AI through a tool's output. Shows a list first.</td>
+            <td class="when-col">Your change touches login, workspace data, tokens, connectors, uploads, or AI output shown on screen.</td>
+            <td><span class="chip manual">Only when you type it</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-security-and-hardening</code></td>
+            <td class="what-col">A general safe-coding checklist: handle user input, passwords and secrets the safe way.</td>
+            <td class="when-col">You're writing code that takes user input or talks to outside services.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+          <tr>
+            <td class="name"><code>truex-security-audit</code></td>
+            <td class="what-col">A full security review of a whole area, with a written report.</td>
+            <td class="when-col">Before a big release, or when someone asks for an audit.</td>
+            <td><span class="chip auto">Auto or /type</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note"><b>Auto or /type</b>: the agent may pick it up on its own when your request matches, or you can start it with <kbd>/</kbd>name. <b>Only when you type it</b>: the agent never starts it by itself.</p>
+  </section>
+
+  <section aria-labelledby="rules-h">
+    <h2 id="rules-h">Three things to remember</h2>
+    <ul class="rules">
+      <li>All skills work on the new stack: <code>frontend</code>, <code>platform-next</code>, <code>runtime-adapter</code> and <code>model-gateway</code>.</li>
+      <li>When a skill shows you a list of tests or findings, read it before saying OK. That's where you decide what matters.</li>
+      <li>Commits and pull requests are always your call.</li>
+    </ul>
+  </section>
+
+  <footer>Skills live in <code>.claude/skills/</code>, one folder each. To change how a skill behaves, edit its <code>SKILL.md</code> and commit it so the whole team gets the update.</footer>
+</main>
+</body>
+</html>

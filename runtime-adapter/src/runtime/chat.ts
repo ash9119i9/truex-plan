@@ -68,7 +68,9 @@ import {
   type ApprovalDecision,
   type ApprovalParam,
   type PendingApproval,
+  type PlanStep,
   type Run,
+  type RunPlan,
   type ToolErrorCode,
 } from "./run";
 
@@ -1059,6 +1061,12 @@ export class ChatRuntime {
         else this.onTurnCompleted(active, turn);
         return;
       }
+      case "turn/plan/updated":
+        // The lead's checklist, a full snapshot each time. A helper's plan
+        // arrives on its own thread and never reaches this switch.
+        this.activity(active);
+        run.updatePlan(parsePlan(n.params));
+        return;
       case "serverRequest/resolved":
         // Codex withdrew a request (its turn ended or was interrupted). Our
         // own answers are followed by this too; by then the wait is gone.
@@ -1991,12 +1999,43 @@ function approvalParams(meta: Record<string, unknown>): ApprovalParam[] {
     }));
 }
 
+// Bounds for the model-authored checklist (Codex `update_plan`). Truncated,
+// never rejected: Codex never rejects a plan, so neither do we.
+export const PLAN_MAX_STEPS = 50;
+export const PLAN_STEP_CHARS = 500;
+export const PLAN_EXPLANATION_CHARS = 2000;
+const PLAN_STATUSES = new Set(["pending", "inProgress", "completed"]);
+
+// `turn/plan/updated` params ({ explanation, plan: [{ step, status }] }) to
+// a bounded plan. Malformed steps are dropped; a blank explanation is null.
+export function parsePlan(params: Record<string, unknown>): RunPlan {
+  const raw = Array.isArray(params.plan) ? params.plan : [];
+  const steps: PlanStep[] = [];
+  for (const entry of raw) {
+    if (steps.length >= PLAN_MAX_STEPS) break;
+    const { step, status } = asRecord(entry);
+    if (typeof step !== "string" || typeof status !== "string") continue;
+    if (!PLAN_STATUSES.has(status)) continue;
+    const text = bounded(step, PLAN_STEP_CHARS).trim();
+    if (!text) continue;
+    steps.push({ step: text, status: status as PlanStep["status"] });
+  }
+  const explanation =
+    typeof params.explanation === "string"
+      ? bounded(params.explanation, PLAN_EXPLANATION_CHARS).trim()
+      : "";
+  return { explanation: explanation || null, steps };
+}
+
 function bounded(text: string, max: number): string {
   const clean = text.replace(
     /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g,
     "",
   );
-  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+  if (clean.length <= max) return clean;
+  // Never keep half of a surrogate pair (an emoji split by the cut).
+  const cut = /[\uD800-\uDBFF]/.test(clean[max - 2] ?? "") ? max - 2 : max - 1;
+  return `${clean.slice(0, cut)}…`;
 }
 
 // A stable hash of the MCP spec list (names, URLs, header names AND values,
