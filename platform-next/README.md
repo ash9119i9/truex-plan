@@ -132,9 +132,10 @@ npm run operator -- model-list --operator <you>
 - A model's `wireApi`, `baseUrl` and `modelName` cannot change, because chats
   pin its ID: add a new slug and disable the old one. Models are never deleted.
 - Re-running a put with the same file changes nothing. Members see changes
-  within 60 seconds (in-memory cache per server). That includes new chats and
-  messages: a disabled model or built-in can still start a turn for up to 60
-  seconds. A model or built-in added since the cache loaded is read directly.
+  within 2 minutes (in-memory cache per server: 60 s, then up to 60 s more
+  while it reloads in the background). That includes new chats and messages:
+  a disabled model, built-in or connector can still start a turn for up to 2
+  minutes. A model or built-in added since the cache loaded is read directly.
   Creating or editing an agent reads its model fresh.
 - The gateway must read this catalog: set its `CATALOG_MONGO_DB` to
   `CATALOG_DB_NAME`.

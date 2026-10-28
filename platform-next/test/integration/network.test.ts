@@ -9,6 +9,7 @@ import { DatabaseService } from "../../src/database/database.service";
 import { AUDIT_COLLECTION, type AuditDoc } from "../../src/modules/audit/audit";
 import { MembershipsService } from "../../src/modules/memberships/memberships.service";
 import { BASELINE_HOSTS } from "../../src/modules/network/network-policy";
+import { TenantNetworkService } from "../../src/modules/network/tenant-network.service";
 import { OperatorService } from "../../src/modules/operator/operator.service";
 import { SessionsService } from "../../src/modules/sessions/sessions.service";
 import { dbNameFor } from "../../src/modules/tenants/tenant";
@@ -316,6 +317,47 @@ describe("sandbox network: tenant allowlist and run policy", () => {
       hosts: [...BASELINE_HOSTS, "docs.acme.com"].sort(),
       connectors: [],
     });
+  });
+
+  // The tenant's hosts are read before the chat or agent, so a send that is
+  // refused first never awaits that read. Its failure must not surface as an
+  // unhandled rejection, and a start that does await it fails as before.
+  test("a failing tenant network read never goes unhandled, and a start that needs it sends nothing", async () => {
+    const tenantNetwork = running!.app.get(TenantNetworkService);
+    const original = tenantNetwork.runHosts.bind(tenantNetwork);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    tenantNetwork.runHosts = () => Promise.reject(new Error("network down"));
+    try {
+      const missing = await call(
+        user,
+        "POST",
+        `/chats/${new ObjectId().toHexString()}/messages`,
+        { clientMessageId: `network-${++next}-${Date.now()}`, text: "hi" },
+      );
+      assert.equal(missing.status, 404);
+      assert.equal(
+        ((await missing.json()) as { error: { code: string } }).error.code,
+        "NOT_FOUND",
+      );
+
+      const started = await call(user, "POST", "/chats", {
+        agentId: builtinId,
+        clientMessageId: `network-${++next}-${Date.now()}`,
+        text: "hello",
+      });
+      assert.equal(started.status, 500);
+      assert.equal(adapter.starts.length, 0);
+
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.deepEqual(unhandled, []);
+    } finally {
+      tenantNetwork.runHosts = original;
+      process.off("unhandledRejection", onUnhandled);
+    }
+    // The failed start gave its send slot back: the next one runs.
+    await startChat(user);
   });
 
   // Waits until the chat's run has been saved, then returns its messages.

@@ -151,6 +151,92 @@ describe("RunExecutor", () => {
     assert.equal(settled, true);
   });
 
+  // Capture also stores files an earlier run could not (over its file or
+  // byte cap, or past its timeout), and a lost turn answer can hide the
+  // commands that ran, so no outcome may skip it.
+  test("file capture runs for every settled run, a text-only one included", async () => {
+    const captures = async (
+      items: unknown,
+      extra: Record<string, unknown> = {},
+      history?: unknown[],
+    ) => {
+      let calls = 0;
+      let outcome: Settlement | undefined;
+      const store = {
+        markAccepted: async () => undefined,
+        renewLease: async () => true,
+        markUncertain: async () => undefined,
+        settleWithRetry: async (...args: unknown[]) => {
+          outcome = args[4] as Settlement;
+          return { run: {}, messages: [] };
+        },
+      };
+      const client = {
+        async *startRun(): AsyncGenerator<AdapterEvent> {
+          yield {
+            seq: 1,
+            type: "run.completed",
+            data: {
+              status: "completed",
+              delivery: "accepted",
+              items,
+              ...extra,
+            },
+          };
+        },
+        history: async () => history ?? [],
+      };
+      const chatFiles = {
+        configured: true,
+        capture: async () => {
+          calls++;
+          return { stored: [], unsaved: [] };
+        },
+      };
+      const executor = new RunExecutor(
+        store as unknown as ChatStore,
+        client as unknown as RuntimeClient,
+        null,
+        chatFiles as never,
+      );
+      const dispatch = dispatchFor(new ObjectId());
+      executor.begin({
+        ...dispatch,
+        body: {
+          threadId: "th",
+          input: { text: "Hi", clientMessageId: "m1" },
+        } as Dispatch["body"],
+      });
+      await executor.drain(5_000);
+      assert.ok(outcome);
+      return { calls, status: outcome.status };
+    };
+    const reply = { type: "reply", itemId: "a", text: "Hi", completed: true };
+    assert.deepEqual(await captures([reply]), {
+      calls: 1,
+      status: "completed",
+    });
+    assert.deepEqual(await captures([]), { calls: 1, status: "completed" });
+    assert.deepEqual(await captures([reply], { status: "stopped" }), {
+      calls: 1,
+      status: "stopped",
+    });
+    // A lost turn answer: the item list may lack the commands that ran, and
+    // history says the turn did not complete.
+    assert.deepEqual(
+      await captures([reply], { status: "failed", delivery: "unknown" }, [
+        {
+          turnId: "t1",
+          status: "interrupted",
+          clientMessageId: "m1",
+          text: "",
+          items: [],
+        },
+      ]),
+      { calls: 1, status: "failed" },
+    );
+  });
+
   test("tool calls stream live, keep stream order and reach the settlement", async () => {
     let outcome: Settlement | undefined;
     const store = {

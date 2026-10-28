@@ -824,6 +824,40 @@ describe("directory connectors (integration)", () => {
     assert.equal(marked?.lastError?.code, "token_unreadable");
   });
 
+  test("runSpecs uses prefetched owner connections, and reads when they lack one", async () => {
+    await connectFlow();
+    const prefetched = connectors.ownerConnections(DB_NAME, alice.userId);
+    assert.equal((await prefetched).length, 1);
+    const used = await connectors.runSpecs(
+      DB_NAME,
+      alice.userId,
+      [connectorId],
+      { prefetched },
+    );
+    assert.equal(used.ok, true);
+    // A prefetch that missed the row (read before the connect, or failed)
+    // never makes the connection look missing.
+    const failed = Promise.reject(new Error("x"));
+    failed.catch(() => undefined);
+    for (const stale of [Promise.resolve([]), failed]) {
+      const read = await connectors.runSpecs(
+        DB_NAME,
+        alice.userId,
+        [connectorId],
+        { prefetched: stale },
+      );
+      assert.equal(read.ok, true);
+    }
+    // Another owner's prefetched row is never used.
+    const other = await connectors.runSpecs(
+      DB_NAME,
+      new ObjectId(),
+      [connectorId],
+      { prefetched },
+    );
+    assert.equal(other.ok, false);
+  });
+
   // ── 7. Token refresh via runSpecs ────────────────────────────────
 
   test("(a) a token valid beyond the margin is used without a token request", async () => {
