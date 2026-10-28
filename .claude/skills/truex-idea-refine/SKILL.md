@@ -1,5 +1,5 @@
 ---
-name: idea-refine
+name: truex-idea-refine
 description: Refines raw ideas into sharp, actionable concepts through structured divergent and convergent thinking. Use when an idea is still vague, when you need to stress-test assumptions before committing to a plan, or when you want to expand options before converging on one. Triggers on "ideate", "refine this idea", or "stress-test my plan".
 ---
 
@@ -15,7 +15,7 @@ Refines raw ideas into sharp, actionable concepts worth building through structu
 - Use when you need to stress-test assumptions before committing to a direction
 - Use when you want to expand options before converging on one
 - Trigger phrases: "Help me refine this idea", "Ideate on [concept]", "Stress-test my plan"
-- Not for: a direction already chosen that only needs breaking into tasks (use `planning-and-task-breakdown`)
+- Not for: a direction already chosen that only needs breaking into tasks (use `truex-planning-and-task-breakdown`)
 
 ## Truex New Stack
 
@@ -44,7 +44,7 @@ This skill is primarily an interactive dialogue. Invoke it with an idea, and the
 
 ```bash
 # Optional: Initialize the ideas directory
-bash .claude/skills/idea-refine/scripts/idea-refine.sh
+bash .claude/skills/truex-idea-refine/scripts/idea-refine.sh
 ```
 
 ## Output

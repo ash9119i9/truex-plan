@@ -1,5 +1,5 @@
 ---
-name: backend-performance
+name: truex-backend-performance
 description: Measures and fixes backend performance - API latency, throughput, database queries and indexes, N+1, caching, connection pools, event-loop blocking, memory growth, payload size, queues and background jobs, timeouts and retries, and load testing. Use when an endpoint, job or service is slow, when p95/p99 latency or error rate rises under load, when CPU, memory or DB load grows, when asked "will this scale", "what breaks at 10x", for a backend performance audit or review, or before shipping a change on a hot path. Not for browser rendering or Core Web Vitals (use truex-frontend).
 ---
 
@@ -16,7 +16,7 @@ help.
 
 - No symptom, no SLO, no hot path: do not optimize. Say so and stop.
 - Frontend rendering, bundle size, Core Web Vitals: use `truex-frontend`.
-- The real problem is correctness or a crash: use `debugging-and-error-recovery`.
+- The real problem is correctness or a crash: use `truex-debugging-and-error-recovery`.
 
 ## Truex New Stack
 
