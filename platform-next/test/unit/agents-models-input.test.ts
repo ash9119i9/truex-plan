@@ -392,6 +392,70 @@ describe("TtlCache", () => {
     assert.equal(await cache.get(), "ok");
   });
 
+  test("with staleMs, returns an expired value while one reload runs", async () => {
+    let now = 0;
+    let loads = 0;
+    let release!: () => void;
+    const cache = new TtlCache(
+      () => {
+        loads++;
+        if (loads === 1) return Promise.resolve(1);
+        return new Promise<number>((resolve) => {
+          release = () => resolve(loads);
+        });
+      },
+      1_000,
+      () => now,
+      5_000,
+    );
+    assert.equal(await cache.get(), 1);
+    now = 1_500;
+    // Expired: the old value at once, and a single reload behind it.
+    assert.equal(await cache.get(), 1);
+    assert.equal(await cache.get(), 1);
+    assert.equal(loads, 2);
+    release();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await cache.get(), 2);
+    assert.equal(loads, 2);
+  });
+
+  test("with staleMs, a value too old is loaded first", async () => {
+    let now = 0;
+    let loads = 0;
+    const cache = new TtlCache(
+      async () => ++loads,
+      1_000,
+      () => now,
+      5_000,
+    );
+    assert.equal(await cache.get(), 1);
+    now = 6_000;
+    assert.equal(await cache.get(), 2);
+  });
+
+  test("with staleMs, a failed reload keeps the old value until it is too old", async () => {
+    let now = 0;
+    let fail = false;
+    const cache = new TtlCache(
+      async () => {
+        if (fail) throw new Error("down");
+        return "ok";
+      },
+      1_000,
+      () => now,
+      5_000,
+    );
+    assert.equal(await cache.get(), "ok");
+    fail = true;
+    now = 2_000;
+    assert.equal(await cache.get(), "ok");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await cache.get(), "ok");
+    now = 6_000;
+    await assert.rejects(cache.get(), /down/);
+  });
+
   test("a load started before clear() cannot refill the cache", async () => {
     let release!: (value: string) => void;
     let loads = 0;
@@ -406,5 +470,68 @@ describe("TtlCache", () => {
     release("stale");
     assert.equal(await stale, "stale");
     assert.equal(await cache.get(), "fresh");
+  });
+
+  test("with staleMs, clear() during a background reload serves nothing old", async () => {
+    let now = 0;
+    let loads = 0;
+    let release!: (value: string) => void;
+    const cache = new TtlCache(
+      () => {
+        loads++;
+        if (loads === 2)
+          return new Promise<string>((resolve) => (release = resolve));
+        return Promise.resolve(`v${loads}`);
+      },
+      1_000,
+      () => now,
+      5_000,
+    );
+    assert.equal(await cache.get(), "v1");
+    now = 1_500;
+    // Expired: v1 at once, with reload 2 held in the background.
+    assert.equal(await cache.get(), "v1");
+    cache.clear();
+    // The edit is seen at once: a fresh load, not v1 or the held reload.
+    assert.equal(await cache.get(), "v3");
+    release("v2");
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await cache.get(), "v3");
+    assert.equal(loads, 3);
+  });
+
+  test("with staleMs, a value is fresh before expiry, stale until expiry + staleMs, then loaded first", async () => {
+    const start = Number(process.env.SEED ?? 0x5eed1234);
+    let seed = start;
+    const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0);
+    const edges = [0, 999, 1_000, 1_001, 5_999, 6_000, 6_001];
+    for (let i = 0; i < 300; i++) {
+      const at =
+        i < edges.length * 4 ? edges[i % edges.length]! : next() % 8_000;
+      let now = 0;
+      let loads = 0;
+      const cache = new TtlCache(
+        async () => ++loads,
+        1_000,
+        () => now,
+        5_000,
+      );
+      await cache.get(); // loaded at 0, expires at 1_000
+      now = at;
+      const got = await cache.get();
+      await new Promise((resolve) => setImmediate(resolve));
+      const where = `seed ${start}, case ${i}, now ${at}`;
+      if (at < 1_000) {
+        assert.equal(got, 1, where);
+        assert.equal(loads, 1, where);
+      } else if (at < 6_000) {
+        // The old value at once, one reload behind it.
+        assert.equal(got, 1, where);
+        assert.equal(loads, 2, where);
+      } else {
+        assert.equal(got, 2, where);
+        assert.equal(loads, 2, where);
+      }
+    }
   });
 });

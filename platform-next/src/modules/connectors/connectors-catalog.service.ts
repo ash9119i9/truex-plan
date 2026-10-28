@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { ObjectId, type ClientSession, type Collection } from "mongodb";
 import { canonicalJson } from "../../common/canonical-json";
 import { DomainError } from "../../common/domain-error";
-import { TtlCache } from "../../common/ttl-cache";
+import { CATALOG_STALE_MS, TtlCache } from "../../common/ttl-cache";
 import { DatabaseService } from "../../database/database.service";
 import { isDuplicateKeyError } from "../../database/mongo-errors";
 import {
@@ -12,9 +12,9 @@ import {
   type ConnectorSpec,
 } from "./connector";
 
-// Members' reads tolerate this much staleness after the product team changes
-// a connector; a connect reads the connector fresh (it needs the exact
-// revision for the flow cookie).
+// Members' reads tolerate this much staleness, plus CATALOG_STALE_MS, after
+// the product team changes a connector; a connect reads the connector fresh
+// (it needs the exact revision for the flow cookie).
 export const CONNECTOR_CACHE_TTL_MS = 60_000;
 // The catalog holds a handful of connectors; this only bounds a mistake.
 const MAX_CONNECTORS = 200;
@@ -56,6 +56,8 @@ export class ConnectorsCatalogService {
   private readonly enabledCache = new TtlCache<ConnectorDoc[]>(
     () => this.loadEnabled(),
     CONNECTOR_CACHE_TTL_MS,
+    Date.now,
+    CATALOG_STALE_MS,
   );
 
   constructor(

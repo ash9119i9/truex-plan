@@ -22,6 +22,7 @@ import {
 } from "../agents/agents.service";
 import type { ConnectorDoc } from "../connectors/connector";
 import { connectorView } from "../connectors/connector";
+import type { McpConnectionDoc } from "../connectors/connection";
 import { ConnectorsCatalogService } from "../connectors/connectors-catalog.service";
 import {
   ConnectorsService,
@@ -277,6 +278,12 @@ export class ChatsService {
     input: StartChatInput,
   ): Promise<SendReceipt> {
     this.requireRuntime();
+    // Read alongside the agent; needed only once its connectors are known.
+    const tenantHosts = this.tenantHosts(context);
+    const connections = this.connectors.ownerConnections(
+      context.dbName,
+      context.userId,
+    );
     const agent = await timed("agent", () =>
       this.agents.resolveForChat(context, input.agentId, {
         allowArchived: false,
@@ -313,11 +320,16 @@ export class ChatsService {
       // A new chat has no per-chat approvals yet, so none are forwarded.
       let resolved: RunConnectors;
       [resolved, staged] = await Promise.all([
-        this.runMcpSpecs(context, connectors, undefined),
+        this.runMcpSpecs(context, connectors, undefined, connections),
         this.stagedUploads(context, input.attachments),
       ]);
       mcp = resolved.mcp;
-      ({ network } = await this.runNetwork(context, resolved.network));
+      ({ network } = await this.runNetwork(
+        context,
+        resolved.network,
+        undefined,
+        tenantHosts,
+      ));
     } catch (error) {
       refund();
       if (error instanceof DomainError)
@@ -432,6 +444,12 @@ export class ChatsService {
     allowFallback = true,
   ): Promise<SendReceipt | SteerReceipt> {
     this.requireRuntime();
+    // Read alongside the chat; a steer or a refusal leaves them unused.
+    const tenantHosts = this.tenantHosts(context);
+    const connections = this.connectors.ownerConnections(
+      context.dbName,
+      context.userId,
+    );
     const chat = await timed("chat", () => this.findOwned(context, chatId));
     const refuse = (error: DomainError) =>
       this.sendRefused(context, chat, input, error);
@@ -508,7 +526,12 @@ export class ChatsService {
     try {
       let resolved: RunConnectors;
       [resolved, staged] = await Promise.all([
-        this.runMcpSpecs(context, chat.connectors ?? [], chat.toolApprovals),
+        this.runMcpSpecs(
+          context,
+          chat.connectors ?? [],
+          chat.toolApprovals,
+          connections,
+        ),
         this.stagedUploads(context, input.attachments),
       ]);
       mcp = resolved.mcp;
@@ -516,6 +539,7 @@ export class ChatsService {
         context,
         resolved.network,
         chat.networkGrants,
+        tenantHosts,
       ));
       const bytes = staged.reduce((sum, u) => sum + u.size, 0);
       if ((chat.uploadBytes ?? 0) + bytes > MAX_CHAT_UPLOAD_BYTES)
@@ -1247,6 +1271,7 @@ export class ChatsService {
     context: TenantContext,
     connectors: readonly ChatConnector[] | undefined,
     toolApprovals: readonly ChatToolApproval[] | undefined,
+    prefetched?: Promise<McpConnectionDoc[]>,
   ): Promise<RunConnectors> {
     if (!connectors || connectors.length === 0) return { mcp: [], network: [] };
     const result = await timed("connectors", () =>
@@ -1254,7 +1279,7 @@ export class ChatsService {
         context.dbName,
         context.userId,
         runConnectorRefs(connectors),
-        { toolApprovals: approvalRefs(toolApprovals) },
+        { toolApprovals: approvalRefs(toolApprovals), prefetched },
       ),
     );
     if (result.ok) return { mcp: result.specs, network: result.network };
@@ -1308,20 +1333,36 @@ export class ChatsService {
   // The chat's network grants widen it (applyNetworkGrants checks each
   // again); `networkOnce` are the Allow-once grants used, removed when the
   // run ends.
+  // `hosts` is the read tenantHosts started earlier, when the caller had one.
   private async runNetwork(
     context: TenantContext,
     connectors: readonly RunNetworkConnector[],
     grants?: readonly ChatNetworkGrant[],
+    hosts?: Promise<readonly string[]> | null,
   ): Promise<{ network?: RunNetworkPolicy; networkOnce: ObjectId[] }> {
     if (!this.config.chat?.sandboxNetwork) return { networkOnce: [] };
-    const tenantHosts = await timed("network", () =>
-      this.tenantNetwork.runHosts(context.dbName),
-    );
+    const tenantHosts = await (hosts ?? this.tenantHosts(context));
+    // Null only with the sandbox network off, returned above; narrows the type.
+    if (!tenantHosts) return { networkOnce: [] };
     const { policy, onceIds } = applyNetworkGrants(
       buildNetworkPolicy({ tenantHosts, connectors }),
       grants,
     );
     return { network: policy, networkOnce: onceIds };
+  }
+
+  // Starts reading the tenant's hosts for a run, so the read overlaps the
+  // other reads before a save. Null when the sandbox network is off. A caller
+  // that refuses first never awaits it, so its failure is not left unhandled.
+  private tenantHosts(
+    context: TenantContext,
+  ): Promise<readonly string[]> | null {
+    if (!this.config.chat?.sandboxNetwork) return null;
+    const hosts = timed("network", () =>
+      this.tenantNetwork.runHosts(context.dbName),
+    );
+    hosts.catch(() => undefined);
+    return hosts;
   }
 
   // The owner's answer to a network card on a saved reply: Allow once, Allow

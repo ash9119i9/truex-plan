@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 import { ObjectId, type ClientSession, type Collection } from "mongodb";
 import { DomainError } from "../../common/domain-error";
-import { TtlCache } from "../../common/ttl-cache";
+import { CATALOG_STALE_MS, TtlCache } from "../../common/ttl-cache";
 import { DatabaseService } from "../../database/database.service";
 import { isDuplicateKeyError } from "../../database/mongo-errors";
 import { ModelsService } from "../models/models.service";
@@ -29,6 +29,8 @@ export class BuiltinAgentsService {
   private readonly cache = new TtlCache<BuiltinAgentDoc[]>(
     () => this.loadAll(),
     BUILTIN_CACHE_TTL_MS,
+    Date.now,
+    CATALOG_STALE_MS,
   );
 
   constructor(
@@ -179,9 +181,10 @@ export class BuiltinAgentsService {
   }
 
   // A built-in as the cache knows it, instructions included: a disabled one
-  // keeps starting chats for up to BUILTIN_CACHE_TTL_MS after the product
-  // team disables it. "unknown" when the cache has never seen the ID: a user
-  // agent, or a built-in added since the cache loaded (read it fresh then).
+  // keeps starting chats for up to BUILTIN_CACHE_TTL_MS + CATALOG_STALE_MS
+  // after the product team disables it. "unknown" when the cache has never
+  // seen the ID: a user agent, or a built-in added since the cache loaded
+  // (read it fresh then).
   async cachedById(
     id: ObjectId,
   ): Promise<BuiltinAgentDoc | "disabled" | "unknown"> {

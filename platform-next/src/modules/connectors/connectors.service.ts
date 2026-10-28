@@ -147,7 +147,15 @@ export interface RunSpecsOptions {
   // approvedTools per connector when non-empty.
   toolApprovals?: readonly RunToolApproval[];
   fetchImpl?: FetchLike;
+  // The owner's connections from ownerConnections, read earlier alongside
+  // other work. A connector it lacks is read now, so it is never the reason
+  // a connection looks missing.
+  prefetched?: Promise<McpConnectionDoc[]>;
 }
+
+// Bounds ownerConnections. One row per connector (index owner_connector), and
+// the catalog holds at most a few hundred.
+const MAX_OWNER_CONNECTIONS = 200;
 
 function refIdOf(ref: RunConnectorRef): ObjectId {
   return ref instanceof ObjectId ? ref : ref.connectorId;
@@ -651,9 +659,7 @@ export class ConnectorsService {
     const connectorIds = connectors.map(refIdOf);
     const [enabled, rows] = await Promise.all([
       this.catalog.enabledConnectors(),
-      this.connections(dbName)
-        .find({ ownerId: userId, connectorId: { $in: connectorIds } })
-        .toArray(),
+      this.connectionRows(dbName, userId, connectorIds, options.prefetched),
     ]);
     const catalog = new Map(enabled.map((c) => [c._id.toHexString(), c]));
     const byConnector = new Map(
@@ -771,6 +777,48 @@ export class ConnectorsService {
         { $set: { lastUsedAt: new Date(now) } },
       )
       .catch(() => undefined);
+  }
+
+  // Every connection the owner has, for a caller to start reading before it
+  // knows which connectors a run needs (runSpecs' `prefetched`). One indexed
+  // query, skipped while no connector is enabled; a failure is left to
+  // runSpecs, which reads again.
+  ownerConnections(
+    dbName: string,
+    userId: ObjectId,
+  ): Promise<McpConnectionDoc[]> {
+    const rows = (async () => {
+      if (!this.enabled) return [];
+      if ((await this.catalog.enabledConnectors()).length === 0) return [];
+      return this.connections(dbName)
+        .find({ ownerId: userId })
+        .limit(MAX_OWNER_CONNECTIONS)
+        .toArray();
+    })();
+    rows.catch(() => undefined);
+    return rows;
+  }
+
+  // The owner's rows for these connectors: from the prefetch when it has
+  // every one, otherwise read now.
+  private async connectionRows(
+    dbName: string,
+    userId: ObjectId,
+    connectorIds: readonly ObjectId[],
+    prefetched: Promise<McpConnectionDoc[]> | undefined,
+  ): Promise<McpConnectionDoc[]> {
+    const early = await prefetched?.catch(() => undefined);
+    if (early) {
+      const rows = early.filter(
+        (row) =>
+          row.ownerId.equals(userId) &&
+          connectorIds.some((id) => id.equals(row.connectorId)),
+      );
+      if (rows.length === connectorIds.length) return rows;
+    }
+    return this.connections(dbName)
+      .find({ ownerId: userId, connectorId: { $in: [...connectorIds] } })
+      .toArray();
   }
 
   // An access token that is valid for at least REFRESH_MARGIN_MS, refreshing

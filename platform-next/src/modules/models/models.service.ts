@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { ObjectId, type ClientSession, type Collection } from "mongodb";
 import { canonicalJson } from "../../common/canonical-json";
 import { DomainError } from "../../common/domain-error";
-import { TtlCache } from "../../common/ttl-cache";
+import { CATALOG_STALE_MS, TtlCache } from "../../common/ttl-cache";
 import { DatabaseService } from "../../database/database.service";
 import { isDuplicateKeyError } from "../../database/mongo-errors";
 import {
@@ -12,8 +12,9 @@ import {
   type ModelSpec,
 } from "./model";
 
-// Members' reads tolerate this much staleness after the product team changes
-// a model. Writes that depend on a model (creating an agent) read it fresh.
+// Members' reads tolerate this much staleness, plus CATALOG_STALE_MS, after
+// the product team changes a model. Writes that depend on a model (creating
+// an agent) read it fresh.
 export const MODEL_CACHE_TTL_MS = 60_000;
 // The catalog holds a handful of models; this only bounds a mistake.
 const MAX_MODELS = 500;
@@ -65,6 +66,8 @@ export class ModelsService {
   private readonly enabledCache = new TtlCache<ModelDoc[]>(
     () => this.loadEnabled(),
     MODEL_CACHE_TTL_MS,
+    Date.now,
+    CATALOG_STALE_MS,
   );
 
   constructor(
@@ -211,7 +214,8 @@ export class ModelsService {
   }
 
   // An enabled model, for starting a turn: from the cache, so a model the
-  // product team disables keeps starting turns for up to MODEL_CACHE_TTL_MS.
+  // product team disables keeps starting turns for up to MODEL_CACHE_TTL_MS
+  // + CATALOG_STALE_MS.
   // One the cache does not know (added since it loaded) is read now.
   async enabledById(modelId: ObjectId): Promise<ModelDoc | null> {
     const cached = (await this.enabledModels()).find((model) =>

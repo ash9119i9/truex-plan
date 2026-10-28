@@ -43,7 +43,7 @@ A normal message makes 6–7 MongoDB calls in total (new chat / follow-up).
 | Recovery sweep                       | every 60 s, 100 chats per tenant per sweep | `RecoverySweep`                 |
 | Stream heartbeat and access re-check | 15 s                                       | `STREAM_HEARTBEAT_MS`           |
 | Access token                         | 5 min                                      | revocation window for routes    |
-| Model and built-in cache             | 60 s                                       | disable takes up to 60 s        |
+| Model and built-in cache             | 60 s, served 60 s more while reloading     | disable takes up to 2 min       |
 | Shutdown drain                       | 30 s                                       | adapter `RUNTIME_DRAIN_MS`      |
 
 Capacity per adapter was not measured locally by decision; it is measured on
