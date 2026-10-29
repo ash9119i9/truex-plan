@@ -57,5 +57,7 @@ import { UploadsController } from "./uploads.controller";
     RecoverySweep,
     TenantGuard,
   ],
+  // The GoalWatcher (goals module) saves goal runs through these.
+  exports: [RUNTIME_CLIENT, RunExecutor, ChatsService],
 })
 export class ChatsModule {}

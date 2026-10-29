@@ -2,6 +2,7 @@ import type { Db } from "mongodb";
 import { AGENT_INDEXES } from "../agents/agent";
 import { CHAT_INDEXES } from "../chats/chat";
 import { CONNECTION_INDEXES } from "../connectors/connection";
+import { GOAL_INDEXES } from "../goals/goal";
 
 // Every index a tenant database needs. Provisioning builds them before the
 // tenant becomes usable, so requests never check or build indexes.
@@ -27,12 +28,19 @@ import { CONNECTION_INDEXES } from "../connectors/connection";
 // 6: followups_created on runs, for the Follow Up report. A tenant still
 // behind reports correctly, by a collection scan; ensure-tenant-indexes
 // before running followups-report on a large database.
-export const TENANT_INDEX_VERSION = 6;
+// 7: chat_unique and slot_held_owner on goals, for goal mode. A tenant still
+// behind could store two goal documents for one chat (concurrent first
+// updates need the unique index); ensure-tenant-indexes before setting
+// tenant goal settings.
+// 8: active_watch on goals, for the goal watch sweep. A tenant still behind
+// is swept correctly, by a scan of its goals.
+export const TENANT_INDEX_VERSION = 8;
 
 const TENANT_INDEXES = {
   ...CHAT_INDEXES,
   ...AGENT_INDEXES,
   ...CONNECTION_INDEXES,
+  ...GOAL_INDEXES,
 };
 
 // Safe to repeat: an index that already exists with the same definition is a

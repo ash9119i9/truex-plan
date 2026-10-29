@@ -233,6 +233,8 @@ export class Run {
     private readonly bufferLimit: number,
     // The run's own first input; its userMessage item is never listed.
     readonly inputClientMessageId: string | null = null,
+    // "goal": Codex started the turn for the chat's goal; there is no input.
+    readonly trigger: "user" | "goal" = "user",
   ) {}
 
   get lastSeq(): number {

@@ -17,6 +17,8 @@ import {
   type FollowUpsReportCommand,
   type HelpersReportCommand,
   type ProvisionTenantCommand,
+  type RemoveTenantGoalsCommand,
+  type SetTenantGoalsCommand,
 } from "../modules/operator/operator.service";
 import { toolchainPackages } from "../modules/skills/skill-bundle";
 
@@ -28,6 +30,8 @@ const USAGE = `Usage:
   operator provision-tenant --operator <name> --tenant <id> --name <name> --kind default|organization
   operator assign-role --operator <name> --user <id|email> --tenant <id> --role user|admin
   operator ensure-tenant-indexes --operator <name> --tenant <id> | --all
+  operator tenant-goals-set --operator <name> --tenant <id> --presets <n,n,n> --max-budget <n> --max-active <n>
+  operator tenant-goals-remove --operator <name> --tenant <id>
   operator model-put --operator <name> --file <definition.json> [--allow-dev-credentials]
   operator model-enable|model-disable --operator <name> --slug <slug>
   operator model-list --operator <name>
@@ -47,6 +51,10 @@ Tenant IDs are 24-character lowercase hex ObjectIds. Re-running a command with
 the same arguments is safe. Models are never deleted: disable them instead.
 ensure-tenant-indexes --all builds the indexes of every provisioned tenant
 behind this release; run it as a deploy step after an index change.
+tenant-goals-set turns goals on for the tenant's new chats: three ascending
+token budget presets, a maximum above them, and how many goals may be active
+at once across the tenant. Existing chats keep the maximum they started with;
+tenant-goals-remove turns goals off for new chats only.
 followups-report prints counts and rates only (never message text). --since
 takes d, h or m (default 7d); --min-sets hides small cells; --close sets the
 word-overlap threshold for "typed something close" (default 0.6).
@@ -89,6 +97,8 @@ export type OperatorCommand =
   | ({ command: "provision-tenant" } & ProvisionTenantCommand)
   | ({ command: "assign-role" } & AssignRoleCommand)
   | ({ command: "ensure-tenant-indexes" } & EnsureTenantIndexesCommand)
+  | ({ command: "tenant-goals-set" } & SetTenantGoalsCommand)
+  | ({ command: "tenant-goals-remove" } & RemoveTenantGoalsCommand)
   | ({
       command: "model-put";
       allowDevCredentials: boolean;
@@ -159,6 +169,9 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         since: { type: "string" },
         "min-sets": { type: "string" },
         close: { type: "string" },
+        presets: { type: "string" },
+        "max-budget": { type: "string" },
+        "max-active": { type: "string" },
       },
     });
   } catch (error) {
@@ -206,6 +219,27 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
             tenantId: tenantIdOf(values),
           };
     }
+    case "tenant-goals-set":
+      // Passed on as numbers without judging them: the service validates,
+      // so a refusal is audited.
+      return {
+        command: "tenant-goals-set",
+        operator,
+        tenantId: tenantIdOf(values),
+        goals: {
+          presets: required(values, "presets")
+            .split(",")
+            .map((preset) => Number(preset.trim())),
+          maxTokenBudget: Number(required(values, "max-budget")),
+          maxActive: Number(required(values, "max-active")),
+        },
+      };
+    case "tenant-goals-remove":
+      return {
+        command: "tenant-goals-remove",
+        operator,
+        tenantId: tenantIdOf(values),
+      };
     case "model-put":
       return {
         command: "model-put",
@@ -415,6 +449,10 @@ export async function runOperatorCommand(
     case "skill-list":
       return { skills: await operator.listSkills() };
   }
+  if (command.command === "tenant-goals-set")
+    return operator.setTenantGoals(command);
+  if (command.command === "tenant-goals-remove")
+    return operator.removeTenantGoals(command);
   if (command.command === "followups-report")
     return operator.followUpsReport(command);
   if (command.command === "helpers-report")

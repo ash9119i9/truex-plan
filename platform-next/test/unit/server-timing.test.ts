@@ -20,6 +20,7 @@ import {
 import type {
   AdapterEvent,
   RuntimeClient,
+  StartRunBody,
 } from "../../src/modules/chats/runtime-client";
 
 function clock(start = 1_000) {
@@ -182,7 +183,7 @@ describe("Server-Timing", () => {
       replySeq: 2,
       ref: { tenantId: "t", chatId: "c" },
       mode: "start",
-      body: {} as Dispatch["body"],
+      body: {} as StartRunBody,
     };
     let started: RequestTiming | undefined;
     serverTiming({} as Request, fakeResponse(), () => {

@@ -7,6 +7,8 @@ export type ErrorCode =
   | "NOT_FOUND"
   | "CONFLICT"
   | "LIMIT_REACHED"
+  | "GOAL_LIMIT"
+  | "OBJECTIVE_TOO_LONG"
   | "MODEL_UNAVAILABLE"
   | "STALE_REVISION"
   | "CHAT_BUSY"

@@ -7,9 +7,11 @@ import {
 } from "node:http";
 import type { RuntimeLimits } from "./config";
 import {
+  ID,
   id,
   parseApproval,
   parseChatRef,
+  parseGoalSet,
   parseSteer,
   parseStartRun,
 } from "./contract";
@@ -27,7 +29,7 @@ import {
   writeSkill,
 } from "./runtime/skills";
 import { writeUpload } from "./runtime/uploads";
-import type { Run, RunEvent } from "./runtime/run";
+import type { Run, RunEvent, Subscriber } from "./runtime/run";
 
 // The adapter's HTTP surface: authenticated operations plus health.
 // Bodies are size-limited JSON; everything else is refused before it reaches
@@ -101,14 +103,15 @@ export function createAdapterServer(options: ServerOptions): Server {
           });
       }
       const run = options.manager.startRun(request);
-      return stream(res, run, 0, options);
+      return stream(res, run, 0, options, { runId: run.runId });
     }
     if (parts[1] === "runs" && parts.length === 4) {
       const runId = id(parts[2], "runId");
       if (req.method === "GET" && parts[3] === "events") {
         const ref = parseChatRef(queryRef(url));
         const after = cursor(url.searchParams.get("after"));
-        return stream(res, options.manager.getRun(runId, ref), after, options);
+        const run = options.manager.getRun(runId, ref);
+        return stream(res, run, after, options, { runId });
       }
       if (req.method === "POST" && parts[3] === "stop") {
         const run = options.manager.stopRun(
@@ -176,6 +179,65 @@ export function createAdapterServer(options: ServerOptions): Server {
         "cache-control": "no-store",
       });
       return res.end(data);
+    }
+    if (parts[1] === "chats" && parts.length === 4 && parts[3] === "goal") {
+      if (req.method === "PUT") {
+        const request = parseGoalSet(
+          parts[2],
+          await readJson(req),
+          options.limits,
+          { allowLoopbackMcp: options.allowLoopbackMcp },
+        );
+        // An active set may start or resume the thread, which reads the
+        // skills from disk, as a run does.
+        if (request.status === "active" && request.run.skills?.length) {
+          const missing = await missingSkills(
+            options.stateDir,
+            request.run.skills,
+          );
+          if (missing.length > 0)
+            throw new AdapterError("SKILLS_MISSING", undefined, {
+              missing: missing.map((skill) => skill.sha256),
+            });
+        }
+        return sendJson(res, 200, {
+          goal: await options.manager.setGoal(request),
+        });
+      }
+      if (req.method === "GET" || req.method === "DELETE") {
+        const ref = parseChatRef({
+          tenantId: url.searchParams.get("tenantId") ?? undefined,
+          chatId: parts[2],
+        });
+        if (req.method === "GET")
+          return sendJson(res, 200, {
+            goal: await options.manager.getGoal(ref),
+          });
+        return sendJson(res, 200, {
+          cleared: await options.manager.clearGoal(ref),
+        });
+      }
+    }
+    if (
+      req.method === "GET" &&
+      parts[1] === "chats" &&
+      parts.length === 4 &&
+      parts[3] === "events"
+    ) {
+      const ref = parseChatRef({
+        tenantId: url.searchParams.get("tenantId") ?? undefined,
+        chatId: parts[2],
+      });
+      const after = cursor(url.searchParams.get("after"));
+      const streamId = url.searchParams.get("streamId") ?? undefined;
+      if (streamId !== undefined && !ID.test(streamId))
+        throw new AdapterError("INVALID_REQUEST", "streamId is malformed.");
+      const events = options.manager.chatEvents(ref);
+      const source = {
+        subscribe: (from: number, subscriber: Subscriber) =>
+          events.subscribe({ streamId, after: from }, subscriber),
+      };
+      return stream(res, source, after, options, { ...ref });
     }
     if (
       req.method === "PUT" &&
@@ -307,13 +369,15 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(payload);
 }
 
-// Streams a run's events after `after`, then live until run.completed. A
-// caller disconnecting does not stop the run; only an explicit stop does.
+// Streams a run's events after `after`, then live until run.completed, or a
+// chat's, which never ends. A caller disconnecting does not stop the run;
+// only an explicit stop does.
 function stream(
   res: ServerResponse,
-  run: Run,
+  source: Pick<Run, "subscribe">,
   after: number,
   options: ServerOptions,
+  fields: Record<string, unknown>,
 ) {
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
@@ -337,7 +401,7 @@ function stream(
     if (closed) return;
     res.write(chunk);
     if (res.writableLength > MAX_BUFFERED) {
-      options.log("subscriber_dropped", { runId: run.runId });
+      options.log("subscriber_dropped", fields);
       close();
       res.destroy();
     }
@@ -348,7 +412,7 @@ function stream(
     );
   let unsubscribe: () => void = () => undefined;
   res.on("close", close);
-  unsubscribe = run.subscribe(after, {
+  unsubscribe = source.subscribe(after, {
     send,
     end: () => {
       close();

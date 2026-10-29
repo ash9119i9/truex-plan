@@ -7,6 +7,11 @@ export type DomainErrorCode =
   | "FORBIDDEN"
   // A per-user or per-tenant cap would be exceeded.
   | "LIMIT_REACHED"
+  // The member, or the tenant, has as many goals running as allowed.
+  | "GOAL_LIMIT"
+  // Review feedback merged into a goal's objective would not fit; the
+  // member shortens it first. Nothing is cut.
+  | "OBJECTIVE_TOO_LONG"
   // The referenced model is missing or disabled.
   | "MODEL_UNAVAILABLE"
   // The caller edited an out-of-date copy.

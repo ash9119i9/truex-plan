@@ -12,12 +12,15 @@ import type { Role } from "../memberships/membership";
 import { MembershipsService } from "../memberships/memberships.service";
 import { TenantsService } from "../tenants/tenants.service";
 
-// Public tenant metadata plus the caller's role, the same shape as an entry
-// in GET /me/tenants. Never the database name.
+// Public tenant metadata plus the caller's role, as in an entry of
+// GET /me/tenants, and the tenant's goal settings. Never the database name
+// or the tenant-wide active-goal cap.
 export interface CurrentTenantView {
   id: string;
   name: string;
   role: Role;
+  // What the goal dialog offers new chats; null when goals are off.
+  goals: { presets: number[]; maxTokenBudget: number } | null;
 }
 
 // The tenant named by ?tenantId=, as the caller sees it. A frontend calls
@@ -37,10 +40,13 @@ export class CurrentTenantController {
   async current(@CurrentTenant() context: TenantContext): Promise<{
     tenant: CurrentTenantView;
   }> {
-    const [membership, tenant] = await timed("tenant", () =>
+    // The goal settings come from the cache a chat start snapshots, so the
+    // dialog shows what a new chat gets and the next start reads nothing.
+    const [membership, tenant, goals] = await timed("tenant", () =>
       Promise.all([
         this.memberships.findActive(context.userId, context.tenantId),
         this.tenants.findUsable(context.tenantId),
+        this.tenants.goalsOf(context.tenantId),
       ]),
     );
     if (!membership || !tenant)
@@ -50,6 +56,12 @@ export class CurrentTenantController {
         id: toWireId(tenant._id),
         name: tenant.name,
         role: membership.role,
+        goals: goals
+          ? {
+              presets: [...goals.presets],
+              maxTokenBudget: goals.maxTokenBudget,
+            }
+          : null,
       },
     };
   }

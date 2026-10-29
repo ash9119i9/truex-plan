@@ -22,6 +22,7 @@ import {
   type ActivityStatus,
   type ApprovalDecision,
   type ChatDoc,
+  type GoalRunDoc,
   type MessageDoc,
   type MessageState,
   type RunDoc,
@@ -385,6 +386,74 @@ export class ChatStore {
     };
   }
 
+  // Saves a turn Codex started for the chat's goal as a goal run that claims
+  // the chat, in one call plus the commit, as a member's send does. The
+  // claim requires the chat as it was read (no run holds it, the same seq
+  // and thread), so the reply's messages start at `chat.nextSeq`.
+  //   started: saved and claimed; the caller reads it
+  //   exists:  this run ID is saved already; a repeat changes nothing
+  //   busy:    another run holds the chat, or it changed since it was read
+  async beginGoalRun(
+    dbName: string,
+    chat: Pick<ChatDoc, "_id" | "ownerId" | "nextSeq">,
+    run: { runId: ObjectId; threadId: string; turnId: string },
+  ): Promise<"started" | "exists" | "busy"> {
+    const { chats, runs } = this.collections(dbName);
+    const now = new Date();
+    const doc: GoalRunDoc = {
+      _id: run.runId,
+      chatId: chat._id,
+      ownerId: chat.ownerId,
+      trigger: "goal",
+      threadId: run.threadId,
+      turnId: run.turnId,
+      status: "accepted",
+      timings: { acceptedAt: now },
+      createdAt: now,
+      updatedAt: now,
+    };
+    try {
+      await this.database.withTransaction(async (session) => {
+        const result = await this.database.bulkWrite(
+          [
+            // First, so a repeat stops here on the unique _id.
+            { namespace: runs.namespace, name: "insertOne", document: doc },
+            {
+              namespace: chats.namespace,
+              name: "updateOne",
+              filter: {
+                _id: chat._id,
+                activeRun: null,
+                nextSeq: chat.nextSeq,
+                "runtime.threadId": run.threadId,
+                "runtime.state": { $ne: "lost" },
+              },
+              update: {
+                $set: {
+                  activeRun: {
+                    runId: run.runId,
+                    leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+                  },
+                  updatedAt: now,
+                },
+              },
+            },
+          ],
+          session,
+          true,
+        );
+        // Aborts the insert with it.
+        if (result.updateResults?.get(1)?.matchedCount !== 1)
+          throw new ClaimMoved();
+      });
+      return "started";
+    } catch (error) {
+      if (isDuplicateKeyError(error)) return "exists";
+      if (error instanceof ClaimMoved) return "busy";
+      throw error;
+    }
+  }
+
   // The runtime took the run: both writes in one call. Each is conditional
   // and safe to repeat, so they need no transaction.
   async markAccepted(
@@ -693,7 +762,7 @@ export class ChatStore {
         return {
           run: saved,
           messages: await messages
-            .find({ runId, _id: { $ne: saved.userMessageId } }, { session })
+            .find(ownMessagesOf(saved), { session })
             .sort({ seq: 1 })
             .toArray(),
         };
@@ -845,4 +914,12 @@ export class ChatStore {
       }
     }
   }
+}
+
+// The messages a run wrote: all of its messages but the member's own (a goal
+// run has none).
+export function ownMessagesOf(run: RunDoc) {
+  return run.userMessageId
+    ? { runId: run._id, _id: { $ne: run.userMessageId } }
+    : { runId: run._id };
 }

@@ -4,13 +4,21 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { RuntimeLimits } from "../config";
 import { canonical } from "../canonical";
-import type {
-  ApprovalAnswer,
-  McpServerSpec,
-  NetworkPolicy,
-  StartRunRequest,
+import {
+  GOAL_STATUSES,
+  goalRunId,
+  type ApprovalAnswer,
+  type ChatGoal,
+  type GoalSetRequest,
+  type GoalSettings,
+  type GoalStatus,
+  type McpServerSpec,
+  type NetworkPolicy,
+  type RunContext,
+  type StartRunRequest,
 } from "../contract";
 import {
+  goalProcessArgs,
   threadResumeParams,
   SUBAGENT_MAX_WAIT_MS,
   threadStartParams,
@@ -42,6 +50,7 @@ import {
   RULES,
   type CodingSetup,
 } from "../codex/coding";
+import { ChatStream } from "./chat-stream";
 import { SkillUseWatcher } from "./skill-use";
 import { linkSkills, skillRoot } from "./skills";
 import { checkedImages } from "./uploads";
@@ -64,12 +73,12 @@ import {
 } from "../errors";
 import {
   isFinished,
+  Run,
   type ActivityStatus,
   type ApprovalDecision,
   type ApprovalParam,
   type PendingApproval,
   type PlanStep,
-  type Run,
   type RunPlan,
   type ToolErrorCode,
 } from "./run";
@@ -83,8 +92,14 @@ export interface ChatHost {
   readonly limits: RuntimeLimits;
   // Set when the operator turned coding on: every run gets the coding profile.
   readonly coding?: CodingSetup | undefined;
+  // Takes one of the manager's process slots before a goal request starts a
+  // process (RUNTIME_BUSY at capacity); a no-op while the chat holds one.
+  reserveSlot(chat: ChatRuntime): void;
   // Called when the chat's process slot is free again.
   releaseSlot(chat: ChatRuntime): void;
+  // Registers a run Codex started for the chat's goal, like an admitted one:
+  // findable by ID until it expires, and awaited by drain.
+  adoptRun(run: Run, execution: Promise<void>): void;
   log(event: string, fields: Record<string, unknown>): void;
 }
 
@@ -292,10 +307,76 @@ const STEER_LIMIT = 20;
 // trip of that report reaching the adapter.
 const TOOL_WATCHDOG_GRACE_MS = 15_000;
 
+// A loaded thread with this goals setting, or the thread to set a goal on.
+type ThreadContext = RunContext & { readonly goals?: GoalSettings };
+
+type GoalOrigin = "user" | "model";
+
+// A goal run's request hash. No client request hashes to it, so a start
+// carrying a goal run's ID is RUN_CONFLICT.
+const GOAL_RUN_HASH = "goal";
+
+interface GoalIdentity {
+  readonly createdAt: number;
+  readonly objective: string;
+}
+
+const identity = (goal: ChatGoal): GoalIdentity => ({
+  createdAt: goal.createdAt,
+  objective: goal.objective,
+});
+
+// A lead turn that no run owns yet, and its events so far.
+interface UnownedTurn {
+  readonly turnId: string;
+  readonly events: Notification[];
+}
+
 export class ChatRuntime {
   // True while this chat holds one of the manager's process slots.
   hasSlot = false;
   lastUsedAt = Date.now();
+  // Active goal sets admitted and not yet answered. Such a set may start or
+  // resume the thread, so the manager admits no run meanwhile (CHAT_BUSY).
+  startingGoal = 0;
+  // Goal requests admitted and not yet answered; the manager neither stops
+  // this chat's process for idleness nor evicts it meanwhile.
+  goalRequests = 0;
+  // Goal requests reach Codex one at a time, in the order they arrived.
+  private goalChain: Promise<unknown> = Promise.resolve();
+  // The chat stream: goal changes and the runs Codex starts for the goal.
+  readonly events: ChatStream;
+  // The chat's one thread, once chat.json has been read or written.
+  private threadId: string | null = null;
+  // What the thread was last loaded or run with, without the input: a goal
+  // run uses it. It holds credentials, so it is dropped with the process.
+  private context: ThreadContext | undefined;
+  // The goal Codex last reported (null: none or cleared) and whose it is.
+  private goal: ChatGoal | null = null;
+  private goalOrigin: GoalOrigin | null = null;
+  // The goal this adapter set, by createdAt and objective (Codex goals have
+  // no ID, goals probe 10), kept in chat.json so a new process or adapter
+  // still knows it; undefined until chat.json is read. A set that makes a
+  // goal active, or gives it an objective, makes it the adapter's; a pause
+  // does not.
+  private ownGoal: GoalIdentity | null | undefined;
+  // Such sets in flight. Codex reports a set's goal (turnId null) right
+  // after answering it, sometimes before the answer is read; such an update
+  // is the set's.
+  private settingOwn = 0;
+  // Goal pauses sent and not yet answered. `close` waits for them, so a
+  // stop that restarts the process does not end it before the pause lands.
+  private readonly pauses = new Set<Promise<void>>();
+  // A pause of a model-created goal is in flight.
+  private pausingModelGoal = false;
+  // A stop pauses the active goal: wanted until the pause is sent (the goal
+  // may be reported only after the stopped run has ended), then sent, so it
+  // is sent once. `origin` is "user" for a member's Stop. The next run or
+  // goal set starts afresh.
+  private stopPause: { origin: "user" | undefined; sent: boolean } | undefined;
+  // Lead turns Codex started that no run owns yet (see onCodexNotification),
+  // oldest first.
+  private unowned: UnownedTurn[] = [];
   private process: CodexProcess | undefined;
   private starting: Promise<CodexProcess> | undefined;
   private closing: Promise<void> | undefined;
@@ -312,6 +393,9 @@ export class ChatRuntime {
   // none). Codex reads the catalog once per process, so a different one
   // restarts the process.
   private processCatalog = "";
+  // The goal budget maximum the running process was started with
+  // (`goalProcessArgs`), or undefined for none.
+  private processGoalMax: number | undefined;
   private active: Active | undefined;
   private readonly home: string;
   private readonly workspace: string;
@@ -348,10 +432,27 @@ export class ChatRuntime {
       },
       realStateDir(stateDir),
     );
+    this.events = new ChatStream(host.limits.bufferEvents, () => ({
+      goal: this.goal,
+      origin: this.goalOrigin,
+      activeRun: this.live
+        ? {
+            runId: this.live.run.runId,
+            turnId: this.live.run.turnId,
+            trigger: this.live.run.trigger,
+          }
+        : null,
+    }));
   }
 
   get activeRun(): Run | undefined {
     return this.active?.run;
+  }
+
+  // The active run, unless it has just finished.
+  private get live(): Active | undefined {
+    const active = this.active;
+    return active && !isFinished(active.run.status) ? active : undefined;
   }
 
   get hasProcess(): boolean {
@@ -365,6 +466,91 @@ export class ChatRuntime {
   // Runs one turn to its outcome. Never throws: every failure finishes the
   // run with a typed error and the delivery state known at that point.
   async execute(run: Run, request: StartRunRequest): Promise<void> {
+    const { active, done } = this.newActive(run, request);
+    this.active = active;
+    this.stopPause = undefined;
+    // The turn Codex answered turn/start with, even if the run ended first.
+    let answered: string | null = null;
+    try {
+      const codex = await this.prepareThread(run, request);
+      active.codex = codex;
+      if (request.skills?.length && this.rolloutPath) {
+        active.skillUse = new SkillUseWatcher(
+          this.rolloutPath,
+          new Set(request.skills.map((skill) => skill.slug)),
+          (slug) => run.useSkill(slug),
+        );
+        await active.skillUse.begin();
+      }
+      const images = await checkedImages(
+        this.workspace,
+        request.input.images ?? [],
+      );
+      if (run.stopRequested) return this.settleStopped(active);
+      run.timings.dispatchedAt = Date.now();
+      run.delivery = "unknown";
+      this.armWatchdog(active, request.limits.firstResponseMs);
+      let turnId: string;
+      try {
+        const accepted = await codex.request<{ turn: { id: string } }>(
+          "turn/start",
+          {
+            threadId: run.threadId,
+            clientUserMessageId: request.input.clientMessageId,
+            // Images follow the text, each labelled by Codex with its path
+            // so the model can tie it to the listed attachment.
+            input: [
+              { type: "text", text: request.input.text, text_elements: [] },
+              ...images.map((path) => ({ type: "localImage", path })),
+            ],
+          },
+        );
+        turnId = accepted.turn.id;
+        answered = turnId;
+      } catch (error) {
+        // Codex rejects an invalid turn/start (unknown thread, bad params)
+        // before running anything; any other failure leaves it unknown.
+        if (error instanceof RpcError && REJECTED.has(error.code))
+          run.delivery = "none";
+        if (error instanceof RpcTimeout) codex.kill();
+        throw error;
+      }
+      if (isFinished(run.status)) return;
+      // Whatever turn Codex names is this run's. When Codex had just started
+      // a goal turn, it steers the input into that turn and answers with its
+      // id; nothing tells the two cases apart (goals probe 8), and either
+      // way the turn has exactly one run: this one.
+      run.delivery = "accepted";
+      run.turnId = turnId;
+      run.status = active.interrupting ? "stopping" : "running";
+      run.emit("run.accepted", {
+        threadId: run.threadId,
+        turnId,
+        resumed: run.resumed,
+      });
+      active.wake(); // release steers waiting for acceptance
+      const early = active.early.splice(0);
+      this.keepUnowned(early, turnId);
+      for (const n of early) this.onNotification(active, n);
+      for (const { codex: from, request } of active.earlyRequests.splice(0))
+        this.onApprovalRequest(active, from, request);
+      if (active.interrupting) this.sendInterrupt(active);
+      await done;
+    } catch (error) {
+      this.finish(active, "failed", this.toRunError(error, active));
+    } finally {
+      // A goal turn Codex started before this run's turn was accepted (or
+      // instead of it) still gets a run of its own.
+      if (!run.turnId) this.keepUnowned(active.early.splice(0), answered);
+      this.endRun(active);
+    }
+  }
+
+  // A run's state for one turn, and the promise its outcome settles.
+  private newActive(
+    run: Run,
+    request: RunContext,
+  ): { active: Active; done: Promise<void> } {
     let settled!: () => void;
     const done = new Promise<void>((resolve) => (settled = resolve));
     let wake!: () => void;
@@ -418,74 +604,18 @@ export class ChatRuntime {
       childTimer: undefined,
       leadUsage: null,
     };
-    this.active = active;
-    try {
-      const codex = await this.prepareThread(run, request, active);
-      active.codex = codex;
-      if (request.skills?.length && this.rolloutPath) {
-        active.skillUse = new SkillUseWatcher(
-          this.rolloutPath,
-          new Set(request.skills.map((skill) => skill.slug)),
-          (slug) => run.useSkill(slug),
-        );
-        await active.skillUse.begin();
-      }
-      const images = await checkedImages(
-        this.workspace,
-        request.input.images ?? [],
-      );
-      if (run.stopRequested) return this.settleStopped(active);
-      run.timings.dispatchedAt = Date.now();
-      run.delivery = "unknown";
-      this.armWatchdog(active, request.limits.firstResponseMs);
-      let turnId: string;
-      try {
-        const accepted = await codex.request<{ turn: { id: string } }>(
-          "turn/start",
-          {
-            threadId: run.threadId,
-            clientUserMessageId: request.input.clientMessageId,
-            // Images follow the text, each labelled by Codex with its path
-            // so the model can tie it to the listed attachment.
-            input: [
-              { type: "text", text: request.input.text, text_elements: [] },
-              ...images.map((path) => ({ type: "localImage", path })),
-            ],
-          },
-        );
-        turnId = accepted.turn.id;
-      } catch (error) {
-        // Codex rejects an invalid turn/start (unknown thread, bad params)
-        // before running anything; any other failure leaves it unknown.
-        if (error instanceof RpcError && REJECTED.has(error.code))
-          run.delivery = "none";
-        if (error instanceof RpcTimeout) codex.kill();
-        throw error;
-      }
-      if (isFinished(run.status)) return;
-      run.delivery = "accepted";
-      run.turnId = turnId;
-      run.status = active.interrupting ? "stopping" : "running";
-      run.emit("run.accepted", {
-        threadId: run.threadId,
-        turnId,
-        resumed: run.resumed,
-      });
-      active.wake(); // release steers waiting for acceptance
-      for (const n of active.early.splice(0)) this.onNotification(active, n);
-      for (const { codex: from, request } of active.earlyRequests.splice(0))
-        this.onApprovalRequest(active, from, request);
-      if (active.interrupting) this.sendInterrupt(active);
-      await done;
-    } catch (error) {
-      this.finish(active, "failed", this.toRunError(error, active));
-    } finally {
-      this.clearTimers(active);
-      active.wake(); // a steer may still be waiting if the run never accepted
-      if (this.active === active) this.active = undefined;
-      this.lastUsedAt = Date.now();
-      if (!this.hasProcess) this.host.releaseSlot(this);
-    }
+    return { active, done };
+  }
+
+  // After a run's outcome: frees the chat for the next run, then gives a
+  // goal turn Codex started meanwhile its run.
+  private endRun(active: Active): void {
+    this.clearTimers(active);
+    active.wake(); // a steer may still be waiting if the run never accepted
+    if (this.active === active) this.active = undefined;
+    this.lastUsedAt = Date.now();
+    if (!this.hasProcess) this.host.releaseSlot(this);
+    this.adoptUnowned();
   }
 
   // Stops the active run once. A repeated stop, or one for a finished run, is
@@ -493,6 +623,17 @@ export class ChatRuntime {
   interrupt(reason: "stopped" | RunErrorCode): void {
     const active = this.active;
     if (!active || isFinished(active.run.status) || active.interrupting) return;
+    // A stop pauses the goal first, or Codex continues it with the member's
+    // next turn (goals probe 6), or on the next resume (probe 9). A watchdog
+    // or helper-limit stop too, without the member's origin. A shutdown does
+    // not: the goal continues when the chat is resumed after the restart.
+    if (reason !== "RUNTIME_SHUTDOWN") {
+      this.stopPause ??= {
+        origin: reason === "stopped" ? "user" : undefined,
+        sent: false,
+      };
+      this.pauseForStop();
+    }
     // The lead's turn has ended and its outcome is set; only helpers are
     // still being stopped, within stopMs. Interrupting the lead now would
     // turn a finished reply into "stopped" and restart the process.
@@ -507,6 +648,45 @@ export class ChatRuntime {
     this.stopChildren(active);
     // After the interrupt, so the model cannot act on the refusal first.
     this.endApprovals(active, "cancelled");
+  }
+
+  // Sends a stop's pause while the chat's goal is active; a goal reported
+  // only later (a stop while the run resumes the thread) is paused then.
+  // Written before the interrupt: Codex handles one thread's
+  // thread/goal/set and turn/interrupt in the order written (both are
+  // serialized by thread id), so its idle hook then finds no active goal.
+  private pauseForStop(): void {
+    const wanted = this.stopPause;
+    if (!wanted || wanted.sent || this.goal?.status !== "active") return;
+    if (this.pauseGoal(wanted.origin)) wanted.sent = true;
+  }
+
+  // `thread/goal/set {status: paused}` on the chat's thread; undefined when
+  // there is no process to send it to. "user" records it as the member's
+  // instruction, as the Codex TUI does when it pauses a goal.
+  private pauseGoal(origin: "user" | undefined): Promise<void> | undefined {
+    const codex = this.process;
+    const threadId = this.threadId;
+    if (!codex?.isAlive || !threadId) return undefined;
+    const pause: Promise<void> = codex
+      .request("thread/goal/set", {
+        threadId,
+        ...(origin ? { origin } : {}),
+        status: "paused",
+      })
+      .then(
+        () => undefined,
+        (error: unknown) =>
+          this.host.log("goal_pause_failed", {
+            tenantId: this.tenantId,
+            chatId: this.chatId,
+            error: error instanceof Error ? error.name : typeof error,
+            ...(error instanceof RpcError ? { code: error.code } : {}),
+          }),
+      )
+      .finally(() => this.pauses.delete(pause));
+    this.pauses.add(pause);
+    return pause;
   }
 
   // The member's answer to a pending approval. First answer wins.
@@ -630,15 +810,205 @@ export class ChatRuntime {
     return page.data.map(toHistoryTurn);
   }
 
+  // Sets the chat's goal (`thread/goal/set`, origin user). Making it active
+  // first starts or resumes the thread with the request's context, because
+  // Codex continues a goal only on a loaded thread; Codex then starts a goal
+  // turn by itself. A pause works on an unloaded thread. The caller admits an
+  // active set only while no run is active.
+  setGoal(request: GoalSetRequest): Promise<ChatGoal> {
+    const activating = request.status === "active";
+    if (activating) this.startingGoal++;
+    return this.goalOp(async () => {
+      this.stopPause = undefined;
+      const max = request.goals.maxTokenBudget;
+      let codex: CodexProcess;
+      let threadId: string;
+      if (request.status === "active") {
+        this.host.reserveSlot(this);
+        codex = await this.loadForGoal({
+          ...request.run,
+          goals: request.goals,
+        });
+        threadId = this.loadedThreadId!;
+      } else {
+        const recorded = await this.readRecord();
+        if (!recorded) throw new AdapterError("GOAL_NOT_FOUND");
+        // A set on an unloaded thread reads the process config (goals probe
+        // 2): a process started without this maximum is replaced, which is
+        // safe because nothing of this chat is loaded in it.
+        if (
+          this.process &&
+          !this.active &&
+          this.loadedThreadId === null &&
+          this.processGoalMax !== max
+        )
+          await this.restartForMcpChange("goal_reload");
+        this.host.reserveSlot(this);
+        codex = await this.ensureProcess(max);
+        threadId = recorded;
+      }
+      const owning = activating || request.objective !== undefined;
+      if (owning) this.settingOwn++;
+      let answer: { goal?: unknown };
+      try {
+        answer = await this.goalRequest<{ goal?: unknown }>(
+          codex,
+          "thread/goal/set",
+          {
+            threadId,
+            origin: "user",
+            status: request.status,
+            ...(request.objective !== undefined
+              ? { objective: request.objective }
+              : {}),
+            ...(request.tokenBudget !== undefined
+              ? { tokenBudget: request.tokenBudget }
+              : {}),
+          },
+        );
+      } finally {
+        if (owning) this.settingOwn--;
+      }
+      const goal = this.toChatGoal(answer.goal);
+      if (owning) {
+        this.ownGoal = identity(goal);
+        await this.saveOwnGoal(this.ownGoal);
+      }
+      return goal;
+    }).finally(() => {
+      if (activating) this.startingGoal--;
+    });
+  }
+
+  // The chat's goal, or null when it has none (or no thread yet). Does not
+  // load the thread.
+  getGoal(): Promise<ChatGoal | null> {
+    return this.goalOp(async () => {
+      const threadId = await this.readRecord();
+      if (!threadId) return null;
+      this.host.reserveSlot(this);
+      const codex = await this.ensureProcess();
+      const answer = await this.goalRequest<{ goal?: unknown }>(
+        codex,
+        "thread/goal/get",
+        { threadId },
+      );
+      return answer.goal === null ? null : this.toChatGoal(answer.goal);
+    });
+  }
+
+  // Clears the chat's goal; false when there was none. Does not load the
+  // thread.
+  clearGoal(): Promise<boolean> {
+    return this.goalOp(async () => {
+      const threadId = await this.readRecord();
+      if (!threadId) return false;
+      this.host.reserveSlot(this);
+      const codex = await this.ensureProcess();
+      const answer = await this.goalRequest<{ cleared?: unknown }>(
+        codex,
+        "thread/goal/clear",
+        { threadId, origin: "user" },
+      );
+      return answer.cleared === true;
+    });
+  }
+
+  private goalOp<T>(op: () => Promise<T>): Promise<T> {
+    this.goalRequests++;
+    const result = this.goalChain.then(op).finally(() => {
+      this.goalRequests--;
+      this.lastUsedAt = Date.now();
+      if (!this.hasProcess && this.goalRequests === 0)
+        this.host.releaseSlot(this);
+    });
+    this.goalChain = result.catch(() => undefined);
+    return result;
+  }
+
+  private async loadForGoal(context: ThreadContext): Promise<CodexProcess> {
+    try {
+      return await this.prepareThread(undefined, context);
+    } catch (error) {
+      if (error instanceof AdapterError) throw error;
+      if (error instanceof ThreadFailure)
+        throw error.code === "THREAD_LOST"
+          ? new AdapterError("THREAD_LOST")
+          : new AdapterError(
+              "INVALID_REQUEST",
+              "run.threadId is not this chat's thread.",
+            );
+      this.goalFailure("thread/load", error);
+    }
+  }
+
+  private async goalRequest<T>(
+    codex: CodexProcess,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<T> {
+    try {
+      return await codex.request<T>(method, params);
+    } catch (error) {
+      if (error instanceof RpcError && isMissingThread(error))
+        throw new AdapterError("THREAD_LOST");
+      if (error instanceof RpcError && /no goal exists/i.test(error.message))
+        throw new AdapterError("GOAL_NOT_FOUND");
+      this.goalFailure(method, error);
+    }
+  }
+
+  // Codex's text is untrusted, so only the method and error kind are logged.
+  private goalFailure(method: string, error: unknown): never {
+    this.host.log("goal_request_failed", {
+      tenantId: this.tenantId,
+      chatId: this.chatId,
+      method,
+      error: error instanceof Error ? error.name : typeof error,
+      ...(error instanceof RpcError ? { code: error.code } : {}),
+    });
+    throw new AdapterError("RUNTIME_UNAVAILABLE");
+  }
+
+  private toChatGoal(value: unknown): ChatGoal {
+    const goal = chatGoal(value);
+    if (goal) return goal;
+    this.host.log("goal_response_invalid", {
+      tenantId: this.tenantId,
+      chatId: this.chatId,
+    });
+    throw new AdapterError("RUNTIME_UNAVAILABLE");
+  }
+
+  // Forgets the process and what it had loaded. A goal turn no run owns
+  // ends with it.
+  private unload(): void {
+    this.process = undefined;
+    this.loadedThreadId = null;
+    this.loadedMcpFingerprint = "";
+    this.context = undefined;
+    this.unowned = [];
+  }
+
   // Stops the process. The chat's files stay on disk for the next resume.
   // A new process waits for the old one to exit, so two never share a home.
   close(): Promise<void> {
     this.closing ??= (async () => {
       const codex =
         this.process ?? (await this.starting?.catch(() => undefined));
-      this.process = undefined;
-      this.loadedThreadId = null;
-      this.loadedMcpFingerprint = "";
+      this.unload();
+      // A stop's pause reaches Codex before the process ends, within the
+      // stop's own limit; a pause cut off there is logged as failed.
+      if (this.pauses.size > 0) {
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([
+          Promise.all(this.pauses),
+          new Promise((resolve) => {
+            timer = setTimeout(resolve, this.host.limits.stopMs);
+          }),
+        ]);
+        clearTimeout(timer);
+      }
       await codex?.stop();
     })().finally(() => {
       this.closing = undefined;
@@ -647,11 +1017,9 @@ export class ChatRuntime {
     return this.closing;
   }
 
-  private async prepareThread(
-    run: Run,
-    request: StartRunRequest,
-    active: Active,
-  ) {
+  // Starts or resumes the chat's thread. Without a run (an active goal set),
+  // the goal turn Codex then starts becomes a run (onCodexNotification).
+  private async prepareThread(run: Run | undefined, request: ThreadContext) {
     await mkdir(this.home, { recursive: true, mode: 0o700 });
     await mkdir(this.workspace, { recursive: true, mode: 0o700 });
     const coding = await this.prepareCoding(request);
@@ -664,6 +1032,7 @@ export class ChatRuntime {
       mcp,
       this.host.coding ? request.network : undefined,
       request.subAgents,
+      request.goals,
     );
     if (
       recorded &&
@@ -676,12 +1045,10 @@ export class ChatRuntime {
       this.processCatalog !== (await this.catalogOnDisk())
     )
       await this.restartForMcpChange();
-    const codex = await this.ensureProcess();
-    // Attach the listener before thread/start or thread/resume so a connector's
-    // `mcpServer/startupStatus/updated` (which the pin emits during those calls,
-    // before any turn exists) reaches the run and surfaces as `connector.status`.
-    codex.setListener((n) => this.onNotification(active, n));
-    codex.setRequestHandler((r) => this.onServerRequest(active, codex, r));
+    const codex = await this.ensureProcess(request.goals?.maxTokenBudget);
+    // Before thread/start or thread/resume: a goal turn the resume starts
+    // runs with it.
+    this.context = threadContext(request);
     if (!recorded) {
       const started = await codex.request<{
         thread: { id: string; path?: unknown };
@@ -695,16 +1062,17 @@ export class ChatRuntime {
           coding,
           this.skillRoots(request),
           request.subAgents,
+          request.goals,
         ),
       );
       await this.writeRecord(started.thread.id);
-      run.threadId = started.thread.id;
+      if (run) run.threadId = started.thread.id;
       this.rolloutPath = pathOf(started.thread);
       this.loadedThreadId = started.thread.id;
       this.loadedMcpFingerprint = fingerprint;
       return codex;
     }
-    run.threadId = recorded;
+    if (run) run.threadId = recorded;
     // Resume when the thread is not the one loaded in this process. A changed
     // MCP spec has already restarted the process above, so it lands here too.
     if (this.loadedThreadId !== recorded) {
@@ -718,6 +1086,7 @@ export class ChatRuntime {
             mcp,
             coding,
             request.subAgents,
+            request.goals,
           ),
         );
         this.rolloutPath = pathOf(resumed.thread);
@@ -726,7 +1095,7 @@ export class ChatRuntime {
           throw new ThreadFailure("THREAD_LOST");
         throw error;
       }
-      if (this.loadedThreadId !== recorded) run.resumed = true;
+      if (run && this.loadedThreadId !== recorded) run.resumed = true;
       this.loadedThreadId = recorded;
       this.loadedMcpFingerprint = fingerprint;
     }
@@ -739,7 +1108,7 @@ export class ChatRuntime {
   // rule or model takes effect and nothing stale survives. Undefined when the
   // operator has not turned coding on: no files, text-only params.
   private async prepareCoding(
-    request: StartRunRequest,
+    request: RunContext,
   ): Promise<CodingSettings | undefined> {
     const coding = this.host.coding;
     if (!coding) return undefined;
@@ -788,7 +1157,7 @@ export class ChatRuntime {
 
   // The server checked that every skill is on disk before admitting the run.
   // The slug names the root, so the catalog the model sees reads by skill.
-  private skillRoots(request: StartRunRequest): SkillRoot[] {
+  private skillRoots(request: RunContext): SkillRoot[] {
     return (request.skills ?? []).map((skill) => ({
       id: skill.slug,
       path: skillRoot(this.stateDir, skill.sha256),
@@ -814,13 +1183,11 @@ export class ChatRuntime {
   // therefore stops this chat's process so the thread is loaded afresh. The
   // slot stays held: `closing` keeps `hasProcess` true through the exit, and
   // the run starts the next process right after.
-  private async restartForMcpChange(): Promise<void> {
+  private async restartForMcpChange(reason = "mcp_reload"): Promise<void> {
     const codex = this.process;
-    this.process = undefined;
-    this.loadedThreadId = null;
-    this.loadedMcpFingerprint = "";
+    this.unload();
     if (!codex) return;
-    this.host.log("mcp_reload", {
+    this.host.log(reason, {
       tenantId: this.tenantId,
       chatId: this.chatId,
     });
@@ -830,7 +1197,8 @@ export class ChatRuntime {
     await this.closing;
   }
 
-  private ensureProcess(): Promise<CodexProcess> {
+  // `goalMax` applies only to a process this call starts.
+  private ensureProcess(goalMax?: number): Promise<CodexProcess> {
     if (this.process?.isAlive && !this.closing)
       return Promise.resolve(this.process);
     this.starting ??= (async () => {
@@ -841,13 +1209,23 @@ export class ChatRuntime {
         home: this.home,
         workspace: this.workspace,
         rpcMs: this.host.limits.rpcMs,
-        configArgs: catalog
-          ? [`model_catalog_json=${JSON.stringify(this.catalogPath)}`]
-          : [],
+        configArgs: [
+          ...(catalog
+            ? [`model_catalog_json=${JSON.stringify(this.catalogPath)}`]
+            : []),
+          ...goalProcessArgs(goalMax),
+        ],
         networkLog: this.host.coding !== undefined,
         testEnv: this.host.coding?.networkTestEnv,
       });
       this.processCatalog = catalog;
+      this.processGoalMax = goalMax;
+      // For the process's life, before thread/start or thread/resume, so a
+      // connector's `mcpServer/startupStatus/updated` (which the pin emits
+      // during those calls, before any turn exists) reaches the run and
+      // surfaces as `connector.status`.
+      codex.setListener((n) => this.onCodexNotification(codex, n));
+      codex.setRequestHandler((r) => this.onCodexRequest(codex, r));
       codex.onExit = () => this.onProcessExit(codex);
       codex.onBlockedRequest = (blocked) => this.onBlocked(codex, blocked);
       try {
@@ -883,11 +1261,7 @@ export class ChatRuntime {
   }
 
   private onProcessExit(codex: CodexProcess): void {
-    if (this.process === codex) {
-      this.process = undefined;
-      this.loadedThreadId = null;
-      this.loadedMcpFingerprint = "";
-    }
+    if (this.process === codex) this.unload();
     const active = this.active;
     if (active?.codex === codex && !isFinished(active.run.status)) {
       this.host.log("codex_exit_mid_run", {
@@ -900,6 +1274,186 @@ export class ChatRuntime {
       else this.finish(active, "failed", runError("RUNTIME_ERROR"));
     }
     if (!this.hasProcess) this.host.releaseSlot(this);
+  }
+
+  // Every notification from the chat's process. Goal changes go to the chat
+  // stream; everything else goes to the active run, as before, except a lead
+  // turn no run asked for. Codex started that turn for the goal (goals probe
+  // 4, 9), so it becomes a run of its own. Codex runs one lead turn at a
+  // time: a new one while the active run's own turn has ended (its helpers
+  // are still stopping) waits until that run finishes.
+  private onCodexNotification(codex: CodexProcess, n: Notification): void {
+    if (codex !== this.process) return;
+    const lead = this.threadId !== null && n.params.threadId === this.threadId;
+    if (lead && n.method === "thread/goal/updated")
+      return this.onGoalUpdated(n);
+    if (lead && n.method === "thread/goal/cleared") return this.onGoalCleared();
+    const turnId = lead ? turnOf(n) : undefined;
+    const waiting = turnId
+      ? this.unowned.find((turn) => turn.turnId === turnId)
+      : undefined;
+    if (waiting) return hold(waiting, n);
+    const active = this.live;
+    const started = n.method === "turn/started" && turnId !== undefined;
+    if (
+      active &&
+      !(started && active.run.turnId && active.run.turnId !== turnId)
+    )
+      return this.onNotification(active, n);
+    if (!started) return;
+    this.unowned.push({ turnId, events: [n] });
+    this.adoptUnowned();
+  }
+
+  // Codex's requests go to the active run, which declines any for a turn
+  // that is not its own; with no run, the RPC layer refuses them.
+  private onCodexRequest(codex: CodexProcess, request: ServerRequest): boolean {
+    const active = this.active;
+    return active ? this.onServerRequest(active, codex, request) : false;
+  }
+
+  // Lead turns among a run's early events other than its own: Codex started
+  // them for the goal, so each is kept for a run of its own.
+  private keepUnowned(events: Notification[], own: string | null): void {
+    for (const n of events) {
+      if (this.threadId === null || n.params.threadId !== this.threadId)
+        continue;
+      const turnId = turnOf(n);
+      if (!turnId || turnId === own) continue;
+      let turn = this.unowned.find((t) => t.turnId === turnId);
+      if (!turn) {
+        if (n.method !== "turn/started") continue;
+        turn = { turnId, events: [] };
+        this.unowned.push(turn);
+      }
+      hold(turn, n);
+    }
+  }
+
+  // Gives the oldest unowned lead turn its run, once no run is live.
+  private adoptUnowned(): void {
+    if (this.live) return;
+    const turn = this.unowned.shift();
+    if (!turn) return;
+    const codex = this.process;
+    const context = this.context;
+    const threadId = this.threadId;
+    if (!codex || !context?.goals || !threadId) {
+      // Only a goal chat's Codex starts turns by itself.
+      this.host.log("turn_unowned", {
+        tenantId: this.tenantId,
+        chatId: this.chatId,
+      });
+      this.unowned = [];
+      return;
+    }
+    this.startGoalRun(codex, context, threadId, turn);
+  }
+
+  // A turn Codex started for the chat's goal, as a run: the same handlers,
+  // events, steer, stop and approvals as a member's run, with the context
+  // the thread was last loaded or run with. Its ID is fixed by the turn.
+  private startGoalRun(
+    codex: CodexProcess,
+    context: ThreadContext,
+    threadId: string,
+    turn: UnownedTurn,
+  ): void {
+    const { turnId } = turn;
+    const run = new Run(
+      goalRunId(threadId, turnId),
+      this.tenantId,
+      this.chatId,
+      GOAL_RUN_HASH,
+      this.host.limits.bufferEvents,
+      null,
+      "goal",
+    );
+    run.threadId = threadId;
+    run.turnId = turnId;
+    run.delivery = "accepted";
+    run.status = "running";
+    run.timings.dispatchedAt = run.timings.receivedAt;
+    const { active, done } = this.newActive(run, context);
+    active.codex = codex;
+    this.active = active;
+    active.wake();
+    if (context.skills?.length && this.rolloutPath) {
+      active.skillUse = new SkillUseWatcher(
+        this.rolloutPath,
+        new Set(context.skills.map((skill) => skill.slug)),
+        (slug) => run.useSkill(slug),
+      );
+      void active.skillUse.begin();
+    }
+    run.emit("run.accepted", { threadId, turnId, resumed: false });
+    this.host.adoptRun(
+      run,
+      done.finally(() => this.endRun(active)),
+    );
+    this.host.log("goal_run_started", {
+      tenantId: this.tenantId,
+      chatId: this.chatId,
+      runId: run.runId,
+    });
+    this.events.emit("run.started", {
+      runId: run.runId,
+      turnId,
+      trigger: "goal",
+    });
+    this.armWatchdog(active, context.limits.firstResponseMs);
+    for (const n of turn.events) this.onNotification(active, n);
+  }
+
+  // Codex reported the goal. It is the adapter's if the adapter set it (an
+  // update during such a set is that set's); otherwise the model created
+  // it, and it is paused at once: it runs only once the member starts it.
+  private onGoalUpdated(n: Notification): void {
+    const goal = chatGoal(n.params.goal);
+    if (!goal) {
+      this.host.log("goal_event_invalid", {
+        tenantId: this.tenantId,
+        chatId: this.chatId,
+      });
+      return;
+    }
+    const turnId = typeof n.params.turnId === "string" ? n.params.turnId : null;
+    if (turnId === null && this.settingOwn > 0) this.ownGoal = identity(goal);
+    const own = this.ownGoal;
+    const origin: GoalOrigin =
+      own?.createdAt === goal.createdAt && own.objective === goal.objective
+        ? "user"
+        : "model";
+    this.goal = goal;
+    this.goalOrigin = origin;
+    const data = { goal, turnId, origin };
+    this.events.emit("goal.updated", data);
+    // Also to the run it happened in, for the reader already attached.
+    const active = this.live;
+    if (
+      active &&
+      (turnId === null || !active.run.turnId || active.run.turnId === turnId)
+    )
+      active.run.emit("goal.updated", data);
+    if (goal.status !== "active") return;
+    // Sent while the model's turn still runs, so Codex starts no goal turn
+    // after it (goals probe 7). Without the member's origin: the member did
+    // not ask for this pause.
+    if (origin === "model" && !this.pausingModelGoal) {
+      const pause = this.pauseGoal(undefined);
+      if (pause) {
+        this.pausingModelGoal = true;
+        void pause.finally(() => (this.pausingModelGoal = false));
+      }
+    }
+    this.pauseForStop();
+  }
+
+  private onGoalCleared(): void {
+    this.goal = null;
+    this.goalOrigin = null;
+    this.ownGoal = null;
+    this.events.emit("goal.cleared", {});
   }
 
   private onNotification(active: Active, n: Notification): void {
@@ -916,10 +1470,7 @@ export class ChatRuntime {
     // it is not tied to a turn.
     if (n.method === "mcpServer/startupStatus/updated")
       return this.onConnectorStatus(active, n);
-    const turnId =
-      typeof n.params.turnId === "string" ? n.params.turnId : undefined;
-    const turn = n.params.turn as { id?: string } | undefined;
-    const eventTurn = turnId ?? turn?.id;
+    const eventTurn = turnOf(n);
     if (!run.turnId) {
       // Only deltas are dropped past the cap; lifecycle events always stay.
       if (
@@ -1853,8 +2404,14 @@ export class ChatRuntime {
     try {
       const record = JSON.parse(await readFile(this.recordPath, "utf8")) as {
         threadId?: unknown;
+        ownGoal?: unknown;
       };
-      return typeof record.threadId === "string" ? record.threadId : null;
+      if (typeof record.threadId !== "string") return null;
+      this.threadId = record.threadId;
+      // Once: later, memory is ahead of the file.
+      if (this.ownGoal === undefined)
+        this.ownGoal = goalIdentity(record.ownGoal);
+      return record.threadId;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw error;
@@ -1863,14 +2420,70 @@ export class ChatRuntime {
 
   // Write-then-rename so a crash never leaves a half-written record.
   private async writeRecord(threadId: string): Promise<void> {
+    await this.saveRecord({ threadId, createdAt: new Date().toISOString() });
+    this.threadId = threadId;
+  }
+
+  // Records the goal this adapter set next to the thread. Goal requests
+  // reach here one at a time (goalOp). A failed write is logged, not
+  // thrown: Codex already has the goal, and should the adapter restart,
+  // the goal then reads as the model's and is paused, never run unasked.
+  private async saveOwnGoal(own: GoalIdentity): Promise<void> {
+    try {
+      const record = JSON.parse(await readFile(this.recordPath, "utf8")) as {
+        threadId: string;
+      };
+      await this.saveRecord({ ...record, ownGoal: own });
+    } catch (error) {
+      this.host.log("chat_record_failed", {
+        tenantId: this.tenantId,
+        chatId: this.chatId,
+        error: error instanceof Error ? error.name : typeof error,
+      });
+    }
+  }
+
+  private async saveRecord(record: Record<string, unknown>): Promise<void> {
     const temp = `${this.recordPath}.tmp`;
-    await writeFile(
-      temp,
-      JSON.stringify({ threadId, createdAt: new Date().toISOString() }),
-      { mode: 0o600 },
-    );
+    await writeFile(temp, JSON.stringify(record), { mode: 0o600 });
     await rename(temp, this.recordPath);
   }
+}
+
+// A goal identity read back from chat.json; null when absent or malformed.
+function goalIdentity(value: unknown): GoalIdentity | null {
+  if (!value || typeof value !== "object") return null;
+  const { createdAt, objective } = value as Record<string, unknown>;
+  return typeof createdAt === "number" && typeof objective === "string"
+    ? { createdAt, objective }
+    : null;
+}
+
+// The turn a notification is about: `turnId`, or `turn.id` on turn events.
+function turnOf(n: Notification): string | undefined {
+  if (typeof n.params.turnId === "string") return n.params.turnId;
+  const turn = n.params.turn as { id?: unknown } | undefined;
+  return typeof turn?.id === "string" ? turn.id : undefined;
+}
+
+// Bounded like a run's early events: only deltas are dropped past the cap.
+function hold(turn: UnownedTurn, n: Notification): void {
+  if (turn.events.length < EARLY_LIMIT || !n.method.endsWith("/delta"))
+    turn.events.push(n);
+}
+
+// A request's thread settings, without a run's own IDs and input.
+function threadContext(
+  request: ThreadContext & Partial<StartRunRequest>,
+): ThreadContext {
+  const {
+    runId: _run,
+    tenantId: _tenant,
+    chatId: _chat,
+    input: _input,
+    ...context
+  } = request;
+  return context;
 }
 
 function answerFor(kind: PendingApproval["kind"], outcome: Outcome): unknown {
@@ -1999,6 +2612,35 @@ function approvalParams(meta: Record<string, unknown>): ApprovalParam[] {
     }));
 }
 
+const count = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+// Codex's goal (protocol ThreadGoal) in the contract's shape, without the
+// thread ID; undefined when Codex sent something else.
+export function chatGoal(value: unknown): ChatGoal | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const g = value as Record<string, unknown>;
+  if (
+    typeof g.objective !== "string" ||
+    !GOAL_STATUSES.includes(g.status as GoalStatus) ||
+    !(g.tokenBudget === null || count(g.tokenBudget)) ||
+    !count(g.tokensUsed) ||
+    !count(g.timeUsedSeconds) ||
+    !count(g.createdAt) ||
+    !count(g.updatedAt)
+  )
+    return undefined;
+  return {
+    objective: g.objective,
+    status: g.status as GoalStatus,
+    tokenBudget: g.tokenBudget as number | null,
+    tokensUsed: g.tokensUsed,
+    timeUsedSeconds: g.timeUsedSeconds,
+    createdAt: g.createdAt,
+    updatedAt: g.updatedAt,
+  };
+}
+
 // Bounds for the model-authored checklist (Codex `update_plan`). Truncated,
 // never rejected: Codex never rejects a plan, so neither do we.
 export const PLAN_MAX_STEPS = 50;
@@ -2045,18 +2687,20 @@ function bounded(text: string, max: number): string {
 // and in request order, so no extra sorting is needed.
 // The network policy (tokens included) is part of it: the pin starts a
 // thread's network proxy when it loads the thread, so a changed policy needs
-// a fresh load too. So is the helper setting: Codex reads it when it loads
-// the thread.
+// a fresh load too. So are the helper and goal settings: Codex reads them
+// when it loads the thread.
 function threadFingerprint(
   mcp: readonly McpServerSpec[],
   network: NetworkPolicy | undefined,
   subAgents?: StartRunRequest["subAgents"],
+  goals?: GoalSettings,
 ): string {
   const base = mcpFingerprint(mcp);
-  if (!network && !subAgents) return base;
+  if (!network && !subAgents && !goals) return base;
   const hash = createHash("sha256").update(base);
   if (network) hash.update(JSON.stringify(network));
   if (subAgents) hash.update(`subAgents:${subAgents.maxConcurrent}`);
+  if (goals) hash.update(`goals:${goals.maxTokenBudget}`);
   return hash.digest("hex");
 }
 

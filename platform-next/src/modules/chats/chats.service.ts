@@ -48,6 +48,8 @@ import {
   type RunNetworkPolicy,
 } from "../network/network-policy";
 import { TenantNetworkService } from "../network/tenant-network.service";
+import type { TenantGoals } from "../tenants/tenant";
+import { TenantsService } from "../tenants/tenants.service";
 import { modelView, type ModelDoc, type ModelView } from "../models/model";
 import { ModelsService } from "../models/models.service";
 import {
@@ -62,12 +64,15 @@ import {
   textHashOf,
   titleOf,
   titleOfFiles,
+  type ActiveRun,
   type AgentSource,
   type ApprovalAnswer,
   type ChatConnector,
   type ChatDoc,
+  type ChatGoalSummary,
   type ChatToolApproval,
   type FollowUpsAssignment,
+  type GoalRunDoc,
   type MessageDoc,
   type MessageState,
   type MessageActivity,
@@ -81,6 +86,7 @@ import {
   type SendInput,
   type StartChatInput,
   type SteerDoc,
+  type UserRunDoc,
 } from "./chat";
 import { ChatFilesService, type ChatFileView } from "./chat-files";
 import {
@@ -99,13 +105,18 @@ import type { FollowUpItem } from "./followups";
 import {
   ChatStore,
   LEASE_MS,
+  ownMessagesOf,
   type ChatCollections,
   type SettleResult,
 } from "./chat-store";
 import { signGatewayToken } from "./gateway-token";
 import { SkillsService } from "../skills/skills.service";
 import { RunExecutor, type Dispatch } from "./run-executor";
-import { AdapterUnreachable, type StartRunBody } from "./runtime-client";
+import {
+  AdapterUnreachable,
+  type GoalRunContext,
+  type StartRunBody,
+} from "./runtime-client";
 
 export interface ChatView {
   id: string;
@@ -123,6 +134,9 @@ export interface ChatView {
   // Why the chat can be read but not continued, or null when it can.
   readOnly: null | "THREAD_LOST" | "MODEL_UNAVAILABLE" | "AGENT_UNAVAILABLE";
   activeRunId: string | null;
+  // The chat's goal for its badge, from the chat document; null when it has
+  // none or goal mode ended in it.
+  goal: Pick<ChatGoalSummary, "status" | "review"> | null;
   status: "active" | "archived";
   lastMessageAt: string;
   createdAt: string;
@@ -170,6 +184,8 @@ export interface SteerView {
 
 export interface RunView {
   id: string;
+  // Only on a turn Codex started for the chat's goal.
+  trigger?: "goal";
   status: RunStatus;
   error: RunErrorInfo | null;
   usage: RunUsage | null;
@@ -258,7 +274,20 @@ export class ChatsService {
     @Inject(TenantNetworkService)
     private readonly tenantNetwork: TenantNetworkService,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(TenantsService) private readonly tenants: TenantsService,
   ) {}
+
+  // Run before a chat is archived, while it is still visible: the goals
+  // module ends the chat's goal there, so an archived chat never runs one.
+  // A hook that throws refuses the archive.
+  private beforeArchive:
+    ((context: TenantContext, chat: ChatDoc) => Promise<void>) | undefined;
+
+  onBeforeArchive(
+    hook: (context: TenantContext, chat: ChatDoc) => Promise<void>,
+  ): void {
+    this.beforeArchive = hook;
+  }
 
   private db(context: TenantContext): ChatCollections {
     return this.store.collections(context.dbName);
@@ -316,12 +345,15 @@ export class ChatsService {
     let mcp: McpServerSpec[];
     let network: RunNetworkPolicy | undefined;
     let staged: ChatUploadDoc[];
+    // The tenant's goal settings at this moment, from the catalog cache.
+    let tenantGoals: TenantGoals | null;
     try {
       // A new chat has no per-chat approvals yet, so none are forwarded.
       let resolved: RunConnectors;
-      [resolved, staged] = await Promise.all([
+      [resolved, staged, tenantGoals] = await Promise.all([
         this.runMcpSpecs(context, connectors, undefined, connections),
         this.stagedUploads(context, input.attachments),
+        this.tenants.goalsOf(context.tenantId),
       ]);
       mcp = resolved.mcp;
       ({ network } = await this.runNetwork(
@@ -353,6 +385,9 @@ export class ChatsService {
       ...(connectors.length ? { connectors } : {}),
       ...(skills.length ? { skills } : {}),
       ...(agent.helpers ? { helpers: true as const } : {}),
+      ...(tenantGoals
+        ? { goals: { maxTokenBudget: tenantGoals.maxTokenBudget } }
+        : {}),
       platformInstructionsVersion: PLATFORM_INSTRUCTIONS_VERSION,
       followUps: this.followUpsForNewChat(),
       runtime: { threadId: null, state: "none" },
@@ -1009,6 +1044,11 @@ export class ChatsService {
   // An answering chat must finish or be stopped first.
   async archive(context: TenantContext, chatId: ObjectId): Promise<ChatView> {
     const { chats } = this.db(context);
+    if (this.beforeArchive) {
+      const seen = await this.findOwned(context, chatId);
+      if (seen.activeRun) throw chatBusy();
+      if (seen.status === "active") await this.beforeArchive(context, seen);
+    }
     const chat = await chats.findOneAndUpdate(
       { _id: chatId, ownerId: context.userId, activeRun: null },
       { $set: { status: "archived", updatedAt: new Date() } },
@@ -1049,10 +1089,7 @@ export class ChatsService {
           run,
           // Everything the run wrote after its own message.
           messages: await timed("saved", () =>
-            messages
-              .find({ runId, _id: { $ne: run.userMessageId } })
-              .sort({ seq: 1 })
-              .toArray(),
+            messages.find(ownMessagesOf(run)).sort({ seq: 1 }).toArray(),
           ),
         },
       };
@@ -1191,6 +1228,16 @@ export class ChatsService {
         });
       return;
     }
+    if (run.trigger === "goal") {
+      // Nothing to post or reattach with: the goal run is only read again.
+      // Nothing moves the chat's seq while the run holds it.
+      const claim = await this.recoveryClaim(context, chat._id, active);
+      if (claim)
+        this.executor.begin(
+          this.goalDispatchOf(context, chat, run, chat.nextSeq, claim),
+        );
+      return;
+    }
     const message = await messages.findOne({ _id: run.userMessageId });
     if (!message) {
       // Nothing to recover from: saved as failed, so the chat goes on.
@@ -1232,21 +1279,8 @@ export class ChatsService {
     ).catch(() => ({ network: undefined, networkOnce: [] }));
     const toolNames = await this.connectorNames(chat.connectors);
     const writeToolNames = await this.writeToolNames(chat.connectors);
-    const lapsed =
-      active.leaseExpiresAt.getTime() <= Date.now() ||
-      this.executor.abandonedHere(active.runId);
-    // A lapsed claim is taken over first; losing that race means another
-    // reader has it now.
-    if (
-      lapsed &&
-      !(await this.store.takeOverLease(
-        context.dbName,
-        chat._id,
-        active.runId,
-        active.leaseExpiresAt,
-      ))
-    )
-      return;
+    const claim = await this.recoveryClaim(context, chat._id, active);
+    if (!claim) return;
     this.executor.begin(
       this.dispatchOf(context, chat, run, message, agent, model, "recover", {
         mcp,
@@ -1254,9 +1288,163 @@ export class ChatsService {
         ...(networkOnce.length ? { networkOnce } : {}),
         toolNames,
         writeToolNames,
-        ...(lapsed ? {} : { notBefore: active.leaseExpiresAt }),
+        ...claim,
       }),
     );
+  }
+
+  // Whether this process reads an orphaned run now. A lapsed claim is taken
+  // over first; losing that race (null) means another reader has it now. A
+  // claim still within its lease is read once the lease expires.
+  private async recoveryClaim(
+    context: TenantContext,
+    chatId: ObjectId,
+    active: ActiveRun,
+  ): Promise<{ notBefore?: Date } | null> {
+    const lapsed =
+      active.leaseExpiresAt.getTime() <= Date.now() ||
+      this.executor.abandonedHere(active.runId);
+    if (!lapsed) return { notBefore: active.leaseExpiresAt };
+    const taken = await this.store.takeOverLease(
+      context.dbName,
+      chatId,
+      active.runId,
+      active.leaseExpiresAt,
+    );
+    return taken ? {} : null;
+  }
+
+  // A turn Codex started for the chat's goal, announced on the adapter's
+  // chat stream (run.started): saved as a goal run that claims the chat,
+  // then read here, never posted. Its reply follows the chat's last message.
+  //   started:     saved and being read here
+  //   exists:      saved already (a repeat); if no process reads it,
+  //                recovery does once its lease lapses
+  //   busy:        another run holds the chat; try again once it is saved
+  //   unavailable: the chat is gone or its thread is not this one's
+  async beginGoalRun(
+    tenant: { tenantId: ObjectId; dbName: string },
+    chatId: ObjectId,
+    runId: ObjectId,
+    turnId: string,
+  ): Promise<"started" | "exists" | "busy" | "unavailable"> {
+    this.requireRuntime();
+    const chats = this.store.collections(tenant.dbName).chats;
+    const chat = await chats.findOne({ _id: chatId });
+    const threadId = chat?.runtime.threadId;
+    if (!chat || !threadId || chat.runtime.state === "lost") {
+      this.logger.warn({
+        message: "goal run for a chat without a usable thread",
+        chatId: toWireId(chatId),
+        runId: toWireId(runId),
+      });
+      return "unavailable";
+    }
+    if (chat.activeRun)
+      return chat.activeRun.runId.equals(runId) ? "exists" : "busy";
+    const begun = await this.store.beginGoalRun(tenant.dbName, chat, {
+      runId,
+      threadId,
+      turnId,
+    });
+    if (begun !== "started") return begun;
+    const context: TenantContext = {
+      userId: chat.ownerId,
+      tenantId: tenant.tenantId,
+      role: "user",
+      dbName: tenant.dbName,
+    };
+    this.executor.begin(
+      this.goalDispatchOf(
+        context,
+        chat,
+        { _id: runId, threadId, turnId },
+        chat.nextSeq,
+      ),
+    );
+    return "started";
+  }
+
+  // What making the chat's goal active sends to start or resume its thread
+  // (PUT /v1/chats/:chatId/goal {status: active, run}): the chat's next run
+  // body without a turn, built as a member's run would be, as the owner.
+  // null when the chat cannot run a goal: it is missing or archived, has no
+  // goal setting, no usable thread, or its model or built-in agent is no
+  // longer available. A connector problem throws, as it refuses a send.
+  async goalRunContext(
+    tenant: { tenantId: ObjectId; dbName: string },
+    chatId: ObjectId,
+  ): Promise<GoalRunContext | null> {
+    this.requireRuntime();
+    const chat = await this.store
+      .collections(tenant.dbName)
+      .chats.findOne({ _id: chatId });
+    if (
+      !chat ||
+      chat.status !== "active" ||
+      !chat.goals ||
+      !chat.runtime.threadId ||
+      chat.runtime.state === "lost"
+    )
+      return null;
+    const context: TenantContext = {
+      userId: chat.ownerId,
+      tenantId: tenant.tenantId,
+      role: "user",
+      dbName: tenant.dbName,
+    };
+    const model = await this.models.enabledById(chat.model.id);
+    if (!model) return null;
+    // As in send: with a thread, only a built-in needs its agent, and a
+    // built-in the product team disabled stops its chats.
+    const agent =
+      chat.agent.source === "builtin"
+        ? await this.agents.resolveForChat(context, chat.agent.id, {
+            allowArchived: true,
+          })
+        : null;
+    if (chat.agent.source === "builtin" && !agent) return null;
+    const resolved = await this.runMcpSpecs(
+      context,
+      chat.connectors ?? [],
+      chat.toolApprovals,
+    );
+    // Allow-once grants belong to the member's next reply, which consumes
+    // them; only Allow-for-this-chat grants carry into goal turns.
+    const { network } = await this.runNetwork(
+      context,
+      resolved.network,
+      chat.networkGrants?.filter((grant) => grant.scope === "chat"),
+    );
+    return this.runContextOf(context, chat, agent, model, {
+      mcp: resolved.mcp,
+      ...(network ? { network } : {}),
+      toolNames: await this.connectorNames(chat.connectors),
+      writeToolNames: await this.writeToolNames(chat.connectors),
+    });
+  }
+
+  private goalDispatchOf(
+    context: TenantContext,
+    chat: ChatDoc,
+    run: Pick<GoalRunDoc, "_id" | "threadId" | "turnId">,
+    replySeq: number,
+    options: { notBefore?: Date } = {},
+  ): Dispatch {
+    return {
+      dbName: context.dbName,
+      chatId: chat._id,
+      runId: run._id,
+      ownerId: chat.ownerId,
+      replySeq,
+      ref: { tenantId: toWireId(context.tenantId), chatId: toWireId(chat._id) },
+      mode: "attach",
+      threadId: run.threadId,
+      turnId: run.turnId,
+      ...(options.notBefore ? { notBefore: options.notBefore } : {}),
+      ...(chat.skills?.length ? { skills: chat.skills } : {}),
+      ...(chat.followUps ? { followUps: chat.followUps } : {}),
+    };
   }
 
   // The MCP server specs for a chat/agent's connectors, resolved before
@@ -1600,11 +1788,11 @@ export class ChatsService {
   private dispatchOf(
     context: TenantContext,
     chat: ChatDoc,
-    run: RunDoc,
+    run: UserRunDoc,
     message: MessageDoc,
     agent: ChatAgent | null,
     model: ModelDoc | null,
-    mode: Dispatch["mode"],
+    mode: "start" | "recover",
     options: {
       mcp?: readonly McpServerSpec[];
       network?: RunNetworkPolicy;
@@ -1614,19 +1802,16 @@ export class ChatsService {
       notBefore?: Date;
     } = {},
   ): Dispatch {
-    const chatConfig = this.config.chat!;
     const tenantId = toWireId(context.tenantId);
     const chatId = toWireId(chat._id);
-    const modelId = toWireId(chat.model.id);
-    const { mcp, network, networkOnce, toolNames, writeToolNames, notBefore } =
-      options;
+    const { networkOnce, notBefore } = options;
     // Recovery without a model or agent can still reattach or read history;
-    // posting then fails validation in the adapter and settles as failed. The
-    // tool names make the v3+ prompt list the chat's connectors; v4 also
-    // names the tools that change data.
-    const prompt = agent
-      ? chatPrompt(agent, chat, toolNames ?? [], writeToolNames ?? [])
-      : "This chat's agent is no longer available.";
+    // posting then fails validation in the adapter and settles as failed.
+    const {
+      threadId,
+      model: runModel,
+      ...tools
+    } = this.runContextOf(context, chat, agent, model, options);
     return {
       dbName: context.dbName,
       chatId: chat._id,
@@ -1642,49 +1827,85 @@ export class ChatsService {
       ...(chat.skills?.length ? { skills: chat.skills } : {}),
       ...(networkOnce?.length ? { networkOnce } : {}),
       ...(chat.followUps ? { followUps: chat.followUps } : {}),
+      // Same keys in the same order as before the run context was shared.
       body: {
         runId: toWireId(run._id),
         tenantId,
         chatId,
-        threadId: chat.runtime.threadId,
+        threadId,
         input: {
           text: runtimeText(message.text, message.attachments),
           clientMessageId: run.clientMessageId,
           ...imagesOf(message.attachments),
         },
-        agentPrompt: prompt,
-        // Included only when non-empty, so a text-only turn is byte-identical
-        // to before. Never logged (it carries per-user Authorization headers).
-        ...(mcp && mcp.length ? { mcp } : {}),
-        // Only with CHAT_SANDBOX_NETWORK=1. Never logged (connector tokens).
-        ...(network ? { network } : {}),
-        // The member's coding Allow-for-this-chat answers. Included only when
-        // the chat has some; the runtime uses them only with coding on.
-        ...codingApprovalsOf(chat),
-        ...(chat.skills?.length
-          ? {
-              skills: chat.skills.map(({ sha256, slug }) => ({ sha256, slug })),
-            }
+        ...tools,
+        // The chat's snapshot, so a chat without goals is byte-identical.
+        ...(chat.goals
+          ? { goals: { maxTokenBudget: chat.goals.maxTokenBudget } }
           : {}),
-        // Only when the server has CHAT_SUBAGENTS and the chat's agent
-        // allowed helpers, so any other run is byte-identical.
-        ...(chatConfig.subAgents && chat.helpers
-          ? { subAgents: { maxConcurrent: chatConfig.subAgents } }
+        model: runModel,
+      },
+    };
+  }
+
+  // Everything a run body carries except the turn itself (run ID, input)
+  // and the goal setting: shared by every run and by making a goal active,
+  // which may start or resume the thread with it.
+  private runContextOf(
+    context: TenantContext,
+    chat: ChatDoc,
+    agent: ChatAgent | null,
+    model: ModelDoc | null,
+    options: {
+      mcp?: readonly McpServerSpec[];
+      network?: RunNetworkPolicy;
+      toolNames?: readonly string[];
+      writeToolNames?: readonly string[];
+    },
+  ): GoalRunContext {
+    const chatConfig = this.config.chat!;
+    const tenantId = toWireId(context.tenantId);
+    const modelId = toWireId(chat.model.id);
+    const { mcp, network, toolNames, writeToolNames } = options;
+    // The tool names make the v3+ prompt list the chat's connectors; v4 also
+    // names the tools that change data.
+    const prompt = agent
+      ? chatPrompt(agent, chat, toolNames ?? [], writeToolNames ?? [])
+      : "This chat's agent is no longer available.";
+    return {
+      threadId: chat.runtime.threadId,
+      agentPrompt: prompt,
+      // Included only when non-empty, so a text-only turn is byte-identical
+      // to before. Never logged (it carries per-user Authorization headers).
+      ...(mcp && mcp.length ? { mcp } : {}),
+      // Only with CHAT_SANDBOX_NETWORK=1. Never logged (connector tokens).
+      ...(network ? { network } : {}),
+      // The member's coding Allow-for-this-chat answers. Included only when
+      // the chat has some; the runtime uses them only with coding on.
+      ...codingApprovalsOf(chat),
+      ...(chat.skills?.length
+        ? {
+            skills: chat.skills.map(({ sha256, slug }) => ({ sha256, slug })),
+          }
+        : {}),
+      // Only when the server has CHAT_SUBAGENTS and the chat's agent
+      // allowed helpers, so any other run is byte-identical.
+      ...(chatConfig.subAgents && chat.helpers
+        ? { subAgents: { maxConcurrent: chatConfig.subAgents } }
+        : {}),
+      model: {
+        modelName: model?.modelName ?? "unavailable",
+        gatewayUrl: `${chatConfig.gatewayUrl}/p/${modelId}/v1`,
+        gatewayToken: signGatewayToken(
+          modelId,
+          chatConfig.gatewaySecret,
+          tenantId,
+        ),
+        contextWindow: model?.contextWindow ?? 1024,
+        autoCompactTokenLimit: model?.autoCompactTokenLimit ?? 512,
+        ...(model?.reasoningEffort
+          ? { reasoningEffort: model.reasoningEffort }
           : {}),
-        model: {
-          modelName: model?.modelName ?? "unavailable",
-          gatewayUrl: `${chatConfig.gatewayUrl}/p/${modelId}/v1`,
-          gatewayToken: signGatewayToken(
-            modelId,
-            chatConfig.gatewaySecret,
-            tenantId,
-          ),
-          contextWindow: model?.contextWindow ?? 1024,
-          autoCompactTokenLimit: model?.autoCompactTokenLimit ?? 512,
-          ...(model?.reasoningEffort
-            ? { reasoningEffort: model.reasoningEffort }
-            : {}),
-        },
       },
     };
   }
@@ -1696,7 +1917,7 @@ export class ChatsService {
     input: SendInput,
     now: Date,
     runId = new ObjectId(),
-  ): { message: MessageDoc; run: RunDoc } {
+  ): { message: MessageDoc; run: UserRunDoc } {
     const message: MessageDoc = {
       _id: new ObjectId(),
       chatId: chat._id,
@@ -1710,7 +1931,7 @@ export class ChatsService {
       textHash: textHashOf(input.text),
       createdAt: now,
     };
-    const run: RunDoc = {
+    const run: UserRunDoc = {
       _id: runId,
       chatId: chat._id,
       ownerId: context.userId,
@@ -1984,6 +2205,9 @@ function chatState(
             ? "AGENT_UNAVAILABLE"
             : null,
     activeRunId: chat.activeRun ? toWireId(chat.activeRun.runId) : null,
+    goal: chat.goal
+      ? { status: chat.goal.status, review: chat.goal.review }
+      : null,
     status: chat.status,
     lastMessageAt: chat.lastMessageAt.toISOString(),
     createdAt: chat.createdAt.toISOString(),
@@ -2133,6 +2357,7 @@ export function runView(run: RunDoc, showFollowUps = false): RunView {
   const t = run.timings;
   return {
     id: toWireId(run._id),
+    ...(run.trigger === "goal" ? { trigger: "goal" as const } : {}),
     status: run.status,
     error: run.error ?? null,
     usage: run.usage ?? null,

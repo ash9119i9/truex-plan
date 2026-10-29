@@ -4,17 +4,21 @@ import type { AdapterConfig } from "../config";
 import type {
   ApprovalAnswer,
   ApprovalRequest,
+  ChatGoal,
   ChatRef,
+  GoalSetRequest,
   SteerRequest,
   StartRunRequest,
 } from "../contract";
 import { AdapterError } from "../errors";
 import { ChatRuntime, type HistoryTurn, type SteerResult } from "./chat";
+import type { ChatStream } from "./chat-stream";
 import { isFinished, Run } from "./run";
 
 // Admission and bookkeeping for every chat this adapter serves: one active
-// run per chat, idempotent run IDs, a bounded number of Codex processes, idle
-// shutdown and drain on exit.
+// run per chat (a member's, or one Codex started for the chat's goal),
+// idempotent run IDs, a bounded number of Codex processes, idle shutdown and
+// drain on exit.
 
 export type Logger = (event: string, fields: Record<string, unknown>) => void;
 
@@ -73,7 +77,10 @@ export class RuntimeManager {
     }
     if (this.draining) throw new AdapterError("DRAINING");
     const chat = this.chat(request);
-    if (chat.activeRun) throw new AdapterError("CHAT_BUSY");
+    // The active run may be a goal run; an active goal set may be starting
+    // or resuming the thread.
+    if (chat.activeRun || chat.startingGoal > 0)
+      throw new AdapterError("CHAT_BUSY");
     this.reserveSlot(chat);
     const run = new Run(
       request.runId,
@@ -84,10 +91,13 @@ export class RuntimeManager {
       request.input.clientMessageId,
     );
     this.runs.set(run.runId, run);
-    const execution = chat.execute(run, request);
+    this.track(chat.execute(run, request));
+    return run;
+  }
+
+  private track(execution: Promise<void>): void {
     this.executions.add(execution);
     void execution.finally(() => this.executions.delete(execution));
-    return run;
   }
 
   getRun(runId: string, ref: ChatRef): Run {
@@ -137,6 +147,33 @@ export class RuntimeManager {
     return chat.history();
   }
 
+  // Goal requests. Admission is synchronous like startRun's: an active set
+  // may load the thread, so it is refused while a run is active, and a run is
+  // refused until the set is answered. Each request takes a process slot
+  // when it needs a process (ChatHost.reserveSlot).
+  setGoal(request: GoalSetRequest): Promise<ChatGoal> {
+    if (this.draining) throw new AdapterError("DRAINING");
+    const chat = this.chat(request);
+    if (request.status === "active" && chat.activeRun)
+      throw new AdapterError("CHAT_BUSY");
+    return chat.setGoal(request);
+  }
+
+  getGoal(ref: ChatRef): Promise<ChatGoal | null> {
+    if (this.draining) throw new AdapterError("DRAINING");
+    return this.chat(ref).getGoal();
+  }
+
+  clearGoal(ref: ChatRef): Promise<boolean> {
+    if (this.draining) throw new AdapterError("DRAINING");
+    return this.chat(ref).clearGoal();
+  }
+
+  // The chat stream. Reading it starts no process.
+  chatEvents(ref: ChatRef): ChatStream {
+    return this.chat(ref).events;
+  }
+
   // Stops admitting runs, lets active ones finish for up to `drainMs`, then
   // stops the rest and every Codex process.
   async drain(drainMs: number): Promise<void> {
@@ -165,10 +202,12 @@ export class RuntimeManager {
         this.runs.delete(runId);
     const idle: Promise<void>[] = [];
     for (const [chatKey, chat] of this.chats) {
-      if (chat.activeRun) continue;
+      if (chat.activeRun || chat.goalRequests > 0) continue;
       if (now - chat.lastUsedAt < this.config.idleMs) continue;
       if (chat.hasProcess) idle.push(chat.close());
-      else if (!chat.hasSlot) this.chats.delete(chatKey);
+      // A chat stream being read keeps its chat, and so its numbering.
+      else if (!chat.hasSlot && chat.events.subscriberCount === 0)
+        this.chats.delete(chatKey);
     }
     await Promise.allSettled(idle);
   }
@@ -181,7 +220,12 @@ export class RuntimeManager {
         binary: this.config.codexBinary,
         limits: this.config.limits,
         coding: this.config.coding,
+        reserveSlot: (c) => this.reserveSlot(c),
         releaseSlot: (c) => this.releaseSlot(c),
+        adoptRun: (run, execution) => {
+          this.runs.set(run.runId, run);
+          this.track(execution);
+        },
         log: this.log,
       });
       this.chats.set(chatKey, chat);
@@ -196,7 +240,12 @@ export class RuntimeManager {
     if (this.slots >= this.config.maxProcesses) {
       let victim: ChatRuntime | undefined;
       for (const other of this.chats.values())
-        if (other.hasSlot && !other.activeRun && other.hasProcess)
+        if (
+          other.hasSlot &&
+          !other.activeRun &&
+          other.goalRequests === 0 &&
+          other.hasProcess
+        )
           if (!victim || other.lastUsedAt < victim.lastUsedAt) victim = other;
       if (!victim) throw new AdapterError("RUNTIME_BUSY");
       this.releaseSlot(victim);

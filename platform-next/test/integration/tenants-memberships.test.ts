@@ -335,6 +335,227 @@ describe("tenants and memberships", () => {
     });
   });
 
+  describe("goal settings", () => {
+    const valid = {
+      presets: [100_000, 300_000, 1_000_000],
+      maxTokenBudget: 3_000_000,
+      maxActive: 10,
+    };
+    const goalAudit = (action: string, result: string) =>
+      database
+        .catalog()
+        .collection(AUDIT_COLLECTION)
+        .find({ action, result })
+        .sort({ at: 1, _id: 1 })
+        .toArray();
+    const readyTenant = async () =>
+      (
+        await tenants.provision({
+          tenantId: new ObjectId(),
+          name: "Org",
+          kind: "organization",
+        })
+      )._id;
+
+    test("an operator sets, replaces and removes a tenant's goal settings, each audited", async () => {
+      const operator = running.app.get(OperatorService);
+      const tenantId = await readyTenant();
+      assert.equal((await tenants.findById(tenantId))?.goals, undefined);
+
+      const set = await operator.setTenantGoals({
+        operator: "ops",
+        tenantId,
+        goals: valid,
+      });
+      assert.deepEqual(set, { goals: valid, changed: true });
+      assert.deepEqual((await tenants.findById(tenantId))?.goals, valid);
+      assert.deepEqual(
+        (
+          await operator.setTenantGoals({
+            operator: "ops",
+            tenantId,
+            goals: valid,
+          })
+        ).changed,
+        false,
+      );
+      const replaced = { ...valid, maxTokenBudget: 5_000_000, maxActive: 4 };
+      await operator.setTenantGoals({
+        operator: "ops",
+        tenantId,
+        goals: replaced,
+      });
+      assert.deepEqual((await tenants.findById(tenantId))?.goals, replaced);
+      const sets = await goalAudit("tenant.goals.set", "success");
+      assert.deepEqual(
+        sets.map((event) => event.details),
+        [
+          {
+            presets: "100000,300000,1000000",
+            maxTokenBudget: 3_000_000,
+            maxActive: 10,
+            changed: true,
+          },
+          {
+            presets: "100000,300000,1000000",
+            maxTokenBudget: 3_000_000,
+            maxActive: 10,
+            changed: false,
+          },
+          {
+            presets: "100000,300000,1000000",
+            maxTokenBudget: 5_000_000,
+            maxActive: 4,
+            changed: true,
+          },
+        ],
+      );
+      assert.ok(sets.every((event) => event.tenantId.equals(tenantId)));
+
+      assert.deepEqual(
+        await operator.removeTenantGoals({ operator: "ops", tenantId }),
+        { goals: null, changed: true },
+      );
+      const removed = await tenants.findById(tenantId);
+      assert.equal(removed ? "goals" in removed : true, false);
+      assert.equal(
+        (await operator.removeTenantGoals({ operator: "ops", tenantId }))
+          .changed,
+        false,
+      );
+      assert.deepEqual(
+        (await goalAudit("tenant.goals.remove", "success")).map(
+          (event) => event.details,
+        ),
+        [{ changed: true }, { changed: false }],
+      );
+    });
+
+    test("refuses unordered, duplicate, non-integer or out-of-range values and audits each refusal", async () => {
+      const operator = running.app.get(OperatorService);
+      const tenantId = await readyTenant();
+      await operator.setTenantGoals({
+        operator: "ops",
+        tenantId,
+        goals: valid,
+      });
+      const refused: unknown[] = [
+        // Unordered and duplicate presets.
+        { ...valid, presets: [300_000, 100_000, 1_000_000] },
+        { ...valid, presets: [100_000, 100_000, 1_000_000] },
+        // Not three.
+        { ...valid, presets: [100_000, 300_000] },
+        { ...valid, presets: [1, 2, 3, 4] },
+        { ...valid, presets: "100000,300000,1000000" },
+        // Not whole numbers.
+        { ...valid, presets: [100_000.5, 300_000, 1_000_000] },
+        { ...valid, presets: ["100000", 300_000, 1_000_000] },
+        { ...valid, maxTokenBudget: Number.NaN },
+        { ...valid, maxActive: 2.5 },
+        // Out of range: a preset at or above the maximum, zero or negative
+        // values, a maximum above the adapter's cap.
+        { ...valid, presets: [100_000, 300_000, 3_000_000] },
+        { ...valid, presets: [0, 300_000, 1_000_000] },
+        { ...valid, presets: [-1, 300_000, 1_000_000] },
+        { ...valid, maxTokenBudget: 1_000_000_001 },
+        { ...valid, maxActive: 0 },
+        { ...valid, maxActive: 10_001 },
+        // Missing or unknown fields.
+        { presets: valid.presets, maxTokenBudget: valid.maxTokenBudget },
+        { ...valid, perUser: 3 },
+        null,
+      ];
+      for (const goals of refused)
+        await rejectsWith(
+          operator.setTenantGoals({ operator: "ops", tenantId, goals }),
+          "INVALID_INPUT",
+        );
+      assert.deepEqual((await tenants.findById(tenantId))?.goals, valid);
+      const denied = await goalAudit("tenant.goals.set", "denied");
+      assert.equal(denied.length, refused.length);
+      assert.ok(denied.every((event) => event.tenantId.equals(tenantId)));
+    });
+
+    test("refuses a tenant that does not exist, audited", async () => {
+      const operator = running.app.get(OperatorService);
+      const tenantId = new ObjectId();
+      await rejectsWith(
+        operator.setTenantGoals({ operator: "ops", tenantId, goals: valid }),
+        "NOT_FOUND",
+      );
+      await rejectsWith(
+        operator.removeTenantGoals({ operator: "ops", tenantId }),
+        "NOT_FOUND",
+      );
+      assert.equal((await goalAudit("tenant.goals.set", "denied")).length, 1);
+      assert.equal(
+        (await goalAudit("tenant.goals.remove", "denied")).length,
+        1,
+      );
+    });
+
+    test("the commands parse into set and remove", () => {
+      const id = new ObjectId();
+      const set = [
+        "tenant-goals-set",
+        "--operator",
+        "ops",
+        "--tenant",
+        id.toHexString(),
+      ];
+      const values = [
+        "--presets",
+        "100000,300000,1000000",
+        "--max-budget",
+        "3000000",
+        "--max-active",
+        "10",
+      ];
+      assert.deepEqual(parseOperatorCommand([...set, ...values]), {
+        command: "tenant-goals-set",
+        operator: "ops",
+        tenantId: id,
+        goals: valid,
+      });
+      // Values are passed on as given; the service decides what is valid,
+      // so a refusal is audited.
+      assert.deepEqual(
+        (
+          parseOperatorCommand([
+            ...set,
+            "--presets",
+            "1.5, x",
+            "--max-budget",
+            "3000000",
+            "--max-active",
+            "10",
+          ]) as { goals: { presets: number[] } }
+        ).goals.presets,
+        [1.5, Number.NaN],
+      );
+      assert.throws(() => parseOperatorCommand(set), UsageError);
+      assert.throws(
+        () => parseOperatorCommand([...set, ...values.slice(0, 4)]),
+        UsageError,
+      );
+      assert.deepEqual(
+        parseOperatorCommand([
+          "tenant-goals-remove",
+          "--operator",
+          "ops",
+          "--tenant",
+          id.toHexString(),
+        ]),
+        { command: "tenant-goals-remove", operator: "ops", tenantId: id },
+      );
+      assert.throws(
+        () =>
+          parseOperatorCommand(["tenant-goals-remove", "--operator", "ops"]),
+        UsageError,
+      );
+    });
+  });
+
   describe("memberships", () => {
     async function readyTenant(): Promise<ObjectId> {
       const id = new ObjectId();

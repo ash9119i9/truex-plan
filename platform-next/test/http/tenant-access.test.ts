@@ -44,7 +44,7 @@ interface ErrorBody {
 }
 
 interface TenantBody {
-  tenant: { id: string; name: string; role: string };
+  tenant: { id: string; name: string; role: string; goals: unknown };
 }
 
 describe("tenant-scoped requests (?tenantId=)", () => {
@@ -239,6 +239,7 @@ describe("tenant-scoped requests (?tenantId=)", () => {
             id: defaultTenantId.toHexString(),
             name: "Truex",
             role: "user",
+            goals: null,
           },
         },
       );
@@ -255,6 +256,7 @@ describe("tenant-scoped requests (?tenantId=)", () => {
         id: orgId.toHexString(),
         name: "Acme",
         role: "admin",
+        goals: null,
       });
     });
 
@@ -288,6 +290,7 @@ describe("tenant-scoped requests (?tenantId=)", () => {
         id: defaultTenantId.toHexString(),
         name: "Truex",
         role: "user",
+        goals: null,
       });
     });
   });
@@ -622,7 +625,8 @@ describe("tenant-scoped requests (?tenantId=)", () => {
           continue;
         }
         assert.equal(status, 200);
-        assert.deepEqual(body, { tenant: { id, ...want } });
+        // Neither tenant has goal settings.
+        assert.deepEqual(body, { tenant: { id, ...want, goals: null } });
       }
     });
 

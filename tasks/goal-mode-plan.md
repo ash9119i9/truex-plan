@@ -55,23 +55,28 @@ first have to start or resume the thread (Codex only continues a loaded thread).
 **Stop pauses the goal, in the adapter.** Stopping a run while the chat's goal is active
 sends `thread/goal/set {status: paused}` and then `turn/interrupt`, the order the TUI uses
 on exit (`tui/src/app/event_dispatch.rs:1029`). Pausing first means Codex's idle hook finds
-no active goal and starts nothing.
+no active goal and starts nothing. The adapter's watchdog and helper-limit stops pause the
+same way; a shutdown does not, so the goal continues after the restart.
 
 **Model-created goals are paused in the adapter.** The adapter is next to Codex, so it can
 pause within the same turn and no continuation slips through. A `thread/goal/updated` for
 a goal the adapter did not set is paused at once and reported with `origin: "model"`.
-The adapter records the goal ID it set in the chat's existing `chat.json`, so this
-survives a process restart. Once the platform has ended goal mode in a chat (cleared), it
-clears any later model goal instead of showing it.
+The adapter records the goal it set (`createdAt` and objective; Codex goals have no ID, Task 1
+finding 10) in the chat's existing `chat.json`, so this survives a process restart. Once
+the platform has ended goal mode in a chat (cleared), it clears any later model goal
+instead of showing it.
 
 **platform-next owns the Truex state.**
 - `TenantDoc.goals` (catalog): three presets, a maximum above them, and an active-goal cap.
   Absent means goals are off for the tenant.
-- `goals` collection (tenant database), one document per chat: Codex mirror (`goalId`,
+- `goals` collection (tenant database), one document per chat: Codex mirror (`createdAt`,
   `objective`, `status`, `tokenBudget`, `tokensUsed`, `timeUsedSeconds`), `origin`,
   `review` (`none | pending | approved | accepted_as_is`), `slotHeld`, `ended`, a bounded
-  history, and the last applied Codex `updatedAt` so a stale or replayed update never
-  overwrites a newer one (ported from legacy `platform/src/conversations/goal-state.ts`).
+  history, and stale-update protection so a stale or replayed update never overwrites a
+  newer one (ported from legacy `platform/src/conversations/goal-state.ts`). Codex
+  `updatedAt` is in whole seconds, so updates are ordered by the adapter chat stream as well
+  (Task 1 finding 10). Task 7: a later `createdAt` is a new goal, then a later `updatedAt`
+  wins; within one second a later `seq` on the same stream wins, and a replay is refused.
 - `ChatDoc.goal`: a small summary (status, review) for chat-list badges.
 - Slots: one `goal_slots` document per tenant `{total, users: {<userId>: n}}`. A claim is a
   single `findOneAndUpdate` filtered on `total < cap` and `users.<id> < 3` that increments
@@ -85,7 +90,8 @@ is `active` it holds the adapter chat stream under a lease (same pattern as run 
 existing `RunExecutor` in a new `attach` mode (reconnect from seq 0). On `goal.updated` it
 updates the goal document and slots (`complete` → `review: pending`, slot released). After
 a platform restart, the sweep restarts watchers whose lease lapsed and reconciles each with
-`GET /v1/chats/:chatId/goal`.
+`GET /v1/chats/:chatId/goal`. The chat stream's cursor names its stream (`streamId`), so a
+reconnect after an adapter restart gets a snapshot instead of silently skipping events.
 
 **Goal runs have no user message.** `RunDoc.trigger: "user" | "goal"`; `userMessageId`
 and `clientMessageId` are optional when `trigger` is `goal`. Missing `trigger` reads as
@@ -94,9 +100,9 @@ user bubble, as Codex shows it.
 
 **Review is Truex-only.** Codex stops at `complete`. Approve records `approved`; request
 changes merges feedback into the objective (≤ 4000 characters, refused rather than cut) and
-sends `set {objective, status: active, tokenBudget?}`, which keeps the goal ID and tokens
-(`ext/goal/src/api.rs`). Accept as is is offered only when the goal is `budgetLimited` at
-the tenant maximum. Only the chat owner can act; chats are private.
+sends `set {objective, status: active, tokenBudget?}`, which keeps the goal's `createdAt`
+and `tokensUsed` (`ext/goal/src/api.rs`). Accept as is is offered only when the goal is
+`budgetLimited` at the tenant maximum. Only the chat owner can act; chats are private.
 
 **Local and AgentCore are the same.** Goals are adapter routes and stream events; the
 transport carries them unchanged. The AgentCore bridge (`tasks/agentcore-runtime-todo.md`)
@@ -105,34 +111,37 @@ active. That is listed there, not built here.
 
 ## Task List
 
+This change covers runtime-adapter and platform-next only. The frontend is being
+redesigned, so Phase 3 and Checkpoint C wait for that work; Task 18 follows Checkpoint B.
+
 ### Phase 1: runtime-adapter
-- [ ] Task 1: Goal behaviour on the pin (probe)
-- [ ] Task 2: Goal contract on both sides
-- [ ] Task 3: Per-chat goal config and the goal endpoint
-- [ ] Task 4: Codex-started goal turns become runs; chat event stream
-- [ ] Task 5: Stop pauses the goal; model-created goals are paused
+- [x] Task 1: Goal behaviour on the pin (probe)
+- [x] Task 2: Goal contract on both sides
+- [x] Task 3: Per-chat goal config and the goal endpoint
+- [x] Task 4: Codex-started goal turns become runs; chat event stream
+- [x] Task 5: Stop pauses the goal; model-created goals are paused
 
 ### Checkpoint A: adapter
 
 ### Phase 2: platform-next
-- [ ] Task 6: Tenant goal settings and the chat snapshot
-- [ ] Task 7: Goal document and atomic slots
-- [ ] Task 8: Goal runs without a user message
-- [ ] Task 9: GoalWatcher and recovery
-- [ ] Task 10: Goal lifecycle API
-- [ ] Task 11: Review and budget API
-- [ ] Task 12: Browser chat stream, badges and archive
+- [x] Task 6: Tenant goal settings and the chat snapshot
+- [x] Task 7: Goal document and atomic slots
+- [x] Task 8: Goal runs without a user message
+- [x] Task 9: GoalWatcher and recovery
+- [x] Task 10: Goal lifecycle API (new-chat start dropped)
+- [x] Task 11: Review and budget API
+- [x] Task 12: Browser chat stream, badges and archive
 
 ### Checkpoint B: platform
 
-### Phase 3: frontend
+### Phase 3: frontend (deferred until the frontend redesign)
 - [ ] Task 13: Goal client and chat stream
 - [ ] Task 14: Goal button and start dialog
 - [ ] Task 15: Goal card, resume prompt and proposed goals
 - [ ] Task 16: Review panel and raise budget
 - [ ] Task 17: Chat-list badge
 
-### Checkpoint C: feature complete
+### Checkpoint C: feature complete (deferred with Phase 3)
 
 ### Phase 4: validation
 - [ ] Task 18: Stack test with the fixture model
@@ -142,9 +151,13 @@ active. That is listed there, not built here.
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| A member's `turn/start` lands in the moment Codex starts a goal turn; Codex steers it into the goal turn (`start_or_steer_turn`) | High: one turn, two runs | Task 1 measures it; Task 4 treats a `turn/start` answered with a goal turn's ID as a steer into that run |
-| `features.goals` is read from the process config, not only the thread config (`thread_goal_processor.rs:138`) | Med | Task 1 confirms where it must be set; Task 3 follows the result |
-| Resuming a thread with an active goal may not continue by itself (`restore_after_resume` only marks it) | Med: goal shows active, nothing runs | Task 1 measures; Task 9's reconcile re-sends `set {status: active}` with context |
+| A member's `turn/start` lands in the moment Codex starts a goal turn; Codex steers it into the goal turn (`start_or_steer_turn`) | High: one turn, two runs | Task 1 measured it (probe findings 4, 8): Codex handles a thread's requests in write order and never runs two turns, but the `turn/start` answer always comes before `turn/started`, and `turn/started` does not mark goal turns, so a steer cannot be detected afterwards. Task 4: whatever turn Codex answers `turn/start` with is that run's, and a lead turn no run owns becomes a goal run (also one that started while a member's run was starting, or before the previous run finished), so every turn has exactly one run. A member's input steered into a goal turn makes that turn the member's run |
+| `features.goals` is read from the process config, not only the thread config (`thread_goal_processor.rs:138`) | Med | Task 1 (finding 1): the goal requests check only the process config, which is on by default; the thread config decides tools and goal turns. A chat without `goals` accepts a set and never runs it, so Task 3 refuses goal requests for such chats in the adapter |
+| The budget maximum in the thread config is ignored for a set on an unloaded thread | Med: budget above the tenant maximum | Task 1 (finding 2): pass `-c goals.max_goal_token_budget=N` to the chat's Codex process as well (Task 3), and validate in the adapter before calling Codex |
+| A goal without a budget loops as fast as the model answers | High: unbounded spend | Task 1 (finding 3): every goal gets a budget; with the maximum set, Codex gives a model-created goal the maximum |
+| Resuming a thread with an active goal may not continue by itself (`restore_after_resume` only marks it) | Med: goal shows active, nothing runs | Task 1 (finding 9): resume DOES continue by itself (resume emits the idle hook). Task 9's reconcile resumes the thread with context instead of re-sending `set {status: active}`; a set on an unloaded thread starts nothing |
+| Interrupt without pausing leaves the goal active; the member's next message restarts it | High: Stop does not stop | Task 1 (finding 6) confirmed; Task 5 pauses before interrupting |
+| The protocol goal has no goal ID, and `updatedAt` is in whole seconds | Med: Task 5's "goal ID the adapter set" and Task 7's stale-update check need another key | Task 1 (finding 10): identify a goal by `createdAt` plus objective, and order updates by stream sequence rather than `updatedAt` alone. Task 5 keeps that identity in `chat.json`; Task 7 orders by createdAt, then updatedAt, then the stream position within one stream |
 | Lost releases or updates leave a slot held | Med: member blocked from goals | Release on every transition, sweep recomputes slots from `goals` |
 | Long goals keep the MCP headers from the run that loaded the thread; OAuth tokens may expire | Med: tool errors, goal stalls | Accepted for MVP; stalled goals resume through a member run, which reloads fresh headers |
 | Budgets drain faster than presets suggest (non-cached input + output + helpers) | Med | Task 19 measures before operators pick presets |

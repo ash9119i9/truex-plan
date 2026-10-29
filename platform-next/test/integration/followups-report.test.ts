@@ -147,6 +147,20 @@ describe("follow-ups report", () => {
           completedAt: at(18 * 60 * 60_000 - 60_000),
         },
       }),
+      // A goal's turn right after set 3 is not the member answering it, nor
+      // a turn of theirs in the holdout comparison.
+      {
+        _id: new ObjectId(),
+        chatId: chatA,
+        ownerId: owner,
+        trigger: "goal",
+        threadId: "thread-a",
+        turnId: "turn-goal",
+        status: "completed",
+        timings: { acceptedAt: at(18 * 60 * 60_000 - 5 * 60_000) },
+        createdAt: at(18 * 60 * 60_000 - 5 * 60_000),
+        updatedAt: at(18 * 60 * 60_000 - 5 * 60_000),
+      },
       run(c3, chatA, "completed", at(15 * 60 * 60_000)),
       // Format failures are counted but are not sets.
       run(s4, chatA, "completed", at(17 * 60 * 60_000), {
@@ -294,6 +308,8 @@ describe("follow-ups report", () => {
     const on = report.holdout.find((row) => row.assignment === "on")!;
     const holdout = report.holdout.find((row) => row.assignment === "holdout")!;
     assert.equal(on.chats, 2);
+    // The member's turns only: chatA's goal turn is not one.
+    assert.equal(on.turns, 12);
     assert.equal(holdout.chats, 1);
     assert.equal(holdout.turns, 2);
     assert.equal(holdout.chatsWithTwoTurns, 1);
