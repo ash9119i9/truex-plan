@@ -1,4 +1,5 @@
 import type {
+  GoalSettings,
   McpServerSpec,
   ModelSettings,
   StartRunRequest,
@@ -244,12 +245,34 @@ function subAgentConfig(
   };
 }
 
+// Codex goals (ext/goal), verified on the pin (test/codex/goals-probe.test.ts):
+// the thread config decides whether the model gets get_goal, create_goal and
+// update_goal and whether Codex runs goal turns. The maximum holds here only
+// while the thread is loaded, so the chat's process also gets it
+// (`goalProcessArgs`).
+function goalConfig(goals: GoalSettings | undefined) {
+  if (!goals) return {};
+  return {
+    "features.goals": true,
+    "goals.max_goal_token_budget": goals.maxTokenBudget,
+  };
+}
+
+// The budget maximum as a process argument: a goal set on an unloaded thread
+// reads the process config, and a goal set without a budget gets this one.
+export function goalProcessArgs(maxTokenBudget: number | undefined): string[] {
+  return maxTokenBudget === undefined
+    ? []
+    : [`goals.max_goal_token_budget=${maxTokenBudget}`];
+}
+
 function sessionSettings(
   model: ModelSettings,
   workspace: string,
   mcp: readonly McpServerSpec[] = [],
   coding?: CodingSettings,
   subAgents?: StartRunRequest["subAgents"],
+  goals?: GoalSettings,
 ) {
   return {
     model: model.modelName,
@@ -281,6 +304,8 @@ function sessionSettings(
       ...mcpConfigEntries(mcp, model.contextWindow),
       // Empty without helpers, for the same reason.
       ...subAgentConfig(subAgents, Boolean(coding)),
+      // Empty without goals, for the same reason.
+      ...goalConfig(goals),
     },
   };
 }
@@ -293,9 +318,10 @@ export function threadStartParams(
   coding?: CodingSettings,
   skills: readonly SkillRoot[] = [],
   subAgents?: StartRunRequest["subAgents"],
+  goals?: GoalSettings,
 ) {
   return {
-    ...sessionSettings(model, workspace, mcp, coding, subAgents),
+    ...sessionSettings(model, workspace, mcp, coding, subAgents, goals),
     baseInstructions: agentPrompt,
     // Absent without skills, so the params stay byte for byte the same.
     ...capabilityRoots(skills),
@@ -314,10 +340,11 @@ export function threadResumeParams(
   mcp: readonly McpServerSpec[] = [],
   coding?: CodingSettings,
   subAgents?: StartRunRequest["subAgents"],
+  goals?: GoalSettings,
 ) {
   return {
     threadId,
-    ...sessionSettings(model, workspace, mcp, coding, subAgents),
+    ...sessionSettings(model, workspace, mcp, coding, subAgents, goals),
     excludeTurns: true,
   };
 }

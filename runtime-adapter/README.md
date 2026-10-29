@@ -66,6 +66,7 @@ JSON, at most 256 KiB, and unknown fields are rejected. Errors have one shape:
   codingApprovals?: { commands: [sha256…] }
                                            // coding only; see "Coding profile" below
   skills?: [{ sha256, slug }]              // ≤ 10, pushed first; see "Skills" below
+  goals?: { maxTokenBudget }               // 1–1e9; the chat has goals, see "Goals" below
 }
 ```
 
@@ -93,6 +94,7 @@ run), `event: <type>` and JSON `data`. A `: hb` comment is written every 15 s.
 | `skill.used`                                    | `{slug}`                                                                                                      | The model opened one of the run's skills (`skills.read`). Once per skill per run.                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `plan.updated`                                  | `{explanation, steps}`                                                                                        | The model called `update_plan`. Always the whole plan: replace the last one. `steps` are `{step, status}` (`pending`, `inProgress`, `completed`), at most 50 of 500 chars; `explanation` is at most 2 000 chars or `null`. Malformed steps are dropped; helpers' plans never appear. Not an item.                                                                                                                                                                                                                   |
 | `connector.status`                              | `{connector, status, reason?}`                                                                                | A connector's startup state changed. `status` is `starting`, `ready` or `failed`; `reason` is `auth`, `unreachable` or `unknown`.                                                                                                                                                                                                                                                                                                                                                                                   |
+| `goal.updated`                                  | `{goal, turnId, origin}`                                                                                      | The chat's goal changed during this run, for example the model created one. Same data as on the chat stream (see "Goals"). Not an item.                                                                                                                                                                                                                                                                                                                                                                             |
 | `run.snapshot`                                  | `{status, threadId, turnId, items, approvals, plan?}`                                                         | Only on reconnect when the cursor is older than the buffer.                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `run.completed`                                 | `{status, error, delivery, threadId, turnId, items, usage, timings, plan?}`                                   | Always last. `status` is `completed`, `stopped` or `failed`. `delivery` is `none` (nothing ran; safe to resend), `accepted` or `unknown` (a turn request went out and its answer was lost; reconcile with history, never resend).                                                                                                                                                                                                                                                                                   |
 
@@ -156,6 +158,21 @@ stays reconnectable for 5 minutes, then `404 RUN_NOT_FOUND`.
 
 Body `{tenantId, chatId}`. Returns `202 {status: "stopping"}` or, for a finished
 run, `200 {status}`. Repeating it is safe and never sends a second interrupt.
+
+If the chat's goal is `active`, the stop first pauses it
+(`thread/goal/set {status: paused}`, `origin: "user"`), as the Codex TUI does,
+and the interrupt follows. Codex handles both in that order, so it starts no
+goal turn after the stopped one. This applies to any run, a member's or a goal
+run: without the pause, Codex continues the goal with the member's next run or
+the next resume. A goal reported only after the stop (a stop while the run is
+resuming the thread) is paused when it is reported. A stop that restarts the
+chat's process waits for the pause's answer first. Repeating the stop sends
+nothing more.
+
+The adapter's own stops pause the goal the same way, without `origin: "user"`:
+a run failed by `MODEL_TIMEOUT` or `SUBAGENT_LIMIT` leaves the goal `paused`,
+so the member decides whether to resume it. `RUNTIME_SHUTDOWN` does not pause;
+the goal continues when the chat is resumed after the restart.
 
 ### `POST /v1/runs/:runId/steer` — add a message to the running turn
 
@@ -273,6 +290,116 @@ of the run's slugs as `skill.used`.
 
 No authentication. `{status: "ok" | "draining", activeRuns, processes}`.
 
+## Goals
+
+A chat created with goals sends `goals: {maxTokenBudget}` on every run and
+goal request; Codex then runs the goal loop, counts its tokens and decides its
+status. A goal request without `goals` is refused: Codex would accept the goal
+and never run it.
+
+Codex starts each turn of an active goal by itself. Every such turn is a run
+of its own (a **goal run**), announced by `run.started` on the chat stream and
+read, stopped, steered and answered like a member's run. It is the chat's
+active run: `POST /v1/runs` meanwhile is `409 CHAT_BUSY`, so the platform
+steers instead. A goal run has no input of its own; its `run.accepted` comes
+first in its stream, with `resumed: false`. It uses the settings the thread was
+last started, resumed or run with.
+
+A member's run that arrives just as Codex starts a goal turn may land in that
+turn: Codex steers its input in and answers with the goal turn's id, which the
+adapter cannot tell from a turn of its own (goals probe 8). That turn is then
+the member's run and gets no `run.started`. Either way every turn has exactly
+one run.
+
+A goal, as every answer and event carries it:
+
+```js
+{
+  (objective, // 1–4000 characters
+    status, // active | paused | blocked | usageLimited | budgetLimited | complete
+    tokenBudget, // number or null
+    tokensUsed,
+    timeUsedSeconds,
+    createdAt,
+    updatedAt); // Unix seconds (whole seconds: two updates can share one)
+}
+```
+
+### `PUT /v1/chats/:chatId/goal` — set the chat's goal
+
+```js
+{
+  tenantId,
+  goals: { maxTokenBudget },   // the chat's setting, as on its runs
+  status: "active" | "paused", // every other status is Codex's
+  objective?,                  // 1–4000 Unicode characters; trimmed; newlines and tabs kept
+  tokenBudget?,                // 1–goals.maxTokenBudget; absent keeps the current one
+                               // (a new goal without one gets maxTokenBudget)
+  run?                         // required for "active", refused for "paused":
+                               // a run's body without runId, tenantId, chatId,
+                               // input and goals, validated the same way
+}
+```
+
+Sent to Codex as `thread/goal/set` with `origin: "user"`. Making a goal active
+first starts (`run.threadId: null`) or resumes the thread with `run`, because
+Codex continues a goal only on a loaded thread; a thread loaded without this
+`goals` setting is reloaded with it. Codex then starts a goal turn by itself.
+A pause works on an unloaded thread. Answers `200 {goal}`.
+
+- `409 CHAT_BUSY`: making a goal active while a run is active; a run started
+  while an active set is still being answered is refused the same way.
+- `404 GOAL_NOT_FOUND`: a set without `objective` when the chat has no goal,
+  or a pause for a chat with no thread yet.
+- `409 SKILLS_MISSING`: as for a run, when `run.skills` are not on disk.
+- Goal requests for one chat reach Codex one at a time, in arrival order.
+
+### `GET /v1/chats/:chatId/goal?tenantId` and `DELETE …` — read or clear
+
+`GET` answers `200 {goal}` with `goal: null` when there is none. `DELETE`
+sends `thread/goal/clear` with `origin: "user"` and answers `200 {cleared}`
+(`false` when there was no goal). Neither loads the thread; for a chat with no
+thread yet they answer without starting Codex.
+
+### `GET /v1/chats/:chatId/events?tenantId&after=<seq>&streamId=<id>` — the chat stream
+
+One stream per chat, as the Codex TUI holds one per thread. It never ends by
+itself and starts no Codex process; events have their own `seq` (1, 2, 3… per
+chat), a `: hb` comment is written every 15 s, and `after` with `streamId`
+resumes like a run stream. Numbering starts again at 1 in a new stream (an
+adapter restart, or the chat after a long idle with no reader), so a cursor
+names its stream: without this stream's `streamId`, or with `after` older than
+the buffer or newer than the last event, a single `chat.snapshot` comes first
+instead of a replay. A first read (no `streamId`) therefore starts with a
+snapshot, which carries the `streamId` to reconnect with. After a snapshot the
+events between the cursor and it are not replayed; reconcile with `GET …/goal`.
+
+| Event           | Data                                  | Meaning                                                                                                                                                                                                                                                                                              |
+| --------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `goal.updated`  | `{goal, turnId, origin}`              | Codex reported the goal (`thread/goal/updated`). `turnId` is the turn it changed in, or `null`. `origin` is `user` (set through this API) or `model` (the model created it).                                                                                                                         |
+| `goal.cleared`  | `{}`                                  | The goal was cleared.                                                                                                                                                                                                                                                                                |
+| `run.started`   | `{runId, turnId, trigger: "goal"}`    | Codex started a turn for the goal by itself. It is an ordinary run: read it with `GET /v1/runs/:runId/events`, stop and steer it as any run.                                                                                                                                                         |
+| `chat.snapshot` | `{streamId, goal, origin, activeRun}` | On a first read, or a reconnect outside the buffer or from another stream: this stream's ID, the goal Codex last reported here (or `null`, with `origin` `null`) and the running run `{runId, turnId, trigger}` (`user` or `goal`; `turnId` is `null` until Codex accepts a member's run) or `null`. |
+
+A goal is `user` when it was set through this API with an objective or made
+active, matched by `createdAt` and `objective` (Codex goals have no ID). The
+match is kept in the chat's `chat.json`, so it survives a process or adapter
+restart. A pause alone does not make a goal `user`. A `goal.updated` also goes
+to the active run's stream when it names that run's turn or no turn.
+
+**Model-created goals are paused.** A `model` goal reported `active` is paused
+at once (`thread/goal/set {status: paused}`, without `origin`, so Codex records
+no instruction from the member). The pause is sent while the model's turn is
+still running, so Codex starts no goal turn after it; both updates (`active`,
+then `paused`) reach the run's stream before `run.completed`. Making it active
+through `PUT …/goal` starts it and makes it `user`.
+
+**Goal run IDs.** A goal turn's `runId` is the first 24 hex characters of
+`sha256(threadId + ":" + turnId)` (`goalRunId` in `src/contract.ts`). The
+same turn always gets the same ID, and it is ObjectId-shaped, so the platform
+can use it as the run's `_id` and two readers saving one turn collide instead
+of saving it twice.
+
 ## MCP (directory connectors)
 
 A run may attach up to three MCP directory connectors through `StartRunRequest.mcp`.
@@ -389,6 +516,7 @@ text-only ones. The profile lives in `src/codex/coding.ts`.
 | `RUN_CONFLICT`        | 409    | no        | The `runId` was used with a different request.               |
 | `FILE_NOT_FOUND`      | 404    | no        | The path is not a regular file inside the chat's workspace.  |
 | `PAYLOAD_TOO_LARGE`   | 413    | no        | Body over 256 KiB.                                           |
+| `GOAL_NOT_FOUND`      | 404    | no        | The chat has no goal to change (see "Goals").                |
 | `RUNTIME_BUSY`        | 503    | yes       | Process capacity reached and no idle process can be stopped. |
 | `DRAINING`            | 503    | yes       | The adapter is shutting down.                                |
 | `RUNTIME_UNAVAILABLE` | 503    | yes       | Codex did not start or answer in time.                       |

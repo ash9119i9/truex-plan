@@ -1,8 +1,12 @@
 # Goal mode tasks
 
 Plan: [goal-mode-plan.md](goal-mode-plan.md). Idea: [docs/ideas/goal-mode.md](../docs/ideas/goal-mode.md).
-Tasks are sequential unless noted. Tasks 13–17 can start once Task 12 fixes the browser
-API. Only Task 19 calls a paid provider.
+Tasks are sequential unless noted. Only Task 19 calls a paid provider.
+
+**Scope of this change: runtime-adapter and platform-next only.** The frontend is being
+redesigned, so Phase 3 (Tasks 13–17) and Checkpoint C are deferred until that is done.
+Task 12 still builds the browser-facing API in platform-next; Task 18 depends on
+Checkpoint B instead of Checkpoint C.
 
 Commands run inside each package: `npm test`, `npm run typecheck`, `npm run format:check`
 (frontend: `npm test`, `npm run typecheck`, `npm run build`). Root `npm test` is not
@@ -17,22 +21,22 @@ thread with the fixture model and records what the pinned Codex actually does. E
 adapter task builds on its answers, so it goes first. No product code.
 
 **Acceptance criteria:**
-- [ ] Records where `features.goals` and `max_goal_token_budget` must be set (process
+- [x] Records where `features.goals` and `max_goal_token_budget` must be set (process
       `-c` arguments, thread config, or both) for `thread/goal/set` to succeed and the
       model to be offered the goal tools.
-- [ ] Records the event sequence for: `set {status: active}` on an idle thread (does a
+- [x] Records the event sequence for: `set {status: active}` on an idle thread (does a
       `turn/started` follow with no client request), a model `update_goal complete`, a
       budget running out, `set {paused}` then `turn/interrupt` during a goal turn, and a
       model `create_goal` during a member's turn.
-- [ ] Records what `turn/start` returns when sent just as Codex starts a goal turn (its
+- [x] Records what `turn/start` returns when sent just as Codex starts a goal turn (its
       own turn, or the goal turn's ID as a steer) and whether `turn/started` arrives
       before that answer.
-- [ ] Records whether `thread/resume` of a thread whose goal is `active` continues by
+- [x] Records whether `thread/resume` of a thread whose goal is `active` continues by
       itself, and whether `set` on an unloaded thread works for `paused` and `active`.
 
 **Verification:**
-- [ ] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
-- [ ] Findings summarised in the test file's header comment and copied to the plan's
+- [x] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] Findings summarised in the test file's header comment and copied to the plan's
       Risks table
 
 **Dependencies:** None
@@ -53,17 +57,17 @@ validation and README, platform `RuntimeClient` methods and parsers. Handlers ma
 `501` until Task 3.
 
 **Acceptance criteria:**
-- [ ] The adapter rejects unknown fields, an objective over 4000 characters, a budget
+- [x] The adapter rejects unknown fields, an objective over 4000 characters, a budget
       that is not a positive integer or exceeds `maxTokenBudget`, and an `active` set
       without run context.
-- [ ] `RuntimeClient` sends each request and parses each event against a fake adapter;
+- [x] `RuntimeClient` sends each request and parses each event against a fake adapter;
       malformed events are dropped, not thrown.
-- [ ] `goalRunId(threadId, turnId)` has a fixed test vector and matches
+- [x] `goalRunId(threadId, turnId)` has a fixed test vector and matches
       `^[0-9a-f]{24}$`.
 
 **Verification:**
-- [ ] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
-- [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 1
 
@@ -85,15 +89,15 @@ null), send `thread/goal/set` with `origin: "user"`, `clear` and `get`. Record t
 the adapter set in `chat.json`.
 
 **Acceptance criteria:**
-- [ ] A chat without `goals` offers exactly the same tools as today (existing tool-list
+- [x] A chat without `goals` offers exactly the same tools as today (existing tool-list
       pin tests unchanged); a chat with it is also offered `get_goal`, `create_goal`,
       `update_goal`.
-- [ ] `PUT` with an objective and budget on an idle chat returns the goal and Codex starts
+- [x] `PUT` with an objective and budget on an idle chat returns the goal and Codex starts
       a turn; `PUT {status: paused}`, `GET` and `DELETE` work on an unloaded thread.
-- [ ] A budget above the chat's maximum is refused by the adapter before Codex is called.
+- [x] A budget above the chat's maximum is refused by the adapter before Codex is called.
 
 **Verification:**
-- [ ] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 2
 
@@ -115,17 +119,19 @@ handlers. `thread/goal/updated|cleared` go to the chat stream and to the active 
 stream. Admission treats a goal run as the chat's active run.
 
 **Acceptance criteria:**
-- [ ] A goal of three continuation turns yields three runs, each with its own `run.accepted`
+- [x] A goal of three continuation turns yields three runs, each with its own `run.accepted`
       … `run.completed`, reconnectable by `GET /v1/runs/:runId/events`, and three
       `run.started` on the chat stream.
-- [ ] `POST /v1/runs` during a goal turn is `CHAT_BUSY`; steer, stop and approvals work
+- [x] `POST /v1/runs` during a goal turn is `CHAT_BUSY`; steer, stop and approvals work
       on the goal run. A `turn/start` answered with a goal turn's ID is reported as a steer
-      into that run, never a second run (the race from Task 1).
-- [ ] The chat stream replays after a cursor, sends one snapshot when the cursor is older
+      into that run, never a second run (the race from Task 1). *Built as: that turn is
+      the member's run and gets no `run.started`; Task 1 showed a steer cannot be told
+      apart, and either way the turn has exactly one run.*
+- [x] The chat stream replays after a cursor, sends one snapshot when the cursor is older
       than the buffer, and never carries another chat's events.
 
 **Verification:**
-- [ ] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 3
 
@@ -145,15 +151,19 @@ stream. Admission treats a goal run as the chat's active run.
 adapter did not set is paused at once and reported with `origin: "model"`.
 
 **Acceptance criteria:**
-- [ ] After Stop during a goal turn, the goal is `paused` and no further `turn/started`
+- [x] After Stop during a goal turn, the goal is `paused` and no further `turn/started`
       arrives within 5 s; a repeated Stop sends nothing more.
-- [ ] A model `create_goal` during a member's run is paused before that run completes,
-      and no continuation turn starts (measured, not assumed).
-- [ ] After a restart of the chat's Codex process, a goal set through the endpoint is
-      still recognised as the adapter's own.
+- [x] A model `create_goal` during a member's run is paused before that run completes,
+      and no continuation turn starts (measured, not assumed). *Measured with the
+      fixture model, which answers in milliseconds: 12 of 12 repeated runs.*
+- [x] After a restart of the chat's Codex process, a goal set through the endpoint is
+      still recognised as the adapter's own. *Built as: Codex goals have no ID, so
+      `chat.json` keeps the goal's `createdAt` and objective; tested across an adapter
+      restart. An active set through the endpoint also makes a goal the adapter's, so
+      a proposed goal the member starts (Task 10) is not paused again.*
 
 **Verification:**
-- [ ] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `runtime-adapter`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 4
 
@@ -165,9 +175,9 @@ adapter did not set is paused at once and reported with `origin: "model"`.
 **Estimated scope:** Small
 
 ## Checkpoint A: adapter
-- [ ] `runtime-adapter`: test, typecheck, build, format pass
-- [ ] Existing pin tests (lifecycle, steer, plan, subagents, failures) pass unchanged
-- [ ] Review the adapter contract and Task 1 findings with the human before Phase 2
+- [x] `runtime-adapter`: test, typecheck, build, format pass
+- [x] Existing pin tests (lifecycle, steer, plan, subagents, failures) pass unchanged
+- [x] Review the adapter contract and Task 1 findings with the human before Phase 2
 
 ## Phase 2: platform-next
 
@@ -179,14 +189,14 @@ below the maximum). New chats snapshot `goals: {maxTokenBudget}` and every run s
 The current-tenant API exposes the presets, the maximum and whether goals are on.
 
 **Acceptance criteria:**
-- [ ] The operator command refuses unordered, duplicate, non-integer or out-of-range
+- [x] The operator command refuses unordered, duplicate, non-integer or out-of-range
       values and writes an audit event.
-- [ ] A chat created after settings exist sends `goals` on its runs; an older chat, or a
+- [x] A chat created after settings exist sends `goals` on its runs; an older chat, or a
       tenant without settings, sends nothing and behaves as today.
-- [ ] Changing settings does not change existing chats' snapshot.
+- [x] Changing settings does not change existing chats' snapshot.
 
 **Verification:**
-- [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Checkpoint A
 
@@ -202,19 +212,20 @@ The current-tenant API exposes the presets, the maximum and whether goals are on
 ## Task 7: Goal document and atomic slots
 
 **Description:** A `goals` collection (one per chat, unique on `chatId`) with the Codex
-mirror, origin, review, `slotHeld`, `ended` and history; stale-update protection by Codex
-`updatedAt`. A `goal_slots` document per tenant with claim, release and recompute.
-Indexes through `ensure-tenant-indexes`.
+mirror, origin, review, `slotHeld`, `ended` and history; stale-update protection that does
+not rely on Codex `updatedAt` alone (whole seconds, and goals have no ID; Task 1 finding 10):
+order by the adapter chat stream. A `goal_slots` document per tenant with claim, release
+and recompute. Indexes through `ensure-tenant-indexes`.
 
 **Acceptance criteria:**
-- [ ] 20 concurrent claims for one user with a cap of 3 grant exactly 3; for a tenant cap
+- [x] 20 concurrent claims for one user with a cap of 3 grant exactly 3; for a tenant cap
       of 10 across users, exactly 10.
-- [ ] Releasing twice for one transition decrements once; recompute repairs a document
+- [x] Releasing twice for one transition decrements once; recompute repairs a document
       that was edited by hand.
-- [ ] An older or replayed Codex update never overwrites a newer one.
+- [x] An older or replayed Codex update never overwrites a newer one.
 
 **Verification:**
-- [ ] `platform-next`: `npm test` (integration against the test MongoDB),
+- [x] `platform-next`: `npm test` (integration against the test MongoDB),
       `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 6
@@ -235,13 +246,13 @@ outcome as assistant messages after the chat's last message. Recovery handles at
 runs.
 
 **Acceptance criteria:**
-- [ ] An attached run is saved with `trigger: "goal"`, its replies in order, and no user
+- [x] An attached run is saved with `trigger: "goal"`, its replies in order, and no user
       message; inserting the same run ID twice saves it once.
-- [ ] Existing runs without `trigger` read and recover exactly as before.
-- [ ] A lapsed attached run is recovered by `RecoverySweep` like a started one.
+- [x] Existing runs without `trigger` read and recover exactly as before.
+- [x] A lapsed attached run is recovered by `RecoverySweep` like a started one.
 
 **Verification:**
-- [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 7
 
@@ -260,18 +271,20 @@ runs.
 chat whose goal is active. `run.started` claims `ChatDoc.activeRun` and begins an attached
 run. `goal.updated` updates the goal document, `ChatDoc.goal` and slots (`complete` →
 review pending). A `goal.updated` seen on a member's run stream starts the watcher. A sweep
-restarts lapsed watchers and reconciles with `GET /v1/chats/:chatId/goal`, re-sending
-`set {status: active}` when Codex reports active but nothing has run (Task 1).
+restarts lapsed watchers and reconciles with `GET /v1/chats/:chatId/goal`; when Codex reports
+active, it resumes the thread with the chat's run context (`PUT … {status: active, run}`),
+since a resume continues the goal by itself (Task 1 finding 9). The watcher reconnects with
+its last `ChatCursor`; a `chat.snapshot` means events were missed, so it reconciles.
 
 **Acceptance criteria:**
-- [ ] With no browser connected, a three-turn goal is saved as three runs and the goal
+- [x] With no browser connected, a three-turn goal is saved as three runs and the goal
       document ends `complete`, review pending, slot released.
-- [ ] Killing the platform mid-goal and starting it again: the sweep resumes reading and
+- [x] Killing the platform mid-goal and starting it again: the sweep resumes reading and
       no turn is lost or saved twice.
-- [ ] Two platform processes never both read one chat (lease takeover test).
+- [x] Two platform processes never both read one chat (lease takeover test).
 
 **Verification:**
-- [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 8
 
@@ -292,16 +305,18 @@ proposed (model) goal is started by choosing a preset. Starting a goal from a ne
 creates the chat with the goal instead of a first message.
 
 **Acceptance criteria:**
-- [ ] Start at the limit is refused with `GOAL_LIMIT` ("3 goals running. Pause or finish
+- [x] Start at the limit is refused with `GOAL_LIMIT` ("3 goals running. Pause or finish
       one."); a second goal on a chat, or any goal after clear, is refused.
-- [ ] Another member, another tenant or an archived chat gets the same not-found as an
+- [x] Another member, another tenant or an archived chat gets the same not-found as an
       unknown chat.
-- [ ] A retried start with the same client ID returns the same goal; an adapter failure
+- [x] A retried start with the same client ID returns the same goal; an adapter failure
       leaves no slot held.
 - [ ] (Droppable) A goal started from a new chat creates exactly one chat on retry.
+      Not built: a goal starts on a chat that already has a thread. Starting from a new
+      chat belongs with the new-chat screen, which waits for the frontend redesign.
 
 **Verification:**
-- [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 9
 
@@ -320,15 +335,15 @@ higher budget), raise budget, accept as is. Port the review rules from legacy
 `platform/src/conversations/goals.ts`.
 
 **Acceptance criteria:**
-- [ ] Request changes on a complete goal sends one `set` with the merged objective and
-      `active`, keeps the goal ID and `tokensUsed`, and claims a slot; a merge over 4000
-      characters is refused with `OBJECTIVE_TOO_LONG`.
-- [ ] Raise budget accepts only values above `tokensUsed` and at most the chat maximum.
-- [ ] Accept as is works only for `budgetLimited` at the maximum; approve only for
+- [x] Request changes on a complete goal sends one `set` with the merged objective and
+      `active`, keeps the goal's `createdAt` and `tokensUsed`, and claims a slot; a merge
+      over 4000 characters is refused with `OBJECTIVE_TOO_LONG`.
+- [x] Raise budget accepts only values above `tokensUsed` and at most the chat maximum.
+- [x] Accept as is works only for `budgetLimited` at the maximum; approve only for
       review pending; every decision is audited and appears in the goal history.
 
 **Verification:**
-- [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 10
 
@@ -347,14 +362,14 @@ and the chat list include the goal summary. Archiving a chat with a goal clears 
 releases its slot.
 
 **Acceptance criteria:**
-- [ ] A subscriber sees `run.started` for a goal turn and can attach to that run's
+- [x] A subscriber sees `run.started` for a goal turn and can attach to that run's
       existing stream; a reconnect starts with a snapshot.
-- [ ] The chat list returns each chat's goal status and review state without an extra
+- [x] The chat list returns each chat's goal status and review state without an extra
       query per chat.
-- [ ] Archive pauses or clears the goal before the chat is hidden, and frees its slot.
+- [x] Archive pauses or clears the goal before the chat is hidden, and frees its slot.
 
 **Verification:**
-- [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
+- [x] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
 
 **Dependencies:** Task 11
 
@@ -367,11 +382,11 @@ releases its slot.
 **Estimated scope:** Medium
 
 ## Checkpoint B: platform
-- [ ] `platform-next`: test, typecheck, build, format pass
-- [ ] With the fixture model: start a goal by API, disconnect, and find every turn saved
-- [ ] Review with the human before Phase 3
+- [x] `platform-next`: test, typecheck, build, format pass
+- [x] With the fixture model: start a goal by API, disconnect, and find every turn saved
+- [ ] Review with the human before Phase 4
 
-## Phase 3: frontend
+## Phase 3: frontend (deferred until the frontend redesign)
 
 ## Task 13: Goal client and chat stream
 
@@ -492,7 +507,7 @@ from the chat list response and the open chat's stream.
 
 **Estimated scope:** Small
 
-## Checkpoint C: feature complete
+## Checkpoint C: feature complete (deferred with Phase 3)
 - [ ] All three packages: test, typecheck, build, format pass
 - [ ] Manual run with the fixture model: start, close the tab, reopen, review, request
       changes, approve
@@ -515,7 +530,7 @@ restart mid-goal and two tabs racing for the last slot.
 **Verification:**
 - [ ] `platform-next`: `npm test` (integration)
 
-**Dependencies:** Checkpoint C
+**Dependencies:** Checkpoint B (Checkpoint C is deferred with Phase 3)
 
 **Files likely touched:**
 - `platform-next/test/integration/goals-stack.test.ts` (new)

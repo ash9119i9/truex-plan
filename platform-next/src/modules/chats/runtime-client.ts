@@ -65,6 +65,9 @@ export interface StartRunBody extends ChatRef {
   readonly skills?: readonly RunSkill[];
   // Helper agents (CHAT_SUBAGENTS only): how many may run at once.
   readonly subAgents?: { readonly maxConcurrent: number };
+  // The chat's goal setting, snapshotted when the chat was created. Absent
+  // for a chat without goals.
+  readonly goals?: GoalSettings;
   readonly model: {
     readonly modelName: string;
     readonly gatewayUrl: string;
@@ -74,6 +77,94 @@ export interface StartRunBody extends ChatRef {
     readonly reasoningEffort?: string;
   };
 }
+
+export interface GoalSettings {
+  readonly maxTokenBudget: number;
+}
+
+// Codex's goal statuses. The member sets only active and paused.
+export const GOAL_STATUSES = [
+  "active",
+  "paused",
+  "blocked",
+  "usageLimited",
+  "budgetLimited",
+  "complete",
+] as const;
+export type GoalStatus = (typeof GOAL_STATUSES)[number];
+
+// The chat's goal as Codex reports it. Times are Unix seconds.
+export interface RuntimeGoal {
+  readonly objective: string;
+  readonly status: GoalStatus;
+  readonly tokenBudget: number | null;
+  readonly tokensUsed: number;
+  readonly timeUsedSeconds: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+// `user`: set through the goal API; `model`: the model created it.
+export type GoalOrigin = "user" | "model";
+
+export interface GoalUpdate {
+  readonly goal: RuntimeGoal;
+  // The turn it changed in, or null outside a turn.
+  readonly turnId: string | null;
+  readonly origin: GoalOrigin;
+}
+
+// What making a goal active needs to start or resume the chat's thread:
+// the run body without its own ID, input and goals.
+export type GoalRunContext = Omit<
+  StartRunBody,
+  "runId" | "tenantId" | "chatId" | "input" | "goals"
+>;
+
+export type GoalSetBody = {
+  readonly goals: GoalSettings;
+  readonly objective?: string;
+  readonly tokenBudget?: number;
+} & (
+  | { readonly status: "active"; readonly run: GoalRunContext }
+  | { readonly status: "paused"; readonly run?: never }
+);
+
+// A run in progress in the chat, as a chat snapshot names it.
+export interface ActiveRuntimeRun {
+  readonly runId: string;
+  // null while Codex has not yet accepted a member's run.
+  readonly turnId: string | null;
+  readonly trigger: "user" | "goal";
+}
+
+// Where to resume a chat stream: the `streamId` of its last snapshot and the
+// last seq read after it.
+export interface ChatCursor {
+  readonly streamId: string;
+  readonly seq: number;
+}
+
+// The chat stream's events, parsed. Anything else is dropped.
+export type ChatEvent =
+  | ({ readonly seq: number; readonly type: "goal.updated" } & GoalUpdate)
+  | { readonly seq: number; readonly type: "goal.cleared" }
+  | {
+      readonly seq: number;
+      readonly type: "run.started";
+      readonly runId: string;
+      readonly turnId: string;
+      readonly trigger: "goal";
+    }
+  | {
+      readonly seq: number;
+      readonly type: "chat.snapshot";
+      // Names the stream's numbering; reconnect with it (ChatCursor).
+      readonly streamId: string;
+      readonly goal: RuntimeGoal | null;
+      readonly origin: GoalOrigin | null;
+      readonly activeRun: ActiveRuntimeRun | null;
+    };
 
 // A visible file in the chat's runtime workspace.
 export interface WorkspaceFile {
@@ -184,6 +275,67 @@ export class RuntimeClient {
     );
   }
 
+  // Sets the chat's goal. Making it active may start or resume the thread
+  // first, so it gets the cold-start allowance. Refusals are AdapterRefusal.
+  async setGoal(ref: ChatRef, body: GoalSetBody): Promise<RuntimeGoal> {
+    const answer = (await this.json(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/goal`,
+      "PUT",
+      { tenantId: ref.tenantId, ...body },
+      this.timeouts.headersMs,
+    )) as { goal?: unknown };
+    const goal = runtimeGoal(answer.goal);
+    if (!goal) throw new AdapterUnreachable("invalid goal response");
+    return goal;
+  }
+
+  async getGoal(ref: ChatRef): Promise<RuntimeGoal | null> {
+    const query = new URLSearchParams({ tenantId: ref.tenantId });
+    const answer = (await this.json(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/goal?${query}`,
+      "GET",
+    )) as { goal?: unknown };
+    if (answer.goal === null) return null;
+    const goal = runtimeGoal(answer.goal);
+    if (!goal) throw new AdapterUnreachable("invalid goal response");
+    return goal;
+  }
+
+  // Resolves whether there was a goal to clear.
+  async clearGoal(ref: ChatRef): Promise<boolean> {
+    const query = new URLSearchParams({ tenantId: ref.tenantId });
+    const answer = (await this.json(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/goal?${query}`,
+      "DELETE",
+    )) as { cleared?: unknown };
+    if (typeof answer.cleared !== "boolean")
+      throw new AdapterUnreachable("invalid clear response");
+    return answer.cleared;
+  }
+
+  // The chat stream after `cursor`; a first read (null) or a cursor the
+  // adapter cannot resume starts with a snapshot. It does not end by itself;
+  // the caller aborts it. Malformed events are dropped.
+  async *chatEvents(
+    ref: ChatRef,
+    cursor: ChatCursor | null,
+    signal: AbortSignal,
+  ): AsyncGenerator<ChatEvent> {
+    const query = new URLSearchParams({
+      tenantId: ref.tenantId,
+      after: String(cursor?.seq ?? 0),
+      ...(cursor && { streamId: cursor.streamId }),
+    });
+    for await (const event of this.stream(
+      `/v1/chats/${encodeURIComponent(ref.chatId)}/events?${query}`,
+      { method: "GET" },
+      signal,
+    )) {
+      const parsed = chatEvent(event);
+      if (parsed) yield parsed;
+    }
+  }
+
   async history(ref: ChatRef): Promise<HistoryTurn[]> {
     const query = new URLSearchParams({ tenantId: ref.tenantId });
     const body = (await this.json(
@@ -282,12 +434,17 @@ export class RuntimeClient {
     );
   }
 
-  private async json(path: string, method: string, body?: unknown) {
+  private async json(
+    path: string,
+    method: string,
+    body?: unknown,
+    timeoutMs = this.timeouts.requestMs,
+  ) {
     const res = await this.send(
       path,
       method,
       body,
-      AbortSignal.timeout(this.timeouts.requestMs),
+      AbortSignal.timeout(timeoutMs),
     );
     try {
       return (await res.json()) as unknown;
@@ -469,4 +626,126 @@ function historyItems(value: unknown): HistoryItem[] | undefined {
       items.push({ type: "reply", text: item.text });
   }
   return items;
+}
+
+// Codex's turn IDs are UUIDs; anything short and non-empty is accepted.
+const isTurnId = (value: unknown): value is string =>
+  typeof value === "string" && value.length > 0 && value.length <= 128;
+// Run IDs are ObjectIds: the platform's own, and a goal run's
+// (runtime-adapter goalRunId) is ObjectId-shaped.
+const RUN_ID = /^[0-9a-f]{24}$/;
+// The adapter's ID rule, which it applies to a `streamId` sent back.
+const STREAM_ID = /^[A-Za-z0-9_-]{1,64}$/;
+const count = (value: unknown): value is number =>
+  Number.isSafeInteger(value) && (value as number) >= 0;
+
+function runtimeGoal(value: unknown): RuntimeGoal | null {
+  if (!value || typeof value !== "object") return null;
+  const g = value as Record<string, unknown>;
+  if (
+    typeof g.objective !== "string" ||
+    g.objective.length === 0 ||
+    !GOAL_STATUSES.includes(g.status as GoalStatus) ||
+    !(
+      g.tokenBudget === null ||
+      (count(g.tokenBudget) && (g.tokenBudget as number) > 0)
+    ) ||
+    !count(g.tokensUsed) ||
+    !count(g.timeUsedSeconds) ||
+    !count(g.createdAt) ||
+    !count(g.updatedAt)
+  )
+    return null;
+  return {
+    objective: g.objective,
+    status: g.status as GoalStatus,
+    tokenBudget: g.tokenBudget as number | null,
+    tokensUsed: g.tokensUsed as number,
+    timeUsedSeconds: g.timeUsedSeconds as number,
+    createdAt: g.createdAt as number,
+    updatedAt: g.updatedAt as number,
+  };
+}
+
+const isOrigin = (value: unknown): value is GoalOrigin =>
+  value === "user" || value === "model";
+
+// A goal.updated event's data, from the chat stream or a run's stream.
+export function goalUpdate(data: Record<string, unknown>): GoalUpdate | null {
+  const goal = runtimeGoal(data.goal);
+  if (!goal || !isOrigin(data.origin)) return null;
+  if (data.turnId !== null && !isTurnId(data.turnId)) return null;
+  return { goal, turnId: data.turnId, origin: data.origin };
+}
+
+// null: no run in progress; undefined: malformed.
+function activeRun(value: unknown): ActiveRuntimeRun | null | undefined {
+  if (value === null) return null;
+  if (!value || typeof value !== "object") return undefined;
+  const r = value as Record<string, unknown>;
+  if (
+    typeof r.runId !== "string" ||
+    !RUN_ID.test(r.runId) ||
+    (r.turnId !== null && !isTurnId(r.turnId)) ||
+    (r.trigger !== "user" && r.trigger !== "goal")
+  )
+    return undefined;
+  return { runId: r.runId, turnId: r.turnId, trigger: r.trigger };
+}
+
+function chatEvent(event: AdapterEvent): ChatEvent | null {
+  const { seq, data } = event;
+  switch (event.type) {
+    case "goal.updated": {
+      const update = goalUpdate(data);
+      return update && { seq, type: "goal.updated", ...update };
+    }
+    case "goal.cleared":
+      return { seq, type: "goal.cleared" };
+    case "run.started":
+      if (
+        typeof data.runId !== "string" ||
+        !RUN_ID.test(data.runId) ||
+        !isTurnId(data.turnId) ||
+        data.trigger !== "goal"
+      )
+        return null;
+      return {
+        seq,
+        type: "run.started",
+        runId: data.runId,
+        turnId: data.turnId,
+        trigger: "goal",
+      };
+    case "chat.snapshot": {
+      const { streamId } = data;
+      if (typeof streamId !== "string" || !STREAM_ID.test(streamId))
+        return null;
+      const run = activeRun(data.activeRun);
+      if (run === undefined) return null;
+      if (data.goal === null)
+        return data.origin === null
+          ? {
+              seq,
+              type: "chat.snapshot",
+              streamId,
+              goal: null,
+              origin: null,
+              activeRun: run,
+            }
+          : null;
+      const goal = runtimeGoal(data.goal);
+      if (!goal || !isOrigin(data.origin)) return null;
+      return {
+        seq,
+        type: "chat.snapshot",
+        streamId,
+        goal,
+        origin: data.origin,
+        activeRun: run,
+      };
+    }
+    default:
+      return null;
+  }
 }

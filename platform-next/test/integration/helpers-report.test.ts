@@ -124,6 +124,13 @@ describe("helpers report", () => {
       // Before the window.
       run(old, chat1, "completed", { helperCount: 1, ...done(old, 3) }),
       run(offRun, chatOff, "completed", { helperCount: 1, ...done(offRun, 3) }),
+      // A goal run: its _id is a digest of its thread and turn, so its _id
+      // time means nothing, even when it falls in the window.
+      run(runId(3), chat1, "completed", {
+        trigger: "goal",
+        helperCount: 1,
+        ...done(runId(3), 3),
+      }),
     ]);
     await db.collection(MESSAGES_COLLECTION).insertMany([
       helperRow(r1, chat1, "completed", usage(30, 10)),

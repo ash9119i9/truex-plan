@@ -25,8 +25,12 @@ export class SkillUseWatcher {
   ) {}
 
   // Skips the thread's earlier turns: only what is appended from here counts.
-  async begin(): Promise<void> {
-    this.offset = await fileSize(this.path);
+  // Queued like a poll, so a poll asked for before it finishes reads after.
+  begin(): Promise<void> {
+    this.queue = this.queue.then(async () => {
+      this.offset = await fileSize(this.path);
+    });
+    return this.queue;
   }
 
   // Reads what was appended since the last poll. Polls run one at a time, in

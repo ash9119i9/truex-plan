@@ -34,7 +34,12 @@ import type { SkillDoc } from "../skills/skill";
 import { packSkillFolder } from "../skills/skill-bundle";
 import { SkillsService, type PublishOutcome } from "../skills/skills.service";
 import { ModelsService, type PutOutcome } from "../models/models.service";
-import type { TenantDoc, TenantKind } from "../tenants/tenant";
+import {
+  parseTenantGoals,
+  type TenantDoc,
+  type TenantGoals,
+  type TenantKind,
+} from "../tenants/tenant";
 import { TenantsService } from "../tenants/tenants.service";
 import { isValidEmail, type UserDoc } from "../users/user";
 import { UsersService } from "../users/users.service";
@@ -61,6 +66,18 @@ export interface AssignRoleCommand {
 export interface EnsureTenantIndexesCommand {
   operator: string;
   tenantId?: ObjectId;
+}
+
+export interface SetTenantGoalsCommand {
+  operator: string;
+  tenantId: ObjectId;
+  // The settings as given, validated here so a refusal is audited.
+  goals: unknown;
+}
+
+export interface RemoveTenantGoalsCommand {
+  operator: string;
+  tenantId: ObjectId;
 }
 
 export interface FollowUpsReportCommand {
@@ -575,6 +592,64 @@ export class OperatorService {
     }
   }
 
+  // Turns goals on for the tenant's new chats, or changes their settings.
+  // Existing chats keep the maximum they started with.
+  async setTenantGoals(
+    command: SetTenantGoalsCommand,
+  ): Promise<{ goals: TenantGoals; changed: boolean }> {
+    const actor = operatorActor(command.operator);
+    const base = {
+      action: "tenant.goals.set",
+      actor,
+      tenantId: command.tenantId,
+    };
+    try {
+      const goals = parseTenantGoals(command.goals);
+      const { previous } = await this.tenants.setGoals(command.tenantId, goals);
+      const changed = !sameGoals(previous, goals);
+      await this.audit.record({
+        ...base,
+        result: "success",
+        details: {
+          presets: goals.presets.join(","),
+          maxTokenBudget: goals.maxTokenBudget,
+          maxActive: goals.maxActive,
+          changed,
+        },
+      });
+      return { goals, changed };
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
+  // Turns goals off for the tenant's new chats. Existing goal chats keep
+  // theirs.
+  async removeTenantGoals(
+    command: RemoveTenantGoalsCommand,
+  ): Promise<{ goals: null; changed: boolean }> {
+    const actor = operatorActor(command.operator);
+    const base = {
+      action: "tenant.goals.remove",
+      actor,
+      tenantId: command.tenantId,
+    };
+    try {
+      const { previous } = await this.tenants.setGoals(command.tenantId, null);
+      const changed = previous !== null;
+      await this.audit.record({
+        ...base,
+        result: "success",
+        details: { changed },
+      });
+      return { goals: null, changed };
+    } catch (error) {
+      await this.recordRefusal(base, error);
+      throw error;
+    }
+  }
+
   // One read-only pass over the tenant databases. Prints counts and rates
   // only; never a suggestion's or a member's text. Not audited: it changes
   // nothing.
@@ -743,4 +818,13 @@ function operatorActor(name: string): AuditActor {
       "Operator name must be 1-64 letters, digits or . _ @ - characters.",
     );
   return { kind: "operator", name };
+}
+
+function sameGoals(a: TenantGoals | null, b: TenantGoals): boolean {
+  return (
+    a !== null &&
+    a.maxTokenBudget === b.maxTokenBudget &&
+    a.maxActive === b.maxActive &&
+    a.presets.every((preset, i) => preset === b.presets[i])
+  );
 }

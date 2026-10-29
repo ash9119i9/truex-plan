@@ -14,6 +14,8 @@ const HTTP: Record<DomainErrorCode, { status: number; code: ErrorCode }> = {
   CONFLICT: { status: 409, code: "CONFLICT" },
   FORBIDDEN: { status: 403, code: "FORBIDDEN" },
   LIMIT_REACHED: { status: 409, code: "LIMIT_REACHED" },
+  GOAL_LIMIT: { status: 409, code: "GOAL_LIMIT" },
+  OBJECTIVE_TOO_LONG: { status: 400, code: "OBJECTIVE_TOO_LONG" },
   MODEL_UNAVAILABLE: { status: 422, code: "MODEL_UNAVAILABLE" },
   STALE_REVISION: { status: 409, code: "STALE_REVISION" },
   CHAT_BUSY: { status: 409, code: "CHAT_BUSY" },

@@ -6,6 +6,7 @@ import { AccountModule } from "./modules/account/account.module";
 import { AgentsModule } from "./modules/agents/agents.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { ChatsModule } from "./modules/chats/chats.module";
+import { GoalsModule } from "./modules/goals/goals.module";
 import { AuthModule } from "./modules/auth/auth.module";
 import { ConnectorsModule } from "./modules/connectors/connectors.module";
 import { CurrentTenantModule } from "./modules/current-tenant/current-tenant.module";
@@ -40,6 +41,7 @@ export class AppModule {
         ModelsModule,
         AgentsModule,
         ChatsModule,
+        GoalsModule,
         ConnectorsModule,
         SkillsModule,
         NetworkModule,

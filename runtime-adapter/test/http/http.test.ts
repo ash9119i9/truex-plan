@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
+import { openChatStream, until } from "../support/goals";
 import { Harness, TOKEN } from "../support/harness";
 
 // The HTTP boundary: authentication, body limits, routing and error shape.
@@ -112,6 +113,69 @@ describe("HTTP boundary", () => {
       input: { text: "   ", clientMessageId: "m" },
     });
     assert.equal(blank.status, 400);
+    assert.equal(h.manager.stats.processes, 0);
+  });
+
+  test("goal routes validate first; a chat with no thread has no goal", async () => {
+    const goals = { maxTokenBudget: 1_000_000 };
+    const put = (body: unknown, chat = "c") =>
+      h.fetch(`/v1/chats/${chat}/goal`, {
+        method: "PUT",
+        body: JSON.stringify(body),
+      });
+    const needsAuth = await h.fetch("/v1/chats/c/goal?tenantId=t", {
+      headers: { authorization: "Bearer wrong" },
+    });
+    assert.equal(needsAuth.status, 401);
+    for (const [res, why] of [
+      [await put({ tenantId: "t", goals, status: "paused", x: 1 }), "unknown"],
+      [await put({ tenantId: "t", goals, status: "active" }), "no context"],
+      [
+        await put({ tenantId: "t", goals, status: "paused", tokenBudget: 2e6 }),
+        "over max",
+      ],
+      [await put({ tenantId: "t", goals, status: "paused" }, ".."), "chatId"],
+      [await h.fetch("/v1/chats/c/goal?tenantId=../x"), "tenantId"],
+      [
+        await h.fetch("/v1/chats/c/goal?tenantId=../x", { method: "DELETE" }),
+        "tenantId",
+      ],
+      [await h.fetch("/v1/chats/c/events?tenantId=t&after=-1"), "cursor"],
+      [await h.fetch("/v1/chats/c/events?tenantId=t&streamId=a.b"), "streamId"],
+    ] as const) {
+      assert.equal(res.status, 400, why);
+      assert.equal(await code(res), "INVALID_REQUEST", why);
+    }
+    const paused = await put({ tenantId: "t", goals, status: "paused" });
+    assert.equal(paused.status, 404);
+    assert.equal(await code(paused), "GOAL_NOT_FOUND");
+    const get = await h.fetch("/v1/chats/c/goal?tenantId=t");
+    assert.equal(get.status, 200);
+    assert.deepEqual(await get.json(), { goal: null });
+    const clear = await h.fetch("/v1/chats/c/goal?tenantId=t", {
+      method: "DELETE",
+    });
+    assert.equal(clear.status, 200);
+    assert.deepEqual(await clear.json(), { cleared: false });
+    // A cursor from another stream (another adapter process's) gets one
+    // snapshot naming this stream; the stream stays open.
+    const events = await openChatStream(h, "c", {
+      after: 3,
+      streamId: "earlier",
+      tenantId: "t",
+    });
+    assert.ok(await until(() => events.events.length === 1));
+    const streamId = events.events[0]!.data.streamId;
+    assert.match(String(streamId), /^[0-9a-f]{24}$/);
+    assert.deepEqual(events.events, [
+      {
+        seq: 0,
+        type: "chat.snapshot",
+        data: { streamId, goal: null, origin: null, activeRun: null },
+      },
+    ]);
+    await events.close();
+    // None of these needed a Codex process.
     assert.equal(h.manager.stats.processes, 0);
   });
 

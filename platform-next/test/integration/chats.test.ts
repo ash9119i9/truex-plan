@@ -29,9 +29,23 @@ import {
   RUNTIME_CLIENT,
   RunExecutor,
 } from "../../src/modules/chats/run-executor";
-import type {
+import { ChatsService } from "../../src/modules/chats/chats.service";
+import { AUDIT_COLLECTION, type AuditDoc } from "../../src/modules/audit/audit";
+import {
+  GOAL_SLOTS_COLLECTION,
+  GOALS_COLLECTION,
+  type GoalDoc,
+  type GoalSlotsDoc,
+} from "../../src/modules/goals/goal";
+import { GoalStore } from "../../src/modules/goals/goal-store";
+import { GoalWatcher } from "../../src/modules/goals/goal-watcher";
+import {
+  AdapterRefusal,
+  AdapterUnreachable,
   RuntimeClient,
-  StartRunBody,
+  type ChatRef,
+  type RuntimeGoal,
+  type StartRunBody,
 } from "../../src/modules/chats/runtime-client";
 import { MEMBERSHIPS_COLLECTION } from "../../src/modules/memberships/membership";
 import { MembershipsService } from "../../src/modules/memberships/memberships.service";
@@ -94,6 +108,7 @@ interface ChatBody {
   runs: Array<{
     id: string;
     status: string;
+    trigger?: string;
     error: { code: string; message: string } | null;
     usage: Record<string, number> | null;
     timings: Record<string, string>;
@@ -668,6 +683,93 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     }
   });
 
+  test("a chat snapshots the tenant's goal maximum at creation and sends it on every run", async () => {
+    const client = running.app.get<RuntimeClient>(RUNTIME_CLIENT);
+    const bodies: StartRunBody[] = [];
+    const original = client.startRun.bind(client);
+    client.startRun = (body, signal) => {
+      bodies.push(body);
+      return original(body, signal);
+    };
+    // The run body of one finished first send or follow-up.
+    async function runBody(res: Promise<Response>) {
+      const receipt = await json<Receipt>(await res, 202);
+      await finish(alice, receipt);
+      assert.equal(bodies.length, 1);
+      const body = bodies.pop()!;
+      return { chatId: receipt.chat.id, body };
+    }
+    const followUp = (chatId: string) =>
+      runBody(
+        call(alice, "POST", `/chats/${chatId}/messages`, {
+          clientMessageId: clientId(),
+          text: "And then?",
+        }),
+      );
+    const tenantGoals = async () =>
+      (
+        await json<{ tenant: { goals: unknown } }>(
+          await call(alice, "GET", "/tenant"),
+          200,
+        )
+      ).tenant.goals;
+    const settings = (maxTokenBudget: number) => ({
+      presets: [100_000, 300_000, 1_000_000],
+      maxTokenBudget,
+      maxActive: 10,
+    });
+    try {
+      // A tenant without settings: nothing, as today.
+      assert.equal(await tenantGoals(), null);
+      const older = await runBody(startChat(alice));
+      assert.equal("goals" in older.body, false);
+      assert.equal("goals" in ((await chatDoc(older.chatId)) ?? {}), false);
+
+      await operator.setTenantGoals({
+        operator: "ops",
+        tenantId,
+        goals: settings(3_000_000),
+      });
+      // The member sees the presets and the maximum, not the tenant cap.
+      assert.deepEqual(await tenantGoals(), {
+        presets: [100_000, 300_000, 1_000_000],
+        maxTokenBudget: 3_000_000,
+      });
+      const goalChat = await runBody(startChat(alice));
+      assert.deepEqual(goalChat.body.goals, { maxTokenBudget: 3_000_000 });
+      assert.deepEqual((await chatDoc(goalChat.chatId))?.goals, {
+        maxTokenBudget: 3_000_000,
+      });
+      // A chat created before the settings stays without goals.
+      assert.equal("goals" in (await followUp(older.chatId)).body, false);
+
+      // New settings reach new chats only.
+      await operator.setTenantGoals({
+        operator: "ops",
+        tenantId,
+        goals: settings(5_000_000),
+      });
+      assert.deepEqual((await followUp(goalChat.chatId)).body.goals, {
+        maxTokenBudget: 3_000_000,
+      });
+      assert.deepEqual((await runBody(startChat(alice))).body.goals, {
+        maxTokenBudget: 5_000_000,
+      });
+
+      await operator.removeTenantGoals({ operator: "ops", tenantId });
+      assert.equal(await tenantGoals(), null);
+      assert.deepEqual((await followUp(goalChat.chatId)).body.goals, {
+        maxTokenBudget: 3_000_000,
+      });
+      assert.equal("goals" in (await runBody(startChat(alice))).body, false);
+      assert.deepEqual((await chatDoc(goalChat.chatId))?.goals, {
+        maxTokenBudget: 3_000_000,
+      });
+    } finally {
+      client.startRun = original;
+    }
+  });
+
   test("a retried first send keeps its holdout draw", async () => {
     await running.close();
     await boot({ followUpsHoldoutPercent: 50 });
@@ -720,7 +822,9 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       { kind: "held", before: "Partial", after: " reply." },
       { kind: "reply", text: "Second." },
     );
-    // The picker loads the catalog cache, as the app does before a start.
+    // The picker loads the catalog cache, and opening the tenant loads its
+    // goal settings, as the app does before a start.
+    await json(await call(alice, "GET", "/tenant"), 200);
     await json(await call(alice, "GET", "/agents"), 200);
     const started = await startChat(alice);
     const receipt = await json<Receipt>(started, 202);
@@ -2527,6 +2631,395 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     assert.equal(gateway.requests.length, 1, "not resent");
   });
 
+  // Goal runs (tasks/goal-mode-todo.md, Task 8). Until the GoalWatcher
+  // (Task 9) reads the adapter's chat stream, these tests read it and begin
+  // each goal run as the watcher will.
+  const GOAL_OBJECTIVE = "GOAL_OBJECTIVE: write the quarterly summary.";
+  // The model marks the goal complete; Codex then asks it once more.
+  const COMPLETE_GOAL = {
+    kind: "call",
+    name: "update_goal",
+    args: { status: "complete" },
+  } as const;
+
+  // A goal chat whose first reply is saved, with its goal made active.
+  // Codex then starts the goal's turns by itself.
+  async function activeGoalChat(
+    settings = {
+      presets: [100_000, 300_000, 500_000] as [number, number, number],
+      maxTokenBudget: 1_000_000,
+      maxActive: 10,
+    },
+  ) {
+    await operator.setTenantGoals({
+      operator: "ops",
+      tenantId,
+      goals: settings,
+    });
+    const client = running.app.get<RuntimeClient>(RUNTIME_CLIENT);
+    const bodies: StartRunBody[] = [];
+    const original = client.startRun.bind(client);
+    client.startRun = (body, signal) => {
+      bodies.push(body);
+      return original(body, signal);
+    };
+    let receipt: Receipt;
+    try {
+      receipt = await json<Receipt>(
+        await startChat(alice, "FIRST_QUESTION"),
+        202,
+      );
+      await finish(alice, receipt);
+    } finally {
+      client.startRun = original;
+    }
+    const {
+      runId: _run,
+      tenantId: _tenant,
+      chatId: _chat,
+      input: _input,
+      goals,
+      ...context
+    } = bodies[0]!;
+    assert.ok(goals);
+    const threadId = (await chatDoc(receipt.chat.id))!.runtime.threadId;
+    const ref = { tenantId: tenantId.toHexString(), chatId: receipt.chat.id };
+    return {
+      receipt,
+      ref,
+      activate: () =>
+        client.setGoal(ref, {
+          goals,
+          status: "active",
+          objective: GOAL_OBJECTIVE,
+          tokenBudget: 100_000,
+          run: { ...context, threadId },
+        }),
+    };
+  }
+
+  // Reads the chat's adapter stream and begins every goal run it announces,
+  // trying again while the previous run is still being saved. The first is
+  // begun by `racers` callers at once.
+  function attachGoalRuns(ref: ChatRef, racers = 1) {
+    const client = running.app.get<RuntimeClient>(RUNTIME_CLIENT);
+    const chats = running.app.get(ChatsService);
+    const tenant = { tenantId, dbName: DEFAULT_TENANT_DB_NAME };
+    const chatId = ObjectId.createFromHexString(ref.chatId);
+    const controller = new AbortController();
+    const started: Array<{ runId: string; turnId: string }> = [];
+    const firstAnswers: string[] = [];
+    const reading = (async () => {
+      for await (const event of client.chatEvents(
+        ref,
+        null,
+        controller.signal,
+      )) {
+        if (event.type !== "run.started") continue;
+        const begin = () =>
+          chats.beginGoalRun(
+            tenant,
+            chatId,
+            ObjectId.createFromHexString(event.runId),
+            event.turnId,
+          );
+        let answers = await Promise.all(
+          Array.from({ length: started.length ? 1 : racers }, begin),
+        );
+        while (answers.every((answer) => answer === "busy")) {
+          await sleep(50);
+          answers = [await begin()];
+        }
+        if (!started.length) firstAnswers.push(...answers);
+        started.push({ runId: event.runId, turnId: event.turnId });
+      }
+    })().catch(() => undefined);
+    return {
+      started,
+      firstAnswers,
+      async close() {
+        controller.abort();
+        await reading;
+      },
+    };
+  }
+
+  test("a goal's turns are saved as goal runs after the chat's last message, with no member message; a repeated begin saves once", async () => {
+    const { receipt, ref, activate } = await activeGoalChat();
+    const attached = attachGoalRuns(ref, 3);
+    gateway.script.push(
+      { kind: "reply", text: "STEP_ONE" },
+      { kind: "reply", text: "STEP_TWO" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    await activate();
+    await until(
+      "three goal runs were saved",
+      async () =>
+        attached.started.length === 3 &&
+        (await chatDoc(receipt.chat.id))?.activeRun === null,
+      30_000,
+    );
+    await attached.close();
+    // Three callers began the first at once: one claimed and read it.
+    assert.deepEqual([...attached.firstAnswers].sort(), [
+      "exists",
+      "exists",
+      "started",
+    ]);
+    const chats = running.app.get(ChatsService);
+    const [first] = attached.started;
+    assert.equal(
+      await chats.beginGoalRun(
+        { tenantId, dbName: DEFAULT_TENANT_DB_NAME },
+        ObjectId.createFromHexString(receipt.chat.id),
+        ObjectId.createFromHexString(first!.runId),
+        first!.turnId,
+      ),
+      "exists",
+    );
+
+    const body = await getChat(alice, receipt.chat.id);
+    // One member message; every goal reply follows the last message.
+    assert.deepEqual(
+      body.messages.map((m) => [m.seq, m.role]),
+      [
+        [1, "user"],
+        [2, "assistant"],
+        [3, "assistant"],
+        [4, "assistant"],
+        [5, "assistant"],
+      ],
+    );
+    assert.deepEqual(
+      body.messages.slice(2).map((m) => [m.text, m.runId]),
+      [
+        ["STEP_ONE", attached.started[0]!.runId],
+        ["STEP_TWO", attached.started[1]!.runId],
+        ["GOAL_DONE", attached.started[2]!.runId],
+      ],
+    );
+    // In no particular order: goal run IDs are digests, not times.
+    const byId = (a: unknown[], b: unknown[]) =>
+      String(a[0]).localeCompare(String(b[0]));
+    assert.deepEqual(
+      body.runs
+        .map((run) => [run.id, run.status, run.trigger ?? null])
+        .sort(byId),
+      [
+        [receipt.run.id, "completed", null],
+        ...attached.started.map((run) => [run.runId, "completed", "goal"]),
+      ].sort(byId),
+    );
+    // A member's run is saved as before: no trigger.
+    assert.equal("trigger" in (await runDoc(receipt.run.id))!, false);
+    const threadId = (await chatDoc(receipt.chat.id))!.runtime.threadId;
+    for (const { runId, turnId } of attached.started) {
+      const raw = (await runDoc(runId))!;
+      assert.equal(raw.trigger, "goal");
+      assert.equal(raw.turnId, turnId);
+      assert.equal(raw.threadId, threadId);
+      assert.equal("userMessageId" in raw, false);
+      assert.equal("clientMessageId" in raw, false);
+    }
+    assert.equal(
+      await database
+        .tenantDb(DEFAULT_TENANT_DB_NAME)
+        .collection(RUNS_COLLECTION)
+        .countDocuments({ chatId: ObjectId.createFromHexString(ref.chatId) }),
+      4,
+    );
+    // The browser reads a goal run like any other.
+    const saved = savedOf(
+      await readStream(await stream(alice, receipt.chat.id, first!.runId)),
+    );
+    assert.deepEqual(
+      saved.messages.map((m) => m.text),
+      ["STEP_ONE"],
+    );
+  });
+
+  test("a goal run never claims a chat another run holds, or one that changed since it was read, and saves nothing then", async () => {
+    const store = running.app.get(ChatStore);
+    const first = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, first);
+    const read = (await chatDoc(first.chat.id))!;
+    const threadId = read.runtime.threadId!;
+    const goalRun = (runId = new ObjectId()) => ({
+      runId,
+      threadId,
+      turnId: "turn-goal",
+    });
+    // The chat as read before a follow-up was answered: free again, but its
+    // seq moved on, so a reply saved from that read would land wrong.
+    await finish(
+      alice,
+      await json<Receipt>(
+        await followUp(alice, first.chat.id, "And then?"),
+        202,
+      ),
+    );
+    const stale = goalRun();
+    assert.equal(
+      await store.beginGoalRun(DEFAULT_TENANT_DB_NAME, read, stale),
+      "busy",
+    );
+    // A member's follow-up holds the chat (no reader here).
+    await unread(() => followUp(alice, first.chat.id, "And after that?"));
+    const held = (await chatDoc(first.chat.id))!;
+    const blocked = goalRun();
+    assert.equal(
+      await store.beginGoalRun(DEFAULT_TENANT_DB_NAME, held, blocked),
+      "busy",
+    );
+    for (const { runId } of [stale, blocked])
+      assert.equal(await runDoc(runId.toHexString()), null);
+    assert.equal(
+      (await chatDoc(first.chat.id))!.activeRun?.runId.equals(
+        held.activeRun!.runId,
+      ),
+      true,
+    );
+  });
+
+  test("goalRunContext is the chat's next run body without a turn, which the adapter accepts to make the goal active; null without goals or a usable thread", async () => {
+    const { receipt, ref } = await activeGoalChat();
+    const chats = running.app.get(ChatsService);
+    const tenant = { tenantId, dbName: DEFAULT_TENANT_DB_NAME };
+    const chatId = ObjectId.createFromHexString(receipt.chat.id);
+
+    // The member's next run body, for comparison.
+    const client = running.app.get<RuntimeClient>(RUNTIME_CLIENT);
+    const bodies: StartRunBody[] = [];
+    const original = client.startRun.bind(client);
+    client.startRun = (body, signal) => {
+      bodies.push(body);
+      return original(body, signal);
+    };
+    try {
+      gateway.script.push({ kind: "reply", text: "Second." });
+      const next = await json<Receipt>(
+        await call(alice, "POST", `/chats/${receipt.chat.id}/messages`, {
+          clientMessageId: clientId(),
+          text: "And then?",
+        }),
+        202,
+      );
+      await finish(alice, next);
+    } finally {
+      client.startRun = original;
+    }
+    const {
+      runId: _run,
+      tenantId: _tenant,
+      chatId: _chat,
+      input: _input,
+      goals,
+      ...nextRun
+    } = bodies[0]!;
+    assert.ok(goals);
+
+    const context = await chats.goalRunContext(tenant, chatId);
+    assert.ok(context);
+    for (const key of ["runId", "tenantId", "chatId", "input", "goals"])
+      assert.equal(key in context, false, key);
+    assert.deepEqual(context, nextRun);
+    assert.equal(
+      context.threadId,
+      (await chatDoc(receipt.chat.id))!.runtime.threadId,
+    );
+
+    gateway.script.push(COMPLETE_GOAL, { kind: "reply", text: "GOAL_DONE" });
+    const goal = await client.setGoal(ref, {
+      goals,
+      status: "active",
+      objective: GOAL_OBJECTIVE,
+      tokenBudget: 100_000,
+      run: context,
+    });
+    assert.equal(goal.status, "active");
+    assert.equal(goal.objective, GOAL_OBJECTIVE);
+    await client.setGoal(ref, { goals, status: "paused" });
+
+    // A lost thread can't run a goal.
+    await chatsCollection().updateOne(
+      { _id: chatId },
+      { $set: { "runtime.state": "lost" } },
+    );
+    assert.equal(await chats.goalRunContext(tenant, chatId), null);
+
+    // A chat created without goal settings has none.
+    await operator.removeTenantGoals({ operator: "ops", tenantId });
+    const plain = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, plain);
+    assert.equal(
+      await chats.goalRunContext(
+        tenant,
+        ObjectId.createFromHexString(plain.chat.id),
+      ),
+      null,
+    );
+  });
+
+  test("a goal run whose reader died is recovered by the sweep from the runtime's history, never posted", async () => {
+    const { receipt, ref, activate } = await activeGoalChat();
+    const attached = attachGoalRuns(ref);
+    gateway.script.push(
+      { kind: "held", before: "GOAL_STEP started", after: " and finished." },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    const from = gateway.requests.length;
+    await activate();
+    await until(
+      "the goal's first turn was begun and called the model",
+      () => attached.started.length === 1 && gateway.requests.length > from,
+    );
+    await sleep(300);
+    // The platform goes away mid-turn; the goal finishes in the runtime.
+    await attached.close();
+    await running.app.get(RunExecutor).drain(0);
+    await running.close();
+    gateway.release();
+    const client = new RuntimeClient(adapter.url, ADAPTER_TOKEN);
+    // The held step, the complete call, and the answer Codex asks for after.
+    await until(
+      "the goal completed in the runtime",
+      async () =>
+        gateway.requests.length === from + 3 &&
+        (await client.getGoal(ref))?.status === "complete",
+      30_000,
+    );
+    await sleep(500);
+    const requests = gateway.requests.length;
+    assert.equal(requests, from + 3);
+    // The runtime restarts too: only its saved history knows the turn.
+    await adapter.stop();
+    await adapter.start();
+    await boot();
+    const goalRun = attached.started[0]!;
+    await lapse(receipt.chat.id);
+    await running.app.get(RecoverySweep).runOnce();
+    await until(
+      "recovery saved the goal run",
+      async () => (await chatDoc(receipt.chat.id))?.activeRun === null,
+    );
+    const raw = (await runDoc(goalRun.runId))!;
+    assert.equal(raw.status, "completed");
+    assert.equal(raw.trigger, "goal");
+    const body = await getChat(alice, receipt.chat.id);
+    assert.deepEqual(
+      body.messages.map((m) => [m.seq, m.role, m.text]),
+      [
+        [1, "user", "FIRST_QUESTION"],
+        [2, "assistant", "Hello from the model."],
+        [3, "assistant", "GOAL_STEP started and finished."],
+      ],
+    );
+    assert.equal(gateway.requests.length, requests, "nothing posted");
+  });
+
   test("a revoked session or removed membership closes a live stream; the reply is still saved", async () => {
     for (const revoke of ["session", "membership"] as const) {
       const who = await member(`carol-${revoke}`, tenantId);
@@ -2563,6 +3056,1191 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
         async () => (await chatDoc(receipt.chat.id))?.activeRun === null,
       );
     }
+  });
+
+  // The GoalWatcher (tasks/goal-mode-todo.md, Task 9). Making a goal active
+  // through the goal API will record it, claim its slot and watch it (Task
+  // 10); until then these tests do that themselves.
+  const goalsCollection = () =>
+    database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<GoalDoc>(GOALS_COLLECTION);
+  const goalOf = (chatId: string) =>
+    goalsCollection().findOne({ chatId: ObjectId.createFromHexString(chatId) });
+  const goalTenant = () => ({ tenantId, dbName: DEFAULT_TENANT_DB_NAME });
+  const goalRunsOf = (chatId: string) =>
+    database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<RunDoc>(RUNS_COLLECTION)
+      .find({ chatId: ObjectId.createFromHexString(chatId), trigger: "goal" })
+      .toArray();
+  // The goal turns Codex ran in the chat: history turns with no member
+  // message.
+  const goalTurnsOf = async (ref: ChatRef) =>
+    (await new RuntimeClient(adapter.url, ADAPTER_TOKEN).history(ref)).filter(
+      (turn) => turn.clientMessageId === null,
+    );
+
+  async function recordGoal(
+    app: RunningApp,
+    chatId: string,
+    goal: RuntimeGoal,
+  ) {
+    const id = ObjectId.createFromHexString(chatId);
+    const ownerId = (await chatDoc(chatId))!.ownerId;
+    const store = app.app.get(GoalStore);
+    await store.recordUpdate(
+      DEFAULT_TENANT_DB_NAME,
+      tenantId,
+      { chatId: id, ownerId },
+      { goal, origin: "user", position: null },
+    );
+    assert.equal(
+      await store.claimSlot(DEFAULT_TENANT_DB_NAME, tenantId, id, 10),
+      true,
+    );
+    return id;
+  }
+
+  // A goal Codex completed, with nothing left held: review pending, its slot
+  // given back, the chat's summary written, every goal turn saved once.
+  async function assertGoalSettled(chatId: string, ref: ChatRef) {
+    const goal = (await goalOf(chatId))!;
+    assert.equal(goal.goal.status, "complete");
+    assert.equal(goal.review, "pending");
+    assert.equal(goal.slotHeld, false);
+    assert.equal(goal.watch?.owner, "", "the watch was given back");
+    const slots = await database
+      .tenantDb(DEFAULT_TENANT_DB_NAME)
+      .collection<GoalSlotsDoc>(GOAL_SLOTS_COLLECTION)
+      .findOne({ _id: tenantId });
+    assert.equal(slots?.total, 0);
+    assert.deepEqual((await chatDoc(chatId))?.goal, {
+      status: "complete",
+      review: "pending",
+      rev: goal.rev,
+    });
+    const runs = await goalRunsOf(chatId);
+    const turns = await goalTurnsOf(ref);
+    assert.deepEqual(
+      runs.map((run) => run.turnId).sort(),
+      turns.map((turn) => turn.turnId).sort(),
+    );
+    for (const run of runs) assert.equal(run.status, "completed");
+    return runs;
+  }
+
+  const goalTexts = async (chatId: string) =>
+    (await getChat(alice, chatId)).messages.slice(2).map((m) => m.text);
+
+  test("with no browser connected, the GoalWatcher saves a three-turn goal as three goal runs; the goal ends complete, review pending, its slot released", async () => {
+    const { receipt, ref, activate } = await activeGoalChat();
+    gateway.script.push(
+      { kind: "reply", text: "STEP_ONE" },
+      { kind: "reply", text: "STEP_TWO" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    const chatId = await recordGoal(running, receipt.chat.id, await activate());
+    const watcher = running.app.get(GoalWatcher);
+    assert.equal(await watcher.watch(goalTenant(), chatId), true);
+    await until(
+      "the goal ended and its runs were saved",
+      async () =>
+        (await goalOf(receipt.chat.id))?.goal.status === "complete" &&
+        (await chatDoc(receipt.chat.id))?.activeRun === null &&
+        (await goalRunsOf(receipt.chat.id)).length === 3 &&
+        !watcher.isReading(DEFAULT_TENANT_DB_NAME, chatId),
+      30_000,
+    );
+    assert.equal((await assertGoalSettled(receipt.chat.id, ref)).length, 3);
+    assert.deepEqual(await goalTexts(receipt.chat.id), [
+      "STEP_ONE",
+      "STEP_TWO",
+      "GOAL_DONE",
+    ]);
+  });
+
+  test("a platform restart mid-goal: the sweeps resume it, and no goal turn is lost or saved twice", async () => {
+    const { receipt, ref, activate } = await activeGoalChat();
+    gateway.script.push(
+      { kind: "held", before: "STEP", after: "_ONE" },
+      { kind: "reply", text: "STEP_TWO" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    const chatId = await recordGoal(running, receipt.chat.id, await activate());
+    assert.equal(
+      await running.app.get(GoalWatcher).watch(goalTenant(), chatId),
+      true,
+    );
+    await gateway.waitForRequests(2);
+    await until(
+      "the first goal run was saved",
+      async () => (await goalRunsOf(receipt.chat.id)).length === 1,
+    );
+    // The platform goes away mid-turn; the rest of the goal runs in the
+    // runtime with nobody reading it.
+    await running.app.get(RunExecutor).drain(0);
+    await running.close();
+    gateway.release();
+    const runtime = new RuntimeClient(adapter.url, ADAPTER_TOKEN);
+    await until(
+      "the goal finished in the runtime",
+      async () => {
+        const turns = await goalTurnsOf(ref);
+        return (
+          (await runtime.getGoal(ref))?.status === "complete" &&
+          turns.length === 3 &&
+          turns.every((turn) => turn.status === "completed")
+        );
+      },
+      30_000,
+    );
+    const requests = gateway.requests.length;
+    // The adapter restarts too, so its chat stream cannot replay what was
+    // missed: those turns are found only in the thread's history.
+    await adapter.stop();
+    await adapter.start();
+    await boot();
+    // As after a crash: the run's claim and the goal's watch lapsed, held by
+    // a process that is gone.
+    await lapse(receipt.chat.id);
+    await goalsCollection().updateOne(
+      { chatId },
+      {
+        $set: { "watch.owner": "crashed", "watch.leaseExpiresAt": new Date(0) },
+      },
+    );
+    await running.app.get(RecoverySweep).runOnce();
+    await until(
+      "recovery saved the first goal run",
+      async () => (await chatDoc(receipt.chat.id))?.activeRun === null,
+    );
+    // The recovered run's own goal update may already have started the
+    // watch (the run-stream hook); otherwise the sweep takes it over.
+    await running.app.get(GoalWatcher).runOnce();
+    await until(
+      "the turns that ran unobserved were saved",
+      async () =>
+        (await chatDoc(receipt.chat.id))?.activeRun === null &&
+        (await goalRunsOf(receipt.chat.id)).length === 3 &&
+        (await goalOf(receipt.chat.id))?.goal.status === "complete" &&
+        !running.app.get(GoalWatcher).isReading(DEFAULT_TENANT_DB_NAME, chatId),
+      30_000,
+    );
+    assert.equal((await assertGoalSettled(receipt.chat.id, ref)).length, 3);
+    assert.deepEqual(await goalTexts(receipt.chat.id), [
+      "STEP_ONE",
+      "STEP_TWO",
+      "GOAL_DONE",
+    ]);
+    assert.equal(gateway.requests.length, requests, "nothing was resent");
+  });
+
+  test("two platform processes never both read one chat's goal; a reader that loses its watch stops and the other's sweep takes over", async () => {
+    const { receipt, ref, activate } = await activeGoalChat();
+    gateway.script.push(
+      { kind: "held", before: "STEP", after: "_ONE" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    const other = await startApp({
+      mongodbUri: mongo.getUri(),
+      auth,
+      chat: {
+        adapterUrl: adapter.url,
+        adapterToken: ADAPTER_TOKEN,
+        gatewayUrl: gateway.url,
+        gatewaySecret: GATEWAY_SECRET,
+        recoverySweepMs: 0,
+        streamHeartbeatMs: 300,
+      },
+    });
+    try {
+      const watchers = [
+        running.app.get(GoalWatcher),
+        other.app.get(GoalWatcher),
+      ];
+      for (const watcher of watchers) watcher.renewMs = 100;
+      const chatId = await recordGoal(
+        running,
+        receipt.chat.id,
+        await activate(),
+      );
+      const reads = () =>
+        watchers.map((w) => w.isReading(DEFAULT_TENANT_DB_NAME, chatId));
+      const answers = await Promise.all(
+        watchers.map((watcher) => watcher.watch(goalTenant(), chatId)),
+      );
+      assert.equal(answers.filter(Boolean).length, 1, JSON.stringify(answers));
+      const [holder, next] = answers[0]
+        ? [watchers[0]!, watchers[1]!]
+        : [watchers[1]!, watchers[0]!];
+      assert.equal(reads().filter(Boolean).length, 1);
+      // While the watch is held, neither sweep takes it.
+      assert.deepEqual(
+        await Promise.all(watchers.map((watcher) => watcher.runOnce())),
+        [0, 0],
+      );
+      assert.equal(reads().filter(Boolean).length, 1);
+      await gateway.waitForRequests(2);
+      // The reader's lease lapses and the watch is no longer its own: it
+      // stops reading, and gives nothing back that it no longer holds.
+      await goalsCollection().updateOne(
+        { chatId },
+        {
+          $set: { "watch.owner": "gone", "watch.leaseExpiresAt": new Date(0) },
+        },
+      );
+      await until(
+        "the old reader stopped",
+        () => !holder.isReading(DEFAULT_TENANT_DB_NAME, chatId),
+      );
+      assert.equal(await next.runOnce(), 1);
+      assert.equal(next.isReading(DEFAULT_TENANT_DB_NAME, chatId), true);
+      assert.equal(holder.isReading(DEFAULT_TENANT_DB_NAME, chatId), false);
+      assert.equal((await goalOf(receipt.chat.id))?.watch?.owner, next.owner);
+      gateway.release();
+      await until(
+        "the goal ended and its runs were saved",
+        async () =>
+          (await goalOf(receipt.chat.id))?.goal.status === "complete" &&
+          (await chatDoc(receipt.chat.id))?.activeRun === null &&
+          (await goalRunsOf(receipt.chat.id)).length === 2 &&
+          !next.isReading(DEFAULT_TENANT_DB_NAME, chatId),
+        30_000,
+      );
+      assert.deepEqual(reads(), [false, false]);
+      assert.equal((await assertGoalSettled(receipt.chat.id, ref)).length, 2);
+    } finally {
+      await other.close();
+    }
+  });
+
+  // The goal lifecycle API (tasks/goal-mode-todo.md, Task 10).
+  interface GoalBody {
+    goal: {
+      objective: string;
+      status: string;
+      tokenBudget: number | null;
+      tokensUsed: number;
+      origin: string;
+      review: string;
+    };
+  }
+  const goalPath = (chatId: string, action = "") =>
+    `/chats/${chatId}/goal${action}`;
+  const goalStart = (objective?: string, tokenBudget = 300_000) => ({
+    clientRequestId: clientId(),
+    ...(objective !== undefined ? { objective } : {}),
+    tokenBudget,
+  });
+  const userSlots = async (chatId: string) =>
+    running.app
+      .get(GoalStore)
+      .userSlots(
+        DEFAULT_TENANT_DB_NAME,
+        tenantId,
+        (await chatDoc(chatId))!.ownerId,
+      );
+  // Counts the goal sets platform-next sends the adapter.
+  function countGoalSets() {
+    const client = running.app.get<RuntimeClient>(RUNTIME_CLIENT);
+    const original = client.setGoal.bind(client);
+    const counter = {
+      sets: 0,
+      fail: undefined as Error | undefined,
+      restore: () => {
+        client.setGoal = original;
+      },
+    };
+    client.setGoal = async (ref, body) => {
+      counter.sets++;
+      if (counter.fail) throw counter.fail;
+      return original(ref, body);
+    };
+    return counter;
+  }
+  async function untilGoalDone(chatId: string) {
+    const id = ObjectId.createFromHexString(chatId);
+    await until(
+      "the goal completed and its runs were saved",
+      async () =>
+        (await goalOf(chatId))?.goal.status === "complete" &&
+        (await chatDoc(chatId))?.activeRun === null &&
+        !running.app.get(GoalWatcher).isReading(DEFAULT_TENANT_DB_NAME, id),
+      30_000,
+    );
+  }
+
+  test("a member starts a goal with an objective and a preset; a retry with the same client ID returns it; a second goal, or any goal after clear, is refused", async () => {
+    const { receipt, ref } = await activeGoalChat();
+    const id = receipt.chat.id;
+    const counter = countGoalSets();
+    try {
+      // Invalid input is refused before anything is sent.
+      for (const body of [
+        goalStart(GOAL_OBJECTIVE, 123_456),
+        goalStart(GOAL_OBJECTIVE, 2_000_000),
+        goalStart(""),
+        goalStart("x".repeat(4001)),
+        goalStart("bad\u202Eobjective"),
+        { objective: GOAL_OBJECTIVE, tokenBudget: 300_000 },
+        { ...goalStart(GOAL_OBJECTIVE), extra: 1 },
+      ])
+        await fails(
+          await call(alice, "POST", goalPath(id), body),
+          400,
+          "BAD_REQUEST",
+        );
+      assert.equal(counter.sets, 0);
+      gateway.script.push(COMPLETE_GOAL, { kind: "reply", text: "GOAL_DONE" });
+      const body = goalStart(GOAL_OBJECTIVE);
+      const started = await json<GoalBody>(
+        await call(alice, "POST", goalPath(id), body),
+        201,
+      );
+      assert.equal(started.goal.objective, GOAL_OBJECTIVE);
+      assert.equal(started.goal.status, "active");
+      assert.equal(started.goal.tokenBudget, 300_000);
+      assert.equal(started.goal.origin, "user");
+      const again = await json<GoalBody>(
+        await call(alice, "POST", goalPath(id), body),
+        200,
+      );
+      assert.equal(again.goal.objective, GOAL_OBJECTIVE);
+      assert.equal(counter.sets, 1, "a retry sends nothing");
+      await fails(
+        await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+        409,
+        "CONFLICT",
+      );
+      await untilGoalDone(id);
+      const read = await json<GoalBody>(
+        await call(alice, "GET", goalPath(id)),
+        200,
+      );
+      assert.equal(read.goal.status, "complete");
+      assert.equal(read.goal.review, "pending");
+      assert.equal(await userSlots(id), 0);
+
+      assert.deepEqual(
+        await json(await call(alice, "DELETE", goalPath(id)), 200),
+        { cleared: true },
+      );
+      const runtime = new RuntimeClient(adapter.url, ADAPTER_TOKEN);
+      assert.equal(await runtime.getGoal(ref), null);
+      assert.equal((await goalOf(id))?.ended, true);
+      assert.equal("goal" in (await chatDoc(id))!, false);
+      assert.deepEqual(
+        await json(await call(alice, "GET", goalPath(id)), 200),
+        { goal: null },
+      );
+      const sets = counter.sets;
+      await fails(
+        await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+        409,
+        "CONFLICT",
+      );
+      await fails(
+        await call(alice, "POST", goalPath(id), body),
+        409,
+        "CONFLICT",
+      );
+      assert.equal(counter.sets, sets, "nothing sent after clear");
+    } finally {
+      counter.restore();
+    }
+  });
+
+  test("a start at the member's or the tenant's limit is refused with GOAL_LIMIT and sends nothing; an adapter failure leaves no slot held, and a retry starts it", async () => {
+    const { receipt } = await activeGoalChat();
+    const id = receipt.chat.id;
+    const store = running.app.get(GoalStore);
+    const ownerId = (await chatDoc(id))!.ownerId;
+    const counter = countGoalSets();
+    try {
+      for (let i = 0; i < 3; i++)
+        assert.equal(
+          await store.takeSlot(DEFAULT_TENANT_DB_NAME, tenantId, ownerId, 10),
+          true,
+        );
+      const body = goalStart(GOAL_OBJECTIVE);
+      const refused = await fails(
+        await call(alice, "POST", goalPath(id), body),
+        409,
+        "GOAL_LIMIT",
+      );
+      assert.equal(
+        JSON.parse(refused).error.message,
+        "3 goals running. Pause or finish one.",
+      );
+      for (let i = 0; i < 3; i++)
+        await store.giveSlot(DEFAULT_TENANT_DB_NAME, tenantId, ownerId);
+
+      // The tenant's cap: one goal, held by another member.
+      await operator.setTenantGoals({
+        operator: "ops",
+        tenantId,
+        goals: {
+          presets: [100_000, 300_000, 500_000],
+          maxTokenBudget: 1_000_000,
+          maxActive: 1,
+        },
+      });
+      const other = new ObjectId();
+      assert.equal(
+        await store.takeSlot(DEFAULT_TENANT_DB_NAME, tenantId, other, 1),
+        true,
+      );
+      await fails(
+        await call(alice, "POST", goalPath(id), body),
+        409,
+        "GOAL_LIMIT",
+      );
+      await store.giveSlot(DEFAULT_TENANT_DB_NAME, tenantId, other);
+      assert.equal(counter.sets, 0);
+      assert.equal(await userSlots(id), 0);
+
+      for (const fail of [
+        new AdapterRefusal(503, "RUNTIME_UNAVAILABLE", true),
+        new AdapterUnreachable("timeout"),
+      ]) {
+        counter.fail = fail;
+        await fails(
+          await call(alice, "POST", goalPath(id), body),
+          503,
+          "UNAVAILABLE",
+        );
+        assert.equal(await userSlots(id), 0, fail.name);
+        assert.equal("goalStart" in (await chatDoc(id))!, false, fail.name);
+        assert.equal(await goalOf(id), null, fail.name);
+      }
+      counter.fail = undefined;
+      gateway.script.push(COMPLETE_GOAL, { kind: "reply", text: "GOAL_DONE" });
+      const started = await json<GoalBody>(
+        await call(alice, "POST", goalPath(id), body),
+        201,
+      );
+      assert.equal(started.goal.status, "active");
+      await untilGoalDone(id);
+      assert.equal(await userSlots(id), 0);
+    } finally {
+      counter.restore();
+    }
+  });
+
+  test("another member, another tenant, an unknown or an archived chat get the same not-found on every goal route", async () => {
+    const { receipt } = await activeGoalChat();
+    const id = receipt.chat.id;
+    // The owner reaches the routes.
+    assert.deepEqual(await json(await call(alice, "GET", goalPath(id)), 200), {
+      goal: null,
+    });
+    const counter = countGoalSets();
+    const routes = (chatId: string): Array<[string, string, unknown?]> => [
+      ["GET", goalPath(chatId)],
+      ["POST", goalPath(chatId), goalStart(GOAL_OBJECTIVE)],
+      ["PATCH", goalPath(chatId), { objective: GOAL_OBJECTIVE }],
+      ["POST", goalPath(chatId, "/pause")],
+      ["POST", goalPath(chatId, "/resume")],
+      ["DELETE", goalPath(chatId)],
+    ];
+    try {
+      const unknown = new ObjectId().toHexString();
+      for (const [who, chatId] of [
+        [bob, id],
+        [dave, id],
+        [alice, unknown],
+      ] as const)
+        for (const [method, path, body] of routes(chatId))
+          await fails(await call(who, method, path, body), 404, "NOT_FOUND");
+      await json(await call(alice, "POST", `/chats/${id}/archive`), 200);
+      for (const [method, path, body] of routes(id))
+        await fails(await call(alice, method, path, body), 404, "NOT_FOUND");
+      assert.equal(counter.sets, 0);
+    } finally {
+      counter.restore();
+    }
+  });
+
+  test("pause gives the slot back and stops the goal; the objective can be edited; resume is refused during a turn, then claims a slot and continues", async () => {
+    const { receipt, ref } = await activeGoalChat();
+    const id = receipt.chat.id;
+    gateway.script.push(
+      { kind: "held", before: "STEP", after: "_ONE" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    await json(
+      await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+      201,
+    );
+    await gateway.waitForRequests(2);
+    assert.equal(await userSlots(id), 1);
+    const paused = await json<GoalBody>(
+      await call(alice, "POST", goalPath(id, "/pause")),
+      200,
+    );
+    assert.equal(paused.goal.status, "paused");
+    assert.equal(await userSlots(id), 0);
+    assert.equal((await goalOf(id))?.slotHeld, false);
+    const edited = await json<GoalBody>(
+      await call(alice, "PATCH", goalPath(id), {
+        objective: "EDITED_OBJECTIVE: the annual summary.",
+      }),
+      200,
+    );
+    assert.equal(
+      edited.goal.objective,
+      "EDITED_OBJECTIVE: the annual summary.",
+    );
+    assert.equal(edited.goal.status, "paused");
+    // The goal turn is still running: nothing can make the goal active.
+    await fails(
+      await call(alice, "POST", goalPath(id, "/resume")),
+      409,
+      "CHAT_BUSY",
+    );
+    assert.equal(await userSlots(id), 0);
+    gateway.release();
+    await until(
+      "the paused goal's turn was saved",
+      async () =>
+        (await chatDoc(id))?.activeRun === null &&
+        (await goalRunsOf(id)).length === 1,
+    );
+    const runtime = new RuntimeClient(adapter.url, ADAPTER_TOKEN);
+    assert.equal((await runtime.getGoal(ref))?.status, "paused");
+    const resumed = await json<GoalBody>(
+      await call(alice, "POST", goalPath(id, "/resume")),
+      200,
+    );
+    assert.equal(resumed.goal.status, "active");
+    await untilGoalDone(id);
+    assert.equal(await userSlots(id), 0);
+    assert.deepEqual(
+      (await goalRunsOf(id)).map((run) => run.status),
+      ["completed", "completed"],
+    );
+  });
+
+  test("a goal the model proposes is started by choosing a preset; after clear, a later model goal is cleared, not shown", async () => {
+    const { receipt, ref } = await activeGoalChat();
+    const id = receipt.chat.id;
+    const createGoal = {
+      kind: "call",
+      name: "create_goal",
+      args: { objective: "MODEL_GOAL: tidy the notes." },
+    } as const;
+    gateway.script.push(createGoal, { kind: "reply", text: "MEMBER_DONE" });
+    await finish(
+      alice,
+      await json<Receipt>(await followUp(alice, id, "Tidy up."), 202),
+    );
+    await until("the proposal was recorded", async () => {
+      const goal = await goalOf(id);
+      return goal?.origin === "model" && goal.goal.status === "paused";
+    });
+    gateway.script.push(COMPLETE_GOAL, { kind: "reply", text: "GOAL_DONE" });
+    const started = await json<GoalBody>(
+      await call(alice, "POST", goalPath(id), goalStart(undefined, 100_000)),
+      201,
+    );
+    assert.equal(started.goal.objective, "MODEL_GOAL: tidy the notes.");
+    assert.equal(started.goal.origin, "user");
+    assert.equal(started.goal.tokenBudget, 100_000);
+    assert.equal(started.goal.status, "active");
+    await untilGoalDone(id);
+    await json(await call(alice, "DELETE", goalPath(id)), 200);
+
+    gateway.script.push(createGoal, { kind: "reply", text: "AFTER_CLEAR" });
+    await finish(
+      alice,
+      await json<Receipt>(await followUp(alice, id, "Tidy again."), 202),
+    );
+    const runtime = new RuntimeClient(adapter.url, ADAPTER_TOKEN);
+    await until(
+      "the later model goal was cleared",
+      async () => (await runtime.getGoal(ref)) === null,
+    );
+    const saved = (await goalOf(id))!;
+    assert.equal(saved.ended, true);
+    assert.equal(saved.goal.objective, "MODEL_GOAL: tidy the notes.");
+    assert.equal("goal" in (await chatDoc(id))!, false);
+    assert.deepEqual(await json(await call(alice, "GET", goalPath(id)), 200), {
+      goal: null,
+    });
+  });
+
+  // Review and budget (tasks/goal-mode-todo.md, Task 11).
+  const goalAudits = (chatId: string) =>
+    database
+      .catalog()
+      .collection<AuditDoc>(AUDIT_COLLECTION)
+      .find({ action: /^goal\./, "details.chatId": chatId })
+      .sort({ at: 1 })
+      .toArray();
+  const decisionKinds = async (chatId: string) =>
+    (await goalOf(chatId))!.history
+      .map((entry) => entry.kind)
+      .filter((kind) =>
+        ["approved", "accepted_as_is", "changes_requested"].includes(kind),
+      );
+  async function untilGoalStatus(chatId: string, status: string) {
+    const id = ObjectId.createFromHexString(chatId);
+    await until(
+      `the goal became ${status} and its runs were saved`,
+      async () =>
+        (await goalOf(chatId))?.goal.status === status &&
+        (await chatDoc(chatId))?.activeRun === null &&
+        !running.app.get(GoalWatcher).isReading(DEFAULT_TENANT_DB_NAME, id),
+      60_000,
+    );
+  }
+
+  test("request changes on a completed goal sends one set with the merged objective, keeps the goal's createdAt and tokensUsed and claims a slot; a merge over 4000 characters is refused", async () => {
+    const { receipt, ref } = await activeGoalChat();
+    const id = receipt.chat.id;
+    gateway.script.push(COMPLETE_GOAL, { kind: "reply", text: "GOAL_DONE" });
+    await json(
+      await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+      201,
+    );
+    await untilGoalDone(id);
+    const runtime = new RuntimeClient(adapter.url, ADAPTER_TOKEN);
+    const done = (await runtime.getGoal(ref))!;
+    const counter = countGoalSets();
+    try {
+      // Refused before anything is sent: a merge that would not fit, empty
+      // feedback, and a budget not above what the goal has used.
+      const tooLong = await fails(
+        await call(alice, "POST", goalPath(id, "/request-changes"), {
+          feedback: "x".repeat(4000 - GOAL_OBJECTIVE.length),
+        }),
+        400,
+        "OBJECTIVE_TOO_LONG",
+      );
+      assert.equal(JSON.parse(tooLong).error.details.maxCharacters, 4000);
+      for (const body of [
+        { feedback: "" },
+        { feedback: "FEEDBACK", tokenBudget: done.tokensUsed },
+        { feedback: "FEEDBACK", tokenBudget: 1_000_001 },
+        { feedback: "FEEDBACK", extra: 1 },
+      ])
+        await fails(
+          await call(alice, "POST", goalPath(id, "/request-changes"), body),
+          400,
+          "BAD_REQUEST",
+        );
+      assert.equal(counter.sets, 0);
+      assert.equal((await goalOf(id))?.review, "pending");
+      assert.equal(await userSlots(id), 0);
+
+      gateway.script.push(
+        { kind: "held", before: "MORE", after: "_WORK" },
+        COMPLETE_GOAL,
+        { kind: "reply", text: "GOAL_DONE_AGAIN" },
+      );
+      const requests = gateway.requests.length;
+      const changed = await json<GoalBody>(
+        await call(alice, "POST", goalPath(id, "/request-changes"), {
+          feedback: "FEEDBACK: add a chart per region.",
+          tokenBudget: 500_000,
+        }),
+        200,
+      );
+      const merged = `${GOAL_OBJECTIVE}\n\nChanges requested: FEEDBACK: add a chart per region.`;
+      assert.equal(counter.sets, 1, "one set");
+      assert.equal(changed.goal.objective, merged);
+      assert.equal(changed.goal.status, "active");
+      assert.equal(changed.goal.tokenBudget, 500_000);
+      assert.equal(changed.goal.tokensUsed, done.tokensUsed);
+      assert.equal(changed.goal.review, "none");
+      const reopened = (await runtime.getGoal(ref))!;
+      assert.equal(reopened.createdAt, done.createdAt, "the same goal");
+      assert.equal(reopened.objective, merged);
+      await gateway.waitForRequests(requests + 1);
+      assert.equal(await userSlots(id), 1, "a slot is held");
+      // It is no longer awaiting review: a second request is refused.
+      await fails(
+        await call(alice, "POST", goalPath(id, "/request-changes"), {
+          feedback: "FEEDBACK again",
+        }),
+        409,
+        "CONFLICT",
+      );
+      assert.equal(counter.sets, 1);
+      gateway.release();
+      await untilGoalDone(id);
+      assert.equal((await goalOf(id))?.review, "pending");
+      assert.equal(await userSlots(id), 0);
+      assert.deepEqual(await decisionKinds(id), ["changes_requested"]);
+      const audits = await goalAudits(id);
+      assert.deepEqual(
+        audits.map((a) => [a.action, a.result, a.details?.tokenBudget]),
+        [["goal.request_changes", "success", 500_000]],
+      );
+      assert.equal(JSON.stringify(audits).includes("FEEDBACK"), false);
+    } finally {
+      counter.restore();
+    }
+  });
+
+  test("raise budget accepts only values above tokensUsed and at most the chat maximum; accept as is works only for a budget-limited goal at the maximum", async () => {
+    const { receipt } = await activeGoalChat({
+      presets: [60, 90, 120],
+      maxTokenBudget: 300,
+      maxActive: 10,
+    });
+    const id = receipt.chat.id;
+    gateway.script.push({ kind: "held", before: "STEP", after: "_ONE" });
+    await json(
+      await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE, 60)),
+      201,
+    );
+    await gateway.waitForRequests(2);
+    await json(await call(alice, "POST", goalPath(id, "/pause")), 200);
+    // A paused goal's budget can be raised; it stays paused, with no slot.
+    const counter = countGoalSets();
+    try {
+      const raisedPaused = await json<GoalBody>(
+        await call(alice, "POST", goalPath(id, "/budget"), { tokenBudget: 90 }),
+        200,
+      );
+      assert.equal(raisedPaused.goal.status, "paused");
+      assert.equal(raisedPaused.goal.tokenBudget, 90);
+      assert.equal(await userSlots(id), 0);
+      assert.equal(counter.sets, 1);
+      gateway.release();
+      await until(
+        "the paused goal's turn was saved",
+        async () => (await chatDoc(id))?.activeRun === null,
+      );
+      await json(await call(alice, "POST", goalPath(id, "/resume")), 200);
+      await untilGoalStatus(id, "budgetLimited");
+      const limited = (await goalOf(id))!.goal;
+      assert.equal(limited.tokenBudget, 90);
+      assert.ok(limited.tokensUsed >= 90, String(limited.tokensUsed));
+
+      const sets = counter.sets;
+      // Below the maximum: accept as is is refused, and so is approve.
+      await fails(
+        await call(alice, "POST", goalPath(id, "/accept")),
+        409,
+        "CONFLICT",
+      );
+      await fails(
+        await call(alice, "POST", goalPath(id, "/approve")),
+        409,
+        "CONFLICT",
+      );
+      for (const tokenBudget of [limited.tokensUsed, 301, 150.5, 0])
+        await fails(
+          await call(alice, "POST", goalPath(id, "/budget"), { tokenBudget }),
+          400,
+          "BAD_REQUEST",
+        );
+      assert.equal(counter.sets, sets, "nothing sent");
+
+      // Raised to the maximum: the goal is active again with a slot, then
+      // stops at the maximum.
+      const raised = await json<GoalBody>(
+        await call(alice, "POST", goalPath(id, "/budget"), {
+          tokenBudget: 300,
+        }),
+        200,
+      );
+      assert.equal(raised.goal.status, "active");
+      assert.equal(raised.goal.tokenBudget, 300);
+      assert.equal(counter.sets, sets + 1);
+      await untilGoalStatus(id, "budgetLimited");
+      assert.equal(await userSlots(id), 0);
+      assert.equal((await goalOf(id))!.goal.tokenBudget, 300);
+
+      const accepted = await json<GoalBody>(
+        await call(alice, "POST", goalPath(id, "/accept")),
+        200,
+      );
+      assert.equal(accepted.goal.review, "accepted_as_is");
+      assert.equal(accepted.goal.status, "budgetLimited");
+      assert.equal(counter.sets, sets + 1, "accept sends nothing");
+      assert.deepEqual((await chatDoc(id))?.goal?.review, "accepted_as_is");
+      assert.deepEqual(await decisionKinds(id), ["accepted_as_is"]);
+      // Each raised budget is in the goal history, as Codex reported it.
+      assert.deepEqual(
+        (await goalOf(id))!.history
+          .filter((entry) => entry.kind === "budget")
+          .map((entry) => entry.tokenBudget),
+        [90, 300],
+      );
+      assert.deepEqual(
+        (await goalAudits(id)).map((a) => [a.action, a.details?.tokenBudget]),
+        [
+          ["goal.raise_budget", 90],
+          ["goal.raise_budget", 300],
+          ["goal.accept_as_is", 300],
+        ],
+      );
+    } finally {
+      counter.restore();
+    }
+  });
+
+  test("approve works only for a goal awaiting review; a repeat changes nothing; every decision is audited and in the goal history", async () => {
+    const { receipt } = await activeGoalChat();
+    const id = receipt.chat.id;
+    gateway.script.push(
+      { kind: "held", before: "STEP", after: "_ONE" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    await json(
+      await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+      201,
+    );
+    await gateway.waitForRequests(2);
+    // While it runs there is nothing to review or accept, and its budget
+    // cannot change until the turn ends.
+    for (const action of ["/approve", "/accept"])
+      await fails(
+        await call(alice, "POST", goalPath(id, action)),
+        409,
+        "CONFLICT",
+      );
+    await fails(
+      await call(alice, "POST", goalPath(id, "/budget"), {
+        tokenBudget: 500_000,
+      }),
+      409,
+      "CHAT_BUSY",
+    );
+    gateway.release();
+    await untilGoalDone(id);
+    // A completed goal is not budget-limited, and its budget is not raised.
+    await fails(
+      await call(alice, "POST", goalPath(id, "/accept")),
+      409,
+      "CONFLICT",
+    );
+    await fails(
+      await call(alice, "POST", goalPath(id, "/budget"), {
+        tokenBudget: 500_000,
+      }),
+      409,
+      "CONFLICT",
+    );
+    // Another member's or tenant's chat is the same not-found.
+    for (const who of [bob, dave])
+      for (const [action, body] of [
+        ["/approve"],
+        ["/accept"],
+        ["/budget", { tokenBudget: 500_000 }],
+        ["/request-changes", { feedback: "FEEDBACK" }],
+      ] as const)
+        await fails(
+          await call(who, "POST", goalPath(id, action), body),
+          404,
+          "NOT_FOUND",
+        );
+    assert.deepEqual(await goalAudits(id), []);
+
+    // A complete goal not waiting for review (as while a request for changes
+    // reopens it) is not approved either.
+    const goalId = { chatId: ObjectId.createFromHexString(id) };
+    await goalsCollection().updateOne(goalId, { $set: { review: "none" } });
+    await fails(
+      await call(alice, "POST", goalPath(id, "/approve")),
+      409,
+      "CONFLICT",
+    );
+    await goalsCollection().updateOne(goalId, { $set: { review: "pending" } });
+
+    const approved = await json<GoalBody>(
+      await call(alice, "POST", goalPath(id, "/approve")),
+      200,
+    );
+    assert.equal(approved.goal.review, "approved");
+    assert.equal(approved.goal.status, "complete");
+    assert.equal((await chatDoc(id))?.goal?.review, "approved");
+    const again = await json<GoalBody>(
+      await call(alice, "POST", goalPath(id, "/approve")),
+      200,
+    );
+    assert.equal(again.goal.review, "approved");
+    await fails(
+      await call(alice, "POST", goalPath(id, "/request-changes"), {
+        feedback: "FEEDBACK",
+      }),
+      409,
+      "CONFLICT",
+    );
+    assert.deepEqual(await decisionKinds(id), ["approved"]);
+    assert.deepEqual(
+      (await goalAudits(id)).map((a) => [a.action, a.result]),
+      [["goal.approve", "success"]],
+    );
+  });
+
+  // The browser chat stream, badges and archive (Task 12).
+  // Reads a chat event stream into `events` until aborted.
+  function chatEvents(who: Member, chatId: string) {
+    const controller = new AbortController();
+    const events: StreamEvent[] = [];
+    const opened = call(
+      who,
+      "GET",
+      `/chats/${chatId}/events`,
+      undefined,
+      controller.signal,
+    );
+    const reading = opened
+      .then((res) =>
+        res.status === 200
+          ? readStream(res, (event) => {
+              events.push(event);
+            })
+          : undefined,
+      )
+      .catch(() => undefined);
+    return {
+      events,
+      opened,
+      async close() {
+        controller.abort();
+        await reading;
+      },
+    };
+  }
+  const dbCalls = (res: Response) =>
+    timingOf(res).find(([name]) => name === "db")?.[1] ?? 0;
+
+  test("the chat event stream starts with a snapshot, relays a goal turn's run.started and the goal's updates, and the run can be attached; a reconnect starts with a snapshot", async () => {
+    const { receipt } = await activeGoalChat();
+    const id = receipt.chat.id;
+    for (const who of [bob, dave])
+      await fails(
+        await call(who, "GET", `/chats/${id}/events`),
+        404,
+        "NOT_FOUND",
+      );
+    gateway.script.push(
+      { kind: "held", before: "STEP", after: "_ONE" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    const live = chatEvents(alice, id);
+    try {
+      await until("the snapshot arrived", () => live.events.length > 0);
+      assert.equal(live.events[0]?.type, "snapshot");
+      assert.deepEqual(live.events[0]?.data, { goal: null, activeRunId: null });
+      await json(
+        await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+        201,
+      );
+      await until("a goal turn was announced", () =>
+        live.events.some((e) => e.type === "run.started"),
+      );
+      const started = live.events.find((e) => e.type === "run.started")!;
+      const runId = String(started.data.runId);
+      assert.match(runId, /^[0-9a-f]{24}$/);
+      assert.equal(typeof started.data.turnId, "string");
+      // A reconnect mid-turn starts with a snapshot naming that run.
+      const mid = chatEvents(alice, id);
+      try {
+        await until(
+          "the reconnect's snapshot arrived",
+          () => mid.events.length > 0,
+        );
+        assert.equal(mid.events[0]?.type, "snapshot");
+        assert.equal(mid.events[0]?.data.activeRunId, runId);
+      } finally {
+        await mid.close();
+      }
+      // The announced run is attached through its own stream, mid-turn.
+      const attached = readStream(await stream(alice, id, runId));
+      gateway.release();
+      assert.deepEqual(
+        savedOf(await attached).messages.map((m) => m.text),
+        ["STEP_ONE"],
+      );
+      await untilGoalDone(id);
+      await until("the completion was relayed", () =>
+        live.events.some(
+          (e) =>
+            e.type === "goal.updated" &&
+            (e.data.goal as { status?: string })?.status === "complete",
+        ),
+      );
+      const updates = live.events.filter((e) => e.type === "goal.updated");
+      assert.equal(
+        (updates[0]?.data.goal as { objective?: string })?.objective,
+        GOAL_OBJECTIVE,
+      );
+      assert.equal(
+        live.events.filter((e) => e.type === "run.started").length,
+        (await goalRunsOf(id)).length,
+        "each goal turn announced once",
+      );
+    } finally {
+      await live.close();
+    }
+    const again = chatEvents(alice, id);
+    try {
+      await until("the snapshot arrived", () => again.events.length > 0);
+      assert.equal(again.events[0]?.type, "snapshot");
+      assert.deepEqual(
+        (again.events[0]?.data.goal as { status?: string; review?: string })
+          ?.status,
+        "complete",
+      );
+      assert.equal(
+        (again.events[0]?.data.goal as { review?: string })?.review,
+        "pending",
+      );
+      assert.equal(again.events[0]?.data.activeRunId, null);
+    } finally {
+      await again.close();
+    }
+  });
+
+  test("the chat list returns each chat's goal status and review without an extra query per chat", async () => {
+    const plain = await json<Receipt>(await startChat(alice), 202);
+    await finish(alice, plain);
+    const before = await call(alice, "GET", "/chats");
+    const listed = await json<{ chats: Array<{ id: string; goal: unknown }> }>(
+      before,
+      200,
+    );
+    assert.deepEqual(
+      listed.chats.map((c) => c.goal),
+      [null],
+    );
+    const { receipt } = await activeGoalChat();
+    const id = receipt.chat.id;
+    gateway.script.push(COMPLETE_GOAL, { kind: "reply", text: "GOAL_DONE" });
+    await json(
+      await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+      201,
+    );
+    await untilGoalDone(id);
+    const after = await call(alice, "GET", "/chats");
+    const both = await json<{
+      chats: Array<{ id: string; goal: unknown }>;
+    }>(after, 200);
+    assert.deepEqual(
+      Object.fromEntries(both.chats.map((c) => [c.id, c.goal])),
+      {
+        [plain.chat.id]: null,
+        [id]: { status: "complete", review: "pending" },
+      },
+    );
+    assert.equal(dbCalls(after), dbCalls(before), "no query per chat");
+    const one = await json<{ chat: { goal: unknown } }>(
+      await call(alice, "GET", `/chats/${id}`),
+      200,
+    );
+    assert.deepEqual(one.chat.goal, { status: "complete", review: "pending" });
+  });
+
+  test("archiving a chat clears its goal in the runtime and frees its slot before the chat is hidden; a clear that fails keeps the chat", async () => {
+    const { receipt, ref } = await activeGoalChat();
+    const id = receipt.chat.id;
+    // A goal Codex holds, paused: archive clears it there.
+    gateway.script.push({ kind: "held", before: "STEP", after: "_ONE" });
+    await json(
+      await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+      201,
+    );
+    await gateway.waitForRequests(2);
+    await json(await call(alice, "POST", goalPath(id, "/pause")), 200);
+    gateway.release();
+    await until(
+      "the turn ended",
+      async () => (await chatDoc(id))?.activeRun === null,
+      30_000,
+    );
+    const runtime = new RuntimeClient(adapter.url, ADAPTER_TOKEN);
+    assert.equal((await runtime.getGoal(ref))?.status, "paused");
+    // Counted as active, as a goal between turns is.
+    const chatId = ObjectId.createFromHexString(id);
+    await goalsCollection().updateOne(
+      { chatId },
+      { $set: { "goal.status": "active" } },
+    );
+    assert.equal(
+      await running.app
+        .get(GoalStore)
+        .claimSlot(DEFAULT_TENANT_DB_NAME, tenantId, chatId, 10),
+      true,
+    );
+    assert.equal(await userSlots(id), 1);
+
+    // The runtime cannot be reached: nothing is hidden, nothing given back.
+    const client = running.app.get<RuntimeClient>(RUNTIME_CLIENT);
+    const original = client.clearGoal.bind(client);
+    client.clearGoal = () =>
+      Promise.reject(new AdapterUnreachable("test: adapter down"));
+    try {
+      await fails(
+        await call(alice, "POST", `/chats/${id}/archive`),
+        503,
+        "UNAVAILABLE",
+      );
+    } finally {
+      client.clearGoal = original;
+    }
+    assert.equal((await chatDoc(id))?.status, "active");
+    assert.equal(await userSlots(id), 1);
+
+    const archived = await json<{ chat: { status: string; goal: unknown } }>(
+      await call(alice, "POST", `/chats/${id}/archive`),
+      200,
+    );
+    assert.equal(archived.chat.status, "archived");
+    assert.equal(archived.chat.goal, null);
+    assert.equal(await runtime.getGoal(ref), null, "cleared in the runtime");
+    assert.equal(await userSlots(id), 0);
+    assert.equal((await goalOf(id))?.ended, true);
+    assert.equal((await goalOf(id))?.slotHeld, false);
+    assert.equal("goal" in ((await chatDoc(id)) ?? {}), false);
+    await fails(await call(alice, "GET", goalPath(id)), 404, "NOT_FOUND");
+  });
+
+  // Checkpoint B (tasks/goal-mode-todo.md): the member starts a goal through
+  // the API with the chat open, then closes it mid-turn; the GoalWatcher
+  // saves every turn with nobody connected.
+  test("a goal started through the API is saved turn by turn after the browser disconnects, every turn once", async () => {
+    const { receipt, ref } = await activeGoalChat();
+    const id = receipt.chat.id;
+    gateway.script.push(
+      { kind: "held", before: "STEP", after: "_ONE" },
+      { kind: "reply", text: "STEP_TWO" },
+      COMPLETE_GOAL,
+      { kind: "reply", text: "GOAL_DONE" },
+    );
+    const live = chatEvents(alice, id);
+    try {
+      await until("the browser is connected", () => live.events.length > 0);
+      assert.equal(live.events[0]?.type, "snapshot");
+      await json(
+        await call(alice, "POST", goalPath(id), goalStart(GOAL_OBJECTIVE)),
+        201,
+      );
+      // The first goal turn is under way when the browser goes away.
+      await gateway.waitForRequests(2);
+    } finally {
+      await live.close();
+    }
+    gateway.release();
+    await untilGoalDone(id);
+    assert.equal((await assertGoalSettled(id, ref)).length, 3);
+    assert.deepEqual(await goalTexts(id), [
+      "STEP_ONE",
+      "STEP_TWO",
+      "GOAL_DONE",
+    ]);
   });
 
   test("shutdown lets a reply in flight finish and turns new messages away", async () => {

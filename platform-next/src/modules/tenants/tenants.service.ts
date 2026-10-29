@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import type { ClientSession, Collection, ObjectId } from "mongodb";
 import { DomainError } from "../../common/domain-error";
+import { TtlCache } from "../../common/ttl-cache";
 import { DatabaseService } from "../../database/database.service";
 import { isDuplicateKeyError } from "../../database/mongo-errors";
 import {
@@ -8,9 +9,16 @@ import {
   dbNameFor,
   normalizeTenantName,
   type TenantDoc,
+  type TenantGoals,
   type TenantKind,
 } from "./tenant";
 import { createTenantIndexes, TENANT_INDEX_VERSION } from "./tenant-indexes";
+
+// An operator's goal settings change reaches other processes' new chats
+// within this time.
+export const TENANT_GOALS_CACHE_TTL_MS = 60_000;
+// Bounds the cache; a tenant evicted early is just read again.
+const MAX_CACHED_TENANTS = 1000;
 
 // Ready tenants whose indexes were built for an older release, or never
 // recorded (provisioned before indexes were built at provisioning).
@@ -44,6 +52,7 @@ export interface ProvisionTenantInput {
 export class TenantsService {
   private readonly logger = new Logger("Tenants");
   private indexesReady?: Promise<void>;
+  private readonly goalsCache = new Map<string, TtlCache<TenantGoals | null>>();
 
   constructor(
     @Inject(DatabaseService) private readonly database: DatabaseService,
@@ -271,6 +280,43 @@ export class TenantsService {
     session?: ClientSession,
   ): Promise<TenantDoc | null> {
     return this.tenants().findOne({ _id: tenantId }, { session });
+  }
+
+  // Sets the tenant's goal settings, or removes them (null). Returns what
+  // they were before. Chats already created keep their snapshot.
+  async setGoals(
+    tenantId: ObjectId,
+    goals: TenantGoals | null,
+  ): Promise<{ previous: TenantGoals | null }> {
+    const before = await this.tenants().findOneAndUpdate(
+      { _id: tenantId },
+      goals
+        ? { $set: { goals, updatedAt: new Date() } }
+        : { $unset: { goals: "" }, $set: { updatedAt: new Date() } },
+      { returnDocument: "before", projection: { goals: 1 } },
+    );
+    if (!before) throw new DomainError("NOT_FOUND", "No tenant has this ID.");
+    this.goalsCache.get(tenantId.toHexString())?.clear();
+    return { previous: before.goals ?? null };
+  }
+
+  // The goal settings a new chat snapshots, possibly up to
+  // TENANT_GOALS_CACHE_TTL_MS old, so starting a chat costs no catalog read.
+  goalsOf(tenantId: ObjectId): Promise<TenantGoals | null> {
+    const key = tenantId.toHexString();
+    let cache = this.goalsCache.get(key);
+    if (!cache) {
+      if (this.goalsCache.size >= MAX_CACHED_TENANTS) this.goalsCache.clear();
+      cache = new TtlCache(
+        () =>
+          this.tenants()
+            .findOne({ _id: tenantId }, { projection: { goals: 1 } })
+            .then((tenant) => tenant?.goals ?? null),
+        TENANT_GOALS_CACHE_TTL_MS,
+      );
+      this.goalsCache.set(key, cache);
+    }
+    return cache.get();
   }
 
   // A tenant that can be entered: active and fully provisioned.

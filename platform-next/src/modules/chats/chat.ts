@@ -8,6 +8,14 @@ import type {
 } from "../network/network-grants";
 import type { ChatSkill } from "../skills/skill";
 import type { FollowUpSet } from "./followups";
+import type { GoalReview } from "../goals/goal";
+import type { GoalStatus } from "./runtime-client";
+
+export interface ChatGoalSummary {
+  status: GoalStatus;
+  review: GoalReview;
+  rev: number;
+}
 
 // Chats, their messages and runs, in the tenant database. A chat belongs to
 // one member and is never visible to anyone else, admins included; every
@@ -180,6 +188,22 @@ export interface ChatDoc {
   // The agent allowed helper agents at chat start. Absent means off; an
   // agent edit later never changes a running chat.
   helpers?: true;
+  // The tenant's goal maximum at chat start, sent on every run. Absent means
+  // goals are off for the chat; a later tenant change never alters it.
+  goals?: { maxTokenBudget: number };
+  // The member's goal start (POST /chats/:id/goal), kept once it succeeds:
+  // a chat has one goal, and a retry with the same clientRequestId returns
+  // it. A start still `starting` after GOAL_START_LAPSE_MS died; another
+  // start may take it over.
+  goalStart?: {
+    clientRequestId: string;
+    state: "starting" | "started";
+    at: Date;
+  };
+  // The chat's goal for chat-list badges, written after the goal document.
+  // rev is the goal document's, so an older write never replaces a newer
+  // summary. Absent until the chat has a goal.
+  goal?: ChatGoalSummary;
   // Tools the member allowed for this whole chat (Allow for this chat), sent
   // to the adapter as approvedTools. Absent on chats with none; grown by
   // $addToSet when an approval resolves allow_for_chat (non-auto).
@@ -382,12 +406,30 @@ export interface RunOrigin {
   slot: number;
 }
 
-export interface RunDoc {
+// A run is a member's message (trigger absent, as on every run saved before
+// goals, or "user") or a turn Codex started for the chat's goal ("goal"),
+// which has no member message: its reply follows the chat's last message.
+export type RunDoc = UserRunDoc | GoalRunDoc;
+
+export interface UserRunDoc extends RunFields {
+  trigger?: "user";
+  userMessageId: ObjectId;
+  clientMessageId: string;
+}
+
+export interface GoalRunDoc extends RunFields {
+  trigger: "goal";
+  userMessageId?: never;
+  clientMessageId?: never;
+  // Known when the run is saved: the adapter announced the turn.
+  threadId: string;
+  turnId: string;
+}
+
+interface RunFields {
   _id: ObjectId;
   chatId: ObjectId;
   ownerId: ObjectId;
-  userMessageId: ObjectId;
-  clientMessageId: string;
   status: RunStatus;
   followUps?: RunFollowUps;
   origin?: RunOrigin;
@@ -447,11 +489,11 @@ export function isSettled(status: RunStatus): boolean {
   return status === "completed" || status === "stopped" || status === "failed";
 }
 
-const CLIENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
+export const CLIENT_ID = /^[A-Za-z0-9_-]{8,64}$/;
 // Control characters and the bidi embedding/override/isolate controls, which
 // reorder what is shown. Other format characters stay: emoji sequences, many
 // scripts (ZWJ/ZWNJ) and right-to-left text (direction marks) need them.
-const UNSAFE = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
+export const UNSAFE = /[\p{Cc}\u202A-\u202E\u2066-\u2069]/u;
 
 function clientMessageId(value: unknown): string {
   if (typeof value !== "string" || !CLIENT_ID.test(value))

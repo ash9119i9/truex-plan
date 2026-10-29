@@ -56,7 +56,7 @@ import { RunExecutor, type LiveEvent } from "./run-executor";
 // Heartbeat and access re-check interval for browser streams.
 export const STREAM_HEARTBEAT_MS = 15_000;
 // A browser this far behind is dropped; it reconnects and gets a snapshot.
-const MAX_BUFFERED = 1024 * 1024;
+export const MAX_BUFFERED = 1024 * 1024;
 
 function idOf(value: string, what: string): ObjectId {
   const id = parseWireId(value);
@@ -443,21 +443,26 @@ export class ChatsController {
 
   // Session still live and membership still active; a revoked member's
   // stream closes within one heartbeat.
-  private async stillAllowed(
-    req: Request,
-    context: TenantContext,
-  ): Promise<boolean> {
-    try {
-      const caller = await this.sessions.authenticate(bearerTokenOf(req));
-      if (!caller.userId.equals(context.userId)) return false;
-      return !!(await this.memberships.findActive(
-        context.userId,
-        context.tenantId,
-      ));
-    } catch (error) {
-      // A database blip is not a revocation; the next check decides.
-      return !(error instanceof InvalidSessionError);
-    }
+  private stillAllowed(req: Request, context: TenantContext): Promise<boolean> {
+    return streamStillAllowed(this.sessions, this.memberships, req, context);
+  }
+}
+
+// For a stream's heartbeat: the session is still live and the membership
+// still active, so a revoked member's stream closes within one heartbeat.
+export async function streamStillAllowed(
+  sessions: SessionsService,
+  memberships: MembershipsService,
+  req: Request,
+  context: TenantContext,
+): Promise<boolean> {
+  try {
+    const caller = await sessions.authenticate(bearerTokenOf(req));
+    if (!caller.userId.equals(context.userId)) return false;
+    return !!(await memberships.findActive(context.userId, context.tenantId));
+  } catch (error) {
+    // A database blip is not a revocation; the next check decides.
+    return !(error instanceof InvalidSessionError);
   }
 }
 

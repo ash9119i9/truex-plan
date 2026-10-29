@@ -121,13 +121,15 @@ function chunks<T>(items: readonly T[]): T[][] {
 // Every read is indexed and bounded by the window: runs by their _id time
 // (the default _id index), their chats by _id, and helper rows by runId and
 // the `agent:` item prefix (`run_item_unique`). No chat outside the window is
-// read, so the cost grows with the window's runs, not with the tenant.
+// read, so the cost grows with the window's runs, not with the tenant. Goal
+// runs are left out: their _id is a digest of their thread and turn, so its
+// time is not theirs.
 export async function scanHelpers(
   db: Db,
   options: HelpersReportOptions,
 ): Promise<HelpersScan> {
   const now = options.now ?? new Date();
-  // A run's _id is made when it is accepted, so its time is the run's.
+  // A member run's _id is made when it is accepted, so its time is the run's.
   const from = ObjectId.createFromTime(
     Math.floor(options.since.getTime() / 1000),
   );
@@ -135,7 +137,7 @@ export async function scanHelpers(
   const inWindow = await db
     .collection<RunDoc>(RUNS_COLLECTION)
     .find(
-      { _id: { $gte: from, $lt: until } },
+      { _id: { $gte: from, $lt: until }, trigger: { $ne: "goal" } },
       {
         projection: {
           chatId: 1,

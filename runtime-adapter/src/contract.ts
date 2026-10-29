@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { AdapterError } from "./errors";
 import type { RuntimeLimits } from "./config";
 import { SKILL_SHA256, SKILL_SLUG } from "./runtime/skills";
@@ -45,6 +46,11 @@ export const MAX_APPROVED_COMMANDS = 50;
 export const MAX_SKILLS = 10;
 // A command's Allow-for-this-chat key: the sha256 of the exact command.
 const COMMAND_SCOPE = /^[0-9a-f]{64}$/;
+// Codex's own objective limit (MAX_THREAD_GOAL_OBJECTIVE_CHARS), counted in
+// Unicode scalar values as Codex counts them.
+export const MAX_GOAL_OBJECTIVE = 4000;
+// A safety cap far above any tenant maximum; the platform sets the real one.
+export const MAX_GOAL_TOKEN_BUDGET = 1_000_000_000;
 
 export interface ModelSettings {
   readonly modelName: string;
@@ -183,7 +189,70 @@ export interface StartRunRequest {
   // Helper agents (Codex multi-agent V2): how many may run at once. Absent
   // means no helpers, byte for byte today's params. Not with coding.
   readonly subAgents?: { readonly maxConcurrent: number };
+  // Goals for this chat, fixed when the platform created it. Absent means no
+  // goals, byte for byte today's params.
+  readonly goals?: GoalSettings;
 }
+
+export interface GoalSettings {
+  // The largest budget a goal in this chat may have; Codex also gives it to
+  // a goal set or created without a budget.
+  readonly maxTokenBudget: number;
+}
+
+// Codex's goal statuses. The member sets only active and paused.
+export const GOAL_STATUSES = [
+  "active",
+  "paused",
+  "blocked",
+  "usageLimited",
+  "budgetLimited",
+  "complete",
+] as const;
+export type GoalStatus = (typeof GOAL_STATUSES)[number];
+
+// The chat's goal as every goal answer and event carries it: Codex's goal
+// without its thread ID. Times are whole Unix seconds.
+export interface ChatGoal {
+  readonly objective: string;
+  readonly status: GoalStatus;
+  readonly tokenBudget: number | null;
+  readonly tokensUsed: number;
+  readonly timeUsedSeconds: number;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+// What starting or resuming the chat's thread needs: a run's settings without
+// its own ID, input and goals.
+export type RunContext = Omit<
+  StartRunRequest,
+  "runId" | "tenantId" | "chatId" | "input" | "goals"
+>;
+const RUN_CONTEXT_FIELDS = [
+  "threadId",
+  "agentPrompt",
+  "model",
+  "limits",
+  "mcp",
+  "codingApprovals",
+  "skills",
+  "network",
+  "subAgents",
+] as const;
+
+// PUT /v1/chats/:chatId/goal. The member sets only active or paused; Codex
+// decides every other status. Making a goal active carries the run context,
+// because the adapter may first have to start or resume the thread (Codex
+// continues only a loaded thread).
+export type GoalSetRequest = ChatRef & {
+  readonly goals: GoalSettings;
+  readonly objective?: string;
+  readonly tokenBudget?: number;
+} & (
+    | { readonly status: "active"; readonly run: RunContext }
+    | { readonly status: "paused"; readonly run?: never }
+  );
 
 export interface ChatRef {
   readonly tenantId: string;
@@ -518,30 +587,45 @@ export function parseStartRun(
 ): StartRunRequest {
   const b = object(
     body,
-    [
-      "runId",
-      "tenantId",
-      "chatId",
-      "threadId",
-      "input",
-      "agentPrompt",
-      "model",
-      "limits",
-      "mcp",
-      "codingApprovals",
-      "skills",
-      "network",
-      "subAgents",
-    ],
+    ["runId", "tenantId", "chatId", "input", "goals", ...RUN_CONTEXT_FIELDS],
     "Request body",
   );
+  const runId = id(b.runId, "runId");
+  const tenantId = id(b.tenantId, "tenantId");
+  const chatId = id(b.chatId, "chatId");
+  const input = object(b.input, ["text", "clientMessageId", "images"], "input");
+  const context = runContext(b, limits, options);
+  return {
+    runId,
+    tenantId,
+    chatId,
+    input: {
+      text: messageText(input.text),
+      clientMessageId: id(input.clientMessageId, "input.clientMessageId"),
+      ...(input.images !== undefined && input.images !== null
+        ? { images: images(input.images) }
+        : {}),
+    },
+    ...context,
+    ...(b.goals !== undefined && b.goals !== null
+      ? { goals: goalSettings(b.goals) }
+      : {}),
+  };
+}
+
+// The run settings shared by a run and an active goal set, from a body whose
+// fields were already checked.
+function runContext(
+  b: Record<string, unknown>,
+  limits: RuntimeLimits,
+  options: ParseOptions,
+): RunContext {
   let threadId: string | null = null;
   if (b.threadId !== null && b.threadId !== undefined) {
     if (typeof b.threadId !== "string" || !THREAD_ID.test(b.threadId))
       invalid("threadId must be a Codex thread ID or null.");
     threadId = b.threadId;
   }
-  const input = object(b.input, ["text", "clientMessageId", "images"], "input");
   let firstResponseMs = limits.firstResponseMs;
   let silenceMs = limits.silenceMs;
   let approvalMs = limits.approvalMs;
@@ -574,17 +658,7 @@ export function parseStartRun(
       );
   }
   return {
-    runId: id(b.runId, "runId"),
-    tenantId: id(b.tenantId, "tenantId"),
-    chatId: id(b.chatId, "chatId"),
     threadId,
-    input: {
-      text: messageText(input.text),
-      clientMessageId: id(input.clientMessageId, "input.clientMessageId"),
-      ...(input.images !== undefined && input.images !== null
-        ? { images: images(input.images) }
-        : {}),
-    },
     agentPrompt: text(b.agentPrompt, "agentPrompt", MAX_PROMPT, true),
     model: model(b.model),
     limits: { firstResponseMs, silenceMs, approvalMs },
@@ -604,6 +678,93 @@ export function parseStartRun(
       ? { subAgents: subAgents(b.subAgents) }
       : {}),
   };
+}
+
+function goalSettings(value: unknown): GoalSettings {
+  const g = object(value, ["maxTokenBudget"], "goals");
+  return {
+    maxTokenBudget: integer(
+      g.maxTokenBudget,
+      "goals.maxTokenBudget",
+      1,
+      MAX_GOAL_TOKEN_BUDGET,
+    ),
+  };
+}
+
+// Newlines and tabs stay; other control characters, bidi overrides and lone
+// surrogates (which Codex could not decode) are refused.
+function goalObjective(value: unknown): string {
+  if (typeof value !== "string") invalid("objective must be a string.");
+  const objective = value.normalize("NFC").trim();
+  const length = [...objective].length;
+  if (length === 0 || length > MAX_GOAL_OBJECTIVE)
+    invalid(`objective must be 1-${MAX_GOAL_OBJECTIVE} characters.`);
+  if (
+    /\p{Cs}/u.test(objective) ||
+    UNSAFE_TEXT.test(objective.replace(/[\n\r\t]/g, ""))
+  )
+    invalid("objective contains unsupported control characters.");
+  return objective;
+}
+
+export function parseGoalSet(
+  chatId: unknown,
+  body: unknown,
+  limits: RuntimeLimits,
+  options: ParseOptions = {},
+): GoalSetRequest {
+  const b = object(
+    body,
+    ["tenantId", "goals", "status", "objective", "tokenBudget", "run"],
+    "Request body",
+  );
+  const ref = {
+    tenantId: id(b.tenantId, "tenantId"),
+    chatId: id(chatId, "chatId"),
+  };
+  const goals = goalSettings(b.goals);
+  const fields = {
+    ...ref,
+    goals,
+    ...(b.objective !== undefined
+      ? { objective: goalObjective(b.objective) }
+      : {}),
+    ...(b.tokenBudget !== undefined
+      ? {
+          tokenBudget: integer(
+            b.tokenBudget,
+            "tokenBudget",
+            1,
+            goals.maxTokenBudget,
+          ),
+        }
+      : {}),
+  };
+  const hasRun = b.run !== undefined && b.run !== null;
+  if (b.status === "paused") {
+    if (hasRun) invalid("run is only sent to make a goal active.");
+    return { ...fields, status: "paused" };
+  }
+  if (b.status !== "active") invalid("status must be active or paused.");
+  if (!hasRun) invalid("run is required to make a goal active.");
+  const run = runContext(
+    object(b.run, RUN_CONTEXT_FIELDS, "run"),
+    limits,
+    options,
+  );
+  return { ...fields, status: "active", run };
+}
+
+// The run ID of a turn Codex started for a goal: the same turn always gets
+// the same ID, so two readers saving it collide instead of saving it twice.
+// 24 hex characters fit ID and are ObjectId-shaped, so the platform uses it
+// as the run document's _id.
+export function goalRunId(threadId: string, turnId: string): string {
+  return createHash("sha256")
+    .update(`${threadId}:${turnId}`)
+    .digest("hex")
+    .slice(0, 24);
 }
 
 // At most this many helpers at once; the lead is not counted.

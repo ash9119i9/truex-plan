@@ -14,6 +14,7 @@ import {
   type AdapterEvent,
   type ChatRef,
   type RuntimeClient,
+  type StartRunBody,
 } from "../../src/modules/chats/runtime-client";
 
 function deferred() {
@@ -31,7 +32,7 @@ function dispatchFor(runId: ObjectId): Dispatch {
     replySeq: 2,
     ref: { tenantId: "t", chatId: "c" },
     mode: "start",
-    body: {} as Dispatch["body"],
+    body: {} as StartRunBody,
   };
 }
 
@@ -1368,5 +1369,379 @@ describe("RunExecutor coding activity", () => {
       ],
       ["a.md", "new.md"],
     );
+  });
+});
+
+// A turn Codex started for the chat's goal (tasks/goal-mode-todo.md, Task 8).
+describe("RunExecutor attached goal runs", () => {
+  function attachFor(runId: ObjectId): Dispatch {
+    return {
+      dbName: "truex_next_t",
+      chatId: new ObjectId(),
+      runId,
+      ownerId: new ObjectId(),
+      replySeq: 7,
+      ref: { tenantId: "t", chatId: "c" },
+      mode: "attach",
+      threadId: "thread-1",
+      turnId: "turn-goal",
+    };
+  }
+
+  function settleStore() {
+    const settled: Array<{ replySeq: number; outcome: Settlement }> = [];
+    const accepted: string[] = [];
+    return {
+      settled,
+      accepted,
+      store: {
+        markAccepted: async (
+          _db: string,
+          _chat: ObjectId,
+          _run: ObjectId,
+          threadId: string,
+          turnId: string,
+        ) => {
+          accepted.push(`${threadId}:${turnId}`);
+        },
+        renewLease: async () => true,
+        markUncertain: async () => undefined,
+        settleWithRetry: async (
+          _db: string,
+          _chat: ObjectId,
+          _run: ObjectId,
+          replySeq: number,
+          outcome: Settlement,
+        ) => {
+          settled.push({ replySeq, outcome });
+          return { run: {}, messages: [] };
+        },
+      },
+    };
+  }
+
+  const replies = (outcome: Settlement) =>
+    outcome.items.flatMap((item) => (item.type === "reply" ? [item.text] : []));
+
+  test("never posts: it reads the run's events from the start and saves the reply after the chat's last message", async () => {
+    const { store, settled, accepted } = settleStore();
+    const reads: Array<{ runId: string; after: number }> = [];
+    const client = {
+      startRun() {
+        throw new Error("an attached run must never be posted");
+      },
+      async *events(
+        runId: string,
+        _ref: ChatRef,
+        after: number,
+      ): AsyncGenerator<AdapterEvent> {
+        reads.push({ runId, after });
+        yield {
+          seq: 1,
+          type: "run.accepted",
+          data: { threadId: "thread-1", turnId: "turn-goal" },
+        };
+        yield {
+          seq: 2,
+          type: "text.delta",
+          data: { itemId: "a", delta: "STEP_ONE" },
+        };
+        yield {
+          seq: 3,
+          type: "run.completed",
+          data: {
+            status: "completed",
+            delivery: "accepted",
+            items: [{ itemId: "a", text: "STEP_ONE" }],
+          },
+        };
+      },
+    };
+    const executor = new RunExecutor(
+      store as unknown as ChatStore,
+      client as unknown as RuntimeClient,
+    );
+    const runId = new ObjectId();
+    executor.begin(attachFor(runId));
+    await executor.drain(5_000);
+    assert.deepEqual(reads, [{ runId: runId.toHexString(), after: 0 }]);
+    assert.deepEqual(accepted, ["thread-1:turn-goal"]);
+    assert.equal(settled.length, 1);
+    assert.equal(settled[0]!.replySeq, 7);
+    assert.equal(settled[0]!.outcome.status, "completed");
+    assert.deepEqual(replies(settled[0]!.outcome), ["STEP_ONE"]);
+  });
+
+  test("a run the runtime no longer holds is settled from its turn in history, and never posted", async () => {
+    const { store, settled } = settleStore();
+    let historyReads = 0;
+    const client = {
+      startRun() {
+        throw new Error("an attached run must never be posted");
+      },
+      async *events(): AsyncGenerator<AdapterEvent> {
+        throw new AdapterRefusal(404, "RUN_NOT_FOUND", false);
+      },
+      async history() {
+        historyReads++;
+        return [
+          {
+            turnId: "turn-member",
+            status: "completed",
+            clientMessageId: "cm-member",
+            text: "MEMBER_REPLY",
+            items: [
+              { type: "input", clientMessageId: "cm-member" },
+              { type: "reply", text: "MEMBER_REPLY" },
+            ],
+          },
+          // An earlier goal turn: like every goal turn, no member message.
+          {
+            turnId: "turn-goal-earlier",
+            status: "completed",
+            clientMessageId: null,
+            text: "EARLIER_STEP",
+            items: [
+              { type: "input", clientMessageId: null },
+              { type: "reply", text: "EARLIER_STEP" },
+            ],
+          },
+          {
+            turnId: "turn-goal",
+            status: "completed",
+            clientMessageId: null,
+            text: "GOAL_STEP",
+            items: [
+              // Codex's continuation prompt is no member's input.
+              { type: "input", clientMessageId: null },
+              { type: "reply", text: "GOAL_STEP" },
+            ],
+          },
+        ];
+      },
+    };
+    const executor = new RunExecutor(
+      store as unknown as ChatStore,
+      client as unknown as RuntimeClient,
+    );
+    executor.begin(attachFor(new ObjectId()));
+    await executor.drain(5_000);
+    assert.equal(historyReads, 1);
+    assert.equal(settled.length, 1);
+    const { outcome } = settled[0]!;
+    assert.equal(outcome.status, "completed");
+    assert.equal(outcome.turnId, "turn-goal");
+    assert.deepEqual(outcome.items, [
+      {
+        type: "reply",
+        itemId: "history:turn-goal:0",
+        text: "GOAL_STEP",
+        completed: true,
+      },
+    ]);
+  });
+
+  test("a turn neither the runtime nor its history knows is saved as failed, never posted", async () => {
+    const { store, settled } = settleStore();
+    const client = {
+      startRun() {
+        throw new Error("an attached run must never be posted");
+      },
+      async *events(): AsyncGenerator<AdapterEvent> {
+        throw new AdapterRefusal(404, "RUN_NOT_FOUND", false);
+      },
+      // Only a member's turn: matching by message would find nothing too,
+      // but a goal turn is matched by its own turn ID.
+      async history() {
+        return [
+          {
+            turnId: "turn-member",
+            status: "completed",
+            clientMessageId: "cm-member",
+            text: "MEMBER_REPLY",
+          },
+        ];
+      },
+    };
+    const executor = new RunExecutor(
+      store as unknown as ChatStore,
+      client as unknown as RuntimeClient,
+    );
+    executor.begin(attachFor(new ObjectId()));
+    await executor.drain(5_000);
+    assert.equal(settled.length, 1);
+    assert.equal(settled[0]!.outcome.status, "failed");
+    assert.equal(settled[0]!.outcome.error?.code, "GOAL_TURN_LOST");
+    assert.deepEqual(settled[0]!.outcome.items, []);
+  });
+});
+
+describe("RunExecutor goal updates on a run stream", () => {
+  const TENANT = new ObjectId();
+  const goal = {
+    objective: "Ship it",
+    status: "active",
+    tokenBudget: 100_000,
+    tokensUsed: 10,
+    timeUsedSeconds: 1,
+    createdAt: 1_700_000_000,
+    updatedAt: 1_700_000_001,
+  };
+
+  function storeStub() {
+    const settled: Settlement[] = [];
+    return {
+      settled,
+      store: {
+        markAccepted: async () => undefined,
+        renewLease: async () => true,
+        markUncertain: async () => undefined,
+        settleWithRetry: async (
+          _db: string,
+          _chat: ObjectId,
+          _run: ObjectId,
+          _replySeq: number,
+          outcome: Settlement,
+        ) => {
+          settled.push(outcome);
+          return { run: {}, messages: [] };
+        },
+      },
+    };
+  }
+
+  function clientWith(events: AdapterEvent[]) {
+    return {
+      async *startRun(): AsyncGenerator<AdapterEvent> {
+        yield* events;
+      },
+      async *events(): AsyncGenerator<AdapterEvent> {
+        yield* events;
+      },
+    };
+  }
+
+  const run = (extra: AdapterEvent[]): AdapterEvent[] => [
+    { seq: 1, type: "run.accepted", data: { threadId: "th", turnId: "tu" } },
+    ...extra,
+    { seq: 2, type: "text.delta", data: { itemId: "a", delta: "DONE" } },
+    {
+      seq: 3,
+      type: "run.completed",
+      data: {
+        status: "completed",
+        delivery: "accepted",
+        items: [{ itemId: "a", text: "DONE" }],
+      },
+    },
+  ];
+
+  function dispatch(mode: "start" | "attach"): Dispatch {
+    const base = {
+      dbName: "truex_next_t",
+      chatId: new ObjectId(),
+      runId: new ObjectId(),
+      ownerId: new ObjectId(),
+      replySeq: 2,
+      ref: { tenantId: TENANT.toHexString(), chatId: "c" },
+    };
+    return mode === "start"
+      ? { ...base, mode, body: {} as StartRunBody }
+      : { ...base, mode, threadId: "th", turnId: "tu" };
+  }
+
+  for (const mode of ["start", "attach"] as const)
+    test(`a goal.updated on a ${mode} run's stream calls the listener once with the chat`, async () => {
+      const { store, settled } = storeStub();
+      const executor = new RunExecutor(
+        store as unknown as ChatStore,
+        clientWith(
+          run([
+            {
+              seq: 1,
+              type: "goal.updated",
+              data: { goal, turnId: "tu", origin: "model" },
+            },
+          ]),
+        ) as unknown as RuntimeClient,
+      );
+      const calls: unknown[] = [];
+      executor.onGoalUpdate((at, update) => calls.push({ at, update }));
+      const d = dispatch(mode);
+      executor.begin(d);
+      await executor.drain(5_000);
+      assert.equal(settled[0]?.status, "completed");
+      assert.deepEqual(calls, [
+        {
+          at: {
+            dbName: d.dbName,
+            tenantId: TENANT,
+            chatId: d.chatId,
+            ownerId: d.ownerId,
+          },
+          update: { goal, turnId: "tu", origin: "model" },
+        },
+      ]);
+    });
+
+  test("a malformed goal.updated is ignored", async () => {
+    const { store, settled } = storeStub();
+    const executor = new RunExecutor(
+      store as unknown as ChatStore,
+      clientWith(
+        run([
+          {
+            seq: 1,
+            type: "goal.updated",
+            data: {
+              goal: { ...goal, status: "nope" },
+              turnId: "tu",
+              origin: "model",
+            },
+          },
+          { seq: 1, type: "goal.updated", data: { goal, turnId: "tu" } },
+        ]),
+      ) as unknown as RuntimeClient,
+    );
+    let calls = 0;
+    executor.onGoalUpdate(() => calls++);
+    executor.begin(dispatch("start"));
+    await executor.drain(5_000);
+    assert.equal(calls, 0);
+    assert.equal(settled[0]?.status, "completed");
+  });
+
+  test("a throwing listener does not change the run's outcome; a later listener replaces it", async () => {
+    const { store, settled } = storeStub();
+    const events = run([
+      {
+        seq: 1,
+        type: "goal.updated",
+        data: { goal, turnId: "tu", origin: "user" },
+      },
+    ]);
+    const executor = new RunExecutor(
+      store as unknown as ChatStore,
+      clientWith(events) as unknown as RuntimeClient,
+    );
+    executor.onGoalUpdate(() => {
+      throw new Error("listener broke");
+    });
+    executor.begin(dispatch("start"));
+    await executor.drain(5_000);
+    assert.equal(settled.length, 1);
+    assert.equal(settled[0]!.status, "completed");
+    assert.deepEqual(
+      settled[0]!.items.flatMap((i) => (i.type === "reply" ? [i.text] : [])),
+      ["DONE"],
+    );
+
+    let first = 0;
+    let second = 0;
+    executor.onGoalUpdate(() => first++);
+    executor.onGoalUpdate(() => second++);
+    executor.begin(dispatch("start"));
+    await executor.drain(5_000);
+    assert.deepEqual([first, second], [0, 1]);
   });
 });

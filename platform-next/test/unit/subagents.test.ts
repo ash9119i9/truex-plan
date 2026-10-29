@@ -17,6 +17,7 @@ import {
   AdapterRefusal,
   type AdapterEvent,
   type RuntimeClient,
+  type StartRunBody,
 } from "../../src/modules/chats/runtime-client";
 
 // Helper agents on the platform side: the operator setting, the live
@@ -45,7 +46,7 @@ function dispatchFor(runId: ObjectId): Dispatch {
     replySeq: 2,
     ref: { tenantId: "t", chatId: "c" },
     mode: "start",
-    body: {} as Dispatch["body"],
+    body: {} as StartRunBody,
   };
 }
 

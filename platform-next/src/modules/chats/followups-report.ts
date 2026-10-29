@@ -11,6 +11,7 @@ import {
   type ChatDoc,
   type MessageDoc,
   type RunDoc,
+  type UserRunDoc,
 } from "./chat";
 import type { FollowUpItem } from "./followups";
 
@@ -435,6 +436,8 @@ export async function scanTenant(
         {
           chatId: { $in: setChatIds },
           createdAt: { $gt: new Date(earliest), $lte: now },
+          // A goal's turn is not the member answering the rows.
+          trigger: { $ne: "goal" },
         },
         {
           projection: {
@@ -461,7 +464,7 @@ export async function scanTenant(
   const sets: ScannedSet[] = [];
   let pending = 0;
   const nextMessageIds: MessageDoc["_id"][] = [];
-  const typedNext: Array<{ set: ScannedSet; next: RunDoc }> = [];
+  const typedNext: Array<{ set: ScannedSet; next: UserRunDoc }> = [];
   for (const run of setRuns) {
     const chat = chatsById.get(toWireId(run.chatId));
     const followUps = run.followUps!;
@@ -518,7 +521,7 @@ export async function scanTenant(
           : null,
     };
     sets.push(set);
-    if (outcome === "typed" && next) {
+    if (outcome === "typed" && next && next.trigger !== "goal") {
       nextMessageIds.push(next.userMessageId);
       typedNext.push({ set, next });
     }
@@ -582,6 +585,8 @@ async function holdoutOf(
       {
         chatId: { $in: compared.map((chat) => chat._id) },
         createdAt: { $gte: since, $lte: now },
+        // A goal's turn is Codex's, not the member's.
+        trigger: { $ne: "goal" },
       },
       { projection: { chatId: 1, status: 1, "timings.acceptedAt": 1 } },
     )

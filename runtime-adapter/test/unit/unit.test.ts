@@ -5,14 +5,18 @@ import { join } from "node:path";
 import { describe, test } from "node:test";
 import { ConfigError, DEFAULT_LIMITS, loadConfig } from "../../src/config";
 import {
+  goalRunId,
+  MAX_GOAL_OBJECTIVE,
   MAX_TEXT,
   parseApproval,
   parseChatRef,
+  parseGoalSet,
   parseStartRun,
   parseSteer,
 } from "../../src/contract";
 import { AdapterError, fromCodexErrorInfo } from "../../src/errors";
 import { Run, type RunEvent } from "../../src/runtime/run";
+import { ChatStream } from "../../src/runtime/chat-stream";
 import {
   addTurnUsage,
   parsePlan,
@@ -921,6 +925,116 @@ describe("run buffer", () => {
     assert.deepEqual(run.itemList(), []);
   });
 });
+describe("chat stream buffer", () => {
+  function collect(
+    stream: ChatStream,
+    after: number,
+    // null reads with no stream ID, as a first read does.
+    streamId: string | null = stream.id,
+  ) {
+    const events: RunEvent[] = [];
+    let ended = false;
+    const unsubscribe = stream.subscribe(
+      { streamId: streamId ?? undefined, after },
+      {
+        send: (e) => events.push(e),
+        end: () => (ended = true),
+      },
+    );
+    return { events, ended: () => ended, unsubscribe };
+  }
+  const snapshot = () => ({ goal: null, origin: null, activeRun: null });
+
+  test("replays after the cursor, continues live, and never ends", () => {
+    const stream = new ChatStream(100, snapshot);
+    stream.emit("goal.cleared", {});
+    stream.emit("goal.cleared", {});
+    const sub = collect(stream, 1);
+    stream.emit("goal.cleared", {});
+    assert.deepEqual(
+      sub.events.map((e) => e.seq),
+      [2, 3],
+    );
+    assert.equal(sub.ended(), false);
+    assert.equal(stream.subscriberCount, 1);
+    sub.unsubscribe();
+    assert.equal(stream.subscriberCount, 0);
+  });
+
+  test("a first read gets a snapshot naming the stream, then live events", () => {
+    const stream = new ChatStream(3, snapshot);
+    const sub = collect(stream, 0, null);
+    assert.deepEqual(sub.events, [
+      {
+        seq: 0,
+        type: "chat.snapshot",
+        data: { streamId: stream.id, ...snapshot() },
+      },
+    ]);
+    stream.emit("goal.cleared", {});
+    assert.deepEqual(
+      sub.events.map((e) => [e.seq, e.type]),
+      [
+        [0, "chat.snapshot"],
+        [1, "goal.cleared"],
+      ],
+    );
+    assert.match(stream.id, /^[0-9a-f]{24}$/);
+    assert.notEqual(new ChatStream(3, snapshot).id, stream.id);
+  });
+
+  test("one snapshot for a cursor older than the buffer or newer than the stream", () => {
+    const stream = new ChatStream(3, () => ({ marker: "now" }));
+    for (let i = 0; i < 5; i++) stream.emit("goal.cleared", { i });
+    // Seqs 3-5 are buffered: cursor 2 still replays, 1 does not.
+    assert.deepEqual(
+      collect(stream, 2).events.map((e) => e.seq),
+      [3, 4, 5],
+    );
+    let last = 5;
+    for (const after of [0, 1, 8, 999]) {
+      const sub = collect(stream, after);
+      assert.deepEqual(
+        sub.events,
+        [
+          {
+            seq: last,
+            type: "chat.snapshot",
+            data: { streamId: stream.id, marker: "now" },
+          },
+        ],
+        String(after),
+      );
+      stream.emit("goal.cleared", {});
+      last++;
+      assert.deepEqual(
+        sub.events.map((e) => e.seq),
+        [last - 1, last],
+      );
+    }
+  });
+
+  // Regression: numbering starts again at 1 in a new stream (an adapter
+  // restart, or the idle sweep dropping the chat), so an old cursor that
+  // falls inside the new buffer used to replay from there and silently skip
+  // the new stream's first events.
+  test("a cursor from another stream gets a snapshot even when its number is buffered here", () => {
+    const old = new ChatStream(100, snapshot);
+    for (let i = 0; i < 5; i++) old.emit("goal.cleared", {});
+    const stream = new ChatStream(100, snapshot);
+    for (let i = 0; i < 20; i++) stream.emit("goal.cleared", {});
+    for (const streamId of [old.id, null]) {
+      const sub = collect(stream, 5, streamId);
+      assert.deepEqual(
+        sub.events.map((e) => [e.seq, e.type]),
+        [[20, "chat.snapshot"]],
+        String(streamId),
+      );
+      sub.unsubscribe();
+    }
+    assert.equal(collect(stream, 5).events.length, 15);
+  });
+});
 
 describe("plan checklist", () => {
   const steps = (n: number) =>
@@ -1620,5 +1734,154 @@ describe("sub-agents contract and config", () => {
     assert.match(rules, /write files/);
     assert.doesNotMatch(rules, /Never change data/);
     assert.match(String(v2.multi_agent_mode_hint_text), /share your workspace/);
+  });
+});
+
+describe("goal contract", () => {
+  const goals = { maxTokenBudget: 3_000_000 };
+  // What an active set needs to start or resume the thread: a run's context
+  // without its runId, input or goals.
+  const context = () => {
+    const { runId: _r, tenantId: _t, chatId: _c, input: _i, ...rest } = valid();
+    return rest;
+  };
+  const pause = () => ({ tenantId: "t1", goals, status: "paused" });
+  const start = () => ({
+    tenantId: "t1",
+    goals,
+    status: "active",
+    objective: "Write the quarterly summary.",
+    tokenBudget: 300_000,
+    run: context(),
+  });
+
+  function refuses(body: unknown, pattern: RegExp, chatId: unknown = "c1") {
+    assert.throws(
+      () => parseGoalSet(chatId, body, DEFAULT_LIMITS),
+      (error: unknown) =>
+        error instanceof AdapterError &&
+        error.code === "INVALID_REQUEST" &&
+        pattern.test(error.message),
+    );
+  }
+
+  test("a run's goals setting is optional and a positive whole number", () => {
+    assert.equal("goals" in parseStartRun(valid(), DEFAULT_LIMITS), false);
+    assert.deepEqual(
+      parseStartRun({ ...valid(), goals }, DEFAULT_LIMITS).goals,
+      goals,
+    );
+    for (const bad of [0, -1, 1.5, "100", null, 1e12])
+      rejects(
+        { ...valid(), goals: { maxTokenBudget: bad } },
+        /goals.maxTokenBudget/,
+      );
+    rejects(
+      { ...valid(), goals: { maxTokenBudget: 10, tokenBudget: 5 } },
+      /Unknown field "tokenBudget"/,
+    );
+  });
+
+  test("a pause needs only the chat and its goals setting", () => {
+    assert.deepEqual(parseGoalSet("c1", pause(), DEFAULT_LIMITS), {
+      tenantId: "t1",
+      chatId: "c1",
+      goals,
+      status: "paused",
+    });
+    refuses({ ...pause(), tenantId: "../x" }, /tenantId/);
+    refuses(pause(), /chatId/, "a/b");
+    const { goals: _g, ...noGoals } = pause();
+    refuses(noGoals, /goals/);
+  });
+
+  test("an active set carries the run context, parsed like a run's", () => {
+    const parsed = parseGoalSet("c1", start(), DEFAULT_LIMITS);
+    assert.equal(parsed.status, "active");
+    assert.equal(parsed.objective, "Write the quarterly summary.");
+    assert.equal(parsed.tokenBudget, 300_000);
+    assert.equal(parsed.run?.threadId, null);
+    assert.equal(
+      parsed.run?.model.gatewayUrl,
+      "https://gateway.example.com/p/abc/v1",
+    );
+    assert.deepEqual(parsed.run?.limits, {
+      firstResponseMs: DEFAULT_LIMITS.firstResponseMs,
+      silenceMs: DEFAULT_LIMITS.silenceMs,
+      approvalMs: DEFAULT_LIMITS.approvalMs,
+    });
+  });
+
+  test("refuses an active set without run context, and context on a pause", () => {
+    const { run: _run, ...noRun } = start();
+    refuses(noRun, /run/);
+    refuses({ ...noRun, run: null }, /run/);
+    refuses({ ...pause(), run: context() }, /run/);
+  });
+
+  test("refuses unknown fields, at the top and in the run context", () => {
+    refuses({ ...pause(), threadId: null }, /Unknown field "threadId"/);
+    refuses({ ...pause(), origin: "model" }, /Unknown field "origin"/);
+    for (const field of ["runId", "input", "goals", "chatId", "config"])
+      refuses(
+        { ...start(), run: { ...context(), [field]: {} } },
+        new RegExp(`Unknown field "${field}"`),
+      );
+    refuses(
+      { ...start(), run: { ...context(), model: { ...valid().model, x: 1 } } },
+      /Unknown field "x"/,
+    );
+  });
+
+  test("the status is required and only active or paused", () => {
+    const { status: _s, ...noStatus } = pause();
+    refuses(noStatus, /status/);
+    for (const bad of ["complete", "budgetLimited", "blocked", "", 1])
+      refuses({ ...pause(), status: bad }, /status/);
+  });
+
+  test("an objective is 1-4000 characters, counted as Codex counts them", () => {
+    assert.equal(MAX_GOAL_OBJECTIVE, 4000);
+    const fits = (objective: string) =>
+      parseGoalSet("c1", { ...start(), objective }, DEFAULT_LIMITS).objective;
+    assert.equal(fits("x".repeat(4000)), "x".repeat(4000));
+    // Codex counts Unicode scalar values: 4000 emoji are 8000 UTF-16 units.
+    assert.equal(fits("😀".repeat(4000)), "😀".repeat(4000));
+    assert.equal(fits("  Line one\nline two\t "), "Line one\nline two");
+    refuses({ ...start(), objective: "x".repeat(4001) }, /objective/);
+    refuses({ ...start(), objective: "😀".repeat(4001) }, /objective/);
+    for (const bad of ["", "   ", 5, null, "a\u0000b", "a\u202Eb", "a\uD800b"])
+      refuses({ ...start(), objective: bad }, /objective/);
+  });
+
+  test("a budget is a positive whole number within the chat's maximum", () => {
+    assert.equal(
+      parseGoalSet("c1", { ...start(), tokenBudget: 3_000_000 }, DEFAULT_LIMITS)
+        .tokenBudget,
+      3_000_000,
+    );
+    for (const bad of [0, -1, 1.5, "100", null, 3_000_001])
+      refuses({ ...start(), tokenBudget: bad }, /tokenBudget/);
+    // Objective and budget are optional (a resume, a raised budget).
+    const { objective: _o, tokenBudget: _b, ...resume } = start();
+    const parsed = parseGoalSet("c1", resume, DEFAULT_LIMITS);
+    assert.equal("objective" in parsed, false);
+    assert.equal("tokenBudget" in parsed, false);
+  });
+
+  test("goalRunId is a fixed, ObjectId-shaped digest of thread and turn", () => {
+    const thread = "019a0000-0000-7000-8000-000000000001";
+    const turn = "019a0000-0000-7000-8000-000000000002";
+    assert.equal(goalRunId(thread, turn), "bb946c34679677cfec85fa9a");
+    assert.match(goalRunId(thread, turn), /^[0-9a-f]{24}$/);
+    assert.notEqual(goalRunId(thread, `${turn}x`), goalRunId(thread, turn));
+    // It is also a valid adapter run ID.
+    assert.equal(
+      parseStartRun(
+        { ...valid(), runId: goalRunId(thread, turn) },
+        DEFAULT_LIMITS,
+      ).runId,
+      "bb946c34679677cfec85fa9a",
+    );
   });
 });

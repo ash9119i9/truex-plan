@@ -7,7 +7,7 @@ import {
 } from "@nestjs/common";
 import type { ObjectId } from "mongodb";
 import { detached } from "../../common/http/server-timing";
-import { toWireId } from "../../database/object-id";
+import { parseWireId, toWireId } from "../../database/object-id";
 import {
   APPROVAL_DECISIONS,
   type ApprovalAnswer,
@@ -43,14 +43,17 @@ import {
 } from "./chat-store";
 import { ConnectorsService } from "../connectors/connectors.service";
 import { networkBlockOf, reconcileBlock } from "../network/network-grants";
+import type { RunNetworkPolicy } from "../network/network-policy";
 import type { ChatSkill } from "../skills/skill";
 import { SkillsService } from "../skills/skills.service";
 import {
   AdapterRefusal,
   AdapterUnreachable,
   RuntimeClient,
+  goalUpdate,
   type AdapterEvent,
   type ChatRef,
+  type GoalUpdate,
   type HistoryTurn,
   type StartRunBody,
 } from "./runtime-client";
@@ -65,19 +68,33 @@ export interface ConnectorFeedback {
 
 // Everything needed to run (or recover) one turn. Built by ChatsService from
 // the saved chat; holds a gateway token, so it never leaves the server.
-export interface Dispatch {
+export type Dispatch = DispatchBase &
+  (
+    | {
+        readonly body: StartRunBody;
+        // start: post the run. recover: reattach first; post only when the
+        // runtime has no trace of the message.
+        readonly mode: "start" | "recover";
+      }
+    | {
+        // A turn Codex started for the chat's goal: never posted, read from
+        // its first event, and found in history by its turn.
+        readonly mode: "attach";
+        readonly threadId: string;
+        readonly turnId: string;
+      }
+  );
+
+interface DispatchBase {
   readonly dbName: string;
   readonly chatId: ObjectId;
   readonly runId: ObjectId;
   // The chat's owner: a stream proves its caller against this, not MongoDB.
   readonly ownerId: ObjectId;
-  // The seq of the reply's first message: the one after the member's.
+  // The seq of the reply's first message: the one after the member's, or
+  // for a goal run the chat's next seq when it was claimed.
   readonly replySeq: number;
   readonly ref: ChatRef;
-  readonly body: StartRunBody;
-  // start: post the run. recover: reattach first; post only when the
-  // runtime has no trace of the message.
-  readonly mode: "start" | "recover";
   // A recovered run whose lease is still held waits until it expires.
   readonly notBefore?: Date;
   // The member's attached files, copied into the workspace before a start
@@ -274,6 +291,12 @@ const NOT_SENT: RunErrorInfo = {
   code: "NOT_SENT",
   message: "This message wasn't sent to the assistant. Try again.",
   retryable: true,
+};
+// A goal turn the runtime announced but no longer holds or remembers.
+const GOAL_TURN_LOST: RunErrorInfo = {
+  code: "GOAL_TURN_LOST",
+  message: "This step of the goal couldn't be recovered.",
+  retryable: false,
 };
 // Only an adapter older than the Codex-exact change (coding + helpers share a
 // workspace) still refuses helpers under coding; a current adapter runs them.
@@ -733,6 +756,19 @@ class LiveRun {
   }
 }
 
+// The chat a run's goal.updated came from, for the GoalWatcher.
+export interface GoalUpdateSource {
+  readonly dbName: string;
+  readonly tenantId: ObjectId;
+  readonly chatId: ObjectId;
+  readonly ownerId: ObjectId;
+}
+
+export type GoalUpdateListener = (
+  at: GoalUpdateSource,
+  update: GoalUpdate,
+) => void;
+
 // Owns every run this process is streaming. One reader per run consumes the
 // adapter's stream whether or not a browser is watching, saves the outcome,
 // and fans live text out to any number of browser subscribers.
@@ -744,6 +780,7 @@ class LiveRun {
 export class RunExecutor implements OnApplicationShutdown {
   private readonly logger = new Logger("RunExecutor");
   private readonly live = new Map<string, LiveRun>();
+  private goalListener: GoalUpdateListener | undefined;
   // Bounded: a run leaves it when it is read again.
   private readonly abandoned = new Set<string>();
   private draining = false;
@@ -764,6 +801,13 @@ export class RunExecutor implements OnApplicationShutdown {
 
   get configured(): boolean {
     return this.client !== null;
+  }
+
+  // Called for every goal.updated on a run's stream (a member's run or a
+  // goal run), so the GoalWatcher starts for a goal it has not seen. One
+  // listener; a later call replaces it.
+  onGoalUpdate(listener: GoalUpdateListener): void {
+    this.goalListener = listener;
   }
 
   get isDraining(): boolean {
@@ -1030,6 +1074,8 @@ export class RunExecutor implements OnApplicationShutdown {
   ): Promise<Settlement | null> {
     const { dispatch } = run;
     const signal = run.abort.signal;
+    // Null for an attached run: there is nothing to post, ever.
+    const body = dispatch.mode === "attach" ? null : dispatch.body;
     let after = 0;
     let posts = 0;
     let failures = 0;
@@ -1073,13 +1119,15 @@ export class RunExecutor implements OnApplicationShutdown {
             );
             if (known) return known;
             if (known === null) {
+              // A goal turn is the runtime's own; nothing can resend it.
+              if (!body) return failed(run, GOAL_TURN_LOST);
               // Recovery may run long after the message was written; never
               // post it then. The member sees "not sent" and can resend.
               if (dispatch.mode === "recover" || posts >= 2)
                 return failed(run, NOT_SENT);
               posts++;
               after = 0;
-              stream = client.startRun(dispatch.body, signal);
+              stream = client.startRun(body, signal);
               continue;
             }
           }
@@ -1087,7 +1135,7 @@ export class RunExecutor implements OnApplicationShutdown {
           // or it is a different runtime): push the missing skills and post
           // again, once.
           if (error.code === "SKILLS_MISSING") {
-            if (skillsResent || !dispatch.skills?.length)
+            if (!body || skillsResent || !dispatch.skills?.length)
               return failed(run, SKILLS_FAILED);
             skillsResent = true;
             const missing = missingOf(error, dispatch.skills);
@@ -1096,7 +1144,7 @@ export class RunExecutor implements OnApplicationShutdown {
             if (refused) return failed(run, refused);
             posts++;
             after = 0;
-            stream = client.startRun(dispatch.body, signal);
+            stream = client.startRun(body, signal);
             continue;
           }
           if (error.code === "THREAD_LOST")
@@ -1131,11 +1179,12 @@ export class RunExecutor implements OnApplicationShutdown {
         // A refusal before streaming means nothing started: post again.
         // Anything else may have started: reattach, never repost blindly.
         stream =
+          body &&
           error instanceof AdapterRefusal &&
           RETRYABLE_START.has(error.code) &&
           after === 0 &&
           posts > 0
-            ? client.startRun(dispatch.body, signal)
+            ? client.startRun(body, signal)
             : client.events(run.id, dispatch.ref, after, signal);
       }
     }
@@ -1333,7 +1382,7 @@ export class RunExecutor implements OnApplicationShutdown {
         if (block)
           run.blockNetwork({
             type: "network",
-            ...reconcileBlock(block, run.dispatch.body.network),
+            ...reconcileBlock(block, networkOf(run.dispatch)),
           });
         return null;
       }
@@ -1361,7 +1410,7 @@ export class RunExecutor implements OnApplicationShutdown {
           else if (item.type === "network")
             run.blockNetwork({
               ...item,
-              ...reconcileBlock(item, run.dispatch.body.network),
+              ...reconcileBlock(item, networkOf(run.dispatch)),
             });
           else run.setItem(item.itemId, item.text, item.completed);
         const pending = new Set<string>();
@@ -1396,10 +1445,31 @@ export class RunExecutor implements OnApplicationShutdown {
         }
         return null;
       }
+      case "goal.updated": {
+        const update = goalUpdate(d);
+        if (update) this.reportGoal(run, update);
+        return null;
+      }
       case "run.completed":
         return this.outcomeOf(run, d, client);
       default:
         return null;
+    }
+  }
+
+  // Tells the listener; its failure never changes the run.
+  private reportGoal(run: LiveRun, update: GoalUpdate): void {
+    const { dbName, chatId, ownerId, ref } = run.dispatch;
+    const tenantId = parseWireId(ref.tenantId);
+    if (!this.goalListener || !tenantId) return;
+    try {
+      this.goalListener({ dbName, tenantId, chatId, ownerId }, update);
+    } catch (error) {
+      this.logger.warn({
+        message: "goal update listener failed",
+        runId: run.id,
+        error: error instanceof Error ? error.name : "unknown",
+      });
     }
   }
 
@@ -1506,7 +1576,7 @@ export class RunExecutor implements OnApplicationShutdown {
     const status =
       d.status === "completed" || d.status === "stopped" ? d.status : "failed";
     const error = errorOf(d.error);
-    const network = run.dispatch.body.network;
+    const network = networkOf(run.dispatch);
     const items = namedSkills(itemsOf(d.items), run.dispatch.skills).map(
       (item) =>
         item.type === "network"
@@ -1528,7 +1598,12 @@ export class RunExecutor implements OnApplicationShutdown {
       if (known && known.status === "completed") return known;
     }
     if (status === "failed" && d.delivery === "none" && !error)
-      return { ...base, status, error: NOT_SENT, threadLost: false };
+      return {
+        ...base,
+        status,
+        error: run.dispatch.mode === "attach" ? GOAL_TURN_LOST : NOT_SENT,
+        threadLost: false,
+      };
     return {
       ...base,
       status,
@@ -1547,25 +1622,32 @@ export class RunExecutor implements OnApplicationShutdown {
     return run.agentField();
   }
 
-  // The run's message in the runtime's saved history, or null when the
-  // runtime has no trace of it (nothing ran; posting is safe).
+  // The run's turn in the runtime's saved history (a member's run by its
+  // message, a goal run by its turn), or null when the runtime has no trace
+  // of it (for a member's run: nothing ran; posting is safe).
   private async fromHistory(
     run: LiveRun,
     client: RuntimeClient,
   ): Promise<Settlement | null> {
+    const { dispatch } = run;
     let turns;
     try {
-      turns = await client.history(run.dispatch.ref);
+      turns = await client.history(dispatch.ref);
     } catch (error) {
       // No thread was ever created: a first message that never started.
       if (error instanceof AdapterRefusal && error.code === "THREAD_LOST")
-        return run.dispatch.body.threadId
+        return dispatch.mode === "attach" || dispatch.body.threadId
           ? failed(run, THREAD_LOST, true)
           : null;
       throw error;
     }
-    const turn = turns.find(
-      (t) => t.clientMessageId === run.dispatch.body.input.clientMessageId,
+    // The run's own message, left out of what it saves.
+    const own =
+      dispatch.mode === "attach" ? null : dispatch.body.input.clientMessageId;
+    const turn = turns.find((t) =>
+      dispatch.mode === "attach"
+        ? t.turnId === dispatch.turnId
+        : t.clientMessageId === own,
     );
     if (!turn) return null;
     run.flush();
@@ -1582,16 +1664,9 @@ export class RunExecutor implements OnApplicationShutdown {
         ...base,
         status: "completed",
         error: null,
-        items: historySettleItems(
-          turn,
-          run.dispatch.body.input.clientMessageId,
-        ),
+        items: historySettleItems(turn, own),
       };
-    const items = unfinishedItems(
-      run,
-      turn,
-      run.dispatch.body.input.clientMessageId,
-    );
+    const items = unfinishedItems(run, turn, own);
     if (turn.status === "interrupted")
       return { ...base, status: "stopped", error: null, items };
     return { ...base, status: "failed", error: RUNTIME_FAILED, items };
@@ -2134,8 +2209,12 @@ function itemsOf(value: unknown): SettleItem[] {
 }
 
 // A finished turn's items from the runtime's saved history, without the
-// run's own message. Reply IDs are history:<turnId>:<n>.
-function historySettleItems(turn: HistoryTurn, own: string): SettleItem[] {
+// run's own message (null for a goal run). Reply IDs are
+// history:<turnId>:<n>.
+function historySettleItems(
+  turn: HistoryTurn,
+  own: string | null,
+): SettleItem[] {
   if (!turn.items)
     return [
       {
@@ -2168,7 +2247,7 @@ function historySettleItems(turn: HistoryTurn, own: string): SettleItem[] {
 function unfinishedItems(
   run: LiveRun,
   turn: HistoryTurn,
-  own: string,
+  own: string | null,
 ): SettleItem[] {
   const live = run.settleItems();
   if (!turn.items) return live;
@@ -2179,6 +2258,12 @@ function unfinishedItems(
   if (sawAll && live.length) return live;
   const partial = run.trailingPartial();
   return partial ? [...history, partial] : history;
+}
+
+// The policy a run's network blocks are shown against. A goal run was not
+// posted with one, so its blocks offer no grant.
+function networkOf(dispatch: Dispatch): RunNetworkPolicy | undefined {
+  return dispatch.mode === "attach" ? undefined : dispatch.body.network;
 }
 
 function count(value: unknown): number {

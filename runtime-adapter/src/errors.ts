@@ -47,6 +47,8 @@ export const REQUEST_ERRORS = {
     false,
     "Helper agents aren't available for this assistant.",
   ],
+  // A pause or change for a chat that has no goal (or no thread yet).
+  GOAL_NOT_FOUND: [404, false, "This chat has no goal to change."],
   RUNTIME_BUSY: [503, true, "The assistant is at capacity. Try again shortly."],
   DRAINING: [503, true, "The assistant is restarting. Try again shortly."],
   RUNTIME_UNAVAILABLE: [503, true, "The assistant did not respond. Try again."],
