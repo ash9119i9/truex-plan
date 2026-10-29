@@ -440,4 +440,75 @@ describe("catalog fields for a Google-shaped connector", () => {
       /not both/,
     );
   });
+
+  // RFC 8707 resource is sent by default; a provider that refuses an unknown
+  // parameter opts out with sendResource: false. Only false is stored, so
+  // every existing record keeps the default.
+  test("sendResource: false is kept, true is the default and not stored", () => {
+    assert.equal(parseConnectorSpec(gmail).auth.sendResource, undefined);
+    const off = parseConnectorSpec({
+      ...gmail,
+      auth: { ...gmail.auth, sendResource: false },
+    });
+    assert.equal(off.auth.sendResource, false);
+    const on = parseConnectorSpec({
+      ...gmail,
+      auth: { ...gmail.auth, sendResource: true },
+    });
+    assert.equal("sendResource" in on.auth, false);
+    for (const value of ["false", 0, null])
+      rejects(
+        { ...gmail, auth: { ...gmail.auth, sendResource: value } },
+        /sendResource must be true or false/,
+      );
+  });
+});
+
+// The resource is sent to the authorization server, so the value the
+// protected-resource metadata gives must be a safe absolute URL.
+describe("the discovered resource", () => {
+  async function discoveredResource(resource: unknown): Promise<string> {
+    const { fetchImpl } = stub(
+      googleRoutes({
+        "https://mail.example.test/.well-known/oauth-protected-resource/mcp/v1":
+          () => json({ ...PRM, resource }),
+      }),
+    );
+    return (
+      await discoverEndpoints({
+        connectorUrl: MCP,
+        allowLoopback: false,
+        fetchImpl,
+      })
+    ).resource;
+  }
+
+  test("is kept exactly as the metadata spells it", async () => {
+    assert.equal(await discoveredResource(MCP), MCP);
+    // URL normalisation would add a trailing slash the server never named.
+    assert.equal(
+      await discoveredResource("https://mail.example.test"),
+      "https://mail.example.test",
+    );
+  });
+
+  test("falls back to the connector URL when the metadata names none", async () => {
+    assert.equal(await discoveredResource(undefined), MCP);
+  });
+
+  test("an unsafe or malformed resource is refused", async () => {
+    for (const resource of [
+      "http://mail.example.test/mcp/v1",
+      "https://user:pw@mail.example.test/mcp/v1",
+      "https://mail.example.test/mcp/v1#part",
+      "https://mail.example.test/mcp/v1#",
+      "not a url",
+      42,
+    ])
+      await assert.rejects(
+        discoveredResource(resource),
+        DiscoveryError,
+        JSON.stringify(resource),
+      );
+  });
 });

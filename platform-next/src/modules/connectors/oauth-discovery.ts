@@ -23,6 +23,11 @@ export interface DiscoveredEndpoints {
   // Whether the AS requires iss on the redirect (RFC 9207). When true, a
   // callback without iss is refused.
   issParameterSupported: boolean;
+  // Client registration the AS advertises (MCP spec, client registration).
+  // Reported by the connector probe; connect uses pre-registered apps only.
+  // An unsafe registration_endpoint is left out rather than failing.
+  registrationEndpoint?: string;
+  clientIdMetadataDocumentSupported?: true;
 }
 
 // Discovery could not complete: the server did not advertise metadata the way
@@ -216,10 +221,18 @@ export async function discoverEndpoints(
     "authorization server",
     allowLoopback,
   );
-  const resource =
-    typeof resourceMeta.resource === "string"
-      ? resourceMeta.resource
-      : connectorUrl.href;
+  // RFC 8707 resource, sent to the authorization server on every authorize
+  // and token request, so a value the metadata names must be a safe absolute
+  // URL without a fragment. Kept exactly as spelled (like the issuer): URL
+  // normalisation could add a trailing slash the server never named.
+  let resource = connectorUrl.href;
+  if (resourceMeta.resource !== undefined) {
+    requireSafeUrl(resourceMeta.resource, "resource", allowLoopback);
+    resource = resourceMeta.resource as string;
+    // URL.hash is empty for a bare "#", so the text is checked.
+    if (resource.includes("#"))
+      throw new DiscoveryError("resource has a fragment");
+  }
 
   // 3. RFC 8414 authorization-server metadata, with path insertion.
   const asMeta = asObject(
@@ -272,6 +285,19 @@ export async function discoverEndpoints(
       "userinfo_endpoint",
       allowLoopback,
     ).href;
+  if (asMeta.registration_endpoint !== undefined)
+    try {
+      endpoints.registrationEndpoint = requireSafeUrl(
+        asMeta.registration_endpoint,
+        "registration_endpoint",
+        allowLoopback,
+      ).href;
+    } catch (error) {
+      // Nothing registers yet, so an unsafe endpoint is just not offered.
+      if (!(error instanceof DiscoveryError)) throw error;
+    }
+  if (asMeta.client_id_metadata_document_supported === true)
+    endpoints.clientIdMetadataDocumentSupported = true;
   return endpoints;
 }
 

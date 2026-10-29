@@ -142,6 +142,8 @@ export interface PendingApproval {
   readonly connector: string;
   readonly tool: string;
   readonly params: readonly ApprovalParam[];
+  // mcp only: the sha256 of the call's canonical arguments (argsHashOf).
+  readonly argsHash?: string;
   // False when the card must not offer Allow for this chat (push).
   readonly allowForChat: boolean;
   // What Allow for this chat stores, when it is not the connector and tool:
@@ -480,6 +482,7 @@ export class Run {
       connector: approval.connector,
       tool: approval.tool,
       params: approval.params,
+      ...(approval.argsHash ? { argsHash: approval.argsHash } : {}),
       ...(approval.scope ? { scope: approval.scope } : {}),
       decision,
       auto,

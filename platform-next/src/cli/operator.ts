@@ -9,6 +9,15 @@ import { ConfigError, loadConfig } from "../config/app-config";
 import { loadEnvFileIfPresent } from "../config/env-file";
 import { DatabaseService } from "../database/database.service";
 import { parseWireId, toWireId } from "../database/object-id";
+import {
+  parseConnectorSpec,
+  type ConnectorSpec,
+} from "../modules/connectors/connector";
+import {
+  probeConnector,
+  type ProbeOptions,
+  type ProbeReport,
+} from "../modules/connectors/connector-probe";
 import { isRole } from "../modules/memberships/membership";
 import {
   OperatorService,
@@ -37,6 +46,7 @@ const USAGE = `Usage:
   operator connector-put --operator <name> --file <definition.json>
   operator connector-enable|connector-disable --operator <name> --slug <slug>
   operator connector-list --operator <name>
+  operator connector-probe --operator <name> --url <mcp url> [--token <file>] [--file <definition.json>] [--allow-loopback]
   operator skill-put --operator <name> --folder <skill folder> [--toolchain <requirements.in>]
   operator skill-enable|skill-disable --operator <name> --slug <slug>
   operator skill-list --operator <name>
@@ -50,6 +60,12 @@ behind this release; run it as a deploy step after an index change.
 followups-report prints counts and rates only (never message text). --since
 takes d, h or m (default 7d); --min-sets hides small cells; --close sets the
 word-overlap threshold for "typed something close" (default 0.6).
+connector-probe reports an MCP server's OAuth discovery and the client
+registration modes it supports, without the database. With --token (a file
+holding a test account's access token, never printed) it lists the tools and
+drafts allowedTools, writeTools and toolHashes for a person to review; --file
+limits the draft to an existing definition's allowedTools. It never calls a
+tool. --allow-loopback accepts an http loopback server, for local fixtures.
 helpers-report prints helper-agent counts, rates, latency and tokens for
 chats whose agent allowed helpers (never a helper's task or result).
 --allow-dev-credentials accepts a plaintext apiKey and an http loopback
@@ -120,7 +136,19 @@ export type OperatorCommand =
       operator: string;
     }
   | ({ command: "followups-report" } & FollowUpsReportCommand)
-  | ({ command: "helpers-report" } & HelpersReportCommand);
+  | ({ command: "helpers-report" } & HelpersReportCommand)
+  | ConnectorProbeCommand;
+
+export interface ConnectorProbeCommand {
+  command: "connector-probe";
+  operator: string;
+  url: string;
+  // Null: discovery only, no tool list.
+  tokenFile: string | null;
+  // Null: draft every listed tool.
+  definitionFile: string | null;
+  allowLoopback: boolean;
+}
 
 function required(values: Record<string, unknown>, flag: string): string {
   const value = values[flag];
@@ -156,6 +184,9 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
         slug: { type: "string" },
         all: { type: "boolean" },
         "allow-dev-credentials": { type: "boolean" },
+        url: { type: "string" },
+        token: { type: "string" },
+        "allow-loopback": { type: "boolean" },
         since: { type: "string" },
         "min-sets": { type: "string" },
         close: { type: "string" },
@@ -270,6 +301,15 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
     case "connector-list":
     case "skill-list":
       return { command: positionals[0], operator };
+    case "connector-probe":
+      return {
+        command: "connector-probe",
+        operator,
+        url: required(values, "url"),
+        tokenFile: typeof values.token === "string" ? values.token : null,
+        definitionFile: typeof values.file === "string" ? values.file : null,
+        allowLoopback: values["allow-loopback"] === true,
+      };
     case "followups-report": {
       const sinceMs = sinceMsOf(values.since);
       const minSets = positiveInt(values["min-sets"], "min-sets", 200);
@@ -338,6 +378,53 @@ function fraction(value: unknown, flag: string, fallback: number): number {
   if (!Number.isFinite(number) || number < 0 || number > 1)
     throw new UsageError(`--${flag} must be a number from 0 to 1.`);
   return number;
+}
+
+// A token file holds one access token for a test account. Its content is
+// never echoed, not even in an error.
+const MAX_TOKEN_FILE_BYTES = 16 * 1024;
+const TOKEN = /^[\x21-\x7e]{1,8192}$/;
+
+export function readTokenFile(file: string): string {
+  let text: string;
+  try {
+    if (statSync(file).size > MAX_TOKEN_FILE_BYTES)
+      throw new UsageError(`${file} is larger than 16 KB.`);
+    text = readFileSync(file, "utf8");
+  } catch (error) {
+    if (error instanceof UsageError) throw error;
+    throw new UsageError(`Cannot read ${file}.`);
+  }
+  const token = text.trim();
+  if (!TOKEN.test(token))
+    throw new UsageError(
+      `${file} must hold one access token on a single line.`,
+    );
+  return token;
+}
+
+// Probes the server for the operator. With a definition, the draft is limited
+// to its allowedTools and sends its fixed headers; its url must be the one
+// probed, or the hashes would be drafted for a different server.
+export async function runConnectorProbe(
+  command: ConnectorProbeCommand,
+  read: (file: string) => unknown = readDefinition,
+  readToken: (file: string) => string = readTokenFile,
+  probe: (options: ProbeOptions) => Promise<ProbeReport> = probeConnector,
+): Promise<ProbeReport> {
+  let spec: ConnectorSpec | undefined;
+  if (command.definitionFile) {
+    spec = parseConnectorSpec(read(command.definitionFile));
+    if (spec.url !== command.url)
+      throw new UsageError(`--url must be the definition's url (${spec.url}).`);
+  }
+  return probe({
+    url: command.url,
+    allowLoopback: command.allowLoopback,
+    ...(command.tokenFile ? { accessToken: readToken(command.tokenFile) } : {}),
+    ...(spec?.allowedTools ? { allowedTools: spec.allowedTools } : {}),
+    ...(spec ? { fixedHeaders: spec.fixedHeaders } : {}),
+  });
 }
 
 export function readDefinition(file: string): unknown {
@@ -415,6 +502,8 @@ export async function runOperatorCommand(
     case "skill-list":
       return { skills: await operator.listSkills() };
   }
+  if (command.command === "connector-probe")
+    return runConnectorProbe(command, read);
   if (command.command === "followups-report")
     return operator.followUpsReport(command);
   if (command.command === "helpers-report")
@@ -451,6 +540,11 @@ export async function runOperatorCommand(
 
 async function main(): Promise<void> {
   const command = parseOperatorCommand(process.argv.slice(2));
+  // The probe only talks to the MCP server: no config, no database.
+  if (command.command === "connector-probe") {
+    console.log(JSON.stringify(await runConnectorProbe(command), null, 2));
+    return;
+  }
   loadEnvFileIfPresent();
   const config = loadConfig(process.env);
   const app = await NestFactory.createApplicationContext(

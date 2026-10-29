@@ -15,6 +15,7 @@ import { AdapterError, fromCodexErrorInfo } from "../../src/errors";
 import { Run, type RunEvent } from "../../src/runtime/run";
 import {
   addTurnUsage,
+  argsHashOf,
   parsePlan,
   PLAN_EXPLANATION_CHARS,
   PLAN_MAX_STEPS,
@@ -1620,5 +1621,27 @@ describe("sub-agents contract and config", () => {
     assert.match(rules, /write files/);
     assert.doesNotMatch(rules, /Never change data/);
     assert.match(String(v2.multi_agent_mode_hint_text), /share your workspace/);
+  });
+});
+
+// Task 12: the hash approval events carry. Vectors computed outside the
+// code: printf %s "<canonical JSON>" | shasum -a 256.
+describe("argsHashOf", () => {
+  test("is sha256 of the canonical (key-sorted) JSON; missing arguments are {}", () => {
+    const empty =
+      "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a";
+    assert.equal(argsHashOf({}), empty);
+    assert.equal(argsHashOf(undefined), empty);
+    assert.equal(argsHashOf(null), empty);
+    assert.equal(
+      argsHashOf({ title: "x", meta: { ok: true } }),
+      "1a5a4f74fa5e751ab901c7f010a7f73d375f76cf671e0b35fc3201ccf7f480d9",
+    );
+    assert.equal(
+      argsHashOf({ meta: { ok: true }, title: "x" }),
+      argsHashOf({ title: "x", meta: { ok: true } }),
+      "key order does not matter",
+    );
+    assert.notEqual(argsHashOf({ title: "x" }), argsHashOf({ title: "y" }));
   });
 });

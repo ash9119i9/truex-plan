@@ -567,6 +567,38 @@ const completed = (seq: number): AdapterEvent => ({
 });
 
 describe("RunExecutor approvals", () => {
+  test("argsHash from the adapter reaches the live approval event; a malformed one is dropped", async () => {
+    const HASH =
+      "1a5a4f74fa5e751ab901c7f010a7f73d375f76cf671e0b35fc3201ccf7f480d9";
+    for (const [sent, expected] of [
+      [HASH, HASH],
+      ["not-a-hash", undefined],
+      [HASH.toUpperCase(), undefined],
+    ] as const) {
+      const { store } = approvalStore();
+      const { events } = await driveApprovals(
+        [
+          {
+            seq: 1,
+            type: "tool.started",
+            data: {
+              itemId: "call-1",
+              connector: "github",
+              tool: "create_branch",
+            },
+          },
+          requested(2, { argsHash: sent }),
+          completed(3),
+        ],
+        store,
+        (type) => type === "approval",
+      );
+      const data = events[0]?.data as { argsHash?: string } | undefined;
+      assert.ok(data, "an approval event was sent");
+      assert.equal(data.argsHash, expected, sent);
+    }
+  });
+
   test("a requested approval is a pending live event with an ISO expiresAt and is in the snapshot", async () => {
     // The tool call is seen first so the snapshot carries both.
     const client = {

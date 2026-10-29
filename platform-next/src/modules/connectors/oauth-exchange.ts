@@ -46,6 +46,9 @@ export interface ExchangeOptions {
   clientId: string;
   clientSecret: string;
   redirectUri: string;
+  // RFC 8707: the MCP server the token is for. Omitted for a connector that
+  // opted out (sendResource: false).
+  resource?: string;
   fetchImpl?: FetchLike;
 }
 
@@ -85,6 +88,7 @@ export async function exchangeCode(
     client_id: options.clientId,
     client_secret: options.clientSecret,
     redirect_uri: options.redirectUri,
+    ...(options.resource ? { resource: options.resource } : {}),
   });
 }
 
@@ -93,6 +97,8 @@ export interface RefreshOptions {
   refreshToken: string;
   clientId: string;
   clientSecret: string;
+  // As for ExchangeOptions.
+  resource?: string;
   fetchImpl?: FetchLike;
 }
 
@@ -109,6 +115,7 @@ export async function refreshGrant(
     refresh_token: options.refreshToken,
     client_id: options.clientId,
     client_secret: options.clientSecret,
+    ...(options.resource ? { resource: options.resource } : {}),
   });
 }
 

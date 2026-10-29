@@ -368,6 +368,31 @@ describe("directory connectors (integration)", () => {
     assert.equal(updated.connector.revision, 2);
   });
 
+  // Stale hashes would keep tools offered after a review withdrew them.
+  test("putConnector stores toolHashes and removes them when a put leaves them out", async () => {
+    const stored = () =>
+      database
+        .catalog()
+        .collection<ConnectorDoc>(CONNECTORS_COLLECTION)
+        .findOne({ slug: "hashed" });
+    const hash = "a".repeat(64);
+    await operator.putConnector({
+      operator: "ops",
+      definition: connectorDefinition({
+        slug: "hashed",
+        toolHashes: { get_issue: hash },
+      }),
+    });
+    assert.deepEqual((await stored())?.toolHashes, { get_issue: hash });
+
+    const without = await operator.putConnector({
+      operator: "ops",
+      definition: connectorDefinition({ slug: "hashed" }),
+    });
+    assert.equal(without.outcome, "updated");
+    assert.equal((await stored())?.toolHashes, undefined);
+  });
+
   test("an invalid definition is refused and audited without being stored", async () => {
     await assert.rejects(
       operator.putConnector({
@@ -505,6 +530,65 @@ describe("directory connectors (integration)", () => {
     assert.equal(params.get("scope"), "openid mail.read");
     assert.equal(params.getAll("client_id").length, 1);
     assert.equal(params.get("client_id"), "Iv1.testclient");
+  });
+
+  // RFC 8707 (MCP authorization, 2025-06-18 and later): the client names the
+  // MCP server it wants a token for, as the protected-resource metadata
+  // spells it, on every authorize and token request.
+  async function resourceSent(): Promise<{
+    authorize: string[];
+    tokens: Array<[string | null, string[]]>;
+  }> {
+    const res = await fetch(
+      `${running.baseUrl}/api/v1/connectors/github/connect?tenantId=${tenantId.toHexString()}`,
+      { method: "POST", headers: { authorization: `Bearer ${alice.token}` } },
+    );
+    assert.equal(res.status, 201);
+    const { authorizeUrl } = (await res.json()) as { authorizeUrl: string };
+    const formsBefore = fixture.tokenRequestForms().length;
+    const { status } = await connectFlow();
+    assert.equal(status, 302);
+    await expireSoon((await rawRow())!._id);
+    const result = await connectors.runSpecs(DB_NAME, alice.userId, [
+      connectorId,
+    ]);
+    assert.equal(result.ok, true);
+    return {
+      authorize: new URL(authorizeUrl).searchParams.getAll("resource"),
+      tokens: fixture
+        .tokenRequestForms()
+        .slice(formsBefore)
+        .map((form) => [form.get("grant_type"), form.getAll("resource")]),
+    };
+  }
+
+  test("authorize, code exchange and refresh carry the connector's resource (RFC 8707)", async () => {
+    const resource = `${fixture.origin}/mcp`;
+    assert.deepEqual(await resourceSent(), {
+      authorize: [resource],
+      tokens: [
+        ["authorization_code", [resource]],
+        ["refresh_token", [resource]],
+      ],
+    });
+  });
+
+  test("sendResource: false sends no resource on authorize, exchange or refresh", async () => {
+    await database
+      .catalog()
+      .collection<ConnectorDoc>(CONNECTORS_COLLECTION)
+      .updateOne(
+        { _id: connectorId },
+        { $set: { "auth.sendResource": false } },
+      );
+    clearCatalogCache();
+    assert.deepEqual(await resourceSent(), {
+      authorize: [],
+      tokens: [
+        ["authorization_code", []],
+        ["refresh_token", []],
+      ],
+    });
   });
 
   test("a grant missing a requested scope stores nothing (permissions_missing)", async () => {

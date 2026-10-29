@@ -234,6 +234,39 @@ describe("parseConnectorSpec", () => {
       /at most 50/,
     );
   });
+
+  // The MCP gateway offers a tool only while its live definition matches
+  // the reviewed hash (mcp-gateway/src/tool-hash.ts); absent means none.
+  const HASH =
+    "af4a7bc52f1711eae0f514c3a4f38374c37a3923f5f3e95066522c6de3fd6937";
+
+  test("keeps toolHashes for allowed tools; absent stays absent", () => {
+    const spec = parseConnectorSpec(
+      definition({
+        allowedTools: ["get_issue", "create_branch"],
+        toolHashes: { get_issue: HASH },
+      }),
+    );
+    assert.deepEqual(spec.toolHashes, { get_issue: HASH });
+    assert.equal(parseConnectorSpec(definition()).toolHashes, undefined);
+  });
+
+  test("rejects malformed toolHashes", () => {
+    for (const [toolHashes, pattern] of [
+      [[HASH], /toolHashes must be an object/],
+      [{ get_issue: "abc" }, /64 lowercase hex/],
+      [{ get_issue: HASH.toUpperCase() }, /64 lowercase hex/],
+      [{ "bad name": HASH }, /toolHashes key/],
+      [{ create_issue: HASH }, /must be one of allowedTools/],
+    ] as const)
+      rejects(definition({ allowedTools: ["get_issue"], toolHashes }), pattern);
+    const many = Object.fromEntries(
+      Array.from({ length: 201 }, (_, i) => [`t_${i}`, HASH]),
+    );
+    const raw = definition({ toolHashes: many }) as Record<string, unknown>;
+    delete raw.allowedTools;
+    rejects(raw, /at most 200/);
+  });
 });
 
 describe("connectorView", () => {

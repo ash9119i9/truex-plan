@@ -184,6 +184,9 @@ export interface ApprovalEventData {
   connector: string;
   tool: string;
   params: Array<{ name: string; value: string }>;
+  // mcp only: the sha256 of the call's canonical arguments, from the
+  // adapter. The MCP gateway ties an Allow once to it (Task 13).
+  argsHash?: string;
   status: "pending" | ApprovalDecision;
   // False when the card must not offer Allow for this chat (push).
   allowForChat: boolean;
@@ -2059,6 +2062,11 @@ function approvalOf(
     connector,
     tool,
     params,
+    ...(approvalKind === "mcp" &&
+    typeof value.argsHash === "string" &&
+    /^[0-9a-f]{64}$/.test(value.argsHash)
+      ? { argsHash: value.argsHash }
+      : {}),
     allowForChat: value.allowForChat !== false,
     ...scope,
     ...(approvalKind === "file_change" && typeof value.diff === "string"

@@ -1,7 +1,7 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { ObjectId } from "mongodb";
+import { Binary, ObjectId } from "mongodb";
 import type { ConnectorsConfig } from "../../src/config/connectors-config";
 import {
   openTokens,
@@ -43,6 +43,39 @@ function aad(): SecretAad {
 }
 
 describe("token-crypto", () => {
+  // Sealed by mcp-gateway's sealTokens (fixed key 0x07 x 32). Until the
+  // gateway is the only key holder, both services open each other's rows;
+  // mcp-gateway/test/token-crypto.test.ts holds the reverse vector.
+  test("opens a token the MCP gateway sealed", () => {
+    const config: ConnectorsConfig = {
+      keys: new Map([["k1", Buffer.alloc(32, 7)]]),
+      activeKeyId: "k1",
+      redirectUri: "https://app.test/api/v1/connectors/callback",
+      allowLoopback: false,
+    };
+    const bin = (b64: string) => new Binary(Buffer.from(b64, "base64"));
+    const opened = openTokens(
+      config,
+      {
+        tenantId: "64f0c2a9e1b2c3d4e5f60700",
+        ownerId: "64f0c2a9e1b2c3d4e5f60718",
+        connectorId: "64f0c2a9e1b2c3d4e5f60719",
+      },
+      {
+        keyId: "k1",
+        iv: bin("hPLCFAa4cuzZw5uZ"),
+        tag: bin("1AHW+NMG3giQMLQySdjaGg=="),
+        ciphertext: bin(
+          "aQl8O6jNXoVgrk9gxjcL5ZPt+T9xwNk86BLsJFUvSGwFhwfFcrXSZuwQJbYsSZcAxM7N6iFA1+9zSKK303Mp+AVZDxeMZUFsuyWj6GcVB1jOiFbVFZVb",
+        ),
+      },
+    );
+    assert.deepEqual(opened, {
+      accessToken: "gho_gateway_vector_access",
+      refreshToken: "ghr_gateway_vector_refresh",
+    });
+  });
+
   test("round-trips an access and refresh token", () => {
     const config = configWith("k1");
     const binding = aad();

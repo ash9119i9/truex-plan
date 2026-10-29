@@ -70,6 +70,9 @@ export interface ConnectorFixture {
   tokenRequestCount(): number;
   // How many times each grant type was requested.
   grantTypeCounts(): Record<string, number>;
+  // Each token-endpoint request's form, in order, so a test can check what
+  // was sent (RFC 8707 resource, for example).
+  tokenRequestForms(): URLSearchParams[];
   // Make the MCP server reject a specific bearer token with 401, as a
   // provider would once a token is revoked or expired server-side.
   invalidateToken(token: string): void;
@@ -80,10 +83,32 @@ export interface ConnectorFixture {
   setAccountLogin(login: string | undefined): void;
   // Whether tools/list succeeds; false makes it return a JSON-RPC error.
   setToolsListFails(fails: boolean): void;
+  // A valid access token, as if a connect had completed.
+  issueAccessToken(): string;
+  // The tools tools/list returns (undefined: the default three), in pages of
+  // `pageSize` with a nextCursor when it is set.
+  setTools(
+    tools: ReadonlyArray<Record<string, unknown>> | undefined,
+    pageSize?: number,
+  ): void;
+  // Fields merged into the protected-resource and authorization-server
+  // metadata documents (registration support, a different resource).
+  setMetadataExtras(extras: MetadataExtras): void;
   close(): Promise<void>;
 }
 
+export interface MetadataExtras {
+  readonly protectedResource?: Record<string, unknown>;
+  readonly authorizationServer?: Record<string, unknown>;
+}
+
 const MCP_PROTOCOL_VERSION = "2025-06-18";
+
+const DEFAULT_TOOLS: ReadonlyArray<Record<string, unknown>> = [
+  { name: "get_me", description: "the viewer" },
+  { name: "list_issues", description: "issues" },
+  { name: "search_code", description: "code" },
+];
 
 function challengeOf(verifier: string): string {
   return createHash("sha256").update(verifier).digest("base64url");
@@ -125,9 +150,13 @@ export async function startConnectorFixture(): Promise<ConnectorFixture> {
   const bearersSeenSet = new Set<string>();
   const grantCounts: Record<string, number> = {};
   let tokenRequests = 0;
+  const tokenForms: URLSearchParams[] = [];
   const tokenModes: TokenMode[] = [];
   let accountLogin: string | undefined = "octocat";
   let toolsListFails = false;
+  let tools: ReadonlyArray<Record<string, unknown>> | undefined;
+  let toolsPageSize = 0;
+  let metadataExtras: MetadataExtras = {};
 
   let origin = "";
   let closing: Promise<void> | undefined;
@@ -249,15 +278,17 @@ export async function startConnectorFixture(): Promise<ConnectorFixture> {
             });
             return;
           }
+          const all = tools ?? DEFAULT_TOOLS;
+          const cursor = (message.params as { cursor?: unknown } | undefined)
+            ?.cursor;
+          const start = typeof cursor === "string" ? Number(cursor) : 0;
+          const end = toolsPageSize > 0 ? start + toolsPageSize : all.length;
           json(200, {
             jsonrpc: "2.0",
             id,
             result: {
-              tools: [
-                { name: "get_me", description: "the viewer" },
-                { name: "list_issues", description: "issues" },
-                { name: "search_code", description: "code" },
-              ],
+              tools: all.slice(start, end),
+              ...(end < all.length ? { nextCursor: String(end) } : {}),
             },
           });
           return;
@@ -307,6 +338,7 @@ export async function startConnectorFixture(): Promise<ConnectorFixture> {
           resource: `${origin}/mcp`,
           authorization_servers: [`${origin}/login/oauth`],
           bearer_methods_supported: ["header"],
+          ...metadataExtras.protectedResource,
         });
         return;
       }
@@ -321,6 +353,7 @@ export async function startConnectorFixture(): Promise<ConnectorFixture> {
           code_challenge_methods_supported: ["S256"],
           grant_types_supported: ["authorization_code", "refresh_token"],
           authorization_response_iss_parameter_supported: true,
+          ...metadataExtras.authorizationServer,
         });
         return;
       }
@@ -329,6 +362,7 @@ export async function startConnectorFixture(): Promise<ConnectorFixture> {
       if (path === "/login/oauth/access_token" && req.method === "POST") {
         tokenRequests++;
         const form = new URLSearchParams(await readBody(req));
+        tokenForms.push(new URLSearchParams(form));
         const grantType = form.get("grant_type") ?? "unknown";
         grantCounts[grantType] = (grantCounts[grantType] ?? 0) + 1;
 
@@ -454,6 +488,7 @@ export async function startConnectorFixture(): Promise<ConnectorFixture> {
     bearerTokensSeen: () => [...bearersSeen],
     tokenRequestCount: () => tokenRequests,
     grantTypeCounts: () => ({ ...grantCounts }),
+    tokenRequestForms: () => tokenForms.map((f) => new URLSearchParams(f)),
     invalidateToken: (token) => {
       invalidTokens.add(token);
       validAccessTokens.delete(token);
@@ -466,6 +501,18 @@ export async function startConnectorFixture(): Promise<ConnectorFixture> {
     },
     setToolsListFails: (fails) => {
       toolsListFails = fails;
+    },
+    issueAccessToken: () => {
+      const token = mintAccessToken();
+      validAccessTokens.add(token);
+      return token;
+    },
+    setTools: (next, pageSize = 0) => {
+      tools = next;
+      toolsPageSize = pageSize;
+    },
+    setMetadataExtras: (extras) => {
+      metadataExtras = extras;
     },
     // Idempotent: a test may close the fixture early to simulate an outage,
     // and afterEach closes it again.

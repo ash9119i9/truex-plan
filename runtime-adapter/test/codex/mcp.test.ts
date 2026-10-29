@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { after, before, describe, test } from "node:test";
@@ -9,6 +10,7 @@ import {
   runAnswering,
   type SseEvent,
 } from "../support/harness";
+import { canonical } from "../../src/canonical";
 import { deadMcpUrl, McpFixture } from "../support/mcp-fixture";
 
 // MCP support on the real pinned Codex, driven by the loopback MCP fixture and
@@ -790,3 +792,120 @@ async function grep(
   }
   return hits;
 }
+
+// Task 12 (tasks/mcp-gateway-todo.md): approval events carry argsHash, the
+// sha256 of the canonical arguments. The MCP gateway binds an Allow once to
+// it, so it must equal the hash of what tools/call actually sends.
+describe("MCP approval argsHash (real Codex)", () => {
+  const mcp = new McpFixture();
+  const h = new Harness({ allowLoopbackMcp: true, limits: { stopMs: 3000 } });
+  before(async () => {
+    await mcp.start();
+    await h.start();
+  });
+  after(async () => {
+    await h.close();
+    await mcp.close();
+  });
+
+  const hashOf = (args: unknown) =>
+    createHash("sha256")
+      .update(canonical(args ?? {}))
+      .digest("hex");
+
+  test("argsHash on requested and resolved equals the hash of the arguments the server receives", async () => {
+    const shapes = [
+      {
+        title: "nested",
+        meta: { labels: ["a", { b: [1, 2.5, null] }], ok: true },
+      },
+      {
+        title: "h\u00e9llo w\u00f6rld \u65e5\u672c \u{1f680} a\u2028b c\u2029d",
+      },
+      {},
+    ];
+    mcp.reset();
+    h.model.script.length = 0;
+    for (const args of shapes)
+      h.model.script.push({
+        kind: "call",
+        name: "create_issue",
+        namespace: NAMESPACE,
+        args,
+      });
+    h.model.script.push({ kind: "reply", text: "done" });
+    const body = h.body({
+      chatId: "argshash1",
+      threadId: null,
+      mcp: mcpSpec(mcp),
+    });
+    const { events } = await runAnswering(h, body, () => "allow");
+    assert.equal(completed(events).status, "completed");
+
+    const received = mcp.log
+      .filter((r) => r.rpcMethod === "tools/call")
+      .map((r) => r.args);
+    assert.equal(received.length, 3, "every call ran after its approval");
+    assert.deepEqual(
+      received.map((args) => args ?? {}),
+      shapes,
+      "Codex sent the arguments unchanged",
+    );
+    const expected = received.map(hashOf);
+    assert.deepEqual(
+      tool(events, "approval.requested").map((a) => a.argsHash),
+      expected,
+    );
+    assert.deepEqual(
+      tool(events, "approval.resolved").map((a) => a.argsHash),
+      expected,
+    );
+  });
+});
+
+// Regression: U+2028 and U+2029 are valid inside JSON strings, and Codex
+// doesn't escape them. Node's readline treats them as line breaks, which cut
+// a JSON-RPC message in two and stopped the run (codex_exit_mid_run).
+describe("Unicode line separators in Codex output (real Codex)", () => {
+  const mcp = new McpFixture();
+  const h = new Harness({ allowLoopbackMcp: true, limits: { stopMs: 3000 } });
+  before(async () => {
+    await mcp.start();
+    await h.start();
+  });
+  after(async () => {
+    await h.close();
+    await mcp.close();
+  });
+
+  test("a tool argument and a reply with U+2028 and U+2029 complete intact", async () => {
+    mcp.reset();
+    const args = { number: 1, q: "a b c" };
+    const reply = "line separator paragraph";
+    h.model.script.length = 0;
+    h.model.script.push({
+      kind: "call",
+      name: "get_issue",
+      namespace: NAMESPACE,
+      args,
+    });
+    h.model.script.push({ kind: "reply", text: reply });
+    const events = await h.run(
+      h.body({ chatId: "u2028", threadId: null, mcp: mcpSpec(mcp) }),
+    );
+    assert.equal(completed(events).status, "completed");
+    assert.deepEqual(
+      mcp.log.find((r) => r.rpcMethod === "tools/call")?.args,
+      args,
+    );
+    const text = events
+      .filter((e) => e.type === "text.delta")
+      .map((e) => String(e.data.delta))
+      .join("");
+    assert.equal(text, reply);
+    assert.equal(
+      h.logs.filter((l) => l.event === "codex_exit_mid_run").length,
+      0,
+    );
+  });
+});

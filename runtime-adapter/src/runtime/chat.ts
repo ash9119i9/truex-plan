@@ -233,6 +233,8 @@ interface ToolCall {
   readonly connector: string;
   readonly tool: string;
   readonly args: string;
+  // What approval events carry (argsHashOf).
+  readonly argsHash: string;
   asked: boolean;
 }
 
@@ -1453,6 +1455,7 @@ export class ChatRuntime {
         connector,
         tool,
         args: canonical(item.arguments ?? null),
+        argsHash: argsHashOf(item.arguments),
         asked: false,
       });
       run.startTool(itemId, connector, tool);
@@ -1654,6 +1657,7 @@ export class ChatRuntime {
       connector,
       tool: call.tool,
       params: approvalParams(meta),
+      argsHash: call.argsHash,
       allowForChat: !critical,
     };
     // Once a helper ran, its result may carry injected text that steers the
@@ -1971,6 +1975,17 @@ function matchCall(
     if (exact.length > 0) return exact[0];
   }
   return open.length === 1 ? open[0] : undefined;
+}
+
+// The sha256 (hex) of a tool call's arguments as canonical JSON (keys
+// sorted), carried on approval events. It is taken from the arguments Codex
+// sends in tools/call, so the MCP gateway can tie an Allow once to exactly
+// that call. Missing arguments count as {}, as in MCP and the gateway's own
+// argument check.
+export function argsHashOf(args: unknown): string {
+  return createHash("sha256")
+    .update(canonical(args ?? {}))
+    .digest("hex");
 }
 
 // The call's arguments as the card shows them: Codex's display list when it

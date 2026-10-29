@@ -88,6 +88,11 @@ export interface ConnectorAuth {
   accountUserinfo?: { field: string };
   // Allowlisted extra authorize parameters (AUTHORIZE_PARAMS).
   authorizeParams?: Record<string, string>;
+  // The RFC 8707 `resource` (the MCP server, as its protected-resource
+  // metadata names it) goes on every authorize, code exchange and refresh
+  // request. Only a provider that refuses the unknown parameter sets false;
+  // absent means send it, so only false is stored.
+  sendResource?: false;
   // Shown when a connection needs an organization admin to approve the app.
   adminHelp?: { text: string; url: string };
 }
@@ -111,6 +116,11 @@ export interface ConnectorSpec {
   // sharing or permission changes): a subset of writeTools that Allow for
   // this chat never covers.
   criticalTools?: string[];
+  // The reviewed definition hash of each tool (sha256 hex, from the probe).
+  // The MCP gateway offers a tool only while its live definition still
+  // hashes the same (mcp-gateway/src/tool-hash.ts); a tool without a hash is
+  // never offered. Keys are a subset of allowedTools when that is set.
+  toolHashes?: Record<string, string>;
   toolTimeoutSec: number;
   startupTimeoutSec: number;
   toolTokenEstimate?: number;
@@ -150,7 +160,7 @@ export interface ConnectorView {
 const SLUG = /^[a-z][a-z0-9_]{1,30}$/;
 const ICON = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const SCOPE = /^[\x21-\x7e]{1,200}$/;
-const TOOL_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
+export const TOOL_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
 // Header names RFC 7230 token characters; a safe, conservative subset.
 const HEADER_NAME = /^[A-Za-z0-9-]{1,64}$/;
 // Header values: printable, up to 8192 (matches the adapter's limit).
@@ -185,6 +195,7 @@ const SPEC_FIELDS = [
   "allowedTools",
   "writeTools",
   "criticalTools",
+  "toolHashes",
   "toolTimeoutSec",
   "startupTimeoutSec",
   "toolTokenEstimate",
@@ -203,6 +214,7 @@ const AUTH_FIELDS = [
   "accountTool",
   "accountUserinfo",
   "authorizeParams",
+  "sendResource",
   "adminHelp",
 ];
 
@@ -385,6 +397,11 @@ function authOf(value: unknown): ConnectorAuth {
   const authorizeParams = optional(raw.authorizeParams, authorizeParamsOf);
   if (authorizeParams !== undefined && Object.keys(authorizeParams).length > 0)
     auth.authorizeParams = authorizeParams;
+  if (raw.sendResource !== undefined) {
+    if (typeof raw.sendResource !== "boolean")
+      invalid("auth.sendResource must be true or false.");
+    if (!raw.sendResource) auth.sendResource = false;
+  }
   const adminHelp = optional(raw.adminHelp, adminHelpOf);
   if (adminHelp !== undefined) auth.adminHelp = adminHelp;
   return auth;
@@ -476,6 +493,33 @@ function criticalToolsOf(
   return tools;
 }
 
+const TOOL_HASH = /^[0-9a-f]{64}$/;
+
+function toolHashesOf(
+  value: unknown,
+  allowedTools: readonly string[] | undefined,
+): Record<string, string> {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    invalid("toolHashes must be an object of tool name to hash.");
+  const entries = Object.entries(value);
+  if (entries.length > MAX_ALLOWED_TOOLS)
+    invalid(`toolHashes must have at most ${MAX_ALLOWED_TOOLS} entries.`);
+  const allowed = allowedTools ? new Set(allowedTools) : undefined;
+  const hashes: Record<string, string> = {};
+  for (const [tool, hash] of entries) {
+    if (!TOOL_NAME.test(tool))
+      invalid(
+        "toolHashes keys must be 1-64 letters, digits, dots, hyphens or underscores.",
+      );
+    if (allowed && !allowed.has(tool))
+      invalid(`toolHashes "${tool}" must be one of allowedTools.`);
+    if (typeof hash !== "string" || !TOOL_HASH.test(hash))
+      invalid(`toolHashes "${tool}" must be 64 lowercase hex characters.`);
+    hashes[tool] = hash;
+  }
+  return hashes;
+}
+
 export function parseConnectorSpec(input: unknown): ConnectorSpec {
   const raw = objectWith(input, SPEC_FIELDS, "The connector definition");
 
@@ -520,6 +564,10 @@ export function parseConnectorSpec(input: unknown): ConnectorSpec {
     criticalToolsOf(v, writeTools),
   );
   if (criticalTools !== undefined) spec.criticalTools = criticalTools;
+  const toolHashes = optional(raw.toolHashes, (v) =>
+    toolHashesOf(v, allowedTools),
+  );
+  if (toolHashes !== undefined) spec.toolHashes = toolHashes;
   const estimate = optional(raw.toolTokenEstimate, (v) =>
     integer(v, "toolTokenEstimate", 0, 10_000_000),
   );

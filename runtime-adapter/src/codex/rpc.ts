@@ -137,11 +137,34 @@ export class CodexProcess {
       this.stderrTail.push(line.slice(0, 500));
       if (this.stderrTail.length > STDERR_TAIL) this.stderrTail.shift();
     });
-    const lines = createInterface({
-      input: this.child.stdout,
-      crlfDelay: Infinity,
+    // Split on "\n" only, not with readline: readline also breaks lines on
+    // U+2028 and U+2029, which are valid unescaped inside a JSON string and
+    // which Codex doesn't escape, so a message carrying one was cut in two
+    // and the run stopped. setEncoding keeps a UTF-8 character split across
+    // chunks whole.
+    this.child.stdout.setEncoding("utf8");
+    let pending = "";
+    this.child.stdout.on("data", (chunk: string) => {
+      pending += chunk;
+      let start = 0;
+      let end = pending.indexOf("\n");
+      while (end >= 0) {
+        const line = pending.slice(start, end);
+        this.handleLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+        start = end + 1;
+        end = pending.indexOf("\n", start);
+      }
+      pending = pending.slice(start);
+      // A line that never ends is a fault, like one that is too long.
+      if (pending.length > MAX_LINE) {
+        pending = "";
+        this.kill();
+      }
     });
-    lines.on("line", (line) => this.handleLine(line));
+    this.child.stdout.on("end", () => {
+      if (pending) this.handleLine(pending);
+      pending = "";
+    });
   }
 
   get isAlive(): boolean {

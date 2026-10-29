@@ -41,6 +41,7 @@ function specOf(doc: ConnectorDoc): ConnectorSpec {
   };
   if (doc.allowedTools !== undefined) spec.allowedTools = doc.allowedTools;
   if (doc.writeTools !== undefined) spec.writeTools = doc.writeTools;
+  if (doc.toolHashes !== undefined) spec.toolHashes = doc.toolHashes;
   if (doc.toolTokenEstimate !== undefined)
     spec.toolTokenEstimate = doc.toolTokenEstimate;
   if (doc.egress !== undefined) spec.egress = doc.egress;
@@ -133,6 +134,7 @@ export class ConnectorsCatalogService {
     const $unset: Record<string, ""> = {};
     if (spec.allowedTools === undefined) $unset.allowedTools = "";
     if (spec.writeTools === undefined) $unset.writeTools = "";
+    if (spec.toolHashes === undefined) $unset.toolHashes = "";
     if (spec.toolTokenEstimate === undefined) $unset.toolTokenEstimate = "";
     if (spec.egress === undefined) $unset.egress = "";
     const updated = await this.connectors().findOneAndUpdate(

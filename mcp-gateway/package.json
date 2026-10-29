@@ -1,0 +1,36 @@
+{
+  "name": "mcp-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Truex MCP gateway: the only path from Codex to provider MCP servers. Codex holds a Truex caller token; provider tokens stay here.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
+    "start": "node dist/mcp-gateway/src/index.js",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"test/**/*.test.ts\"",
+    "format": "prettier --write \"{src,test}/**/*.ts\" ../shared/mcp-caller-token.ts",
+    "format:check": "prettier --check \"{src,test}/**/*.ts\" ../shared/mcp-caller-token.ts"
+  },
+  "config": {
+    "mongodbMemoryServer": {
+      "version": "8.0.14"
+    }
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "3.1141.0",
+    "ajv": "8.20.0",
+    "mongodb": "6.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.6",
+    "mongodb-memory-server": "10.4.3",
+    "prettier": "3.9.8",
+    "tsx": "4.23.13",
+    "typescript": "5.9.3"
+  }
+}

@@ -14,8 +14,9 @@ import { createServer, type Server } from "node:http";
 export interface McpRequestLog {
   readonly rpcMethod: string | undefined;
   readonly authorization: string | undefined;
-  // The tool a `tools/call` named.
+  // The tool a `tools/call` named, and the arguments it sent.
   readonly tool?: string;
+  readonly args?: unknown;
 }
 
 export const TOOLS = [
@@ -80,7 +81,10 @@ export class McpFixture {
         rpcMethod: msg.method as string | undefined,
         authorization: req.headers.authorization,
         ...(msg.method === "tools/call" && typeof tool === "string"
-          ? { tool }
+          ? {
+              tool,
+              args: (msg.params as { arguments?: unknown }).arguments,
+            }
           : {}),
       });
       if (req.method !== "POST") return res.writeHead(405).end();

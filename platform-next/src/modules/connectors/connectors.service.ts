@@ -268,6 +268,7 @@ export class ConnectorsService {
       ...(connector.auth.scopes.length > 0
         ? { scope: connector.auth.scopes.join(" ") }
         : {}),
+      ...resourceParam(connector, endpoints),
     });
     // Allowlisted provider extras (parseConnectorSpec fixes their names and
     // values), added after the core parameters and never replacing one.
@@ -376,6 +377,7 @@ export class ConnectorsService {
           clientId: connector.auth.clientId,
           clientSecret,
           redirectUri: config.redirectUri,
+          ...resourceParam(connector, endpoints),
           ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
         });
       } catch (error) {
@@ -958,6 +960,7 @@ export class ConnectorsService {
         refreshToken: current.refreshToken,
         clientId: connector.auth.clientId,
         clientSecret,
+        ...resourceParam(connector, endpoints),
         ...(fetchImpl ? { fetchImpl } : {}),
       });
     } catch (error) {
@@ -1247,6 +1250,18 @@ function networkConnectorOf(
   if (row.account?.login) entry.account = row.account.login;
   if (egress.credential) entry.credential = { ...egress.credential, token };
   return entry;
+}
+
+// The RFC 8707 resource for an authorize, exchange or refresh request: the
+// MCP server as its protected-resource metadata names it, unless the
+// connector opted out (sendResource: false).
+function resourceParam(
+  connector: ConnectorDoc,
+  endpoints: DiscoveredEndpoints,
+): { resource?: string } {
+  return connector.auth.sendResource === false
+    ? {}
+    : { resource: endpoints.resource };
 }
 
 function missingOf(connector: ConnectorDoc): MissingConnector {

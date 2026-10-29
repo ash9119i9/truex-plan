@@ -10,6 +10,8 @@ import type { FetchLike } from "./oauth-discovery";
 const REQUEST_TIMEOUT_MS = 15_000;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const MCP_PROTOCOL_VERSION = "2025-06-18";
+// listTools stops a server that pages forever.
+const MAX_TOOL_PAGES = 50;
 
 // The token the server rejected (HTTP 401). The caller stores nothing.
 export class VerifyUnauthorizedError extends Error {
@@ -32,6 +34,9 @@ export class VerifyFailedError extends Error {
 export interface VerifyResult {
   toolCount: number;
   account?: { login: string };
+  // Every tool across all tools/list pages, as the server sent them; only
+  // with `listTools` (the connector probe).
+  tools?: unknown[];
 }
 
 export interface VerifyOptions {
@@ -43,6 +48,9 @@ export interface VerifyOptions {
   // instead of a tool. Also proves the token, which matters for servers that
   // answer tools/list without one (Google's Gmail MCP).
   userinfo?: { url: string; field: string };
+  // Follow tools/list's nextCursor and return every tool. Connect only
+  // counts the first page; the connector probe needs them all.
+  listTools?: boolean;
   fetchImpl?: FetchLike;
 }
 
@@ -197,6 +205,34 @@ export async function verifyConnection(
   if (!Array.isArray(tools))
     throw new VerifyFailedError("tools/list did not return a list");
   const result: VerifyResult = { toolCount: tools.length };
+  if (options.listTools) {
+    const all: unknown[] = [...tools];
+    const cursors = new Set<string>();
+    let cursor = list.result?.nextCursor;
+    let id = 100;
+    let pages = 1;
+    while (typeof cursor === "string" && cursor !== "") {
+      // A server that repeats a cursor or never stops is refused. The page
+      // count is kept apart from the set, which a repeated cursor never grows.
+      if (cursors.has(cursor) || pages >= MAX_TOOL_PAGES)
+        throw new VerifyFailedError("tools/list paging did not end");
+      cursors.add(cursor);
+      pages++;
+      const page = await send(
+        options,
+        { jsonrpc: "2.0", id: id++, method: "tools/list", params: { cursor } },
+        sessionId,
+        true,
+      );
+      const more = page.result?.tools;
+      if (!Array.isArray(more))
+        throw new VerifyFailedError("tools/list did not return a list");
+      all.push(...more);
+      cursor = page.result?.nextCursor;
+    }
+    result.toolCount = all.length;
+    result.tools = all;
+  }
 
   // 4. accountTool, when the connector defines one.
   if (options.accountTool) {
