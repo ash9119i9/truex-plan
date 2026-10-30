@@ -1,0 +1,123 @@
+/* ============================================================================
+   truex system · chapter 02 · colour & themes
+   Locked 2026-10-26. Colour source: Design System v2.2 (Instrument),
+   charts/v2-premium/index.html.
+
+   Contract
+   --------
+   :root                     light, standard contrast
+   [data-eff-theme="dark"]   dark, standard contrast
+   [data-eff-contrast="more"] increased contrast layered on either theme
+   [data-ctx="light|dark|light+|dark+"] pins any subtree to one full context,
+   so four themes can be previewed on one page.
+
+   Components consume these variables only; raw hex belongs here and nowhere
+   else. Focus is finalised as one soft outer halo (signal-glow) plus a signal
+   border — no stacked rings.
+   ============================================================================ */
+
+/* ── light · standard ─────────────────────────────────────────────────────── */
+:root,
+[data-ctx="light"],
+[data-ctx="light+"] {
+  color-scheme: light;
+
+  /* chassis */
+  --page: #F6F9FA; --page-dot: rgb(31 42 48 / 6%);
+  --surface: #FFFFFF; --surface-2: #FAFCFD; --well: #EEF3F5; --well-2: #E3EAED;
+  --inv: #1F2A30; --on-inv: #F6F9FA; --inv-2: #34434B;
+  --line: #E3ECEF; --line-strong: #D0DADF; --ctl: #849198;
+  --ink: #1F2A30; --ink-2: #5F6D73; --ink-3: #637077;
+
+  /* signal: interaction, selection, focus, live work. Never a data series. */
+  --signal: #3691CD; --signal-fill: #2A7AB1; --signal-hover: #226A9B; --signal-ink: #2A72A3; --on-signal: #FFFFFF;
+  --signal-soft: #EAF5F8; --signal-soft-2: #BCDEE8; --signal-glow: rgb(54 145 205 / 20%);
+
+  /* status: always paired with a glyph */
+  --ok: #0A7344; --ok-ink: #0A6A3F; --ok-soft: #E3F4EA;
+  --warn: #B87300; --warn-ink: #8F5300; --warn-soft: #FDF3DE;
+  --bad: #C4122F; --bad-ink: #B0102A; --bad-soft: #FCEBED;
+
+  /* identities: one hue per agent, nothing else */
+  --id-main: #1F2A30; --id-main-ink: #1F2A30; --id-main-soft: #E9EFF2;
+  --id-1: #6A5E9B; --id-1-ink: #594F81; --id-1-soft: #F3F2FE;
+  --id-2: #1E7A5E; --id-2-ink: #1E664F; --id-2-soft: #EAF7F1;
+  --id-3: #945069; --id-3-ink: #7C4458; --id-3-soft: #FDEFF3;
+  --id-4: #64702A; --id-4-ink: #545E26; --id-4-soft: #F2F5E9;
+  --id-5: #955735; --id-5-ink: #7C492E; --id-5-soft: #FDF1EA;
+  --eye: #FFFFFF; --eye-hi: transparent;
+
+  /* chart roles: neutral by default */
+  --cx-grid: #E8EEF1; --cx-axis: #AEBBC1; --cx-track: #EEF3F5; --cx-track-edge: #D0DADF;
+  --cx-data: #5F6D73; --cx-data-hi: #1F2A30; --cx-data-mute: #A7B3B9;
+  --cx-r1: #1F2A30; --cx-r2: #5F6D73; --cx-r3: #A7B3B9; --cx-r4: #D0DADF;
+
+  /* decoration */
+  --hatch: rgb(31 42 48 / 9%);
+
+  /* focus: one soft outer halo. Elevation itself lives in space.css. */
+  --focus: 0 0 0 4px var(--signal-glow);
+}
+
+/* ── dark · standard ──────────────────────────────────────────────────────── */
+:root[data-eff-theme="dark"],
+[data-ctx="dark"],
+[data-ctx="dark+"] {
+  color-scheme: dark;
+
+  --page: #111111; --page-dot: rgb(238 244 246 / 5%);
+  --surface: #171717; --surface-2: #1C1C1C; --well: #242424; --well-2: #2C2C2C;
+  --inv: #EEF4F6; --on-inv: #171717; --inv-2: #B7C3C8;
+  --line: #2A2A2A; --line-strong: #363636; --ctl: #5C666B;
+  --ink: #EEF4F6; --ink-2: #B7C3C8; --ink-3: #8B999F;
+
+  --signal: #5AA8DC; --signal-fill: #5AA8DC; --signal-hover: #7BBCE6; --signal-ink: #8DC9EF; --on-signal: #0B1A24;
+  --signal-soft: #14283A; --signal-soft-2: #1F4461; --signal-glow: rgb(90 168 220 / 24%);
+
+  --ok: #3FD18A; --ok-ink: #6BE0A6; --ok-soft: #0F2A1D;
+  --warn: #F2B64A; --warn-ink: #F6C870; --warn-soft: #2E2410;
+  --bad: #FF6B7F; --bad-ink: #FF8E9D; --bad-soft: #33141A;
+
+  --id-main: #D5DEE2; --id-main-ink: #E3ECEF; --id-main-soft: #262626;
+  --id-1: #B2A8E0; --id-1-ink: #CBC5EC; --id-1-soft: #221F2E;
+  --id-2: #7DC2A7; --id-2-ink: #A8D7C4; --id-2-soft: #14261F;
+  --id-3: #DC9CB1; --id-3-ink: #EABCCA; --id-3-soft: #2D1C21;
+  --id-4: #ACB87E; --id-4-ink: #C7D0A8; --id-4-soft: #202414;
+  --id-5: #DCA285; --id-5-ink: #EAC1AC; --id-5-soft: #2D1E16;
+  --eye: #121212; --eye-hi: transparent;
+
+  --cx-grid: #262626; --cx-axis: #4A5054; --cx-track: #222222; --cx-track-edge: #363636;
+  --cx-data: #A9B6BC; --cx-data-hi: #EEF4F6; --cx-data-mute: #626C71;
+  --cx-r1: #E3ECEF; --cx-r2: #A9B6BC; --cx-r3: #6E7A80; --cx-r4: #3E4549;
+
+  --hatch: rgb(238 244 246 / 9%);
+
+  --focus: 0 0 0 4px var(--signal-glow);
+}
+
+/* ── light · increased contrast ───────────────────────────────────────────── */
+:root[data-eff-contrast="more"],
+[data-ctx="light+"] {
+  --line: #B4C1C7; --line-strong: #84939A; --ctl: #5F6D73;
+  --ink-2: #3E4A50; --ink-3: #4E5C62;
+  --signal: #226A9B; --signal-fill: #1F5F8C; --signal-hover: #184C70; --signal-ink: #1C5884; --signal-soft-2: #9CCBE0;
+  --ok: #075C36; --ok-ink: #075C36; --warn: #9A5F00; --warn-ink: #6E3F00; --bad: #9E0B24; --bad-ink: #9E0B24;
+  --id-1: #544880; --id-1-ink: #443969; --id-2: #006249; --id-2-ink: #00503A; --id-3: #793B52; --id-3-ink: #632E42;
+  --id-4: #4E5916; --id-4-ink: #3F480D; --id-5: #7A4122; --id-5-ink: #643318;
+  --cx-grid: #CBD6DB; --cx-axis: #66737A; --cx-data: #3E4A50; --cx-data-mute: #66737A; --cx-track-edge: #84939A;
+  --hatch: rgb(31 42 48 / 18%);
+}
+
+/* ── dark · increased contrast ────────────────────────────────────────────── */
+:root[data-eff-theme="dark"][data-eff-contrast="more"],
+[data-ctx="dark+"] {
+  --page: #000000; --surface: #111111; --surface-2: #181818; --well: #222222; --well-2: #2C2C2C;
+  --line: #474747; --line-strong: #6E6E6E; --ctl: #9AA5AA;
+  --ink-2: #D3DDE1; --ink-3: #B7C3C8;
+  --signal: #7DBDE8; --signal-fill: #7DBDE8; --signal-hover: #A3D2F0; --signal-ink: #B3DAF3; --signal-soft-2: #24507A;
+  --ok: #6BE0A6; --ok-ink: #8BEBBB; --warn: #FFCB6B; --warn-ink: #FFD98F; --bad: #FF95A3; --bad-ink: #FFB0BA;
+  --id-1: #CBC4F2; --id-1-ink: #DED9FA; --id-2: #A1D9C2; --id-2-ink: #C2E8D8; --id-3: #EFBACA; --id-3-ink: #F8D2DE;
+  --id-4: #C6D1A1; --id-4-ink: #DBE3C1; --id-5: #EFBFA6; --id-5-ink: #F8D6C5;
+  --cx-grid: #363636; --cx-axis: #6E6E6E; --cx-data: #D3DDE1; --cx-data-mute: #858F94; --cx-track-edge: #5A5A5A;
+  --hatch: rgb(238 244 246 / 18%);
+}

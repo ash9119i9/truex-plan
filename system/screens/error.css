@@ -1,0 +1,59 @@
+/* error — the TurnError, inline where the answer would be. A tinted card in
+   bad ink when the turn failed; neutral with a spinner while it retries. */
+.cs-msg-error { min-width: 0; padding-inline-start: calc(1.375rem + var(--sp-2)); }
+.cs-msg-error[hidden] { display: none; }
+
+.te {
+  max-width: 36rem;
+  padding: var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--bad) 32%, var(--line));
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--bad-soft) 60%, var(--surface));
+  animation: cs-msg-in .28s var(--tx-ease) both;
+}
+.te[data-state="retrying"] { border-color: var(--line); background: var(--surface-2); }
+
+.te-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.te-ic { display: grid; place-items: center; width: 1rem; height: 1rem; flex: none; color: var(--bad-ink); }
+.te-spin { width: .75rem; height: .75rem; border-width: 1.5px; }
+.te-title { min-width: 0; color: var(--bad-ink); font: 650 var(--t-ui)/1.3 var(--f-ui); letter-spacing: -.005em; }
+.te[data-state="retrying"] .te-title { color: var(--ink); }
+.te-http {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 2px 6px;
+  border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--bad) 10%, transparent);
+  color: var(--bad-ink);
+  font-size: var(--t-micro);
+}
+.te[data-state="retrying"] .te-http { background: var(--well); color: var(--ink-3); }
+
+.te-msg,
+.te-tip,
+.te-note,
+.te-foot { padding-inline-start: calc(1rem + var(--sp-2)); }
+.te-msg { margin: 4px 0 0; color: var(--ink-2); font-size: var(--t-meta); line-height: 1.5; text-wrap: pretty; }
+.te-tip,
+.te-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: var(--sp-2) 0 0;
+  font-size: .75rem;
+  line-height: 1.45;
+}
+.te-tip { color: var(--ink-2); }
+.te-tip .tx-ic, .te-note .tx-ic { flex: none; margin-top: 2px; }
+.te-tip .tx-ic { color: var(--ink-3); }
+.te-note { color: var(--ok-ink); }
+
+.te-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); }
+.te-ref { margin-inline-start: auto; }
+
+@media (max-width: 640px) {
+  .cs-msg-error { padding-inline-start: 0; }
+  .te { max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) { .te { animation: none; } }
+:root[data-eff-motion="reduce"] .te { animation: none; }

@@ -1,0 +1,274 @@
+/* The request dock and its cards (DESIGN-SPEC 10.4, 13.1, 13.4), ported
+   from system/screens/approval.css with the .ap → .rq rename (D1, M1);
+   tokens only. */
+
+/* the composer's column (11.5): same max width, centred by .cs-bottom */
+.cs-pinned {
+  width: 100%;
+  max-width: var(--thread);
+}
+.rq {
+  max-height: min(48vh, 26rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--signal) 32%, var(--line));
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-2);
+  scrollbar-width: thin;
+  animation: rq-in var(--tx-d-3) var(--tx-ease) both;
+}
+/* focused on arrival so the keyboard lands on it; it's a container, not a
+   control, so it draws no ring of its own (its buttons do) */
+.rq:focus {
+  outline: none;
+}
+@keyframes rq-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-2));
+  }
+}
+.rq.is-tool {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+}
+.rq-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.rq-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--r-sm);
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+.rq.is-tool .rq-ic {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.rq-title {
+  min-width: 0;
+  margin: 0;
+  font-size: var(--t-ui);
+  font-weight: 650;
+  line-height: var(--lh-ui);
+  letter-spacing: var(--tr-ui);
+  font-variation-settings: var(--cut-text);
+  color: var(--ink);
+}
+.aq-step,
+.rq-time {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-h) var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+}
+.aq-step {
+  margin-inline-start: auto;
+}
+.rq-time {
+  margin-inline-start: auto;
+}
+.aq-step + .rq-time {
+  margin-inline-start: 0;
+}
+.rq-time.is-warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.at-tool {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin-top: var(--sp-3);
+}
+.at-logo {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--av-md);
+  height: var(--av-md);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+  font-weight: 700;
+}
+.at-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.at-name {
+  font-size: var(--t-meta);
+  font-weight: 650;
+  color: var(--ink);
+}
+.at-connector {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.at-command,
+.at-args dl {
+  max-height: 10rem;
+  margin: var(--sp-2) 0 0;
+  padding: var(--sp-2);
+  overflow: auto;
+  border-radius: var(--r-sm);
+  background: var(--well);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  line-height: var(--lh-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.at-args summary {
+  margin-top: var(--sp-2);
+  font-size: var(--t-micro);
+  font-weight: 550;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.at-args dl div {
+  display: flex;
+  gap: var(--sp-2);
+}
+.at-args dt {
+  color: var(--ink-3);
+}
+.at-args dd {
+  margin: 0;
+  color: var(--ink);
+}
+.rq-note,
+.rq-msg {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--t-meta);
+  line-height: var(--lh-meta);
+  color: var(--ink-3);
+}
+.rq-msg {
+  color: var(--ink-2);
+}
+.rq-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  margin-top: var(--sp-3);
+}
+/* the tinted secondary next to the solid primary */
+.rq-soft {
+  border-color: transparent;
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  box-shadow: none;
+}
+.rq-soft:not(:disabled):hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--signal) 18%, var(--surface));
+}
+.rq .tx-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+@container app (max-width: 40rem) {
+  .rq {
+    max-height: 55vh;
+  }
+  .rq-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .rq-btns .pt-spacer {
+    display: none;
+  }
+}
+@media (hover: none) {
+  .rq .tx-kbd {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rq {
+    animation: none;
+  }
+}
+:root[data-eff-motion="reduce"] .rq {
+  animation: none;
+}
+
+/* ── ApprovalRecord (13.6): the audit row a settled request leaves ────────── */
+.ar {
+  max-width: 36rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: var(--t-meta);
+}
+.ar-k {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  min-width: 0;
+}
+.ar-dot {
+  flex: none;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.ar-dot.is-ok {
+  background: var(--ok);
+}
+.ar-title {
+  min-width: 0;
+  font-weight: 550;
+  color: var(--ink);
+}
+.ar-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+}
+.ar-badge.is-ok {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+.ar-foot {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}

@@ -1,0 +1,295 @@
+/* The file viewer panel and file tiles (no design in the spec; restyled with
+   tokens only, DESIGN-SPEC 0.4). Ported from the retired styles/v2/chat-files.css. */
+/* Chat files: the file card under a reply and the file viewer panel.
+   From true-ui/design/secondary-sidebar-files-v2-split.html (Files). */
+
+/* ---- File tiles (type tag) ---- */
+.file-tile {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  font: 600 var(--t-micro)/1 var(--f-mono);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--fc);
+  background: var(--fcs);
+}
+.file-tile.lg {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+  font-size: var(--t-micro);
+}
+.ft-docx {
+  --fc: var(--id-2);
+  --fcs: var(--id-2-soft);
+}
+.ft-xlsx {
+  --fc: var(--id-3);
+  --fcs: var(--id-3-soft);
+}
+.ft-csv {
+  --fc: var(--ok-ink);
+  --fcs: var(--ok-soft);
+}
+.ft-md {
+  --fc: var(--ink-2);
+  --fcs: var(--well);
+}
+.ft-html {
+  --fc: var(--id-1);
+  --fcs: var(--id-1-soft);
+}
+.ft-pdf {
+  --fc: var(--bad-ink);
+  --fcs: var(--bad-soft);
+}
+
+.file-version {
+  margin-left: var(--sp-1);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+  background: var(--well);
+  color: var(--ink-2);
+  font: 400 var(--t-micro) var(--f-mono);
+  white-space: nowrap;
+}
+.file-writing {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin-left: var(--sp-1);
+  color: var(--signal-ink);
+  font-size: var(--t-meta);
+  white-space: nowrap;
+}
+.file-writing .spinner {
+  width: 10px;
+  height: 10px;
+}
+
+/* ---- Viewer panel ---- */
+.file-viewer {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.fv-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.fv-title {
+  flex: 1;
+  min-width: 0;
+}
+.fv-title h2 {
+  margin: 0;
+  font-size: var(--t-ui);
+  font-weight: 600;
+  line-height: var(--lh-ui);
+  font-variation-settings: var(--cut-text);
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+  outline: 0;
+}
+.fv-stats {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: var(--sp-h) 0 0;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.fv-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-h);
+}
+.fv-count {
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.fv-nav .icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.fv-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.fv-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.fv-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+.fv-doc {
+  font-size: var(--t-ui);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.fv-pre {
+  margin: 0;
+  padding: var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  font: var(--t-meta)/1.55 var(--f-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fv-grid-wrap {
+  max-width: 100%;
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overscroll-behavior: contain;
+}
+.fv-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--t-meta);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.fv-grid th,
+.fv-grid td {
+  padding: var(--sp-1) var(--sp-2);
+  text-align: left;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+}
+.fv-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--well);
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.fv-grid th:first-child,
+.fv-grid td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  border-right-color: var(--line-strong);
+}
+.fv-grid tbody td:first-child {
+  background: var(--well);
+  font-weight: 500;
+}
+.fv-grid thead th:first-child {
+  z-index: 2;
+}
+.fv-grid tr:last-child td {
+  border-bottom: 0;
+}
+/* A workbook: sheet tabs above the grid; row numbers in the first column. */
+.fv-sheet > .tx-tabs {
+  margin-bottom: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.fv-sheet .fv-note:first-child,
+.fv-sheet [role="tabpanel"] > .fv-note:first-child {
+  margin: 0 0 var(--sp-2);
+}
+.fv-grid tbody th {
+  background: var(--well);
+  color: var(--ink-3);
+  font-weight: 500;
+  text-align: right;
+}
+.fv-grid thead th {
+  text-align: center;
+}
+/* A formula shown in place of its value. */
+.fv-grid .fv-formula {
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-style: italic;
+}
+.fv-frame {
+  display: block;
+  width: 100%;
+  height: 520px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--pr-paper, white);
+}
+.fv-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+}
+.fv-note {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.fv-note p {
+  margin: 0 0 var(--sp-2);
+}
+.fv-error {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--bad-soft);
+  color: var(--bad-ink);
+}
+.fv-error p {
+  margin: 0 0 var(--sp-2);
+}
+.fv-skel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+}
+.fv-skel i {
+  display: block;
+  height: 10px;
+  border-radius: var(--r-xs);
+  background: linear-gradient(
+    90deg,
+    var(--well) 0%,
+    var(--line) 50%,
+    var(--well) 100%
+  );
+  background-size: 200% 100%;
+  animation: fv-shimmer 1.4s linear infinite;
+}
+@keyframes fv-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fv-skel i {
+    animation: none;
+  }
+}

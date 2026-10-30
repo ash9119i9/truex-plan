@@ -148,6 +148,7 @@ export const tone = (hex: string, amt: number): string => {
   return "#" + ch(16) + ch(8) + ch(0);
 };
 
+// Confetti for the issued-agent celebration (legacy dialog), printed artwork.
 export const CONFETTI_COLORS = [
   "#3691CD",
   "#BCDEE8",

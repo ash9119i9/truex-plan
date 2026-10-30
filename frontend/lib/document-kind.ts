@@ -33,7 +33,7 @@ export function documentKind(name: string): {
   const extension = /\.([a-z0-9]+)$/i.exec(name)?.[1].toLowerCase() ?? "";
   const [kind, label] = kinds[extension] ?? [
     "document",
-    extension ? extension.toUpperCase() : "File",
+    extension && extension.length <= 5 ? extension.toUpperCase() : "File",
   ];
   return { kind, label };
 }

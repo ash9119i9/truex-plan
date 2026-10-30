@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · Chat</title>
+<meta name="description" content="truex screen study: the chat page. Sidebar, chat, activity panel, composer and navigation composed only from the locked foundations.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../type.css">
+<link rel="stylesheet" href="../color.css">
+<link rel="stylesheet" href="../space.css">
+<link rel="stylesheet" href="../corner.css">
+<link rel="stylesheet" href="../primitives.css">
+<link rel="stylesheet" href="../patterns.css">
+<link rel="stylesheet" href="chat.css">
+<link rel="stylesheet" href="trace.css">
+<link rel="stylesheet" href="thinking.css">
+<link rel="stylesheet" href="activity.css">
+<link rel="stylesheet" href="files.css">
+<link rel="stylesheet" href="attach.css">
+<link rel="stylesheet" href="error.css">
+<link rel="stylesheet" href="helpers.css">
+<link rel="stylesheet" href="plan.css">
+<link rel="stylesheet" href="approval.css">
+<link rel="stylesheet" href="elicit.css">
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-run" viewBox="0 0 24 24"><path d="M8.5 6 L18.5 12 L8.5 18 V15 L11.5 12 L8.5 9 Z"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 24 24"><path d="M8.5 6.5 H15.5 A2 2 0 0 1 17.5 8.5 V14.5 L14.5 17.5 H8.5 A2 2 0 0 1 6.5 15.5 V8.5 A2 2 0 0 1 8.5 6.5 Z"/><circle cx="10.2" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="13.8" cy="12" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-trace" viewBox="0 0 24 24"><path d="M6.6 18 H9.5 V13.5 H14 L18 8.5"/><circle cx="5" cy="18" r="1.6"/><circle cx="18" cy="8.5" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M12 3.8 L19 7.8 V15.8 L12 19.8 L5 15.8 V7.8 Z"/><circle cx="12" cy="11.8" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M13.1 15.15 A5.6 5.6 0 1 1 15.15 13.1"/><path d="M14.1 14.1 L19.3 19.3"/></symbol>
+  <symbol id="i-dock-sidebar" viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 3v18"/></symbol>
+  <symbol id="i-dock-search" viewBox="0 0 24 24"><path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3"/></symbol>
+  <symbol id="i-dock-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-dock-bot" viewBox="0 0 24 24"><path d="M12 8V4H8M4 12a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4zM2 14h2M20 14h2M9 13v2M15 13v2"/></symbol>
+  <symbol id="i-dock-activity" viewBox="0 0 24 24"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM15 3v18"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></symbol>
+  <symbol id="i-chev-updown" viewBox="0 0 24 24"><path d="M8 9.5 12 5.5 16 9.5M8 14.5 12 18.5 16 14.5"/></symbol>
+  <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 13v6h14v-6"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+  <symbol id="i-sunrise" viewBox="0 0 24 24"><path d="M12 3v4M9 5l3-3 3 3M4.9 11.4l1.4 1.4M17.7 12.8l1.4-1.4M2.5 18h2M19.5 18h2M3 21.5h18M8 18a4 4 0 0 1 8 0"/></symbol>
+  <symbol id="i-sunset" viewBox="0 0 24 24"><path d="M12 2v5M9 4.5l3 3 3-3M4.9 11.4l1.4 1.4M17.7 12.8l1.4-1.4M2.5 18h2M19.5 18h2M3 21.5h18M8 18a4 4 0 0 1 8 0"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10v10H9zM5 15V5h10"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1 1 2-2M3.5 12l1 1 2-2M4.5 18h1"/></symbol>
+  <symbol id="i-sigma" viewBox="0 0 24 24"><path d="M18 5H6l6 7-6 7h12"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M4 10h16M4 15h16M10 4v16"/></symbol>
+  <symbol id="i-slides" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="11" rx="1.5"/><path d="M12 16v3.5M8.5 19.5h7"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M5 10.5h14M5 15h9M5 19.5h6"/></symbol>
+  <symbol id="i-discuss" viewBox="0 0 24 24"><path d="M5 5h14v10H10l-4 4v-4H5Z"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3M4.5 4v4h4"/></symbol>
+  <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.7M12 16.8h.01"/></symbol>
+  <symbol id="i-compact" viewBox="0 0 24 24"><path d="M4 12h16M9 3.5l3 3 3-3M9 20.5l3-3 3 3"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6.5 8h11v3.5a5.5 5.5 0 0 1-11 0zM12 17v4"/></symbol>
+  <symbol id="i-paperclip" viewBox="0 0 24 24"><path d="M20.5 11.5 12 20a5 5 0 0 1-7-7l8.5-8.5a3.5 3.5 0 0 1 5 5L10 18a2 2 0 0 1-3-3l7.5-7.5"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5c-2.3-2.4-3.5-5.2-3.5-8.5s1.2-6.1 3.5-8.5Z"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 3 19.5h18Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+  <symbol id="i-dock-user" viewBox="0 0 24 24"><path d="M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z"/></symbol>
+</svg>
+
+<div class="cs-shell is-new is-rail-off is-act-off">
+  <aside class="cs-sidebar" aria-label="Conversations and workspace">
+    <a class="cs-brand" href="#top" aria-label="truex"><span class="pt-brand-word">truex</span></a>
+
+    <button class="tx-btn tx-dark cs-new" type="button" id="cs-new-chat">
+      <span aria-hidden="true">+</span>New conversation<span class="tx-kbd">⌘J</span>
+    </button>
+
+    <!-- workspace sections: one quiet row each; new areas join this list -->
+    <nav class="cs-side-nav" aria-label="Workspace">
+      <button class="tx-btn tx-ghost cs-nav-item" type="button"><svg class="tx-ic" aria-hidden="true"><use href="#i-dock-bot"/></svg><span>Agents</span></button>
+      <button class="tx-btn tx-ghost cs-nav-item" type="button" aria-disabled="true" aria-label="Knowledge base, coming soon"><svg class="tx-ic" aria-hidden="true"><use href="#i-book"/></svg><span>Knowledge base</span><span class="tx-pill tx-pill-line tx-pill-sm cs-soon">Soon</span></button>
+    </nav>
+
+    <div class="cs-side-scroll">
+      <div class="pt-rail-group">
+        <div class="cs-side-label">Today</div>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Prepare an onboarding plan</span><span class="pt-session-time">12m</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Write a short release note</span><span class="pt-session-time">41m</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Market research on AI agents</span><span class="pt-session-time">1h</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Summarise the Q3 board deck</span><span class="pt-session-time">4h</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Draft interview questions</span><span class="pt-session-time">6h</span></button>
+      </div>
+      <div class="pt-rail-group">
+        <div class="cs-side-label">Previous</div>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Fix the revenue dashboard filters</span><span class="pt-session-time">Sun</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Compare Qlik and Power BI licensing</span><span class="pt-session-time">Sat</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Competitor analysis</span><span class="pt-session-time">Fri</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Q3 product roadmap</span><span class="pt-session-time">Thu</span></button>
+        <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Churn drivers in EMEA accounts</span><span class="pt-session-time">Wed</span></button>
+      </div>
+      <div class="cs-older" id="cs-older" hidden>
+        <div class="pt-rail-group">
+          <div class="cs-side-label">Last 30 days</div>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Plan the customer advisory session</span><span class="pt-session-time">Oct 18</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Rewrite the pricing page copy</span><span class="pt-session-time">Oct 15</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Hiring plan for the data team</span><span class="pt-session-time">Oct 14</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Migrate reports to the new warehouse</span><span class="pt-session-time">Oct 9</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Partner enablement checklist</span><span class="pt-session-time">Oct 6</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Forecast model assumptions review</span><span class="pt-session-time">Oct 2</span></button>
+        </div>
+        <div class="pt-rail-group">
+          <div class="cs-side-label">September</div>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Annual planning offsite agenda</span><span class="pt-session-time">Sep 26</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Security questionnaire for Acme Corp</span><span class="pt-session-time">Sep 18</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Explain variance in gross margin</span><span class="pt-session-time">Sep 11</span></button>
+          <button class="tx-btn tx-ghost pt-session cs-session" type="button"><span class="pt-session-title">Weekly metrics digest</span><span class="pt-session-time">Sep 4</span></button>
+        </div>
+      </div>
+      <button class="tx-btn tx-ghost tx-xs cs-view-all" type="button" id="cs-view-all" aria-expanded="false" aria-controls="cs-older">View all conversations</button>
+    </div>
+
+    <div class="cs-side-foot">
+      <button class="tx-btn tx-ghost cs-account" id="cs-account" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="cs-account-menu">
+        <span class="cs-avatar" data-corner="round" aria-hidden="true">AS</span>
+        <span class="cs-user-text"><span class="cs-user-name">A. Shah</span><span class="cs-user-meta">Analyst</span></span>
+        <svg class="tx-ic cs-account-chev" aria-hidden="true"><use href="#i-chev-updown"/></svg>
+      </button>
+      <div class="tx-menu cs-account-menu" id="cs-account-menu" role="menu" aria-labelledby="cs-account" hidden>
+        <button class="tx-menu-item" type="button" role="menuitem" tabindex="-1"><span>Settings</span><span class="tx-kbd">⌘,</span></button>
+        <button class="tx-menu-item" type="button" role="menuitem" tabindex="-1"><span>Keyboard shortcuts</span><span class="tx-kbd">?</span></button>
+        <button class="tx-menu-item" type="button" role="menuitem" tabindex="-1"><span>Help and feedback</span></button>
+        <div class="tx-menu-sep" role="separator"></div>
+        <button class="tx-menu-item" type="button" role="menuitem" tabindex="-1"><span>Sign out</span></button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="cs-stage" id="top">
+    <header class="cs-topbar" id="cs-topbar">
+      <div class="cs-top-left">
+        <span class="cs-agent-tag" id="cs-status" data-state="ready" title="Agent for this conversation">
+          <span class="cs-agent-av" id="cs-agent-av" data-corner="round" aria-hidden="true">QA</span>
+          <span class="cs-agent-name" id="cs-agent-name">Qlik Analyst</span>
+          <span class="tx-sr" id="cs-status-state">Ready</span>
+        </span>
+      </div>
+      <span class="cs-title" id="cs-title">New conversation</span>
+      <div class="cs-top-actions">
+        <button class="tx-btn tx-ghost tx-sm cs-share" id="cs-share" type="button"><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-share"/></svg><span class="cs-share-label" id="cs-share-label">Share</span></button>
+        <button class="tx-btn tx-ghost tx-sm cs-theme" id="screen-theme" type="button" aria-label="Switch to dark theme">
+          <svg class="tx-ic cs-theme-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+          <svg class="tx-ic cs-theme-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="cs-scroll">
+      <div class="cs-hero">
+        <div class="cs-hero-in">
+          <div class="cs-greet">
+            <svg class="tx-ic cs-greet-ic" aria-hidden="true"><use id="cs-greet-ic" href="#i-moon"/></svg>
+            <span id="cs-greet-text">Working late, A. Shah</span>
+          </div>
+          <h1 class="cs-hero-h">What should we <em>work on</em> today?</h1>
+          <div class="cs-hero-composer">
+            <div class="tx-card pt-composer cs-composer cs-composer-hero">
+              <label class="tx-sr" for="cs-hero-input">Message Qlik Analyst</label>
+              <textarea class="tx-input pt-composer-input" id="cs-hero-input" rows="1" placeholder="Ask anything, or type / for commands"></textarea>
+              <div class="pt-composer-bar">
+                <div class="cs-agent">
+                  <button class="tx-chip cs-agent-pick" id="cs-agent-pick" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="cs-agent-menu" aria-label="Agent: Qlik Analyst. Change agent">
+                    <span class="cs-agent-av" id="cs-pick-av" data-corner="round" aria-hidden="true">QA</span><span id="cs-pick-name">Qlik Analyst</span><svg class="tx-ic tx-ic-sm cs-agent-chev" aria-hidden="true"><use href="#i-chev-down"/></svg>
+                  </button>
+                  <div class="tx-menu cs-agent-menu" id="cs-agent-menu" role="menu" aria-label="Agents" hidden>
+                    <div class="tx-menu-h">Agents</div>
+                  <button class="tx-menu-item cs-agent-item" type="button" role="menuitemradio" aria-checked="true" tabindex="-1" data-agent="Qlik Analyst" data-initials="QA"><span class="cs-agent-av" data-corner="round" aria-hidden="true">QA</span><span>Qlik Analyst<small>Dashboards and data models</small></span><svg class="tx-ic cs-agent-check" aria-hidden="true"><use href="#i-check"/></svg></button>
+                  <button class="tx-menu-item cs-agent-item" type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-agent="Research helper" data-initials="RH"><span class="cs-agent-av" data-corner="round" aria-hidden="true">RH</span><span>Research helper<small>Sources, notes and summaries</small></span><svg class="tx-ic cs-agent-check" aria-hidden="true"><use href="#i-check"/></svg></button>
+                  <button class="tx-menu-item cs-agent-item" type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-agent="Finance analyst" data-initials="FA"><span class="cs-agent-av" data-corner="round" aria-hidden="true">FA</span><span>Finance analyst<small>Forecasts, variance and close</small></span><svg class="tx-ic cs-agent-check" aria-hidden="true"><use href="#i-check"/></svg></button>
+                    <div class="tx-menu-sep" role="separator"></div>
+                    <button class="tx-menu-item" type="button" role="menuitem" tabindex="-1"><span>Browse all agents</span></button>
+                  </div>
+                </div>
+                <span class="tx-chip">Ask</span>
+                <span class="pt-spacer"></span>
+                <button class="tx-btn tx-primary tx-sm" type="button" id="cs-hero-send" disabled>Send <span class="tx-kbd">↵</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cs-thread-in">
+        <section class="cs-thread" id="cs-thread" aria-label="Conversation"></section>
+      </div>
+    </div>
+    <p class="tx-sr" id="cs-announce" role="status" aria-live="polite"></p>
+
+    <div class="cs-bottom">
+      <div class="cs-composer-wrap">
+        <!-- pinned · a request waiting on you (approval.js), above the composer -->
+        <div class="cs-pinned" id="cs-pinned" role="region" aria-label="Waiting for your answer" hidden></div>
+        <div class="tx-card pt-composer cs-composer" id="cs-composer">
+          <label class="tx-sr" for="cs-input">Message Qlik Analyst</label>
+          <textarea class="tx-input pt-composer-input" id="cs-input" rows="1" placeholder="Ask a follow-up or assign a step"></textarea>
+          <div class="pt-composer-bar">
+            <span class="tx-chip">Ask</span>
+            <span class="pt-spacer"></span>
+            <button class="tx-btn tx-ghost tx-sm cs-stop" type="button" id="cs-stop" hidden><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+            <button class="tx-btn tx-primary tx-sm" type="button" id="cs-send" disabled><span class="cs-send-k">Send</span> <span class="tx-kbd">↵</span></button>
+          </div>
+        </div>
+      </div>
+
+      <nav class="cs-dock is-stowed" aria-label="Workspace">
+        <button class="cs-dock-btn" type="button" aria-label="Sidebar" aria-pressed="false" aria-keyshortcuts="Meta+B Control+B" data-cs-panel="rail">
+          <span class="cs-dock-ic"><svg class="tx-ic cs-dock-glyph" aria-hidden="true"><use href="#i-dock-sidebar"/></svg></span>
+          <span class="cs-dock-tip" role="tooltip">Sidebar <span class="tx-kbd">⌘B</span></span>
+        </button>
+        <button class="cs-dock-btn" type="button" aria-label="Search">
+          <span class="cs-dock-ic"><svg class="tx-ic cs-dock-glyph" aria-hidden="true"><use href="#i-dock-search"/></svg></span>
+          <span class="cs-dock-tip" role="tooltip">Search <span class="tx-kbd">⌘K</span></span>
+        </button>
+        <button class="cs-dock-btn" type="button" aria-label="New chat">
+          <span class="cs-dock-ic"><svg class="tx-ic cs-dock-glyph" aria-hidden="true"><use href="#i-dock-plus"/></svg></span>
+          <span class="cs-dock-tip" role="tooltip">New chat <span class="tx-kbd">⌘J</span></span>
+        </button>
+        <button class="cs-dock-btn" type="button" aria-label="Agent">
+          <span class="cs-dock-ic"><svg class="tx-ic cs-dock-glyph" aria-hidden="true"><use href="#i-dock-bot"/></svg></span>
+          <span class="cs-dock-tip" role="tooltip">Agent</span>
+        </button>
+        <button class="cs-dock-btn" type="button" aria-label="Activity" aria-pressed="false" aria-keyshortcuts="Meta+. Control+." data-cs-panel="activity">
+          <span class="cs-dock-ic"><svg class="tx-ic cs-dock-glyph" aria-hidden="true"><use href="#i-dock-activity"/></svg></span>
+          <span class="cs-dock-tip" role="tooltip">Activity <span class="tx-kbd">⌘.</span></span>
+        </button>
+        <button class="cs-dock-btn" type="button" aria-label="Account">
+          <span class="cs-dock-ic"><svg class="tx-ic cs-dock-glyph" aria-hidden="true"><use href="#i-dock-user"/></svg></span>
+          <span class="cs-dock-tip" role="tooltip">Account</span>
+        </button>
+      </nav>
+    </div>
+  </main>
+
+  <aside class="cs-activity" aria-label="Session activity">
+    <header class="cs-activity-head">
+      <div class="cs-activity-title"><span class="tx-pulse" aria-hidden="true"></span><b>Session activity</b></div>
+      <div class="cs-activity-actions">
+        <button class="tx-btn tx-ghost tx-xs" type="button">Wide</button>
+        <button class="tx-btn tx-icon tx-ghost" type="button" id="cs-activity-close" aria-label="Close activity"><span aria-hidden="true">×</span></button>
+      </div>
+    </header>
+
+    <div class="tx-tabs cs-activity-tabs" role="tablist" aria-label="Session panel">
+      <button role="tab" aria-selected="true" id="cs-activity-tab" aria-controls="cs-activity-panel" type="button">Activity</button>
+      <button role="tab" aria-selected="false" aria-controls="cs-activity-panel" tabindex="-1" type="button">Agents</button>
+      <button role="tab" aria-selected="false" aria-controls="cs-activity-panel" tabindex="-1" type="button">Files</button>
+      <button role="tab" aria-selected="false" aria-controls="cs-activity-panel" tabindex="-1" type="button">Plan</button>
+    </div>
+
+    <div class="cs-activity-scroll" id="cs-activity-panel" role="tabpanel" aria-labelledby="cs-activity-tab">
+      <div class="cs-activity-idle tx-state">
+        <span class="tx-tile" aria-hidden="true"><svg class="tx-ic"><use href="#i-dock-bot"/></svg></span>
+        <div>
+          <h4>Waiting for a request</h4>
+          <p>Start a conversation and its activity will appear here.</p>
+        </div>
+        <span class="tx-pill tx-pill-line">Idle</span>
+      </div>
+
+      <div class="cs-activity-runs">
+        <div class="tx-card cs-live">
+          <div class="cs-live-head"><span class="tx-pill tx-pill-live"><span class="tx-pulse" aria-hidden="true"></span>Working</span><span class="cs-mono">62%</span></div>
+          <b class="cs-live-title">Reading workspace sources</b>
+          <p class="cs-live-copy">Extracting the access steps and the shadowing chapter.</p>
+          <div class="tx-meter tx-meter-signal" style="--tx-p:62" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="62" aria-label="Reading progress"><i></i></div>
+        </div>
+
+        <div class="cs-section-head"><span class="cs-eyebrow">Recent</span><button class="tx-btn tx-ghost tx-xs" type="button">View all</button></div>
+        <ol class="cs-timeline">
+          <li><span class="tx-tile tx-tile-sm" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-search"/></svg></span><span class="cs-row-text"><b>Read the handbook</b><small>3 documents · 18s</small></span><span class="cs-time">10:24</span></li>
+          <li><span class="tx-tile tx-tile-sm" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-tool"/></svg></span><span class="cs-row-text"><b>Drafted the checklist</b><small>10 days · 18 rows</small></span><span class="cs-time">10:26</span></li>
+          <li><span class="tx-tile tx-tile-sm" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-agent"/></svg></span><span class="cs-row-text"><b>Vera checked access timing</b><small>Research helper · done</small></span><span class="cs-time">10:28</span></li>
+        </ol>
+
+        <div class="cs-section-head"><span class="cs-eyebrow">Checks</span><span class="cs-mono">3 / 4</span></div>
+        <div class="cs-checks">
+          <div class="cs-check-row"><span class="tx-dot tx-dot-ok" aria-hidden="true"></span><span>Access list complete</span><span class="cs-check">ok</span></div>
+          <div class="cs-check-row"><span class="tx-dot tx-dot-ok" aria-hidden="true"></span><span>Handbook sources</span><span class="cs-check">3</span></div>
+          <div class="cs-check-row"><span class="tx-dot tx-dot-warn" aria-hidden="true"></span><span>Manager approval</span><span class="cs-check">1 open</span></div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- message templates · user and agent; richer agent parts join the body later -->
+<template id="cs-tpl-user">
+  <div class="cs-msg cs-msg-user">
+    <!-- files you attached (attach.js), shown as DocumentCards -->
+    <div class="cs-msg-files cs-user-files" role="group" aria-label="Attached files" hidden></div>
+    <div class="pt-bubble cs-msg-text"></div>
+    <span class="pt-meta cs-msg-time"></span>
+  </div>
+</template>
+<template id="cs-tpl-agent">
+  <article class="cs-msg cs-msg-agent">
+    <header class="pt-agent-head">
+      <span class="cs-agent-av cs-msg-av" data-corner="round" aria-hidden="true"></span>
+      <b class="pt-agent-name cs-msg-name"></b>
+      <span class="pt-agent-meta cs-msg-time"></span>
+    </header>
+    <!-- reasoning · the ThinkingBlock (thinking.js), streamed before the answer -->
+    <div class="cs-msg-think"></div>
+    <!-- plan · the plan card (plan.js): numbered steps, approval, progress -->
+    <div class="cs-msg-plan"></div>
+    <!-- helpers · the HelperGroup (helpers.js), helper agents this reply spawned -->
+    <div class="cs-msg-helpers"></div>
+    <!-- tools · ToolActivityRows (activity.js), grouped when a turn makes several calls -->
+    <div class="cs-msg-tools"></div>
+    <!-- asks · ApprovalRecords for questions this reply asked you (approval.js) -->
+    <div class="cs-msg-asks"></div>
+    <!-- working · spinner + label until the answer's first words arrive -->
+    <div class="cs-msg-working" hidden></div>
+    <div class="cs-msg-body"></div>
+    <!-- error · the TurnError (error.js), inline where the answer would be -->
+    <div class="cs-msg-error" hidden></div>
+    <!-- files · DocumentCards (files.js) for what this reply created -->
+    <div class="cs-msg-files" role="group" aria-label="Files" hidden></div>
+    <!-- follow-ups · suggested next questions, shown on the latest settled turn only -->
+    <section class="cs-next" aria-label="Suggested follow-ups" hidden></section>
+    <!-- observability · receipt line + trace card, stamped by trace.js once the turn settles -->
+    <div class="cs-msg-obs" hidden></div>
+  </article>
+</template>
+
+<script src="thinking.js"></script>
+<script src="activity.js"></script>
+<script src="files.js"></script>
+<script src="attach.js"></script>
+<script src="error.js"></script>
+<script src="helpers.js"></script>
+<script src="plan.js"></script>
+<script src="approval.js"></script>
+<script src="elicit.js"></script>
+<script src="trace.js"></script>
+<script src="chat.js"></script>
+</body>
+</html>

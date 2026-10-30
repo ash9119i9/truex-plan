@@ -1,24 +1,17 @@
-@import "tailwindcss";
-/* Legacy area styles (phase 1 replaces shell/chat; the rest read tokens via aliases in base.css). */
-@import "./shell.css";
-@import "./chat.css";
-@import "./panels.css";
-@import "./observability.css";
-@import "./responsive.css";
-/* Design spec v2 (docs/truex-design-spec.html). Imported last so spec rules win on shared class names. */
-@import "../styles/v2/tokens.css";
-@import "../styles/v2/base.css";
-@import "../styles/v2/shell.css";
-@import "../styles/v2/dock.css";
-@import "../styles/v2/chat.css";
-@import "../styles/v2/timeline.css";
-@import "../styles/v2/session.css";
-@import "../styles/v2/agent-dialog.css";
-@import "../styles/v2/agents-view.css";
+/* System foundations and layers first (system/DESIGN-SPEC.md 2.1), then the
+   reset, then the product CSS: one file per surface, tokens only (except the
+   two sanctioned artwork files, 19.1). */
+@import "../styles/system/type.css";
+@import "../styles/system/color.css";
+@import "../styles/system/space.css";
+@import "../styles/system/corner.css";
+@import "../styles/system/primitives.css";
+@import "../styles/system/patterns.css";
+@import "../styles/app/reset.css";
+@import "../styles/app/utilities.css";
+@import "../styles/app/errors.css";
+/* The workspace surfaces load from app/t/[tenantId]/workspace.css. */
 
 button {
   cursor: pointer;
-}
-::selection {
-  background: var(--accent-soft-2);
 }

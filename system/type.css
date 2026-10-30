@@ -1,0 +1,312 @@
+/* ============================================================================
+   truex system · chapter 01 · typography
+   Locked 2026-10-25. Typographic source: Design System v2.2 (Instrument),
+   charts/v2-premium/index.html.
+
+   Families, cuts, sizes, tracking and weights are carried over verbatim.
+   Two line-heights that the reference left to inheritance (h3, h4) are fixed
+   here for multi-line use. Everything is rem, so the page scales as one unit.
+   ============================================================================ */
+
+:root {
+  /* families ------------------------------------------------------------- */
+  --f-ui: "Bricolage Grotesque", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-serif: "Instrument Serif", ui-serif, Georgia, serif;
+  --f-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Bricolage variable cuts, assigned by role — never by eye ---------------- */
+  --cut-text: "opsz" 14, "wdth" 100;
+  --cut-heading: "opsz" 48, "wdth" 90;
+  --cut-h2: "opsz" 96, "wdth" 82;
+  --cut-display: "opsz" 96, "wdth" 82;
+  --cut-hero: "opsz" 96, "wdth" 80;
+  --cut-brand: "opsz" 48, "wdth" 85;
+
+  /* sizes ---------------------------------------------------------------- */
+  --t-hero: clamp(3.25rem, 7vw, 6.75rem);
+  --t-display: 3.5rem;
+  --t-h2: clamp(2.25rem, 4.6vw, 3.75rem);
+  --t-h3: 1.5rem;
+  --t-h4: 1.0625rem;
+  --t-lede: 1.0625rem;
+  --t-body: 0.9375rem;
+  --t-ui: 0.875rem;
+  --t-meta: 0.8125rem;
+  --t-micro: 0.6875rem;
+  --t-editorial: 2.25rem;
+  --t-num: 2.25rem;
+  --t-code: 0.86em;
+
+  /* line height ---------------------------------------------------------- */
+  --lh-hero: 0.9;
+  --lh-display: 0.95;
+  --lh-h2: 0.98;
+  --lh-h3: 1.15;
+  --lh-h4: 1.25;
+  --lh-lede: 1.55;
+  --lh-body: 1.55;
+  --lh-ui: 1.4;
+  --lh-meta: 1.4;
+  --lh-micro: 1.3;
+  --lh-editorial: 1;
+  --lh-num: 1.1;
+  --lh-code: 1.55;
+
+  /* tracking ------------------------------------------------------------- */
+  --tr-hero: -0.04em;
+  --tr-display: -0.045em;
+  --tr-h2: -0.045em;
+  --tr-h3: -0.03em;
+  --tr-h4: -0.02em;
+  --tr-ui: -0.005em;
+  --tr-micro: 0.12em;
+  --tr-editorial: -0.02em;
+
+  /* measure -------------------------------------------------------------- */
+  --measure-body: 42rem;
+  --measure-lede: 46rem;
+  --measure-meta: 52rem;
+
+  /* rhythm: 0.9375rem body × 1.55 */
+  --baseline: 1.453125rem;
+}
+
+/* roots ------------------------------------------------------------------ */
+html {
+  font-size: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+html[data-textsize="150"] { font-size: 150%; }
+html[data-textsize="200"] { font-size: 200%; }
+
+body {
+  font-family: var(--f-ui);
+  font-size: var(--t-body);
+  font-weight: 400;
+  line-height: var(--lh-body);
+  font-variation-settings: var(--cut-text);
+  font-optical-sizing: none;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* semantic defaults: map tags to the closest role ------------------------ */
+h1, h2, h3, h4 {
+  margin: 0;
+  font-family: var(--f-ui);
+  font-optical-sizing: none;
+  text-wrap: balance;
+}
+h1 {
+  font-size: var(--t-display);
+  font-weight: 780;
+  line-height: var(--lh-display);
+  letter-spacing: var(--tr-display);
+  font-variation-settings: var(--cut-display);
+}
+h2 {
+  font-size: var(--t-h2);
+  font-weight: 760;
+  line-height: var(--lh-h2);
+  letter-spacing: var(--tr-h2);
+  font-variation-settings: var(--cut-h2);
+}
+h3 {
+  font-size: var(--t-h3);
+  font-weight: 700;
+  line-height: var(--lh-h3);
+  letter-spacing: var(--tr-h3);
+  font-variation-settings: var(--cut-heading);
+}
+h4 {
+  font-size: var(--t-h4);
+  font-weight: 700;
+  line-height: var(--lh-h4);
+  letter-spacing: var(--tr-h4);
+  font-variation-settings: var(--cut-heading);
+}
+
+p {
+  margin: 0 0 0.75em;
+  text-wrap: pretty;
+}
+p:last-child { margin-bottom: 0; }
+
+code, kbd, samp, pre {
+  font-family: var(--f-mono);
+  font-size: var(--t-code);
+  font-feature-settings: "zero" 1;
+}
+
+/* roles ------------------------------------------------------------------ */
+.t-hero {
+  overflow-wrap: break-word;
+  font-family: var(--f-ui);
+  font-size: var(--t-hero);
+  font-weight: 800;
+  line-height: var(--lh-hero);
+  letter-spacing: var(--tr-hero);
+  word-spacing: 0.06em;
+  font-variation-settings: var(--cut-hero);
+  font-optical-sizing: none;
+  text-wrap: balance;
+}
+.t-display {
+  overflow-wrap: break-word;
+  font-family: var(--f-ui);
+  font-size: var(--t-display);
+  font-weight: 780;
+  line-height: var(--lh-display);
+  letter-spacing: var(--tr-display);
+  font-variation-settings: var(--cut-display);
+  font-optical-sizing: none;
+  text-wrap: balance;
+}
+.t-h2 {
+  overflow-wrap: break-word;
+  font-family: var(--f-ui);
+  font-size: var(--t-h2);
+  font-weight: 760;
+  line-height: var(--lh-h2);
+  letter-spacing: var(--tr-h2);
+  font-variation-settings: var(--cut-h2);
+  font-optical-sizing: none;
+  text-wrap: balance;
+}
+.t-h3 {
+  font-family: var(--f-ui);
+  font-size: var(--t-h3);
+  font-weight: 700;
+  line-height: var(--lh-h3);
+  letter-spacing: var(--tr-h3);
+  font-variation-settings: var(--cut-heading);
+  font-optical-sizing: none;
+  text-wrap: balance;
+}
+.t-h4 {
+  font-family: var(--f-ui);
+  font-size: var(--t-h4);
+  font-weight: 700;
+  line-height: var(--lh-h4);
+  letter-spacing: var(--tr-h4);
+  font-variation-settings: var(--cut-heading);
+  font-optical-sizing: none;
+  text-wrap: balance;
+}
+.t-lede {
+  font-family: var(--f-ui);
+  font-size: var(--t-lede);
+  font-weight: 400;
+  line-height: var(--lh-lede);
+  letter-spacing: 0;
+  font-variation-settings: var(--cut-text);
+  font-optical-sizing: none;
+  max-width: var(--measure-lede);
+  text-wrap: pretty;
+}
+.t-body {
+  font-family: var(--f-ui);
+  font-size: var(--t-body);
+  font-weight: 400;
+  line-height: var(--lh-body);
+  font-variation-settings: var(--cut-text);
+  font-optical-sizing: none;
+  text-wrap: pretty;
+}
+.t-ui {
+  font-family: var(--f-ui);
+  font-size: var(--t-ui);
+  font-weight: 600;
+  line-height: var(--lh-ui);
+  letter-spacing: var(--tr-ui);
+  font-variation-settings: var(--cut-text);
+  font-optical-sizing: none;
+}
+.t-meta {
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  line-height: var(--lh-meta);
+  letter-spacing: 0;
+  font-variation-settings: var(--cut-text);
+  font-optical-sizing: none;
+}
+.t-micro {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  line-height: var(--lh-micro);
+  letter-spacing: var(--tr-micro);
+  text-transform: uppercase;
+  font-feature-settings: "zero" 1;
+}
+.t-editorial {
+  font-family: var(--f-serif);
+  font-size: var(--t-editorial);
+  font-style: italic;
+  font-weight: 400;
+  line-height: var(--lh-editorial);
+  letter-spacing: var(--tr-editorial);
+  font-synthesis: none;
+  text-wrap: balance;
+}
+.t-num {
+  font-family: var(--f-mono);
+  font-size: var(--t-num);
+  font-weight: 500;
+  line-height: var(--lh-num);
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+.t-code {
+  font-family: var(--f-mono);
+  font-size: var(--t-code);
+  font-weight: 400;
+  line-height: var(--lh-code);
+  letter-spacing: 0;
+  font-feature-settings: "zero" 1;
+}
+
+/* the one editorial accent: an italic phrase inside a heading ------------- */
+.t-hero em,
+.t-display em,
+.t-h2 em,
+.t-h3 em,
+.t-h4 em {
+  font-family: var(--f-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.04em;
+  line-height: 0.9;
+  letter-spacing: var(--tr-editorial);
+  padding-right: 0.04em;
+  font-synthesis: none;
+}
+.t-hero em { font-size: 1.02em; letter-spacing: -0.03em; }
+
+/* utilities -------------------------------------------------------------- */
+.mono {
+  font-family: var(--f-mono);
+  font-feature-settings: "zero" 1;
+}
+.num {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+  letter-spacing: 0;
+}
+.measure { max-width: var(--measure-body); }
+.measure-lede { max-width: var(--measure-lede); }
+
+::selection { background: var(--signal-soft-2, #BCDEE8); color: var(--ink, #1F2A30); }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+@media print {
+  html[data-textsize] { font-size: 100%; }
+  .t-hero, .t-display, .t-h2, .t-h3, .t-h4 { text-wrap: wrap; }
+}

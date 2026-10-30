@@ -1,15 +1,21 @@
 "use client";
-import { createContext, use, type ReactNode } from "react";
+import { createContext, use, useState, type ReactNode } from "react";
 import { SessionGate, type SessionActions } from "./session-gate";
+import {
+  SidebarFrame,
+  Topbar,
+  type AgentState,
+  type SidebarPlace,
+} from "./workspace-frame";
 import { Shell } from "@/components/v2/shell";
-import { Icon } from "@/components/v2/icon";
-import { useTheme } from "@/lib/use-theme";
 import { meKey, type Me } from "@/lib/session";
-import "@/styles/v2/tenant-workspace.css";
 
-const Workspace = createContext<{ me: Me; actions: SessionActions } | null>(
-  null,
-);
+const Workspace = createContext<{
+  me: Me;
+  actions: SessionActions;
+  /** Marks the frame as a new conversation (DESIGN-SPEC 11.4). */
+  setNew: (isNew: boolean) => void;
+} | null>(null);
 
 // Who is signed in to this workspace, for the page inside it.
 export function useWorkspace() {
@@ -18,8 +24,9 @@ export function useWorkspace() {
   return workspace;
 }
 
-// The page frame for one workspace. Pages render their own panels and a
-// WorkspaceStage; a change of person remounts everything below.
+// The page frame for one workspace (DESIGN-SPEC 11.1). Pages render their own
+// sidebar, a WorkspaceStage and side panel; a change of person remounts
+// everything below.
 export function TenantWorkspace({
   tenantId,
   children,
@@ -27,11 +34,12 @@ export function TenantWorkspace({
   tenantId: string;
   children: ReactNode;
 }) {
+  const [isNew, setNew] = useState(false);
   return (
     <SessionGate tenantId={tenantId}>
       {(me, actions) => (
-        <Workspace value={{ me, actions }}>
-          <Shell key={meKey(me)} className="tenant-workspace is-ready">
+        <Workspace value={{ me, actions, setNew }}>
+          <Shell key={meKey(me)} isNew={isNew}>
             {children}
           </Shell>
         </Workspace>
@@ -40,49 +48,66 @@ export function TenantWorkspace({
   );
 }
 
-// The stage: the workspace header, then the page. `start` goes before the
-// wordmark (a sidebar toggle, for example).
+// The stage: the topbar, then the page. `topbar` replaces the plain one (an
+// open conversation brings its own, with rename and archive).
 export function WorkspaceStage({
+  title,
+  agent,
   start,
+  actions,
+  topbar,
   children,
 }: {
+  title: string;
+  agent?: { name: string; state: AgentState } | null;
+  /** Before everything else in the topbar (the narrow sidebar toggle). */
   start?: ReactNode;
+  actions?: ReactNode;
+  topbar?: ReactNode;
   children: ReactNode;
 }) {
-  const { me, actions } = useWorkspace();
-  const { isDark, toggle } = useTheme();
   return (
-    <main className="stage">
-      <header className="workspace-header">
-        {start}
-        <a
-          className="brand-word sm"
-          href={`/t/${me.tenant.id}/chat`}
-          aria-label="Truex chat"
-        >
-          truex
-        </a>
-        <span className="workspace-name">{me.tenant.name}</span>
-        <div className="workspace-actions">
-          <span className="workspace-person" title={me.user.email}>
-            {me.user.name}
-          </span>
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={toggle}
-            aria-label={
-              isDark ? "Switch to light theme" : "Switch to dark theme"
-            }
-          >
-            <Icon name={isDark ? "sun" : "moon"} size={16} />
-          </button>
-          <button type="button" className="text-btn" onClick={actions.signOut}>
-            Sign out
-          </button>
-        </div>
-      </header>
+    <main className="cs-stage">
+      {topbar ?? (
+        <Topbar
+          title={title}
+          slim={!!agent}
+          agent={agent}
+          start={start}
+          actions={actions}
+        />
+      )}
       {children}
     </main>
+  );
+}
+
+// The sidebar's fixed parts for this person and workspace; the page passes
+// its history list as children.
+export function WorkspaceSidebar({
+  current,
+  onNew,
+  onAgents,
+  children,
+}: {
+  current: SidebarPlace;
+  onNew: () => void;
+  onAgents?: () => void;
+  children?: ReactNode;
+}) {
+  const { me, actions } = useWorkspace();
+  return (
+    <SidebarFrame
+      tenantId={me.tenant.id}
+      user={me.user}
+      role={me.role}
+      workspace={me.tenant.name}
+      current={current}
+      onNew={onNew}
+      onAgents={onAgents}
+      onSignOut={actions.signOut}
+    >
+      {children}
+    </SidebarFrame>
   );
 }

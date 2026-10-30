@@ -7,9 +7,11 @@ import {
   CapabilitiesBoard,
   type BoardProfile,
 } from "@/components/invite/capabilities-board";
-import "@/styles/v2/invite.css";
-import "@/styles/v2/invite-board.css";
-import "@/styles/v2/auth.css";
+import { Button } from "@/components/tx/button";
+import { Segmented } from "@/components/tx/segmented";
+import { AppMark } from "@/components/tx/app-mark";
+import "@/styles/app/auth.css";
+import "@/styles/app/capabilities-board.css";
 
 export function Banner({
   notice,
@@ -54,29 +56,26 @@ export function Banner({
 export function Brand() {
   return (
     <div className="au-brand">
-      <span className="au-mark" aria-hidden="true">
-        t
-      </span>
-      <span className="au-word">truex</span>
+      <AppMark />
+      <span className="pt-brand-word">truex</span>
     </div>
   );
 }
 
-function LoginTheme() {
+export function LoginTheme() {
   const { theme, setTheme } = useTheme();
   return (
-    <div className="jp-seg" role="group" aria-label="Theme">
-      {(["", "light", "dark"] as const).map((value) => (
-        <button
-          key={value || "auto"}
-          type="button"
-          aria-pressed={theme === value}
-          onClick={() => setTheme(value)}
-        >
-          {value === "" ? "Auto" : value === "light" ? "Light" : "Dark"}
-        </button>
-      ))}
-    </div>
+    <Segmented
+      label="Theme"
+      size="sm"
+      options={[
+        { value: "auto", label: "Auto" },
+        { value: "light", label: "Light" },
+        { value: "dark", label: "Dark" },
+      ]}
+      value={theme}
+      onChange={setTheme}
+    />
   );
 }
 
@@ -154,7 +153,7 @@ export function LoginCard({
   return (
     <AuthFrame split>
       <p className="au-eyebrow">Sign in or create an account</p>
-      <h1 id="au-title">
+      <h1 id="au-title" className="t-h2">
         Pick up where your <em>agents</em> left off
       </h1>
       <p className="au-lead">
@@ -211,14 +210,13 @@ export function LoginCard({
         {notice && <Banner notice={notice} />}
         {action && (
           <div className="au-actions">
-            <button
-              type="button"
-              className="au-btn primary"
+            <Button
+              variant="primary"
               onClick={action.onClick}
-              disabled={action.busy}
+              working={action.busy ? "Signing out…" : undefined}
             >
-              {action.busy ? "Signing out…" : action.label}
-            </button>
+              {action.label}
+            </Button>
           </div>
         )}
         <GoogleButton href={GOOGLE_START} />

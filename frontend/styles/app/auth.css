@@ -1,0 +1,1356 @@
+/* Sign-in, invitation, workspace choice and session screens (no design in the
+   spec; restyled with tokens only, DESIGN-SPEC 0.4). Ported from the retired
+   styles/v2/auth.css and invite.css. The only literal colours are Google's own
+   button palette (--g-*), which Google's branding rules fix. The capabilities
+   board beside the form is artwork: styles/app/capabilities-board.css. */
+/* Sign-in, workspace chooser and session-state screens. Every rule sits under
+   .au-page and uses au- class names, like the invite page's jp-, so base.css's
+   global classes never apply here. Colors come from tokens.css; the only
+   literal colors are Google's own button palette and logo, which Google's
+   branding rules fix (light: white / #747775 / #1F1F1F, dark: #131314 /
+   #8E918F / #E3E3E3). */
+
+.au-page {
+  --g-bg: #ffffff;
+  --g-line: #747775;
+  --g-ink: #1f1f1f;
+  --g-hover: #f2f2f2;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5) var(--sp-4);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--t-ui)/1.5 var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+}
+:root[data-eff-theme="dark"] .au-page {
+  --g-bg: #131314;
+  --g-line: #8e918f;
+  --g-ink: #e3e3e3;
+  --g-hover: #1d1d1e;
+}
+
+.au-page *,
+.au-page *::before,
+.au-page *::after {
+  box-sizing: border-box;
+}
+.au-page button,
+.au-page a {
+  font: inherit;
+}
+.au-page :focus-visible {
+  outline: 2px solid var(--signal-fill);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+.au-wrap {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.au-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+
+.au-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--sh-2);
+  padding: var(--sp-5) var(--sp-5) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.au-page h1 {
+  margin: 0;
+}
+.au-lead {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-ui);
+}
+
+/* Google's button: fixed palette, 44px, logo then label, label never wraps. */
+.au-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--g-line);
+  border-radius: var(--r-sm);
+  background: var(--g-bg);
+  color: var(--g-ink);
+  font:
+    500 var(--t-ui)/var(--t-h4) Roboto,
+    var(--f-ui);
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.au-google:hover {
+  background: var(--g-hover);
+}
+.au-google[aria-disabled="true"] {
+  opacity: 0.65;
+  cursor: progress;
+  pointer-events: none;
+}
+.au-google svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.au-banner {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+  padding: var(--sp-3) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--t-meta);
+  line-height: 1.45;
+}
+.au-banner.warn {
+  background: var(--bad-soft);
+  color: var(--bad-ink);
+}
+.au-banner.info {
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+.au-banner svg {
+  flex: none;
+  margin-top: var(--sp-h);
+}
+.au-banner b {
+  font-weight: 600;
+}
+.au-banner-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.au-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.au-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+  cursor: pointer;
+}
+.au-btn:hover {
+  background: var(--well);
+}
+.au-btn.primary {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+.au-btn.primary:hover {
+  background: var(--signal-hover);
+}
+.au-btn[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.au-fine {
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.au-fine.center {
+  text-align: center;
+  padding: 0 var(--sp-2);
+}
+
+.au-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--ink-2);
+  font-size: var(--t-ui);
+}
+.au-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal);
+  animation: au-pulse 1.2s ease-in-out infinite;
+}
+@keyframes au-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .au-dot {
+    animation: none;
+  }
+  .au-google {
+    transition: none;
+  }
+}
+
+/* Login uses the invitation frame and shared capabilities board. Keep these
+   rules scoped so session errors, onboarding and workspace management retain
+   their existing layout. Authentication still leaves this page via redirect. */
+.au-page.au-login {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  place-items: stretch;
+  padding: var(--sp-3);
+}
+.au-login .au-wrap {
+  max-width: 460px;
+  gap: var(--sp-4);
+}
+.au-login .au-login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--ink-2);
+}
+.au-login .au-brand {
+  margin: 0;
+  gap: var(--sp-1);
+}
+.au-login .au-brand-slash {
+  color: var(--line-strong);
+}
+.au-login .au-eyebrow {
+  margin: 0;
+  color: var(--ink-2);
+  font: 500 var(--t-micro)/1.5 var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.au-login h1 {
+  font-size: var(--t-h2);
+  line-height: 1.06;
+  font-variation-settings: var(--cut-h2);
+  letter-spacing: var(--tr-h2);
+}
+.au-login .au-lead {
+  font-size: var(--t-ui);
+  line-height: 1.5;
+}
+.au-login .au-card {
+  padding: var(--sp-4);
+  gap: var(--sp-4);
+}
+.au-login .au-check-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+}
+.au-login .au-counter {
+  font: var(--t-micro) var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+.au-login .au-progress {
+  height: 4px;
+  margin-top: var(--sp-2);
+  border-radius: var(--r-xs);
+  background: var(--well);
+  overflow: hidden;
+}
+.au-login .au-progress > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--signal);
+}
+.au-login .au-progress.bad > span {
+  width: 33.333%;
+  background: var(--bad-ink);
+}
+.au-login .au-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding: 0;
+  margin: var(--sp-2) 0 0;
+  list-style: none;
+}
+.au-login .au-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+}
+.au-login .au-step-dot {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  font: 600 var(--t-micro) var(--f-mono);
+}
+.au-login .au-steps .is-on {
+  color: var(--ink);
+}
+.au-login .is-on .au-step-dot {
+  border-color: var(--signal-fill);
+  color: var(--signal-ink);
+}
+.au-login .au-steps .is-bad {
+  color: var(--bad-ink);
+}
+.au-login .is-bad .au-step-dot {
+  border-color: var(--bad-ink);
+  background: var(--bad-soft);
+}
+.au-login .au-google {
+  border-color: var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: var(--sh-1);
+  font: 600 var(--t-ui)/var(--t-h4) var(--f-ui);
+  letter-spacing: normal;
+}
+.au-login .au-google:hover {
+  border-color: var(--line-strong);
+}
+.au-login .au-fine {
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+}
+.au-login .au-status {
+  padding: var(--sp-4);
+}
+.au-login .jp-fine .jp-text-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--signal-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.au-login .jp-fine .jp-text-action:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.au-login .jp-fine .jp-text-action:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+@media (max-height: 840px) and (min-width: 961px) {
+  .au-login .jp-invite {
+    padding-block: var(--sp-4) var(--sp-3);
+    gap: var(--sp-4);
+  }
+  .au-login .au-card {
+    padding: var(--sp-3);
+    gap: var(--sp-3);
+  }
+}
+@media (max-width: 960px) {
+  .au-page.au-login {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: max-content max-content;
+    overflow-y: auto;
+    align-content: start;
+  }
+  .au-login .jp-left {
+    overflow: visible;
+  }
+  .au-login .jp-invite {
+    flex: none;
+    padding-block: var(--sp-6) var(--sp-5);
+  }
+}
+@media (max-width: 520px) {
+  .au-login .jp-left {
+    padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  }
+  .au-login .jp-top {
+    height: auto;
+    min-height: 52px;
+    flex-wrap: wrap;
+  }
+  .au-login .au-wrap {
+    gap: var(--sp-4);
+  }
+  .au-login .right .right-head {
+    flex-direction: column;
+  }
+}
+@media (max-width: 360px) {
+  .au-login .au-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* workspace chooser */
+.au-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.au-ws {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+.au-ws:hover:not([disabled]) {
+  border-color: var(--signal-soft-2);
+  background: var(--signal-soft);
+}
+.au-ws[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+.au-ws[aria-current="true"] {
+  border-color: var(--signal-soft-2);
+}
+.au-ws-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--surface);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: var(--t-ui);
+  flex: none;
+}
+.au-ws-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.au-ws-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.au-ws-sub {
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.au-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  flex: none;
+}
+
+/* Workspace setup uses the same card, controls, spacing and theme tokens. */
+.au-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.au-section-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-h4);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.au-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.au-input {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.au-input:disabled {
+  opacity: 0.65;
+}
+.au-btn {
+  text-decoration: none;
+}
+.au-invites {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.au-invite {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.au-invite-email {
+  overflow-wrap: anywhere;
+}
+
+/* The account's workspace hub shares the auth components and v2 tokens. */
+.au-page.au-workspaces {
+  height: 100dvh;
+  min-height: 0;
+  overflow-y: auto;
+  place-items: start center;
+  padding: var(--sp-5) var(--sp-5) var(--sp-7);
+  background:
+    radial-gradient(ellipse at 18% 0%, var(--signal-soft), transparent 48%),
+    var(--surface);
+}
+.au-workspaces .au-wrap {
+  max-width: 1080px;
+  gap: var(--sp-5);
+}
+.au-workspaces .au-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.au-workspaces .au-brand {
+  margin: 0;
+}
+.au-workspaces .au-btn {
+  gap: var(--sp-2);
+}
+.au-workspaces .au-theme {
+  width: 40px;
+  padding: 0;
+}
+.au-workspaces .au-workspace-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) 0 var(--sp-1);
+}
+.au-workspaces .au-eyebrow {
+  margin: 0;
+  color: var(--signal-ink);
+  font: 500 var(--t-micro) var(--f-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.au-workspaces h1 {
+  font-size: var(--t-h2);
+  font-variation-settings: var(--cut-h2);
+  letter-spacing: var(--tr-h2);
+}
+.au-workspaces .au-account-email {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+  overflow-wrap: anywhere;
+}
+.au-workspaces .au-account-email strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+.au-workspaces .au-workspace-status {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-3);
+}
+.au-workspaces .au-workspace-status:empty {
+  display: none;
+}
+.au-workspaces .au-workspace-status > .au-btn {
+  align-self: flex-start;
+}
+.au-workspaces .au-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+.au-workspaces .au-workspace-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.au-workspaces .au-workspace-column:only-child {
+  grid-column: 1 / -1;
+}
+.au-workspaces .au-card {
+  padding: var(--sp-5);
+  gap: var(--sp-4);
+  box-shadow: var(--sh-1);
+}
+.au-workspaces .au-panel-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.au-workspaces .au-panel-heading > div {
+  min-width: 0;
+  flex: 1;
+}
+.au-workspaces .au-panel-heading .au-fine {
+  margin-top: var(--sp-1);
+}
+.au-workspaces .au-panel-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  border: 1px solid var(--signal-soft-2);
+  border-radius: var(--r-sm);
+}
+.au-workspaces .au-count {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  height: 28px;
+  border-radius: var(--r-xs);
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+  font-weight: 600;
+}
+.au-workspaces .au-list {
+  gap: var(--sp-3);
+}
+.au-workspaces .au-ws {
+  padding: var(--sp-4) var(--sp-4);
+  min-height: 84px;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.au-workspaces .au-ws[aria-current="true"] {
+  background: var(--signal-soft);
+}
+.au-workspaces .au-ws-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-sm);
+  background: var(--well);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: var(--t-h4);
+}
+.au-workspaces .au-ws[aria-current="true"] .au-ws-logo {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+.au-workspaces .au-ws-name {
+  font-size: var(--t-ui);
+}
+.au-workspaces .au-ws-sub {
+  margin-top: var(--sp-1);
+}
+.au-workspaces .au-ws > svg {
+  flex: none;
+  color: var(--signal-ink);
+}
+.au-workspaces .au-workspace-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.au-workspaces .au-workspace-note svg {
+  flex: none;
+  margin-top: var(--sp-h);
+}
+.au-workspaces .au-workspace-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-5) var(--sp-3);
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--well);
+}
+.au-workspaces .au-workspace-empty > svg {
+  color: var(--signal-ink);
+}
+.au-workspaces .au-input:focus-visible {
+  border-color: var(--signal-fill);
+}
+@media (max-width: 760px) {
+  .au-page.au-workspaces {
+    padding: var(--sp-4) var(--sp-4) var(--sp-6);
+  }
+  .au-workspaces .au-wrap {
+    gap: var(--sp-4);
+  }
+  .au-workspaces .au-workspace-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-4);
+  }
+}
+@media (max-width: 440px) {
+  .au-workspaces .au-top .au-actions {
+    width: 100%;
+  }
+  .au-workspaces .au-card {
+    padding: var(--sp-4) var(--sp-4);
+  }
+  .au-workspaces .au-ws {
+    gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-2);
+  }
+  .au-workspaces .au-ws-logo {
+    width: 34px;
+    height: 34px;
+  }
+  .au-workspaces .au-ws > svg {
+    display: none;
+  }
+  .au-workspaces .au-ws-sub {
+    font-size: var(--t-micro);
+  }
+}
+/* Invite acceptance page, left pane and frame (join-tenant-v3-dev-spec.html, Layout and Left pane components).
+   Every rule is under .join-page and uses jp- class names, so base.css's global .field/.bar/.eyebrow,
+   chat.css's .steps and shell.css's .brand never apply here. Keyframes are prefixed jp- for the same reason.
+   Tokens come from tokens.css; the tints and board tokens come from invite-board.css. Imports nothing. */
+
+.join-page {
+  height: 100vh;
+  height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  background: var(--surface);
+  color: var(--ink);
+  font: var(--t-ui)/1.5 var(--f-ui);
+  -webkit-font-smoothing: antialiased;
+}
+.join-page *,
+.join-page *::before,
+.join-page *::after {
+  box-sizing: border-box;
+}
+.join-page button,
+.join-page input {
+  font: inherit;
+  color: inherit;
+}
+.join-page :focus-visible {
+  outline: 2px solid var(--signal-fill);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+@keyframes jp-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes jp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes jp-shimmer {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* ---------- left pane ---------- */
+.join-page .jp-left {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-2) var(--sp-5) var(--sp-4);
+  min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.join-page .jp-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  height: 52px;
+  flex: none;
+}
+.join-page .jp-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.join-page .jp-brand-slash {
+  color: var(--line-strong);
+  font-size: var(--t-body);
+}
+.join-page .jp-brand-sub {
+  color: var(--ink-2);
+  font-weight: 500;
+}
+
+.join-page .jp-seg {
+  display: inline-flex;
+  padding: var(--sp-h);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  border: 1px solid var(--line);
+}
+.join-page .jp-seg button {
+  height: 26px;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+  cursor: pointer;
+}
+.join-page .jp-seg button:hover {
+  color: var(--ink);
+}
+.join-page .jp-seg button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-1);
+  font-weight: 500;
+}
+
+.join-page .jp-invite {
+  flex: 1;
+  width: 100%;
+  max-width: 460px;
+  margin: 0 auto;
+  padding-block: clamp(var(--sp-4), 7vh, var(--sp-8)) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  animation: jp-rise 0.35s ease-out;
+}
+
+.join-page h1 {
+  margin: 0;
+  font-size: var(--t-h2);
+  line-height: 1.06;
+  font-weight: 600;
+  font-variation-settings: var(--cut-h2);
+  letter-spacing: var(--tr-h2);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+/* who invited you: the workspace, one compact line above the headline */
+.join-page .jp-from {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+}
+.join-page .jp-ws-logo {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+  background: var(--ink);
+  color: var(--surface);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: var(--t-ui);
+  flex: none;
+}
+.join-page .jp-from-text {
+  flex: 1;
+  min-width: 0;
+}
+.join-page .jp-from-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-1);
+  font-size: var(--t-ui);
+  color: var(--ink-2);
+}
+.join-page .jp-from-line b {
+  color: var(--ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.join-page .jp-from-sub {
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.join-page .jp-role-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  font-size: var(--t-meta);
+  font-weight: 600;
+}
+.join-page .jp-exp {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 24px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.join-page .jp-exp .jp-tick {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok-ink);
+}
+.join-page .jp-exp.bad {
+  background: var(--bad-soft);
+  color: var(--bad-ink);
+}
+.join-page .jp-exp.bad .jp-tick {
+  background: var(--bad-ink);
+}
+@media (max-width: 520px) {
+  .join-page .jp-from-text {
+    flex-basis: calc(100% - 50px);
+  }
+  .join-page .jp-exp {
+    margin-left: var(--sp-7);
+  }
+}
+
+/* join card */
+.join-page .jp-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--sh-2);
+}
+.join-page .jp-join {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.join-page .jp-eyebrow {
+  font: 500 var(--t-micro) var(--f-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.join-page .jp-mono {
+  font-family: var(--f-mono);
+}
+
+.join-page .jp-check-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--t-meta);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.join-page .jp-check-h .jp-mono {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.join-page .jp-bar {
+  height: 4px;
+  border-radius: var(--r-xs);
+  background: var(--well);
+  overflow: hidden;
+  margin-top: var(--sp-2);
+}
+.join-page .jp-bar span {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-xs);
+  background: var(--signal);
+  transition:
+    width 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 0.2s;
+}
+.join-page .jp-bar.bad span {
+  background: var(--bad-ink);
+}
+
+.join-page .jp-steps {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.join-page .jp-steps li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+  min-width: 0;
+  transition: color 0.2s;
+}
+.join-page .jp-steps li > span:last-child {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.join-page .jp-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  display: grid;
+  place-items: center;
+  flex: none;
+  transition: all 0.2s;
+  font: 600 var(--t-micro) var(--f-mono);
+}
+.join-page .jp-steps li.is-on {
+  color: var(--ink);
+  font-weight: 500;
+}
+.join-page .jp-steps li.is-on .jp-dot {
+  border-color: var(--signal-fill);
+  color: var(--signal-ink);
+}
+.join-page .jp-steps li.is-busy .jp-dot {
+  border-color: var(--signal-fill);
+  border-top-color: transparent;
+  animation: jp-spin 0.8s linear infinite;
+}
+.join-page .jp-steps li.is-done {
+  color: var(--ink-2);
+}
+.join-page .jp-steps li.is-done .jp-dot {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--on-signal);
+}
+.join-page .jp-steps li.is-bad {
+  color: var(--bad-ink);
+}
+.join-page .jp-steps li.is-bad .jp-dot {
+  background: var(--bad-soft);
+  border-color: var(--bad-ink);
+  color: var(--bad-ink);
+}
+@media (max-width: 420px) {
+  .join-page .jp-steps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.join-page .jp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.join-page .jp-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.join-page .jp-field-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.join-page .jp-field-hint {
+  font-size: var(--t-meta);
+  font-family: var(--f-mono);
+  font-weight: 400;
+  color: var(--ink-3);
+}
+.join-page .jp-field-hint.ok {
+  color: var(--ok-ink);
+}
+.join-page .jp-input-wrap {
+  position: relative;
+}
+.join-page .jp-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--sp-3) 0 var(--sp-7);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  font-size: var(--t-ui);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.join-page .jp-input::placeholder {
+  color: var(--ink-3);
+}
+.join-page .jp-input:focus {
+  outline: none;
+  border-color: var(--signal-fill);
+  box-shadow: var(--sh-1);
+}
+.join-page .jp-input[readonly] {
+  background: var(--well);
+  color: var(--ink-2);
+}
+.join-page #jp-email {
+  cursor: not-allowed;
+}
+.join-page .jp-input[aria-invalid="true"] {
+  border-color: var(--bad-ink);
+}
+.join-page .jp-input-av {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: var(--t-micro);
+  font-weight: 700;
+  border: 1.5px dashed var(--signal-fill);
+  color: var(--signal-ink);
+  transition: all 0.25s;
+  pointer-events: none;
+}
+.join-page .jp-input-av.is-set {
+  border: 0;
+  background: var(--ice-dot);
+  color: var(--on-signal);
+}
+.join-page .jp-input-lock {
+  position: absolute;
+  left: 14px;
+  top: 13px;
+  color: var(--ink-3);
+}
+.join-page .jp-err {
+  font-size: var(--t-meta);
+  color: var(--bad-ink);
+}
+.join-page .jp-err[hidden] {
+  display: none;
+}
+
+.join-page .jp-btn {
+  height: 44px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: var(--signal);
+  color: var(--on-signal);
+  font-size: var(--t-ui);
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: 0 var(--sp-4);
+  transition:
+    background 0.15s,
+    transform 0.12s;
+}
+.join-page .jp-btn:hover:not(:disabled) {
+  background: var(--signal-hover);
+}
+.join-page .jp-btn:active:not(:disabled) {
+  background: var(--signal-hover);
+  transform: scale(0.985);
+}
+.join-page .jp-btn:disabled {
+  cursor: progress;
+}
+.join-page .jp-btn > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.join-page .jp-spin {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 35%);
+  border-top-color: var(--on-signal);
+  animation: jp-spin 0.7s linear infinite;
+  flex: none;
+}
+
+.join-page .jp-banner {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+  padding: var(--sp-3) var(--sp-3);
+  border-radius: var(--r-sm);
+  font-size: var(--t-meta);
+}
+.join-page .jp-banner.warn {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.join-page .jp-banner.ok {
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+}
+.join-page .jp-banner svg {
+  flex: none;
+  margin-top: var(--sp-h);
+}
+.join-page .jp-banner b {
+  font-weight: 600;
+}
+.join-page .jp-banner > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.join-page .jp-fine {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.join-page .jp-fine a {
+  color: var(--signal-ink);
+  text-decoration: none;
+}
+.join-page .jp-fine a:hover {
+  text-decoration: underline;
+}
+
+/* loading: a quiet skeleton of the card */
+.join-page .jp-skeleton {
+  padding: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.join-page .jp-skeleton span {
+  display: block;
+  height: 14px;
+  border-radius: var(--r-xs);
+  background: var(--well);
+  animation: jp-shimmer 1.4s ease-in-out infinite;
+}
+.join-page .jp-skeleton span:nth-child(1) {
+  width: 40%;
+}
+.join-page .jp-skeleton span:nth-child(3) {
+  height: 44px;
+  border-radius: var(--r-sm);
+}
+
+/* ---------- responsive: one column, board below ---------- */
+@media (max-width: 960px) {
+  .join-page {
+    height: auto;
+    min-height: 100vh;
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 0 var(--sp-4);
+  }
+  .join-page .jp-left {
+    padding: var(--sp-2) var(--sp-4) var(--sp-3);
+    overflow: visible;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .join-page .jp-left,
+  .join-page .jp-left *,
+  .join-page .jp-left *::before,
+  .join-page .jp-left *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

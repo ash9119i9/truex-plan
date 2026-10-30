@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import { callbackErrorMessage, readCallback } from "@/lib/tenant-connectors";
-import { Icon } from "@/components/v2/icon";
-import "@/styles/v2/connectors.css";
+import { Icon } from "@/components/tx/icon";
+import "@/styles/app/tools.css";
 
 // The fallback landing page for an OAuth callback with no readable flow (no
 // tenant context): /connected-tools?error=<code>. It cannot name the
@@ -28,11 +28,11 @@ export function ConnectedToolsFallback() {
     <main className="connectors-fallback">
       <div className="connectors-state" role="alert" aria-live="polite">
         <span className="connector-logo" aria-hidden="true">
-          <Icon name="plug" size={22} />
+          <Icon name="plug" size="lg" />
         </span>
         <h2>Connected tools</h2>
         <p>{message}</p>
-        <a className="btn-solid" href="/">
+        <a className="tx-btn tx-primary" href="/">
           Go to your workspace
         </a>
       </div>

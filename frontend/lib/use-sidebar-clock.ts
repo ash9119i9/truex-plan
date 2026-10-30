@@ -1,25 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
-import { startOfDay } from "./sidebar";
 
-// The memoized sidebar needs a clock wake even when its props never change.
-// Calendar midnight handles 23/25-hour DST days; hidden tabs need no timer.
-export function useSidebarDay(): number {
-  const [day, setDay] = useState(() => startOfDay(new Date()));
+const MINUTE = 60_000;
+
+// The memoized sidebar needs a clock wake even when its props never change:
+// times read "12m" and "1h" today. One timer per minute boundary while the tab
+// is visible; a hidden tab needs no timer and catches up when shown.
+export function useSidebarNow(): number {
+  const [now, setNow] = useState(
+    () => Math.floor(Date.now() / MINUTE) * MINUTE,
+  );
   useEffect(() => {
     let timer: number | undefined;
     const wake = () => {
       if (timer !== undefined) window.clearTimeout(timer);
       timer = undefined;
       if (document.visibilityState === "hidden") return;
-      const now = new Date();
-      setDay(startOfDay(now));
-      const midnight = new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate() + 1,
-      );
-      timer = window.setTimeout(wake, midnight.getTime() - now.getTime() + 50);
+      const at = Date.now();
+      setNow(Math.floor(at / MINUTE) * MINUTE);
+      timer = window.setTimeout(wake, MINUTE - (at % MINUTE) + 50);
     };
     wake();
     document.addEventListener("visibilitychange", wake);
@@ -30,5 +29,5 @@ export function useSidebarDay(): number {
       window.removeEventListener("focus", wake);
     };
   }, []);
-  return day;
+  return now;
 }

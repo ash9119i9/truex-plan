@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · Chart studies — colour applied</title>
+<meta name="description" content="Applied chart studies for the truex system: forms from Charts-v2-hig, colour and typography from the locked chapters 02 and 01.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="space.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="chart-studies.css">
+<link rel="stylesheet" href="corner.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to the charts</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex chart studies, back to top">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><a href="index.html">01 Type</a><span class="bar-sep" aria-hidden="true">/</span><a href="02-color.html">02 Colour</a><span class="bar-sep" aria-hidden="true">/</span><b>Charts</b></span>
+    <span class="study-chip">Applied</span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="contrast-tool" data-mode="system" type="button" aria-label="Contrast: system. Activate to change.">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4h4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-4z" fill="currentColor"/></svg>
+      <span class="tool-k">Contrast</span><span class="tool-v" id="contrast-label">System</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage study-stage" aria-label="Chart studies">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Applied study</span>
+        <span class="top-mid">Forms from Charts-v2-hig · Palette 02</span>
+        <span><span class="dot-live">●</span> 26.10.2026</span>
+      </div>
+
+      <div class="study-hero">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">C</span>
+            <h1 class="hero-title">Charts</h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>09</b>forms</span>
+            <span class="stage-chip"><b>NEUTRAL</b>data</span>
+            <span class="stage-chip"><b>SIGNAL</b>live only</span>
+            <span class="stage-chip"><b>STATUS</b>annotated</span>
+          </div>
+          <p class="study-serif">The quiet register.</p>
+          <p class="study-copy">Chart forms from the chart system. Colour and type from the locked chapters. The series stay neutral; signal only marks what is live or selected; status only annotates an exception.</p>
+          <div class="study-rule" aria-hidden="true"></div>
+          <p class="study-note"><span class="pulse" aria-hidden="true"></span>No new hex · no new font</p>
+        </div>
+
+        <div class="cs-hero-card" role="group" aria-label="Live turn wall time chart">
+          <div class="cs-hero-head">
+            <span class="cs-live"><span class="live-dot" aria-hidden="true"></span>Live</span>
+            <span class="cs-hero-meta">Session T4 · 14 days</span>
+            <span class="cs-kebab" aria-hidden="true">•••</span>
+          </div>
+          <div class="cs-hero-value"><b>6.4<span>h</span></b><span class="cs-hero-delta">−18% vs prior week</span></div>
+          <div class="cs-hero-sub">Turn wall time · median per turn</div>
+          <svg class="cs-hero-svg" viewBox="0 0 560 220" role="img" aria-label="Turn wall time over fourteen days, falling from 8.2 to 6.4 hours. The series is neutral; the live now marker is signal.">
+            <defs>
+              <linearGradient id="csHeroFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" style="stop-color:var(--cx-data);stop-opacity:.18"/>
+                <stop offset="100%" style="stop-color:var(--cx-data);stop-opacity:0"/>
+              </linearGradient>
+            </defs>
+            <g class="cs-grid-lines">
+              <line x1="40" y1="40" x2="520" y2="40"/>
+              <line x1="40" y1="96" x2="520" y2="96"/>
+              <line x1="40" y1="152" x2="520" y2="152"/>
+            </g>
+            <path class="cs-hero-area" d="M40 58 L80 66 L120 62 L160 80 L200 74 L240 92 L280 86 L320 102 L360 96 L400 112 L440 106 L480 120 L520 117 L520 184 L40 184 Z"/>
+            <path class="cs-goal" d="M40 116 L520 106"/>
+            <polyline class="cs-hero-line" points="40,58 80,66 120,62 160,80 200,74 240,92 280,86 320,102 360,96 400,112 440,106 480,120 520,117"/>
+            <line class="cs-now-line" x1="520" y1="24" x2="520" y2="184"/>
+            <circle class="cs-now-dot" cx="520" cy="117" r="4.2"/>
+            <text class="cs-axis-text" x="0" y="44">9h</text>
+            <text class="cs-axis-text" x="0" y="100">7h</text>
+            <text class="cs-axis-text" x="0" y="156">5h</text>
+            <text class="cs-axis-text" x="40" y="204">−14d</text>
+            <text class="cs-axis-text" x="280" y="204">−7d</text>
+            <text class="cs-axis-text end" x="520" y="204">now</text>
+          </svg>
+          <div class="cs-hero-kpis">
+            <div><span>Tokens</span><b class="num">97.4k</b></div>
+            <div><span>Tools</span><b class="num">24</b></div>
+            <div><span>Checks</span><b class="num">3/4</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-spec">
+        <span>Forms <b>HIG</b></span>
+        <span>Colour <b>02</b></span>
+        <span>Type <b>01</b></span>
+        <span>Series <b>neutral</b></span>
+        <span>Signal <b>live</b></span>
+        <span>New hex <b>00</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Chart studies contents">
+    <div class="ruler-in">
+      <a href="#readout" class="active" aria-current="true"><span class="n">A1</span>Readout</a>
+      <a href="#trace"><span class="n">A2</span>Trace</a>
+      <a href="#compare"><span class="n">A3</span>Compare</a>
+      <a href="#activity"><span class="n">A4</span>Activity</a>
+      <a href="#contract"><span class="n">A5</span>Contract</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+    <!-- A1 READOUT -->
+    <section class="chapter" id="readout" aria-labelledby="h-readout">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A1</div>
+        <div>
+          <p class="ch-kicker">Operational readout</p>
+          <h2 class="t-h2" id="h-readout">A dashboard that <em>stays quiet.</em></h2>
+          <p class="t-lede">The common shape of a truex insight surface: four numbers, one trend, a context ring and a share stack. Every series is neutral; the only signal is the live edge.</p>
+        </div>
+        <div class="folio">Readout · A1 / A5</div>
+      </header>
+
+      <div class="cs-stage">
+        <div class="cs-insights">
+          <div class="cs-appbar">
+            <div class="cs-app-brand"><span class="cs-app-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>truex</div>
+            <div class="cs-app-crumb"><b>Insights</b><span>/</span>Session · T4</div>
+            <div class="cs-app-tools">
+              <span class="cs-seg"><span class="on">14 days</span><span>30 days</span></span>
+              <span class="cs-live"><span class="live-dot" aria-hidden="true"></span>Live</span>
+              <button class="btn btn-sm" type="button">Export</button>
+            </div>
+          </div>
+
+          <div class="cs-kpi-row">
+            <div class="cs-kpi">
+              <span class="cs-kpi-label">Tokens</span>
+              <div class="cs-kpi-value"><b>97.4k</b><span>↑ 12.4%</span></div>
+              <svg class="cs-spark" viewBox="0 0 100 26" aria-hidden="true"><polyline points="0,18 12,17 24,20 36,16 48,17 60,12 72,14 84,9 100,7"/><circle class="end-live" cx="100" cy="7" r="2.2"/></svg>
+            </div>
+            <div class="cs-kpi">
+              <span class="cs-kpi-label">Wall time</span>
+              <div class="cs-kpi-value"><b>6.4h</b><span>↓ 18%</span></div>
+              <svg class="cs-spark" viewBox="0 0 100 26" aria-hidden="true"><polyline points="0,8 12,9 24,8 36,11 48,10 60,14 72,12 84,16 100,18"/><circle class="end-live" cx="100" cy="18" r="2.2"/></svg>
+            </div>
+            <div class="cs-kpi">
+              <span class="cs-kpi-label">Tools</span>
+              <div class="cs-kpi-value"><b>24</b><span>+3</span></div>
+              <svg class="cs-spark" viewBox="0 0 100 26" aria-hidden="true"><polyline points="0,15 12,14 24,16 36,12 48,13 60,10 72,12 84,8 100,9"/><circle class="end" cx="100" cy="9" r="2.2"/></svg>
+            </div>
+            <div class="cs-kpi">
+              <span class="cs-kpi-label">Checks<span class="pin" aria-hidden="true">3</span></span>
+              <div class="cs-kpi-value"><b>3/4</b><span class="cs-warn-chip"><span aria-hidden="true">!</span>1 open</span></div>
+              <span class="cs-kpi-note">FX revalued · approvals open</span>
+            </div>
+          </div>
+
+          <div class="cs-insight-body">
+            <div class="cs-trend">
+              <div class="cs-trend-head">
+                <div>
+                  <span class="board-label">Tokens by day <span class="pin" aria-hidden="true">1</span></span>
+                  <small>Last 14 days · k tokens</small>
+                </div>
+                <div class="cs-trend-tools">
+                  <span class="cs-seg sm"><span>Session</span><span class="on">14 days</span><span>30 days</span></span>
+                  <span class="cs-live"><span class="live-dot" aria-hidden="true"></span>Live<span class="pin" aria-hidden="true">2</span></span>
+                </div>
+              </div>
+              <div class="cs-trend-value"><b>97.4k</b><span>today · ↑ 12.4% vs prior week</span></div>
+              <svg class="cs-trend-svg" viewBox="0 0 640 250" role="img" aria-label="Tokens per day over fourteen days, rising from 41k to 97.4k today. The series is neutral; the now marker is signal.">
+                <defs>
+                  <linearGradient id="csTrendFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" style="stop-color:var(--cx-data);stop-opacity:.16"/>
+                    <stop offset="100%" style="stop-color:var(--cx-data);stop-opacity:0"/>
+                  </linearGradient>
+                </defs>
+                <g class="cs-grid-lines">
+                  <line x1="44" y1="54" x2="600" y2="54"/>
+                  <line x1="44" y1="116" x2="600" y2="116"/>
+                  <line x1="44" y1="178" x2="600" y2="178"/>
+                </g>
+                <path class="cs-trend-area" d="M44 180 L86 172 L128 176 L170 158 L212 164 L254 146 L296 152 L338 130 L380 138 L422 116 L464 122 L506 100 L548 86 L600 70 L600 212 L44 212 Z"/>
+                <path class="cs-goal" d="M44 148 L600 108"/>
+                <polyline class="cs-trend-line" points="44,180 86,172 128,176 170,158 212,164 254,146 296,152 338,130 380,138 422,116 464,122 506,100 548,86 600,70"/>
+                <line class="cs-now-line" x1="600" y1="28" x2="600" y2="212"/>
+                <circle class="cs-now-dot" cx="600" cy="70" r="4.2"/>
+                <text class="cs-axis-text" x="0" y="58">100k</text>
+                <text class="cs-axis-text" x="0" y="120">50k</text>
+                <text class="cs-axis-text" x="0" y="182">0</text>
+                <text class="cs-axis-text" x="44" y="236">−14d</text>
+                <text class="cs-axis-text" x="254" y="236">−9d</text>
+                <text class="cs-axis-text" x="464" y="236">−3d</text>
+                <text class="cs-axis-text end" x="600" y="236">now</text>
+              </svg>
+              <p class="cs-chart-note">One neutral series, direct labels and a dashed pace line. The live edge is signal, not a second series.</p>
+            </div>
+
+            <aside class="cs-side">
+              <div class="cs-side-card">
+                <div class="cs-side-head"><span class="board-label">Context</span><span class="cs-mini-meta">Main · 190k</span></div>
+                <div class="cs-ring-row">
+                  <div class="cs-ring" style="--p:62"><div class="cs-ring-inner"><b>62%</b><span>118k / 190k</span></div></div>
+                  <div class="cs-ring-copy"><b>118.4k used</b><span>71.6k headroom</span><small>Warn at 75% · bad at 90%</small></div>
+                </div>
+              </div>
+              <div class="cs-side-card">
+                <div class="cs-side-head"><span class="board-label">Tokens by stage <span class="pin" aria-hidden="true">4</span></span><span class="cs-mini-meta">97.4k</span></div>
+                <div class="cs-stack-bar" role="img" aria-label="Share of tokens by stage: thinking 18%, reading 27%, waiting 41%, writing 14%.">
+                  <span style="--w:18%;--c:var(--cx-r1)"></span>
+                  <span style="--w:27%;--c:var(--cx-r2)"></span>
+                  <span style="--w:41%;--c:var(--cx-r3)"></span>
+                  <span style="--w:14%;--c:var(--cx-r4)"></span>
+                </div>
+                <ul class="cs-stack-legend">
+                  <li><i style="--c:var(--cx-r1)"></i>Thinking<b>17.5k</b><span>18%</span></li>
+                  <li><i style="--c:var(--cx-r2)"></i>Reading<b>26.3k</b><span>27%</span></li>
+                  <li><i style="--c:var(--cx-r3)"></i>Waiting<b>39.9k</b><span>41%</span></li>
+                  <li><i style="--c:var(--cx-r4)"></i>Writing<b>13.7k</b><span>14%</span></li>
+                </ul>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <div class="cs-annotations">
+        <div><span class="pin" aria-hidden="true">1</span><b>Neutral series</b><span><code>--cx-data</code> and the r1–r4 ramp; no signal.</span></div>
+        <div><span class="pin" aria-hidden="true">2</span><b>Live edge</b><span><code>--signal</code> marks the now line and dot only.</span></div>
+        <div><span class="pin" aria-hidden="true">3</span><b>Status exception</b><span><code>--warn</code> with a `!` glyph and a word.</span></div>
+        <div><span class="pin" aria-hidden="true">4</span><b>Direct labels</b><span>The stack lists every value; colour is redundant.</span></div>
+      </div>
+      <p class="section-cap"><b>The dashboard is quiet on purpose.</b> Four neutrals, one signal line and one status glyph do all of the pointing.</p>
+    </section>
+
+    <!-- A2 TRACE -->
+    <section class="chapter" id="trace" aria-labelledby="h-trace">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A2</div>
+        <div>
+          <p class="ch-kicker">Trace</p>
+          <h2 class="t-h2" id="h-trace">Time, <em>step by step.</em></h2>
+          <p class="t-lede">The waterfall from the chart system: one row per step, positioned in real time. Waiting is drawn as blocked time, a failure keeps its glyph, and the live edge is the only signal.</p>
+        </div>
+        <div class="folio">Trace · A2 / A5</div>
+      </header>
+
+      <div class="cs-trace-grid">
+        <article class="board cs-trace-card">
+          <div class="cs-trace-head">
+            <div><span class="board-label">Turn trace · T4</span><b>Running · 00:52</b></div>
+            <span class="cs-live"><span class="live-dot" aria-hidden="true"></span>Live</span>
+          </div>
+          <div class="cs-wf-scroll">
+            <div class="cs-wf" style="--now:.8667">
+              <div class="cs-wf-row cs-wf-axis"><span class="cs-wf-label"></span><div class="cs-wf-track cs-wf-ticks"><span style="left:0">0s</span><span style="left:25%">15s</span><span style="left:50%">30s</span><span style="left:75%">45s</span><span style="left:100%">60s</span></div><span class="cs-wf-dur"></span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Thinking</span><div class="cs-wf-track"><i class="cs-wf-bar k-think" style="left:0%;width:6.7%"></i></div><span class="cs-wf-dur">4.0s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Reading the brief</span><div class="cs-wf-track"><i class="cs-wf-bar k-read" style="left:6.7%;width:16.7%"></i></div><span class="cs-wf-dur">10s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Waiting on helpers</span><div class="cs-wf-track"><i class="cs-wf-bar k-wait" style="left:23.3%;width:30%"></i></div><span class="cs-wf-dur">18s</span></div>
+              <div class="cs-wf-row is-sub"><span class="cs-wf-label">Search handbook</span><div class="cs-wf-track"><i class="cs-wf-bar k-tool" style="left:23.3%;width:13.3%"></i></div><span class="cs-wf-dur">8.0s</span></div>
+              <div class="cs-wf-row is-sub"><span class="cs-wf-label">Read week-one.md</span><div class="cs-wf-track"><i class="cs-wf-bar k-read" style="left:36.7%;width:13.3%"></i></div><span class="cs-wf-dur">8.0s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Thinking</span><div class="cs-wf-track"><i class="cs-wf-bar k-think" style="left:53.3%;width:6.7%"></i></div><span class="cs-wf-dur">4.0s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Writing answer</span><div class="cs-wf-track"><i class="cs-wf-bar k-write" style="left:60%;width:26.7%"></i></div><span class="cs-wf-dur">16s</span></div>
+              <span class="cs-wf-now">NOW</span>
+            </div>
+          </div>
+          <p class="cs-trace-note">Waiting is blocked time; the live bar ends at the now marker.</p>
+        </article>
+
+        <article class="board cs-trace-card">
+          <div class="cs-trace-head">
+            <div><span class="board-label">Turn trace · T3</span><b>Failed at 00:31 · continued</b></div>
+            <span class="chip chip-bad"><span class="g" aria-hidden="true">✕</span>Failed</span>
+          </div>
+          <div class="cs-wf-scroll">
+            <div class="cs-wf">
+              <div class="cs-wf-row cs-wf-axis"><span class="cs-wf-label"></span><div class="cs-wf-track cs-wf-ticks"><span style="left:0">0s</span><span style="left:25%">12s</span><span style="left:50%">24s</span><span style="left:75%">36s</span><span style="left:100%">48s</span></div><span class="cs-wf-dur"></span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Thinking</span><div class="cs-wf-track"><i class="cs-wf-bar k-think" style="left:0%;width:6.3%"></i></div><span class="cs-wf-dur">3.0s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Reading the brief</span><div class="cs-wf-track"><i class="cs-wf-bar k-read" style="left:6.3%;width:20.8%"></i></div><span class="cs-wf-dur">10s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label"><span class="cs-wf-bad" aria-hidden="true">!</span>Google Drive: list folders</span><div class="cs-wf-track"><i class="cs-wf-bar k-bad" style="left:27.1%;width:37.5%"></i><span class="cs-wf-x" style="left:64.6%" aria-hidden="true">✕</span></div><span class="cs-wf-dur">18s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Write fallback note</span><div class="cs-wf-track"><i class="cs-wf-bar k-tool" style="left:64.6%;width:12.5%"></i></div><span class="cs-wf-dur">6.0s</span></div>
+              <div class="cs-wf-row"><span class="cs-wf-label">Writing answer</span><div class="cs-wf-track"><i class="cs-wf-bar k-write" style="left:77.1%;width:22.9%"></i></div><span class="cs-wf-dur">11s</span></div>
+            </div>
+          </div>
+          <p class="cs-trace-note">The failed step keeps its position, its bar and its glyph.</p>
+        </article>
+      </div>
+
+      <div class="cs-legend">
+        <span><i class="k-think"></i>Thinking</span>
+        <span><i class="k-read"></i>Reading</span>
+        <span><i class="k-wait"></i>Waiting · blocked</span>
+        <span><i class="k-write"></i>Writing</span>
+        <span><i class="k-bad"></i>Failure · status</span>
+        <span><i class="cs-legend-now"></i>Now · signal</span>
+      </div>
+      <p class="section-cap"><b>Signal marks the current edge of a running turn; bad marks an exception with a glyph.</b> Every neutral step is still readable as a duration, a row and a word.</p>
+    </section>
+    <!-- A3 COMPARE -->
+    <section class="chapter" id="compare" aria-labelledby="h-compare">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A3</div>
+        <div>
+          <p class="ch-kicker">Compare &amp; evidence</p>
+          <h2 class="t-h2" id="h-compare">Two questions, <em>one neutral scale.</em></h2>
+          <p class="t-lede">A scatter for the shape of the session; a table for the exact values underneath. Selection is signal. An exception is a status with a glyph — never a series.</p>
+        </div>
+        <div class="folio">Compare · A3 / A5</div>
+      </header>
+
+      <div class="cs-compare-grid">
+        <div class="board cs-scatter-card">
+          <div class="cs-card-head">
+            <div><span class="board-label">Tokens vs duration</span><small>14 turns · current session</small></div>
+            <span class="chip">14 turns</span>
+          </div>
+          <svg class="cs-scatter-svg" viewBox="0 0 520 320" role="img" aria-label="Scatter of fourteen turns by tokens and duration. The turn at nine minutes is selected with a signal ring; one FX revaluation turn is annotated with a warning glyph.">
+            <g class="cs-grid-lines">
+              <line x1="46" y1="30" x2="500" y2="30"/><line x1="46" y1="88" x2="500" y2="88"/><line x1="46" y1="146" x2="500" y2="146"/><line x1="46" y1="204" x2="500" y2="204"/><line x1="46" y1="262" x2="500" y2="262"/>
+              <line x1="46" y1="30" x2="46" y2="262"/><line x1="160" y1="30" x2="160" y2="262"/><line x1="274" y1="30" x2="274" y2="262"/><line x1="388" y1="30" x2="388" y2="262"/><line x1="500" y1="30" x2="500" y2="262"/>
+            </g>
+            <g class="cs-scatter-points">
+              <circle cx="90" cy="230" r="3.4"/><circle cx="120" cy="210" r="3.4"/><circle cx="150" cy="196" r="3.4"/><circle cx="180" cy="180" r="3.4"/><circle cx="210" cy="205" r="3.4"/><circle cx="250" cy="160" r="3.4"/><circle cx="280" cy="175" r="3.4"/><circle cx="310" cy="140" r="3.4"/><circle cx="340" cy="155" r="3.4"/><circle cx="400" cy="130" r="3.4"/><circle cx="430" cy="100" r="3.4"/><circle cx="465" cy="90" r="3.4"/>
+            </g>
+            <g class="cs-selected">
+              <circle cx="370" cy="120" r="9.5" class="cs-select-ring"/>
+              <circle cx="370" cy="120" r="3.6" class="cs-select-dot"/>
+              <text x="384" y="112" class="cs-select-label">T4 · 9m</text>
+            </g>
+            <g class="cs-outlier">
+              <circle cx="455" cy="64" r="9" class="cs-outlier-ring"/>
+              <text x="455" y="67.5" text-anchor="middle" class="cs-outlier-glyph">!</text>
+              <text x="455" y="43" text-anchor="middle" class="cs-outlier-label">FX revaluation</text>
+            </g>
+            <text class="cs-axis-text" x="0" y="34">12m</text>
+            <text class="cs-axis-text" x="0" y="150">6m</text>
+            <text class="cs-axis-text" x="0" y="266">0</text>
+            <text class="cs-axis-text" x="46" y="286">0</text>
+            <text class="cs-axis-text" x="274" y="286" text-anchor="middle">9k</text>
+            <text class="cs-axis-text end" x="500" y="286">18k</text>
+            <text class="cs-axis-title" x="46" y="20">DURATION</text>
+            <text class="cs-axis-title" x="500" y="306" text-anchor="end">TOKENS →</text>
+          </svg>
+          <div class="cs-scatter-legend">
+            <span><i class="dot"></i>Turn</span>
+            <span><i class="ring"></i>Selected · signal</span>
+            <span><i class="bad">!</i>Exception · status</span>
+          </div>
+          <p class="cs-chart-note">Selection is an interaction, so it may wear signal. The outlier is an annotation with a glyph; it is not a second series.</p>
+        </div>
+
+        <div class="board cs-evidence-card">
+          <div class="cs-card-head">
+            <div><span class="board-label">Evidence · top steps</span><small>Neutral ramp; exact values</small></div>
+            <span class="chip">97.4k total</span>
+          </div>
+          <div class="cs-evi-wrap">
+            <table class="cs-evi">
+              <thead><tr><th scope="col">Step</th><th scope="col">Tokens</th><th scope="col">Share</th><th scope="col">Time</th><th scope="col">State</th></tr></thead>
+              <tbody>
+                <tr><td>Reconcile</td><td class="n">42.1k</td><td><div class="cs-evi-share"><span class="cs-evi-track"><i style="--w:43%;--c:var(--cx-r1)"></i></span><b>43%</b></div></td><td class="n">3.2h</td><td><span class="cs-evi-none">—</span></td></tr>
+                <tr><td>Draft</td><td class="n">26.3k</td><td><div class="cs-evi-share"><span class="cs-evi-track"><i style="--w:27%;--c:var(--cx-r2)"></i></span><b>27%</b></div></td><td class="n">1.4h</td><td><span class="cs-evi-none">—</span></td></tr>
+                <tr><td>Review</td><td class="n">17.5k</td><td><div class="cs-evi-share"><span class="cs-evi-track"><i style="--w:18%;--c:var(--cx-r3)"></i></span><b>18%</b></div></td><td class="n">1.1h</td><td><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>Review</span></td></tr>
+                <tr><td>Waiting</td><td class="n">11.5k</td><td><div class="cs-evi-share"><span class="cs-evi-track"><i style="--w:12%;--c:var(--cx-r4)"></i></span><b>12%</b></div></td><td class="n">0.7h</td><td><span class="cs-evi-none">—</span></td></tr>
+                <tr class="total"><td>Total</td><td class="n">97.4k</td><td><div class="cs-evi-share"><span class="cs-evi-track"><i style="--w:100%;--c:var(--cx-data)"></i></span><b>100%</b></div></td><td class="n">6.4h</td><td><span class="cs-evi-none">—</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="cs-chart-note">The table is the source of truth; the bars only speed the comparison. One review flag is a status, not a colour for the row.</p>
+        </div>
+      </div>
+      <p class="section-cap"><b>Position and value carry the reading.</b> The scatter selects with signal; the table flags with a glyph; neither invents a new data colour.</p>
+    </section>
+
+    <!-- A4 ACTIVITY -->
+    <section class="chapter" id="activity" aria-labelledby="h-activity">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A4</div>
+        <div>
+          <p class="ch-kicker">Activity</p>
+          <h2 class="t-h2" id="h-activity">Density, <em>not decoration.</em></h2>
+          <p class="t-lede">A heatmap answers "when", not "what". Its ramp is neutral from cell to cell; today is the only signal. The event log keeps the statuses, with glyphs and words.</p>
+        </div>
+        <div class="folio">Activity · A4 / A5</div>
+      </header>
+
+      <div class="cs-activity-grid">
+        <div class="board cs-heat-card">
+          <div class="cs-card-head">
+            <div><span class="board-label">Turn activity · last 4 weeks</span><small>28 days · turns per day</small></div>
+            <span class="cs-live"><span class="live-dot" aria-hidden="true"></span>Today</span>
+          </div>
+          <div class="cs-heat-grid" role="img" aria-label="Four weeks of turn activity; density rises midweek and falls on weekends. Today is the final cell with a signal ring.">
+            <span class="l1" title="Sep 29 · 6 turns"></span><span class="l2" title="Sep 30 · 14 turns"></span><span class="l3" title="Oct 1 · 24 turns"></span><span class="l2" title="Oct 2 · 17 turns"></span><span class="l4" title="Oct 3 · 36 turns"></span><span class="l1" title="Oct 4 · 7 turns"></span><span class="l0" title="Oct 5 · 1 turn"></span>
+            <span class="l2" title="Oct 6 · 12 turns"></span><span class="l3" title="Oct 7 · 21 turns"></span><span class="l4" title="Oct 8 · 33 turns"></span><span class="l3" title="Oct 9 · 26 turns"></span><span class="l2" title="Oct 10 · 15 turns"></span><span class="l1" title="Oct 11 · 8 turns"></span><span class="l0" title="Oct 12 · 2 turns"></span>
+            <span class="l1" title="Oct 13 · 7 turns"></span><span class="l2" title="Oct 14 · 16 turns"></span><span class="l3" title="Oct 15 · 25 turns"></span><span class="l4" title="Oct 16 · 34 turns"></span><span class="l3" title="Oct 17 · 22 turns"></span><span class="l2" title="Oct 18 · 13 turns"></span><span class="l1" title="Oct 19 · 5 turns"></span>
+            <span class="l2" title="Oct 20 · 15 turns"></span><span class="l4" title="Oct 21 · 38 turns"></span><span class="l3" title="Oct 22 · 29 turns"></span><span class="l4" title="Oct 23 · 31 turns"></span><span class="l3" title="Oct 24 · 23 turns"></span><span class="l2" title="Oct 25 · 12 turns"></span><span class="l3 is-today" title="Oct 26 · 27 turns · today"></span>
+          </div>
+          <div class="cs-heat-foot">
+            <span>Less</span><i class="l0"></i><i class="l1"></i><i class="l2"></i><i class="l3"></i><i class="l4"></i><span>More</span>
+            <span class="cs-heat-today"><i></i>Today</span>
+          </div>
+          <p class="cs-chart-note">The ramp is neutral; density is the value. The signal ring marks the current day, not a fourth level.</p>
+        </div>
+
+        <div class="board cs-events-card">
+          <div class="cs-card-head">
+            <div><span class="board-label">Latest events</span><small>Session · T4</small></div>
+            <span class="chip">Live</span>
+          </div>
+          <ul class="cs-events">
+            <li><span class="cs-event-time num">09:41</span><div><b>Ledger ready</b><small>412 lines reconciled</small></div><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>OK</span></li>
+            <li><span class="cs-event-time num">09:38</span><div><b>2 accruals flagged</b><small>Review before posting</small></div><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>WARN</span></li>
+            <li><span class="cs-event-time num">09:22</span><div><b>Export failed</b><small>Retry or open the trace</small></div><span class="chip chip-bad"><span class="g" aria-hidden="true">✕</span>BAD</span></li>
+            <li><span class="cs-event-time num">08:58</span><div><b>Session started</b><small>Route · frontier</small></div><span class="cs-evi-none">—</span></li>
+          </ul>
+          <p class="cs-chart-note">Status is the exception layer, not the chart. The glyph and the word are the durable cue.</p>
+        </div>
+      </div>
+      <p class="section-cap"><b>Density reads as value, not hue.</b> The heatmap can be grey; the day can still be found. The event log is where status colours belong.</p>
+    </section>
+
+    <!-- A5 CONTRACT -->
+    <section class="chapter" id="contract" aria-labelledby="h-contract">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A5</div>
+        <div>
+          <p class="ch-kicker">Applied contract</p>
+          <h2 class="t-h2" id="h-contract">Chart colour, <em>without a rainbow.</em></h2>
+          <p class="t-lede">The forms come from the chart system; the colour comes from chapter 02; the type comes from chapter 01. This page adds no values. These are the rules that kept it that way.</p>
+        </div>
+        <div class="folio">Contract · A5 / A5</div>
+      </header>
+
+      <div class="rules-grid">
+        <div class="rule"><span class="n">01</span><div><h3>Series stay neutral.</h3><p>Use <code>--cx-data</code> and the ordered <code>--cx-r1..r4</code> ramp. A rainbow is not a scale.</p></div></div>
+        <div class="rule"><span class="n">02</span><div><h3>Signal is live or selected.</h3><p>The now line, live dot and selected point may wear signal. A series never does.</p></div></div>
+        <div class="rule"><span class="n">03</span><div><h3>Status annotates an exception.</h3><p>A failed trace bar or an outlier carries a glyph and a word; it is not a category.</p></div></div>
+        <div class="rule"><span class="n">04</span><div><h3>Identity never enters data.</h3><p>Agent hues belong to agent surfaces, not bars, lines or scatter points.</p></div></div>
+        <div class="rule"><span class="n">05</span><div><h3>Labels carry the reading.</h3><p>Direct values, axes and the table underneath; colour is the last cue, never the only one.</p></div></div>
+        <div class="rule"><span class="n">06</span><div><h3>Tokens only.</h3><p>No raw hex in a chart. Dark and increased contexts are authored in <code>color.css</code>.</p></div></div>
+      </div>
+
+      <div class="board cs-tokenmap">
+        <div class="cs-card-head"><div><span class="board-label">Chart tokens</span><small>Neutral by default</small></div><span class="chip">11 roles</span></div>
+        <div class="cs-token-list">
+          <span><i style="background:var(--cx-grid)"></i><code>--cx-grid</code><small>grid</small></span>
+          <span><i style="background:var(--cx-axis)"></i><code>--cx-axis</code><small>axis</small></span>
+          <span><i style="background:var(--cx-track)"></i><code>--cx-track</code><small>track</small></span>
+          <span><i style="background:var(--cx-track-edge)"></i><code>--cx-track-edge</code><small>edge</small></span>
+          <span><i style="background:var(--cx-data)"></i><code>--cx-data</code><small>series</small></span>
+          <span><i style="background:var(--cx-data-hi)"></i><code>--cx-data-hi</code><small>primary</small></span>
+          <span><i style="background:var(--cx-data-mute)"></i><code>--cx-data-mute</code><small>muted</small></span>
+          <span><i style="background:var(--cx-r1)"></i><code>--cx-r1</code><small>ramp 1</small></span>
+          <span><i style="background:var(--cx-r2)"></i><code>--cx-r2</code><small>ramp 2</small></span>
+          <span><i style="background:var(--cx-r3)"></i><code>--cx-r3</code><small>ramp 3</small></span>
+          <span><i style="background:var(--cx-r4)"></i><code>--cx-r4</code><small>ramp 4</small></span>
+        </div>
+      </div>
+
+      <div class="cs-source-grid">
+        <a class="cs-source" href="../Charts-v2-hig.html">
+          <span class="board-label">Forms</span>
+          <b>Charts-v2-hig →</b>
+          <small>Reference only. That page uses a different type and colour system; this study keeps its forms.</small>
+        </a>
+        <a class="cs-source" href="02-color.html">
+          <span class="board-label">Colour</span>
+          <b>Chapter 02 · Colour &amp; themes →</b>
+          <small>The locked palette, four contexts, status and identity rules.</small>
+        </a>
+        <a class="cs-source" href="index.html">
+          <span class="board-label">Type</span>
+          <b>Chapter 01 · Typography →</b>
+          <small>Bricolage Grotesque, Instrument Serif and Geist Mono; the same three every chart uses.</small>
+        </a>
+      </div>
+
+      <div class="cs-study-note">
+        <span class="study-chip">Applied study</span>
+        <p><b>The forms are on trial; the colour and type are locked.</b> This page is a proving ground for chart composition, not a new chapter. When a form earns its place, it moves into the chart layer with these tokens.</p>
+      </div>
+      <p class="section-cap"><b>No new hex, no new font, no identity in a series.</b> That is the whole contract.</p>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Applied study — Charts / Colour from chapter 02</span>
+      </div>
+    </div>
+    <p class="foot-serif">Forms on trial. <em>Colour locked.</em> <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<script src="color.js"></script>
+</body>
+</html>

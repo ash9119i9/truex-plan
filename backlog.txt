@@ -136,10 +136,11 @@ Each one digs deep so nothing gets missed.
 
 
 
-// Frontend redesign v2 (docs/truex-design-spec.html) - held for later phases
+// Frontend redesign v2 - superseded by backlog/frontend-redesign/ (system/DESIGN-SPEC.md).
+// Knowledge and Share moved there; Projects is listed in its 21-screens-without-design.md.
 1. Projects: bring back the project tree / Projects nav + page (removed from sidebar in phase 1)
-2. Knowledge: Knowledge nav + page
-3. Share button (topbar): placed in phase 1 with no action, wire up sharing a conversation link
+2. Knowledge: see backlog/frontend-redesign/18-knowledge-base.md
+3. Share: see backlog/frontend-redesign/12-share-link.md
 
 
 // Auth, invites, chat ownership, tenant/user MCP (docs/USER_SCOPED_MCP_PLAN.md)

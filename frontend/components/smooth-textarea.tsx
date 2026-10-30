@@ -7,21 +7,16 @@ import {
   type ComponentProps,
 } from "react";
 import {
-  animate,
-  motion,
-  useMotionValue,
-  useReducedMotion,
-  useTransform,
-} from "motion/react";
+  createSpring,
+  jumpSpring,
+  retargetSpring,
+  sampleSpring,
+  type Spring,
+} from "@/lib/spring";
 
 // Spring caret for a multi-line textarea (adapted from Skiper 106). A hidden
 // mirror lays the text out identically so the caret's position can be read.
-const SPRING = {
-  type: "spring",
-  stiffness: 500,
-  damping: 30,
-  mass: 0.5,
-} as const;
+const REDUCED = "(prefers-reduced-motion: reduce)";
 // On a line change a horizontal move wider than this snaps instead of
 // sweeping diagonally across the text (Enter, wrapping, Home/End jumps).
 const SWEEP_LIMIT = 48;
@@ -69,16 +64,36 @@ export function SmoothTextarea({
 }) {
   const input = useRef<HTMLTextAreaElement | null>(null),
     mirror = useRef<HTMLDivElement>(null),
-    last = useRef<Target | null>(null);
-  const x = useMotionValue(0),
-    line = useMotionValue(0),
-    scroll = useMotionValue(0),
-    height = useMotionValue(0),
-    opacity = useMotionValue(0);
-  // The line springs in content coordinates; scrolling applies instantly so
-  // the caret stays pinned to the text instead of lagging behind it.
-  const y = useTransform(() => line.get() - scroll.get());
-  const reduced = useReducedMotion();
+    last = useRef<Target | null>(null),
+    caret = useRef<HTMLDivElement>(null),
+    frame = useRef(0);
+  const x = useRef<Spring>(createSpring(0)),
+    line = useRef<Spring>(createSpring(0)),
+    view = useRef({ scroll: 0, height: 0, opacity: 0 });
+
+  // Writes the caret's style directly: no React render per frame. The line
+  // springs in content coordinates; scrolling applies instantly so the caret
+  // stays pinned to the text instead of lagging behind it.
+  const paint = useCallback(() => {
+    const el = caret.current;
+    if (!el) return;
+    const v = view.current;
+    el.style.transform = `translate(${x.current.pos}px, ${line.current.pos - v.scroll}px)`;
+    el.style.height = `${v.height}px`;
+    el.style.opacity = String(v.opacity);
+  }, []);
+
+  // One frame loop while either spring moves; it stops itself at rest.
+  const run = useCallback(() => {
+    if (frame.current) return;
+    const tick = (now: number) => {
+      const xDone = sampleSpring(x.current, now);
+      const lineDone = sampleSpring(line.current, now);
+      paint();
+      frame.current = xDone && lineDone ? 0 : requestAnimationFrame(tick);
+    };
+    frame.current = requestAnimationFrame(tick);
+  }, [paint]);
 
   const setRef = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -90,9 +105,10 @@ export function SmoothTextarea({
   );
 
   const hide = useCallback(() => {
-    opacity.set(0);
+    view.current.opacity = 0;
     last.current = null;
-  }, [opacity]);
+    paint();
+  }, [paint]);
 
   const update = useCallback(() => {
     const el = input.current,
@@ -137,24 +153,30 @@ export function SmoothTextarea({
       top - el.scrollTop >= el.offsetTop + el.clientTop - 1 &&
       top - el.scrollTop + size <=
         el.offsetTop + el.clientTop + el.clientHeight + 1;
-    scroll.jump(el.scrollTop);
-    height.set(size);
-    opacity.set(inView ? 1 : 0);
+    view.current = {
+      scroll: el.scrollTop,
+      height: size,
+      opacity: inView ? 1 : 0,
+    };
 
     const prev = last.current;
     last.current = { x: left, line: top, width };
-    if (prev && prev.x === left && prev.line === top) return;
+    if (prev && prev.x === left && prev.line === top) return paint();
 
-    if (reduced || !prev || prev.width !== width) {
-      x.jump(left);
-      line.jump(top);
-      return;
+    if (matchMedia(REDUCED).matches || !prev || prev.width !== width) {
+      jumpSpring(x.current, left);
+      jumpSpring(line.current, top);
+      return paint();
     }
     const lineChanged = prev.line !== top;
-    if (lineChanged && Math.abs(left - prev.x) > SWEEP_LIMIT) x.jump(left);
-    else if (left !== prev.x) animate(x, left, SPRING);
-    if (lineChanged) animate(line, top, SPRING);
-  }, [hide, reduced, x, line, scroll, height, opacity]);
+    const now = performance.now();
+    if (lineChanged && Math.abs(left - prev.x) > SWEEP_LIMIT)
+      jumpSpring(x.current, left);
+    else if (left !== prev.x) retargetSpring(x.current, left, now);
+    if (lineChanged) retargetSpring(line.current, top, now);
+    paint();
+    run();
+  }, [hide, paint, run]);
 
   // Spec composer (Core §2): height = auto, then min(scrollHeight, cap).
   useLayoutEffect(() => {
@@ -188,6 +210,8 @@ export function SmoothTextarea({
       el.removeEventListener("scroll", update);
       window.removeEventListener("blur", hide);
       observer.disconnect();
+      cancelAnimationFrame(frame.current);
+      frame.current = 0;
     };
   }, [update, hide]);
 
@@ -206,10 +230,11 @@ export function SmoothTextarea({
         }}
       />
       <div ref={mirror} className="smooth-mirror" aria-hidden="true" />
-      <motion.div
+      <div
+        ref={caret}
         className="smooth-caret"
         aria-hidden="true"
-        style={{ x, y, height, opacity }}
+        style={{ height: 0, opacity: 0 }}
       />
     </div>
   );

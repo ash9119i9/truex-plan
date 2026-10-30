@@ -1,93 +1,80 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  convoGroup,
-  convoTime,
-  groupSidebarSessions,
-  sidebarWindow,
-  SIDEBAR_INITIAL_COUNT,
-  SIDEBAR_PAGE_COUNT,
-} from "../lib/sidebar.ts";
+import { historyGroups, sessionTime } from "../lib/sidebar.ts";
 
-const sessions = Array.from({ length: 70 }, (_, index) => ({
-  _id: `s${index}`,
-  title: `Conversation ${index}`,
-  createdAt: new Date(2026, 8, 1).toISOString(),
-  projectId: index % 2 ? "project-a" : undefined,
-}));
+// Wednesday 28 Oct 2026, 15:00 local.
+const now = new Date(2026, 9, 28, 15, 0);
+const at = (y: number, m: number, d: number, h = 12, min = 0, s = 0) =>
+  new Date(y, m, d, h, min, s).toISOString();
+const row = (id: string, when: string) => ({ id, when });
 
-test("the Earlier shelf starts at ten rows and expands by twenty-five", () => {
-  const initial = sidebarWindow(sessions);
-  assert.equal(initial.items.length, 10);
-  assert.equal(initial.hiddenCount, 60);
-  const next = sidebarWindow(sessions, {
-    count: SIDEBAR_INITIAL_COUNT + SIDEBAR_PAGE_COUNT,
-  });
-  assert.equal(next.items.length, 35);
-  assert.equal(next.hiddenCount, 35);
-  assert.equal(next.items[34], sessions[34]);
-});
-
-test("a deep selected conversation stays reachable without expanding intervening rows", () => {
-  const window = sidebarWindow(sessions, { activeId: "s69" });
-  assert.equal(window.items.length, 11);
-  assert.equal(window.items.at(-1), sessions[69]);
-  assert.equal(window.hiddenCount, 59);
-  assert.equal(sidebarWindow(sessions, { activeId: "s0" }).items.length, 10);
-});
-
-test("a collapsed shelf retains only the selected row and restores its limit on expansion", () => {
-  const collapsed = sidebarWindow(sessions, {
-    activeId: "s69",
-    count: 35,
-    expanded: false,
-  });
-  assert.deepEqual(collapsed.items, [sessions[69]]);
-  assert.equal(collapsed.hiddenCount, 69);
-  assert.equal(sidebarWindow(sessions, { expanded: false }).items.length, 0);
-  assert.equal(
-    sidebarWindow(sessions, { count: 35, activeId: "s69" }).items.length,
-    36,
+test("history groups are Today, Previous, Last 30 days, then months; older ones fold", () => {
+  const rows = [
+    row("today", at(2026, 9, 28, 9)),
+    row("yesterday", at(2026, 9, 27)),
+    row("sunday", at(2026, 9, 25)),
+    row("week-ago", at(2026, 9, 21)),
+    row("oct-1", at(2026, 9, 1)),
+    row("sep", at(2026, 8, 30)),
+    row("aug", at(2026, 7, 3)),
+    row("last-year", at(2025, 11, 30)),
+  ];
+  const groups = historyGroups(rows, (r) => r.when, now);
+  assert.deepEqual(
+    groups.map((g) => [g.label, g.rows.map((r) => r.id), g.older]),
+    [
+      ["Today", ["today"], false],
+      ["Previous", ["yesterday", "sunday"], false],
+      ["Last 30 days", ["week-ago", "oct-1", "sep"], true],
+      ["August", ["aug"], true],
+      ["December 2025", ["last-year"], true],
+    ],
   );
 });
 
-test("windowing does not mutate or remove Search and project menu data", () => {
-  const original = [...sessions];
-  sidebarWindow(sessions, { activeId: "missing" });
-  assert.deepEqual(sessions, original);
-  assert.equal(sessions.length, 70);
-  assert.equal(sidebarWindow(sessions).items[1].projectId, "project-a");
+test("groups keep a fixed order even when rows arrive out of order", () => {
+  const groups = historyGroups(
+    [row("old", at(2026, 5, 2)), row("today", at(2026, 9, 28, 8))],
+    (r) => r.when,
+    now,
+  );
+  assert.deepEqual(
+    groups.map((g) => g.label),
+    ["Today", "June"],
+  );
 });
 
-test("empty lists, a short tail and refreshed missing selections stay valid", () => {
-  assert.deepEqual(sidebarWindow([]), { items: [], hiddenCount: 0 });
-  const short = sessions.slice(0, 3);
-  assert.deepEqual(sidebarWindow(short, { count: 100, activeId: "removed" }), {
-    items: short,
-    hiddenCount: 0,
-  });
-  assert.deepEqual(sidebarWindow(short, { count: 0, activeId: "s1" }).items, [
-    sessions[1],
-  ]);
-  assert.equal(sidebarWindow(sessions, { count: NaN }).items.length, 10);
+test("an unreadable or future time never hides a row", () => {
+  const groups = historyGroups(
+    [row("bad", "not a date"), row("future", at(2026, 9, 29))],
+    (r) => r.when,
+    now,
+  );
+  assert.deepEqual(
+    groups.map((g) => [g.label, g.rows.map((r) => r.id)]),
+    [
+      ["Today", ["future"]],
+      ["Earlier", ["bad"]],
+    ],
+  );
 });
 
-test("local date groups preserve source ordering and object references", () => {
-  const now = new Date(2026, 8, 7, 12);
-  const today = {
-    _id: "today",
-    createdAt: new Date(2026, 8, 7, 1).toISOString(),
-  };
-  const earlier = {
-    _id: "earlier",
-    createdAt: new Date(2026, 8, 6, 23).toISOString(),
-  };
-  const invalid = { _id: "invalid", createdAt: "invalid" };
-  const groups = groupSidebarSessions([earlier, today, invalid], now);
-  assert.deepEqual(groups.today, [today]);
-  assert.deepEqual(groups.earlier, [earlier, invalid]);
-  assert.equal(groups.today[0], today);
-  assert.equal(convoGroup(today.createdAt, now), "Today");
-  assert.equal(convoGroup(earlier.createdAt, now), "Earlier");
-  assert.equal(convoTime("invalid", now), "");
+test("no rows means no groups", () => {
+  assert.deepEqual(
+    historyGroups([], (r: { when: string }) => r.when, now),
+    [],
+  );
+});
+
+test("times are relative today, a weekday this week and a date beyond", () => {
+  assert.equal(sessionTime(at(2026, 9, 28, 14, 59, 40), now), "now");
+  assert.equal(sessionTime(at(2026, 9, 28, 14, 48), now), "12m");
+  assert.equal(sessionTime(at(2026, 9, 28, 13, 50), now), "1h");
+  assert.equal(sessionTime(at(2026, 9, 28, 0, 5), now), "14h");
+  assert.equal(sessionTime(at(2026, 9, 25), now), "Sun");
+  assert.equal(sessionTime(at(2026, 9, 18), now), "Oct 18");
+  assert.equal(sessionTime(at(2025, 8, 26), now), "Sep 26, 2025");
+  // Clock skew: a time slightly ahead of this device is still "now".
+  assert.equal(sessionTime(at(2026, 9, 28, 15, 2), now), "now");
+  assert.equal(sessionTime("invalid", now), "");
 });

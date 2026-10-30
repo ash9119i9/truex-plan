@@ -1300,6 +1300,15 @@ test("progressFlags: a reply before a tool call is progress, the last reply is t
   ]);
   // A run that ends on a tool (stopped or failed) leaves its reply as progress.
   assert.deepEqual(progressFlags(["reply", "tool"]), [true, false]);
+  // Two replies in a row: a call with no transcript row (update_plan) sat
+  // between them, so only the last is the answer.
+  assert.deepEqual(progressFlags(["reply", "reply"]), [true, false]);
+  assert.deepEqual(progressFlags(["reply", "tool", "reply", "reply"]), [
+    true,
+    false,
+    true,
+    false,
+  ]);
   assert.deepEqual(progressFlags([]), []);
 });
 

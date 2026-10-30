@@ -1,0 +1,1061 @@
+/* ============================================================================
+   truex system · chapter 05 · primitives
+   The application layer. Every control truex ships is built from this file.
+
+   Contract
+   --------
+   Prefix        .tx- on every class and keyframe; no collision with the spec
+                 shell or product CSS. Load after the foundations and before
+                 product styles.
+   Foundations   type.css (roles, cuts), color.css (all colour), space.css
+                 (lattice, radii, elevation), corner.css (curvature). This file
+                 adds geometry and motion only; it declares no new font, no raw
+                 hex, no new radius and no new colour.
+   Motion        One local token set (--tx-d-*, --tx-ease, --tx-spring) until a
+                 motion chapter locks it. Every moving thing has a static twin
+                 under reduced motion; nothing essential depends on animation.
+   Shape         Capsule = press. Squircle = hold. Circle = state. 3px = data.
+                 Capsules and circles are registered in corner.css.
+   Performance   No JS is required for any control state. Motion is transform,
+                 opacity and background-position; no width, height or filter
+                 animation. Transitions only on properties that change.
+   ============================================================================ */
+
+:root {
+  /* control geometry: 4px lattice, one step per size ----------------------- */
+  --tx-h-xs: 1.5rem;       /* 24 · minimum target, dense rails */
+  --tx-h-sm: 1.75rem;      /* 28 · toolbars */
+  --tx-h: 2.25rem;         /* 36 · default */
+  --tx-h-lg: 2.75rem;      /* 44 · focused confirm */
+  --tx-h-field: 2.5rem;    /* 40 · text entry */
+
+  /* motion: response, state, arrival --------------------------------------- */
+  --tx-d-1: 120ms;         /* press and hover · reads as instant */
+  --tx-d-2: 200ms;         /* state change · switch, selection */
+  --tx-d-3: 320ms;         /* arrival · toast, meter */
+  --tx-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --tx-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --tx-tap: 1px;
+}
+
+/* ============================================================================
+   ICONS · 24 grid, 1.75 stroke, optical 1px offset
+   ============================================================================ */
+.tx-ic {
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.18em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tx-ic-sm { width: 0.8125rem; height: 0.8125rem; }
+.tx-ic-lg { width: 1.25rem; height: 1.25rem; }
+
+/* ============================================================================
+   KEYCAPS · buttons
+   One .tx-primary per surface. The label is the outcome; the shape is the
+   interaction. Press travel is 1px, never a bounce.
+   ============================================================================ */
+.tx-btn {
+  --tx-btn-h: var(--tx-h);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  height: var(--tx-btn-h);
+  padding-inline: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-ui);
+  font-weight: 600;
+  font-variation-settings: var(--cut-text);
+  line-height: 1;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  text-decoration: none;
+  box-shadow: var(--key);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition:
+    background-color var(--tx-d-1) var(--tx-ease),
+    border-color var(--tx-d-1) var(--tx-ease),
+    color var(--tx-d-1) var(--tx-ease),
+    box-shadow var(--tx-d-1) var(--tx-ease),
+    transform var(--tx-d-1) var(--tx-ease);
+}
+.tx-btn:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--surface-2);
+  border-color: var(--ctl);
+}
+.tx-btn:not(:disabled):not([aria-disabled="true"]):active {
+  transform: translateY(var(--tx-tap));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.tx-btn:focus-visible {
+  outline: none;
+  border-radius: var(--r-pill);
+  box-shadow: var(--focus);
+}
+.tx-btn:disabled,
+.tx-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.tx-primary {
+  background: var(--signal-fill);
+  border-color: transparent;
+  color: var(--on-signal);
+  box-shadow:
+    inset 0 -1.5px 0 color-mix(in srgb, var(--ink) 18%, transparent),
+    0 4px 12px -6px var(--signal-glow);
+}
+.tx-primary:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--signal-hover);
+  border-color: transparent;
+}
+.tx-primary:not(:disabled):not([aria-disabled="true"]):active {
+  box-shadow:
+    inset 0 2px 0 color-mix(in srgb, var(--ink) 20%, transparent),
+    0 2px 8px -6px var(--signal-glow);
+}
+
+.tx-dark {
+  background: var(--inv);
+  border-color: transparent;
+  color: var(--on-inv);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--ink) 30%, transparent);
+}
+.tx-dark:not(:disabled):not([aria-disabled="true"]):hover { background: var(--inv-2); border-color: transparent; }
+
+.tx-ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--ink-2);
+  box-shadow: none;
+}
+.tx-ghost:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--well);
+  border-color: transparent;
+  color: var(--ink);
+}
+
+.tx-danger {
+  color: var(--bad-ink);
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+  box-shadow: var(--key);
+}
+.tx-danger:not(:disabled):not([aria-disabled="true"]):hover {
+  background: var(--bad-soft);
+  border-color: color-mix(in srgb, var(--bad) 55%, var(--line));
+}
+
+.tx-xs {
+  --tx-btn-h: var(--tx-h-xs);
+  padding-inline: var(--sp-2);
+  gap: var(--sp-h);
+  font-size: var(--t-meta);
+}
+.tx-sm {
+  --tx-btn-h: var(--tx-h-sm);
+  padding-inline: var(--sp-2);
+  gap: var(--sp-1);
+  font-size: var(--t-meta);
+}
+.tx-lg {
+  --tx-btn-h: var(--tx-h-lg);
+  padding-inline: var(--sp-4);
+  gap: var(--sp-2);
+  font-size: var(--t-body);
+}
+.tx-icon {
+  width: var(--tx-btn-h);
+  padding-inline: 0;
+}
+.tx-btn .tx-kbd { margin-inline-start: var(--sp-h); }
+.tx-primary .tx-kbd {
+  background: color-mix(in srgb, var(--on-signal) 18%, transparent);
+  border-color: color-mix(in srgb, var(--on-signal) 30%, transparent);
+  color: inherit;
+  box-shadow: none;
+}
+.tx-btn .tx-spin { --tx-spin-c: currentColor; }
+
+/* ============================================================================
+   KEYCAPS · keyboard
+   ============================================================================ */
+.tx-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding-inline: var(--sp-h);
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--r-xs);
+  background: var(--surface);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent);
+}
+.tx-keys { display: inline-flex; align-items: center; gap: var(--sp-1); }
+
+/* ============================================================================
+   PILLS · state, always with a glyph or a word
+   ============================================================================ */
+.tx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 1.5rem;
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  color: var(--ink-2);
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+}
+.tx-pill .tx-ic { width: 0.8125rem; height: 0.8125rem; }
+.tx-pill-ok { background: var(--ok-soft); color: var(--ok-ink); }
+.tx-pill-warn { background: var(--warn-soft); color: var(--warn-ink); }
+.tx-pill-bad { background: var(--bad-soft); color: var(--bad-ink); }
+.tx-pill-live { background: var(--signal-soft); color: var(--signal-ink); }
+.tx-pill-inv { background: var(--inv); color: var(--on-inv); }
+.tx-pill-line { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.tx-pill-sm { height: 1.25rem; padding-inline: var(--sp-2); font-size: var(--t-micro); }
+
+/* ============================================================================
+   CHIPS · pick or reference
+   ============================================================================ */
+.tx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 2rem;
+  padding-inline: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  touch-action: manipulation;
+  transition:
+    background-color var(--tx-d-1) var(--tx-ease),
+    border-color var(--tx-d-1) var(--tx-ease),
+    color var(--tx-d-1) var(--tx-ease);
+}
+button.tx-chip:hover {
+  background: var(--surface-2);
+  border-color: var(--ctl);
+}
+.tx-chip[aria-pressed="true"] {
+  background: var(--signal-soft);
+  border-color: var(--signal);
+  color: var(--signal-ink);
+}
+.tx-chip:focus-visible {
+  outline: none;
+  border-radius: var(--r-pill);
+  box-shadow: var(--focus);
+}
+.tx-chip-ref {
+  height: 1.5rem;
+  padding-inline: var(--sp-2);
+  border-color: transparent;
+  border-radius: var(--r-xs);
+  background: var(--well);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+}
+.tx-chip-ref:focus-visible { border-radius: var(--r-xs); }
+.tx-chip-ref.is-copied { background: var(--ok-soft); color: var(--ok-ink); }
+
+/* ============================================================================
+   TILES · a glyph in a tinted holder
+   ============================================================================ */
+.tx-tile {
+  display: inline-grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink-2);
+}
+.tx-tile-sm { width: 1.5rem; height: 1.5rem; border-radius: var(--r-xs); }
+.tx-tile-lg { width: 2.5rem; height: 2.5rem; border-radius: var(--r); }
+.tx-tile-signal { background: var(--signal-soft); color: var(--signal-ink); }
+.tx-tile-ok { background: var(--ok-soft); color: var(--ok-ink); }
+.tx-tile-warn { background: var(--warn-soft); color: var(--warn-ink); }
+.tx-tile-bad { background: var(--bad-soft); color: var(--bad-ink); }
+.tx-tile-inv { background: var(--inv); color: var(--on-inv); }
+
+/* ============================================================================
+   SEGMENTED · 2–4 exclusive options, all visible
+   ============================================================================ */
+.tx-seg {
+  display: inline-flex;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  align-items: center;
+  gap: var(--sp-h);
+  padding: var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.tx-seg::-webkit-scrollbar { display: none; }
+.tx-seg button {
+  height: 1.75rem;
+  flex: none;
+  padding-inline: var(--sp-2);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink-2);
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color var(--tx-d-1) var(--tx-ease),
+    color var(--tx-d-1) var(--tx-ease),
+    box-shadow var(--tx-d-1) var(--tx-ease);
+}
+.tx-seg button:hover { color: var(--ink); }
+.tx-seg button[aria-pressed="true"],
+.tx-seg button[aria-selected="true"],
+.tx-seg button[aria-checked="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--sh-1), inset 0 0 0 1px var(--line);
+}
+.tx-seg button:focus-visible {
+  outline: none;
+  border-radius: var(--r-pill);
+  box-shadow: var(--focus);
+}
+.tx-seg-sm { padding: var(--sp-h); }
+.tx-seg-sm button { height: 1.5rem; padding-inline: var(--sp-2); }
+
+/* ============================================================================
+   TABS · views of one object
+   ============================================================================ */
+.tx-tabs {
+  display: flex;
+  gap: var(--sp-h);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tx-tabs::-webkit-scrollbar { display: none; }
+.tx-tabs button,
+.tx-tabs a {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  background: none;
+  color: var(--ink-3);
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  line-height: var(--lh-ui);
+  white-space: nowrap;
+  text-decoration: none;
+  box-shadow: inset 0 -2px 0 transparent;
+  transition: color var(--tx-d-1) var(--tx-ease), box-shadow var(--tx-d-1) var(--tx-ease);
+}
+.tx-tabs button:hover,
+.tx-tabs a:hover { color: var(--ink); }
+.tx-tabs [aria-selected="true"] {
+  color: var(--ink);
+  box-shadow: inset 0 -2px 0 var(--signal);
+}
+.tx-tabs button:focus-visible,
+.tx-tabs a:focus-visible {
+  outline: none;
+  border-radius: var(--r-xs);
+  box-shadow: var(--focus);
+}
+
+/* ============================================================================
+   FIELDS · label, control, hint
+   Proximity: 4px inside a field, 16px between fields. The ratio groups.
+   ============================================================================ */
+.tx-field { display: grid; gap: var(--sp-1); min-width: 0; }
+.tx-field > label,
+.tx-field > .tx-label {
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  line-height: var(--lh-meta);
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.tx-hint {
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 400;
+  line-height: var(--lh-meta);
+  color: var(--ink-3);
+}
+.tx-req { color: var(--bad); font-weight: 700; }
+
+.tx-input {
+  width: 100%;
+  min-width: 0;
+  height: var(--tx-h-field);
+  padding-inline: var(--sp-3);
+  border: 1px solid var(--ctl);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-body);
+  line-height: normal;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--ink) 5%, transparent);
+  transition:
+    border-color var(--tx-d-1) var(--tx-ease),
+    box-shadow var(--tx-d-1) var(--tx-ease),
+    background-color var(--tx-d-1) var(--tx-ease);
+}
+.tx-input::placeholder { color: var(--ink-3); }
+.tx-input:hover { border-color: var(--ink-3); }
+.tx-input:focus {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: var(--focus);
+}
+.tx-input[aria-invalid="true"] { border-color: var(--bad); }
+.tx-input[aria-invalid="true"]:focus { border-color: var(--bad); box-shadow: var(--focus); }
+.tx-input:disabled {
+  background: var(--well);
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+textarea.tx-input {
+  min-width: 0;
+  height: auto;
+  min-height: 5rem;
+  padding-block: var(--sp-2);
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+.tx-input-num {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* select: native control, drawn chevron — no extra markup */
+.tx-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-inline-end: var(--sp-7);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.125rem) calc(50% + 1px),
+    calc(100% - 0.8125rem) calc(50% + 1px);
+  background-size: 0.3125rem 0.3125rem, 0.3125rem 0.3125rem;
+  background-repeat: no-repeat;
+}
+:root[data-eff-theme="dark"] .tx-select { background-color: var(--surface); }
+
+.tx-secret { position: relative; }
+.tx-secret .tx-input { padding-inline-end: var(--sp-7); }
+.tx-reveal {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: var(--sp-1);
+  width: 2rem;
+  height: 2rem;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-3);
+  transform: translateY(-50%);
+  transition: color var(--tx-d-1) var(--tx-ease), background-color var(--tx-d-1) var(--tx-ease);
+}
+.tx-reveal:hover { background: var(--well); color: var(--ink); }
+.tx-reveal[aria-pressed="true"] { color: var(--signal-ink); }
+.tx-reveal:focus-visible { outline: none; border-radius: var(--r-xs); box-shadow: var(--focus); }
+
+.tx-errmsg {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1);
+  color: var(--bad-ink);
+}
+.tx-errmsg .tx-ic { margin-block-start: 0.12em; }
+.tx-errmsg code { background: var(--bad-soft); color: var(--bad-ink); padding-inline: var(--sp-1); border-radius: var(--r-xs); }
+
+/* ============================================================================
+   SWITCH · instant on/off, never a save
+   ============================================================================ */
+.tx-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 2.5rem;
+  height: 1.5rem;
+  flex: none;
+  margin: 0;
+  border-radius: var(--r-pill);
+  background: var(--well-2);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--tx-d-2) var(--tx-ease), box-shadow var(--tx-d-2) var(--tx-ease);
+}
+.tx-switch::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-start: 3px;
+  width: 1.125rem;
+  height: 1.125rem;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 28%, transparent);
+  transition: transform var(--tx-d-2) var(--tx-spring);
+}
+.tx-switch:checked { background: var(--signal); box-shadow: none; }
+.tx-switch:checked::after { transform: translateX(1rem); }
+.tx-switch:focus-visible {
+  outline: none;
+  border-radius: var(--r-pill);
+  box-shadow: var(--focus);
+}
+.tx-switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ============================================================================
+   MENU · a list of actions
+   ============================================================================ */
+.tx-menu {
+  min-width: min(15rem, 100%);
+  max-width: 100%;
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--sh-3);
+}
+.tx-menu-h {
+  padding: var(--sp-2) var(--sp-3) var(--sp-1);
+  color: var(--ink-3);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: var(--tr-micro);
+  text-transform: uppercase;
+}
+.tx-menu-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-ui);
+  line-height: var(--lh-ui);
+  text-align: start;
+  transition: background-color var(--tx-d-1) var(--tx-ease), color var(--tx-d-1) var(--tx-ease);
+}
+.tx-menu-item:has(> .tx-ic) { grid-template-columns: auto minmax(0, 1fr) auto; }
+.tx-menu-item .tx-ic { color: var(--ink-2); }
+.tx-menu-item small {
+  display: block;
+  color: var(--ink-3);
+  font-size: var(--t-meta);
+  line-height: var(--lh-meta);
+}
+.tx-menu-item:hover { background: var(--well); }
+.tx-menu-item[aria-selected="true"],
+.tx-menu-item[aria-pressed="true"] { background: var(--well); }
+.tx-menu-item[aria-selected="true"] > .tx-ic:last-child { color: var(--signal); }
+.tx-menu-item:focus-visible {
+  outline: none;
+  border-radius: var(--r-sm);
+  box-shadow: var(--focus);
+}
+.tx-menu-danger { color: var(--bad-ink); }
+.tx-menu-danger .tx-ic { color: var(--bad); }
+.tx-menu-danger:hover { background: var(--bad-soft); }
+.tx-menu-sep { height: 1px; margin: var(--sp-1) var(--sp-2); background: var(--line); }
+
+/* ============================================================================
+   TOOLTIP · on hover and keyboard focus, never essential content
+   ============================================================================ */
+.tx-tip { position: relative; display: inline-flex; }
+.tx-tip-pop {
+  position: absolute;
+  inset-block-start: calc(100% + var(--sp-2));
+  inset-inline-start: 50%;
+  z-index: 30;
+  max-width: min(22rem, calc(100vw - var(--sp-6)));
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--inv);
+  color: var(--on-inv);
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  line-height: var(--lh-meta);
+  white-space: normal;
+  text-wrap: pretty;
+  box-shadow: var(--sh-2);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, var(--sp-1));
+  transition: opacity var(--tx-d-1) var(--tx-ease), transform var(--tx-d-1) var(--tx-ease);
+}
+.tx-tip-pop::before {
+  content: "";
+  position: absolute;
+  inset-block-start: calc(var(--sp-1) * -1);
+  inset-inline-start: 50%;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  background: var(--inv);
+  transform: translateX(-50%) rotate(45deg);
+}
+.tx-tip:hover .tx-tip-pop,
+.tx-tip:focus-within .tx-tip-pop {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.tx-tip[data-hidden="true"] .tx-tip-pop { opacity: 0; }
+.tx-tip-up .tx-tip-pop {
+  inset-block-start: auto;
+  inset-block-end: calc(100% + var(--sp-2));
+  transform: translate(-50%, calc(var(--sp-1) * -1));
+}
+.tx-tip-up .tx-tip-pop::before {
+  inset-block-start: auto;
+  inset-block-end: calc(var(--sp-1) * -1);
+}
+.tx-tip-up:hover .tx-tip-pop,
+.tx-tip-up:focus-within .tx-tip-pop { transform: translate(-50%, 0); }
+
+/* ============================================================================
+   TOAST · transient confirmation, never focus theft
+   ============================================================================ */
+.tx-toast-host {
+  position: fixed;
+  inset-block-end: var(--sp-4);
+  inset-inline-end: var(--sp-4);
+  z-index: 80;
+  display: grid;
+  gap: var(--sp-2);
+  width: min(22rem, calc(100vw - var(--sp-6)));
+  pointer-events: none;
+}
+.tx-toast {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--sh-3);
+  animation: tx-toast-in var(--tx-d-3) var(--tx-spring);
+}
+.tx-toast > * { min-width: 0; }
+.tx-toast h5 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--f-ui);
+  font-size: var(--t-ui);
+  font-weight: 650;
+  line-height: var(--lh-ui);
+  letter-spacing: -0.01em;
+}
+.tx-toast p {
+  margin: var(--sp-h) 0 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+  line-height: var(--lh-meta);
+}
+.tx-toast-x {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--ink-3);
+  transition: color var(--tx-d-1) var(--tx-ease), background-color var(--tx-d-1) var(--tx-ease);
+}
+.tx-toast-x:hover { background: var(--well); color: var(--ink); }
+.tx-toast-x:focus-visible { outline: none; border-radius: var(--r-xs); box-shadow: var(--focus); }
+.tx-toast-out { animation: tx-toast-out var(--tx-d-2) var(--tx-ease) forwards; }
+@keyframes tx-toast-in {
+  from { opacity: 0; transform: translateY(var(--sp-3)) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes tx-toast-out {
+  to { opacity: 0; transform: translateY(var(--sp-2)) scale(0.98); }
+}
+
+/* ============================================================================
+   METERS · linear proportion
+   ============================================================================ */
+.tx-meter {
+  --tx-p: 40;
+  --tx-meter-c: var(--cx-data-hi);
+  position: relative;
+  height: 6px;
+  border-radius: var(--r-pill);
+  background: var(--cx-track);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.tx-meter > i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--tx-p) * 1%);
+  border-radius: inherit;
+  background: var(--tx-meter-c);
+  transition: width var(--tx-d-3) var(--tx-ease);
+}
+.tx-meter-signal { --tx-meter-c: var(--signal); }
+.tx-meter-ok { --tx-meter-c: var(--ok); }
+.tx-meter-warn { --tx-meter-c: var(--warn); }
+.tx-meter-bad { --tx-meter-c: var(--bad); }
+.tx-meter-lg { height: 10px; }
+
+/* ============================================================================
+   RINGS · compact proportion, conic fill
+   ============================================================================ */
+.tx-ring {
+  --tx-p: 60;
+  --tx-c: var(--signal);
+  --tx-sz: 2.5rem;
+  --tx-ring-core: var(--surface);
+  position: relative;
+  width: var(--tx-sz);
+  height: var(--tx-sz);
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 50%;
+  background: conic-gradient(var(--tx-c) calc(var(--tx-p) * 1%), var(--cx-track) 0);
+}
+.tx-ring::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--tx-ring-core);
+}
+.tx-ring > * {
+  position: relative;
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "zero" 1;
+}
+
+/* ============================================================================
+   LIVE CUES · every motion has a static twin
+   ============================================================================ */
+.tx-spin {
+  --tx-spin-c: var(--signal);
+  width: 0.875rem;
+  height: 0.875rem;
+  flex: none;
+  display: inline-block;
+  vertical-align: -0.15em;
+  border: 2px solid color-mix(in srgb, var(--tx-spin-c) 25%, transparent);
+  border-top-color: var(--tx-spin-c);
+  border-radius: 50%;
+  animation: tx-spin 0.8s linear infinite;
+}
+@keyframes tx-spin { to { transform: rotate(360deg); } }
+
+.tx-pulse {
+  --tx-c: var(--signal);
+  position: relative;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  display: inline-block;
+  border-radius: 50%;
+  background: var(--tx-c);
+}
+.tx-pulse::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--tx-c);
+  border-radius: 50%;
+  opacity: 0;
+  animation: tx-ping 1.6s var(--tx-ease) infinite;
+}
+@keyframes tx-ping {
+  0% { transform: scale(0.5); opacity: 0.8; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+.tx-dot {
+  --tx-c: var(--ink-3);
+  width: 8px;
+  height: 8px;
+  flex: none;
+  display: inline-block;
+  border-radius: 50%;
+  background: var(--tx-c);
+}
+.tx-dot-ok { --tx-c: var(--ok); }
+.tx-dot-warn { --tx-c: var(--warn); }
+.tx-dot-bad { --tx-c: var(--bad); }
+.tx-dot-live { --tx-c: var(--signal); }
+.tx-dot-off { --tx-c: var(--line-strong); }
+
+.tx-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--ink-2) 0%,
+    var(--ink-2) 40%,
+    var(--signal) 50%,
+    var(--ink-2) 60%,
+    var(--ink-2) 100%
+  );
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: tx-shimmer 2.2s linear infinite;
+}
+@keyframes tx-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+
+.tx-stripes {
+  --tx-stripe-c: color-mix(in srgb, var(--on-signal) 30%, transparent);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--tx-stripe-c) 0 5px,
+    transparent 5px 10px
+  );
+  background-size: 14.14px 14.14px;
+  animation: tx-stripes 0.9s linear infinite;
+}
+@keyframes tx-stripes {
+  to { background-position: 14.14px 0; }
+}
+
+.tx-caret::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-inline-start: 2px;
+  vertical-align: -0.15em;
+  border-radius: 1px;
+  background: var(--signal);
+  animation: tx-caret 1s steps(1) infinite;
+}
+@keyframes tx-caret { 50% { opacity: 0; } }
+
+.tx-skel {
+  display: block;
+  border-radius: var(--r-xs);
+  background: linear-gradient(
+    90deg,
+    var(--well) 0 40%,
+    var(--well-2) 50%,
+    var(--well) 60% 100%
+  );
+  background-size: 300% 100%;
+  animation: tx-skel 1.6s linear infinite;
+}
+@keyframes tx-skel {
+  from { background-position: 100% 0; }
+  to { background-position: -150% 0; }
+}
+
+.tx-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--hatch) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+.tx-tape {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 1.25rem;
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-xs);
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warn) 32%, transparent);
+}
+.tx-tape::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.tx-bar {
+  height: 8px;
+  border-radius: var(--r-pill);
+  background: var(--cx-track);
+  box-shadow: inset 0 0 0 1px var(--line);
+  overflow: hidden;
+}
+.tx-bar > i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--signal);
+}
+
+/* ============================================================================
+   SURFACES · cards and non-happy states
+   ============================================================================ */
+.tx-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-2);
+}
+.tx-card-pad { padding: var(--sp-4); }
+.tx-state {
+  display: grid;
+  justify-items: start;
+  align-content: start;
+  gap: var(--sp-3);
+}
+.tx-state h4 {
+  margin: 0;
+  font-size: var(--t-h4);
+  font-weight: 700;
+  line-height: var(--lh-h4);
+  letter-spacing: var(--tr-h4);
+  font-variation-settings: var(--cut-heading);
+}
+.tx-state p {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t-ui);
+  line-height: var(--lh-ui);
+  max-width: var(--measure-body);
+}
+.tx-state-error { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); }
+
+/* ============================================================================
+   UTILITY · one job each
+   ============================================================================ */
+.tx-sr {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.tx-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.tx-stack { display: grid; gap: var(--sp-4); }
+
+/* ============================================================================
+   REDUCED MOTION · the static twin
+   ============================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  .tx-spin { animation: none; border-color: color-mix(in srgb, var(--tx-spin-c) 25%, transparent); border-top-color: var(--tx-spin-c); border-right-color: var(--tx-spin-c); }
+  .tx-pulse::after { animation: none; opacity: 0.35; transform: scale(1.25); }
+  .tx-shimmer {
+    animation: none;
+    background: none;
+    color: var(--ink-2);
+    -webkit-background-clip: border-box;
+    background-clip: border-box;
+  }
+  .tx-stripes { animation: none; }
+  .tx-caret::after { animation: none; }
+  .tx-skel { animation: none; background: var(--well); }
+  .tx-toast, .tx-toast-out { animation: none; }
+  .tx-btn, .tx-chip, .tx-seg button, .tx-tabs button, .tx-tabs a,
+  .tx-input, .tx-switch, .tx-switch::after, .tx-menu-item,
+  .tx-reveal, .tx-toast-x { transition-duration: 0.01ms; }
+  .tx-meter > i { transition: none; }
+}
+:root[data-eff-motion="reduce"] .tx-spin { animation: none; border-color: color-mix(in srgb, var(--tx-spin-c) 25%, transparent); border-top-color: var(--tx-spin-c); border-right-color: var(--tx-spin-c); }
+:root[data-eff-motion="reduce"] .tx-pulse::after { animation: none; opacity: 0.35; transform: scale(1.25); }
+:root[data-eff-motion="reduce"] .tx-shimmer {
+  animation: none;
+  background: none;
+  color: var(--ink-2);
+  -webkit-background-clip: border-box;
+  background-clip: border-box;
+}
+:root[data-eff-motion="reduce"] .tx-stripes { animation: none; }
+:root[data-eff-motion="reduce"] .tx-caret::after { animation: none; }
+:root[data-eff-motion="reduce"] .tx-skel { animation: none; background: var(--well); }
+:root[data-eff-motion="reduce"] .tx-toast,
+:root[data-eff-motion="reduce"] .tx-toast-out { animation: none; }
+:root[data-eff-motion="reduce"] .tx-meter > i { transition: none; }

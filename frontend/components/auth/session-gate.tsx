@@ -1,4 +1,5 @@
 "use client";
+import { Button } from "@/components/tx/button";
 import {
   useCallback,
   useEffect,
@@ -226,24 +227,19 @@ export function SessionGate({
     return (
       <AuthFrame>
         <section className="au-card" aria-labelledby="au-title">
-          <h1 id="au-title">Can’t open this workspace</h1>
+          <h1 id="au-title" className="t-h2">
+            Can’t open this workspace
+          </h1>
           <Banner notice={{ tone: "warn", lead: state.message }} />
           <div className="au-actions">
-            <button
-              type="button"
-              className="au-btn primary"
+            <Button
+              variant="primary"
               onClick={() => void signOut()}
-              disabled={signingOut}
+              working={signingOut ? "Signing out…" : undefined}
             >
-              {signingOut ? "Signing out…" : "Sign out"}
-            </button>
-            <button
-              type="button"
-              className="au-btn"
-              onClick={() => void check(true)}
-            >
-              Check again
-            </button>
+              Sign out
+            </Button>
+            <Button onClick={() => void check(true)}>Check again</Button>
           </div>
         </section>
       </AuthFrame>
@@ -252,19 +248,20 @@ export function SessionGate({
     return (
       <AuthFrame>
         <section className="au-card" aria-labelledby="au-title">
-          <h1 id="au-title">Truex is unavailable</h1>
+          <h1 id="au-title" className="t-h2">
+            Truex is unavailable
+          </h1>
           <Banner notice={{ tone: "warn", lead: state.message }} />
           <div className="au-actions">
-            <button
-              type="button"
-              className="au-btn primary"
+            <Button
+              variant="primary"
               onClick={() => {
                 setState({ kind: "loading" });
                 void check(true);
               }}
             >
               Try again
-            </button>
+            </Button>
           </div>
         </section>
       </AuthFrame>

@@ -1,0 +1,31 @@
+/* Error and not-found pages (no design in the spec; restyled with tokens only,
+   DESIGN-SPEC 0.4). global-error.tsx also carries inline styles, in case the
+   stylesheet is what failed to load. */
+.app-error {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-5);
+  background: var(--page);
+}
+.app-error-card {
+  max-width: 28rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-6);
+}
+.app-error-card h1,
+.app-error-card p {
+  margin: 0;
+}
+.app-error-card p {
+  color: var(--ink-2);
+}
+.app-error-ref {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}

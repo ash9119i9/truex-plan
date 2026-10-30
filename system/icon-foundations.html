@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · Icon foundations — revision 02</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --page:#111111; --surface:#171717; --surface-2:#1C1C1C; --well:#242424;
+    --line:#2A2A2A; --line-strong:#363636; --ink:#EEF4F6; --ink-2:#B7C3C8; --ink-3:#8B999F;
+    --signal:#5AA8DC; --signal-ink:#8DC9EF; --signal-glow:rgb(90 168 220 / 24%);
+    --ok:#3FD18A; --ok-ink:#6BE0A6; --warn:#F2B64A; --warn-ink:#F6C870;
+    --ui:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+    --serif:"Instrument Serif",ui-serif,Georgia,serif;
+    --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
+    --cut:"opsz" 96, "wdth" 82;
+  }
+  * { box-sizing:border-box; }
+  html { background:#0B0C0D; }
+  body { margin:0; background:var(--page); color:var(--ink); font-family:var(--ui); -webkit-font-smoothing:antialiased; }
+  .sheet {
+    max-width:1180px; margin:24px auto; border:1px solid var(--line);
+    background:var(--page); position:relative; overflow:hidden;
+    border-radius:26px; corner-shape:squircle;
+    box-shadow:0 40px 120px -60px rgb(0 0 0 / .9);
+  }
+  .sheet::before {
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:0;
+    background-image:radial-gradient(rgb(238 244 246 / 4.5%) .8px, transparent 1px);
+    background-size:20px 20px;
+    mask-image:linear-gradient(#000, #000 75%, transparent);
+  }
+  .in { position:relative; z-index:1; padding:clamp(18px, 3.2vw, 34px); }
+  .bar { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-bottom:14px; border-bottom:1px solid var(--line); }
+  .brand { display:inline-flex; align-items:center; gap:9px; }
+  .mark { width:24px; height:24px; border-radius:7px; corner-shape:squircle; background:var(--signal); color:#0B1A24; display:grid; place-items:center; }
+  .mark svg { width:15px; height:15px; }
+  .brand b { font-size:13px; font-weight:750; letter-spacing:-.03em; }
+  .bar-meta { display:flex; align-items:center; gap:18px; font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); }
+  .bar-meta b { color:var(--signal-ink); font-weight:500; }
+  .live { display:inline-flex; align-items:center; gap:6px; }
+  .live i { width:5px; height:5px; border-radius:50%; background:var(--signal); box-shadow:0 0 0 3px var(--signal-glow); }
+
+  .hero { display:grid; grid-template-columns:minmax(0,1.12fr) minmax(0,.88fr); gap:clamp(24px, 4vw, 56px); align-items:center; padding:clamp(26px, 4vw, 48px) 0 34px; }
+  .kicker { display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:9px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3); }
+  .kicker::before { content:""; width:18px; height:2px; background:var(--signal); border-radius:2px; }
+  h1 { margin:12px 0 16px; font-size:clamp(38px, 5vw, 58px); font-weight:800; line-height:.9; letter-spacing:-.045em; font-variation-settings:var(--cut); font-optical-sizing:none; text-wrap:balance; }
+  h1 em { font-family:var(--serif); font-style:italic; font-weight:400; letter-spacing:-.03em; }
+  .lede { margin:0; max-width:49ch; font-size:clamp(14px, 1.35vw, 16px); line-height:1.62; color:var(--ink-2); }
+  .lede b { color:var(--ink); font-weight:550; }
+  .verdict-line { margin:15px 0 0; padding-left:12px; border-left:2px solid var(--warn); font-family:var(--mono); font-size:10.5px; line-height:1.55; color:var(--ink-3); max-width:52ch; }
+  .verdict-line b { color:var(--warn-ink); font-weight:500; }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:18px; }
+  .chip { display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 9px; border:1px solid var(--line); border-radius:999px; background:var(--surface); font-family:var(--mono); font-size:8.5px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); }
+  .chip b { color:var(--ink); font-weight:500; }
+  .chip.is-key { border-color:color-mix(in srgb, var(--signal) 42%, var(--line)); color:var(--signal-ink); background:color-mix(in srgb, var(--signal) 7%, var(--surface)); }
+
+  .hero-figure { position:relative; display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .face-board {
+    position:relative; width:min(100%, 340px); aspect-ratio:1; display:grid; place-items:center;
+    border:1px solid var(--line); background:var(--surface-2);
+    border-radius:26px; corner-shape:squircle; overflow:hidden;
+  }
+  .face-board::before {
+    content:""; position:absolute; inset:0;
+    background-image:linear-gradient(rgb(238 244 246 / 5%) 1px, transparent 1px),linear-gradient(90deg, rgb(238 244 246 / 5%) 1px, transparent 1px);
+    background-size:calc(100% / 12) calc(100% / 12);
+    mask-image:radial-gradient(closest-side, #000, transparent 92%);
+  }
+  .face-board .safe {
+    position:absolute; width:83.333%; height:83.333%; border:1px dashed rgb(238 244 246 / 12%); border-radius:20px; corner-shape:squircle;
+  }
+  .hero-glyph { width:68%; height:68%; color:var(--ink); position:relative; z-index:1; }
+  .callout { position:absolute; font-family:var(--mono); font-size:8.5px; letter-spacing:.06em; color:var(--ink-3); display:flex; align-items:center; gap:5px; white-space:nowrap; }
+  .callout::before { content:""; width:16px; height:1px; background:var(--signal); opacity:.7; }
+  .c1 { top:14%; right:8%; }
+  .c2 { bottom:20%; left:7%; flex-direction:row-reverse; }
+  .c2::before { order:0; }
+  .c3 { bottom:8%; right:9%; }
+  .hero-meta { display:flex; justify-content:space-between; width:100%; max-width:340px; font-family:var(--mono); font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
+  .hero-meta b { color:var(--signal-ink); font-weight:500; }
+
+  .deck { display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:8px; }
+  .card { position:relative; min-width:0; padding:12px 12px 13px; border:1px solid var(--line); background:var(--surface); border-radius:18px; corner-shape:squircle; }
+  .card-top { display:flex; justify-content:space-between; align-items:center; gap:8px; font-family:var(--mono); font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
+  .card-top b { color:var(--signal-ink); font-weight:500; }
+  .glyph-stage { display:grid; place-items:center; height:96px; margin:4px -4px 6px; }
+  .glyph { display:block; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+  .g64 { width:64px; height:64px; color:var(--ink); }
+  .g48 { width:48px; height:48px; color:var(--ink); }
+  .g32 { width:32px; height:32px; color:var(--ink); }
+  .g24 { width:24px; height:24px; color:var(--ink); }
+  .g16 { width:16px; height:16px; color:var(--ink); }
+  .card-name { font-size:13px; font-weight:650; letter-spacing:-.01em; }
+  .card-fn { margin-top:2px; font-size:10.5px; line-height:1.4; color:var(--ink-3); }
+  .card-why { margin-top:9px; padding-top:8px; border-top:1px solid var(--line); font-family:var(--mono); font-size:8.5px; line-height:1.5; color:var(--ink-3); }
+  .card-why b { color:var(--ink-2); font-weight:500; }
+
+  .section { margin-top:clamp(20px, 3vw, 30px); }
+  .sec-head { display:flex; align-items:baseline; justify-content:space-between; gap:16px; padding-bottom:9px; border-bottom:1px solid var(--line); margin-bottom:12px; }
+  .sec-head span { font-family:var(--mono); font-size:8.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); }
+  .sec-head b { font-family:var(--mono); font-size:8.5px; font-weight:400; letter-spacing:.04em; color:var(--ink-3); }
+
+  .compare { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--line); background:var(--surface); border-radius:18px; corner-shape:squircle; overflow:hidden; min-width:0; }
+  .pair-cell { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; min-height:132px; padding:12px 8px; }
+  .pair-cell + .pair-cell { border-left:1px solid var(--line); background:var(--surface-2); }
+  .pair-cell span { font-family:var(--mono); font-size:7.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--ink-3); }
+  .pair-cell.is-old span { color:var(--warn-ink); }
+  .pair-cell.is-new span { color:var(--ok-ink); }
+  .pair-cell svg { width:52px; height:52px; color:var(--ink-2); }
+  .pair-cell.is-new svg { color:var(--ink); }
+  .pair-title { grid-column:1/-1; display:flex; justify-content:space-between; gap:8px; padding:8px 11px; border-top:1px solid var(--line); font-family:var(--mono); font-size:8px; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-3); }
+  .pair-title b { color:var(--ink-2); font-weight:500; }
+
+  .foundation { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border:1px solid var(--line); background:var(--surface); border-radius:20px; corner-shape:squircle; overflow:hidden; }
+  .f-col { padding:15px 15px 16px; min-width:0; }
+  .f-col + .f-col { border-left:1px solid var(--line); }
+  .f-k { font-family:var(--mono); font-size:8px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--signal-ink); }
+  .f-big { margin:8px 0 6px; font-family:var(--mono); font-size:15px; letter-spacing:-.03em; color:var(--ink); }
+  .f-big em { font-family:var(--serif); font-style:italic; font-size:1.12em; letter-spacing:-.02em; color:var(--ink-2); }
+  .f-col p { margin:0; font-size:10.5px; line-height:1.55; color:var(--ink-3); }
+  .f-col p b { color:var(--ink-2); font-weight:500; }
+
+  .sizes { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:8px; }
+  .size-cell { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:11px; min-height:106px; padding:12px; border:1px solid var(--line); background:var(--surface); border-radius:16px; corner-shape:squircle; }
+  .size-cell span { font-family:var(--mono); font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
+  .size-cell i { width:22px; height:22px; display:grid; place-items:center; }
+  .size-strip { display:flex; align-items:center; gap:16px; margin-top:8px; padding:11px 14px; border:1px solid var(--line); background:var(--surface); border-radius:16px; corner-shape:squircle; }
+  .size-strip > span { font-family:var(--mono); font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
+  .size-strip .five { display:flex; align-items:center; gap:18px; }
+  .size-strip .five svg { width:16px; height:16px; color:var(--ink); }
+  .size-strip b { margin-left:auto; font-family:var(--mono); font-size:8px; font-weight:400; letter-spacing:.04em; color:var(--ink-3); }
+
+  .changes { display:grid; grid-template-columns:1.1fr .9fr; gap:12px; }
+  .change-box { padding:15px 16px; border:1px solid var(--line); background:var(--surface); border-radius:18px; corner-shape:squircle; }
+  .change-box h3 { margin:0 0 8px; font-family:var(--mono); font-size:8.5px; font-weight:600; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-3); }
+  .change-box ul { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .change-box li { display:flex; gap:7px; font-size:11px; line-height:1.5; color:var(--ink-2); }
+  .change-box li .g { flex:none; width:12px; font-family:var(--mono); font-size:10px; font-weight:600; color:var(--ok-ink); }
+  .change-box.is-remove li .g { color:var(--warn-ink); }
+  .change-box li code { font-family:var(--mono); font-size:.92em; color:var(--ink); }
+
+  .close { margin-top:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:15px 16px; border:1px solid color-mix(in srgb, var(--signal) 30%, var(--line)); background:color-mix(in srgb, var(--signal) 5%, var(--surface)); border-radius:18px; corner-shape:squircle; }
+  .close p { margin:0; font-size:12px; line-height:1.5; color:var(--ink-2); }
+  .close p b { color:var(--ink); font-weight:600; }
+  .close span { flex:none; font-family:var(--mono); font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--signal-ink); border:1px solid color-mix(in srgb, var(--signal) 40%, var(--line)); padding:6px 9px; border-radius:999px; }
+
+  .foot { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-top:18px; padding-top:12px; border-top:1px solid var(--line); font-family:var(--mono); font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); }
+  .foot em { font-family:var(--serif); font-style:italic; font-size:15px; letter-spacing:-.02em; text-transform:none; color:var(--ink-2); }
+  .sprite { position:absolute; width:0; height:0; overflow:hidden; }
+
+  @media (max-width: 980px) {
+    .hero { grid-template-columns:1fr; }
+    .hero-figure { align-items:flex-start; }
+    .face-board { width:min(100%, 320px); }
+    .deck { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .compare { grid-template-columns:1fr; }
+    .foundation { grid-template-columns:1fr 1fr; }
+    .f-col:nth-child(3) { border-left:0; border-top:1px solid var(--line); }
+    .f-col:nth-child(4) { border-top:1px solid var(--line); }
+    .changes { grid-template-columns:1fr; }
+  }
+  @media (max-width: 620px) {
+    .bar-meta span:not(.live) { display:none; }
+    .deck { grid-template-columns:1fr; }
+    .sizes { grid-template-columns:1fr 1fr; }
+    .foundation { grid-template-columns:1fr; }
+    .f-col + .f-col { border-left:0; border-top:1px solid var(--line); }
+    .close { flex-direction:column; align-items:flex-start; }
+    .foot { flex-direction:column; gap:8px; }
+  }
+</style>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true">
+  <symbol id="n-agent" viewBox="0 0 24 24">
+    <path d="M8 2 H16 C21 2 22 3 22 8 V16 C22 21 21 22 16 22 H8 C3 22 2 21 2 16 V8 C2 3 3 2 8 2 Z"/>
+    <circle cx="9.5" cy="12" r="1.35" fill="currentColor" stroke="none"/>
+    <circle cx="14.5" cy="12" r="1.35" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="n-run" viewBox="0 0 24 24"><path d="M7 6 L17 12 L7 18"/></symbol>
+  <symbol id="n-trace" viewBox="0 0 24 24">
+    <path d="M6.6 18 H7.5 Q9.5 18 9.5 16 V15.5 Q9.5 13.5 11.5 13.5 H12 L17 9.4"/>
+    <circle cx="5" cy="18" r="1.6"/>
+    <circle cx="18" cy="8.5" r="1.35" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="n-tool" viewBox="0 0 24 24">
+    <path d="M10.742 2.817 Q12 2 13.258 2.817 L18.742 6.383 Q20 7.2 20 8.7 L20 15.3 Q20 16.8 18.742 17.617 L13.258 21.183 Q12 22 10.742 21.183 L5.258 17.617 Q4 16.8 4 15.3 L4 8.7 Q4 7.2 5.258 6.383 Z"/>
+    <circle cx="12" cy="12" r="1.35" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="n-search" viewBox="0 0 24 24">
+    <path d="M13.1 15.15 A5.6 5.6 0 1 1 15.15 13.1"/>
+    <path d="M14.1 14.1 L19.3 19.3"/>
+  </symbol>
+  <symbol id="o-agent" viewBox="0 0 24 24">
+    <path d="M8.5 6.5 H15.5 A2 2 0 0 1 17.5 8.5 V14.5 L14.5 17.5 H8.5 A2 2 0 0 1 6.5 15.5 V8.5 A2 2 0 0 1 8.5 6.5 Z"/>
+    <circle cx="10.2" cy="12" r="1.35" fill="currentColor" stroke="none"/>
+    <circle cx="13.8" cy="12" r="1.35" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="o-run" viewBox="0 0 24 24"><path d="M8.5 6 L18.5 12 L8.5 18 V15 L11.5 12 L8.5 9 Z"/></symbol>
+  <symbol id="o-tool" viewBox="0 0 24 24">
+    <path d="M12 3.8 L19 7.8 V15.8 L12 19.8 L5 15.8 V7.8 Z"/>
+    <circle cx="12" cy="11.8" r="1.35" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="o-trace" viewBox="0 0 24 24">
+    <path d="M6.6 18 H9.5 V13.5 H14 L18 8.5"/>
+    <circle cx="5" cy="18" r="1.6"/>
+    <circle cx="18" cy="8.5" r="1.35" fill="currentColor" stroke="none"/>
+  </symbol>
+</svg>
+
+<div class="sheet">
+  <div class="in">
+    <header class="bar">
+      <span class="brand">
+        <span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+        <b>truex</b>
+      </span>
+      <div class="bar-meta">
+        <span>Icon foundations</span>
+        <span><b>Revision 02</b></span>
+        <span class="live"><i></i> 5 samples</span>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <div class="kicker">The continuous hand</div>
+        <h1>No more <em>45° cuts.</em></h1>
+        <p class="lede">The first hand was a style study: a bevel, a notch, a forced interruption per glyph. This one is derived from the same <b>K2 superellipse</b> as the surfaces, a 24 grid and the perceptual archetype each glyph carries. <b>No bevels. One hand.</b></p>
+        <p class="verdict-line"><b>You were right.</b> The old set exempted the glyphs from the corner foundation. This revision removes the exemption, not the clarity.</p>
+        <div class="chips">
+          <span class="chip is-key"><b>K2</b> 6u container</span>
+          <span class="chip"><b>1.5–2u</b> fillets</span>
+          <span class="chip"><b>1.75</b> stroke</span>
+          <span class="chip"><b>2.7</b> dot</span>
+          <span class="chip"><b>0</b> bevels</span>
+        </div>
+      </div>
+      <figure class="hero-figure">
+        <div class="face-board">
+          <span class="safe" aria-hidden="true"></span>
+          <svg class="glyph hero-glyph" aria-hidden="true"><use href="#n-agent"/></svg>
+          <span class="callout c1">6u · K2 corner</span>
+          <span class="callout c2">2.7u eye</span>
+          <span class="callout c3">20u keyline</span>
+        </div>
+        <figcaption class="hero-meta"><span>Agent · the squircle face</span><span><b>24 grid</b></span></figcaption>
+      </figure>
+    </section>
+
+    <section class="deck" aria-label="Five revised samples">
+      <article class="card">
+        <div class="card-top"><span>01 · Agents</span><b>Face</b></div>
+        <div class="glyph-stage"><svg class="glyph g64" aria-hidden="true"><use href="#n-agent"/></svg></div>
+        <div class="card-name">Agent</div>
+        <div class="card-fn">who is working</div>
+        <div class="card-why"><b>Pareidolia.</b> Two dots + a squircle head; the social brain reads a face before detail.</div>
+      </article>
+      <article class="card">
+        <div class="card-top"><span>02 · Execution</span><b>Motion</b></div>
+        <div class="glyph-stage"><svg class="glyph g64" aria-hidden="true"><use href="#n-run"/></svg></div>
+        <div class="card-name">Run</div>
+        <div class="card-fn">execute a turn</div>
+        <div class="card-why"><b>Direction.</b> A continuous chevron; the point leads the eye. The notch is gone.</div>
+      </article>
+      <article class="card">
+        <div class="card-top"><span>03 · Data</span><b>Path</b></div>
+        <div class="glyph-stage"><svg class="glyph g64" aria-hidden="true"><use href="#n-trace"/></svg></div>
+        <div class="card-name">Trace</div>
+        <div class="card-fn">where it went</div>
+        <div class="card-why"><b>Causality.</b> Start ring, step, endpoint dot. 2u fillets keep the eye moving.</div>
+      </article>
+      <article class="card">
+        <div class="card-top"><span>04 · Tools</span><b>Grip</b></div>
+        <div class="glyph-stage"><svg class="glyph g64" aria-hidden="true"><use href="#n-tool"/></svg></div>
+        <div class="card-name">Tool</div>
+        <div class="card-fn">what it can call</div>
+        <div class="card-why"><b>Affordance.</b> A hex socket with 1.5u fillets; the hand recognises grip.</div>
+      </article>
+      <article class="card">
+        <div class="card-top"><span>05 · System</span><b>Closure</b></div>
+        <div class="glyph-stage"><svg class="glyph g64" aria-hidden="true"><use href="#n-search"/></svg></div>
+        <div class="card-name">Search</div>
+        <div class="card-fn">find anything</div>
+        <div class="card-why"><b>Closure.</b> The lens stays a circle; the gap and handle complete the shape in the mind.</div>
+      </article>
+    </section>
+
+    <section class="section">
+      <div class="sec-head"><span>What changed</span><b>style → geometry</b></div>
+      <div class="compare">
+        <article class="pair">
+          <div class="pair-cell is-old"><svg class="glyph" aria-hidden="true"><use href="#o-agent"/></svg><span>Old · 45° chamfer</span></div>
+          <div class="pair-cell is-new"><svg class="glyph" aria-hidden="true"><use href="#n-agent"/></svg><span>New · 6u K2</span></div>
+          <div class="pair-title"><b>Agent</b><span>file → face</span></div>
+        </article>
+        <article class="pair">
+          <div class="pair-cell is-old"><svg class="glyph" aria-hidden="true"><use href="#o-run"/></svg><span>Old · notch</span></div>
+          <div class="pair-cell is-new"><svg class="glyph" aria-hidden="true"><use href="#n-run"/></svg><span>New · chevron</span></div>
+          <div class="pair-title"><b>Run</b><span>media → motion</span></div>
+        </article>
+        <article class="pair">
+          <div class="pair-cell is-old"><svg class="glyph" aria-hidden="true"><use href="#o-tool"/></svg><span>Old · sharp hex</span></div>
+          <div class="pair-cell is-new"><svg class="glyph" aria-hidden="true"><use href="#n-tool"/></svg><span>New · 1.5u fillets</span></div>
+          <div class="pair-title"><b>Tool</b><span>cut → curve</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="sec-head"><span>The foundation</span><b>why these decisions are measurable</b></div>
+      <div class="foundation">
+        <div class="f-col">
+          <div class="f-k">Math</div>
+          <div class="f-big">24 · 20 · 1.75</div>
+          <p><b>2u safe, 20u keyline, 1.75 stroke, 2.7 dot.</b> A 6u K2 container; 2u bends and 1.5u Tool vertices.</p>
+        </div>
+        <div class="f-col">
+          <div class="f-k">Optics</div>
+          <div class="f-big">1.17 · 1.8 · 1.33</div>
+          <p>At 16px: <b>1.17px stroke, 1.8px dot, 1.0–1.33px fillet.</b> The bevel's curvature step is gone; the antialiasing stays even.</p>
+        </div>
+        <div class="f-col">
+          <div class="f-k">Psychology</div>
+          <div class="f-big"><em>face · motion · path</em></div>
+          <p><b>Face, motion, causality, affordance, closure.</b> Five pre-attentive archetypes; a dot appears only where it means something.</p>
+        </div>
+        <div class="f-col">
+          <div class="f-k">Corner</div>
+          <div class="f-big">K2 · no bevel</div>
+          <p>The Agent head is <b>the same squircle as a panel</b>; Trace bends use 2u; Tool vertices 1.5u. Lenses and dots stay round.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="sec-head"><span>Size behaviour</span><b>16 / 24 / 32 / 48</b></div>
+      <div class="sizes">
+        <div class="size-cell"><svg class="glyph g16" aria-hidden="true"><use href="#n-agent"/></svg><span>16 · face</span></div>
+        <div class="size-cell"><svg class="glyph g24" aria-hidden="true"><use href="#n-agent"/></svg><span>24 · face</span></div>
+        <div class="size-cell"><svg class="glyph g32" aria-hidden="true"><use href="#n-agent"/></svg><span>32 · face</span></div>
+        <div class="size-cell"><svg class="glyph g48" aria-hidden="true"><use href="#n-agent"/></svg><span>48 · face</span></div>
+      </div>
+      <div class="size-strip">
+        <span>16px · all five</span>
+        <div class="five" aria-hidden="true">
+          <svg class="glyph" viewBox="0 0 24 24"><use href="#n-agent"/></svg>
+          <svg class="glyph" viewBox="0 0 24 24"><use href="#n-run"/></svg>
+          <svg class="glyph" viewBox="0 0 24 24"><use href="#n-trace"/></svg>
+          <svg class="glyph" viewBox="0 0 24 24"><use href="#n-tool"/></svg>
+          <svg class="glyph" viewBox="0 0 24 24"><use href="#n-search"/></svg>
+        </div>
+        <b>the real test</b>
+      </div>
+    </section>
+
+    <section class="changes">
+      <div class="change-box is-remove">
+        <h3>Removed</h3>
+        <ul>
+          <li><span class="g">✕</span><span>The <code>45°</code> notch and chamfer. A style signature with no perceptual job.</span></li>
+          <li><span class="g">✕</span><span>The forced “one cut per glyph” rule. Interruptions now exist only when they mean something.</span></li>
+          <li><span class="g">✕</span><span>The sharp hex vertices that fought the surface corner language.</span></li>
+        </ul>
+      </div>
+      <div class="change-box">
+        <h3>Kept</h3>
+        <ul>
+          <li><span class="g">✓</span><span>The 24 grid, 20 keyline, 1.75 stroke and 2.7u semantic dots.</span></li>
+          <li><span class="g">✓</span><span>One monoline hand and the five archetypes.</span></li>
+          <li><span class="g">✓</span><span>The circular lens and the round dots — the round charter.</span></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="close">
+      <p><b>These are 5 samples, not the full 34.</b> Approve the continuous hand and the remaining 29 are drawn in one pass, with the same grid and the same continuous hand.</p>
+      <span>awaiting sign-off</span>
+    </div>
+
+    <footer class="foot">
+      <span>truex · icon foundations · revision 02 · 26.10.2026</span>
+      <em>The corner is the hand.</em>
+    </footer>
+  </div>
+</div>
+</body>
+</html>

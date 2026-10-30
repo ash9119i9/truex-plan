@@ -80,6 +80,7 @@
   .chip.auto { background: var(--success-bg); color: var(--success-text); }
   .chip.manual { background: var(--warning-bg); color: var(--warning-text); }
   .chip.new { background: var(--info-bg); color: var(--info-text); margin-left: 6px; }
+  .chip.use { background: var(--surface-3); color: var(--ink-2); border: 1px solid var(--line); margin-left: 6px; }
 
   .note { margin-top: 14px; font-size: 13px; color: var(--ink-3); }
   .rules { padding-left: 20px; margin: 0; color: var(--ink-2); }
@@ -185,13 +186,13 @@
 
           <tr class="group"><th colspan="4" scope="colgroup">2 · Build it</th></tr>
           <tr>
-            <td class="name"><code>truex-build</code><span class="chip new">New</span></td>
+            <td class="name"><code>truex-build</code><span class="chip new">New</span><span class="chip use">New feature</span></td>
             <td class="what-col">Builds one task from the todo list: writes the test first, then the code, then stops so you can look. Never commits.</td>
             <td class="when-col">You have a todo list and want the next task done.</td>
             <td><span class="chip auto">Auto or /type</span></td>
           </tr>
           <tr>
-            <td class="name"><code>truex-test-driven-development</code></td>
+            <td class="name"><code>truex-test-driven-development</code><span class="chip use">Existing feature or fix</span></td>
             <td class="what-col">The habit behind building: write a test that fails, then make it pass. For bugs, first write a test that shows the bug.</td>
             <td class="when-col">Any time code changes what the app does, including bug fixes.</td>
             <td><span class="chip auto">Auto or /type</span></td>

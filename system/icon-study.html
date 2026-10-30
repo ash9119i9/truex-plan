@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · Icon study — Instrument glyphs</title>
+<meta name="description" content="Five sample glyphs for the truex Instrument system: run, agent, trace, tool and search, drawn on the 24 grid with one deliberate cut and semantic dots.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="icon-study.css">
+<link rel="stylesheet" href="corner.css">
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-run" viewBox="0 0 24 24"><path d="M8.5 6 L18.5 12 L8.5 18 V15 L11.5 12 L8.5 9 Z"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 24 24"><path d="M8.5 6.5 H15.5 A2 2 0 0 1 17.5 8.5 V14.5 L14.5 17.5 H8.5 A2 2 0 0 1 6.5 15.5 V8.5 A2 2 0 0 1 8.5 6.5 Z"/><circle cx="10.2" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="13.8" cy="12" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-trace" viewBox="0 0 24 24"><path d="M6.6 18 H9.5 V13.5 H14 L18 8.5"/><circle cx="5" cy="18" r="1.6"/><circle cx="18" cy="8.5" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M12 3.8 L19 7.8 V15.8 L12 19.8 L5 15.8 V7.8 Z"/><circle cx="12" cy="11.8" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M13.1 15.15 A5.6 5.6 0 1 1 15.15 13.1"/><path d="M14.1 14.1 L19.3 19.3"/></symbol>
+</svg>
+<a class="skip" href="#content">Skip to the glyphs</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex icon study, back to top">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><a href="index.html">01 Type</a><span class="bar-sep" aria-hidden="true">/</span><a href="02-color.html">02 Colour</a><span class="bar-sep" aria-hidden="true">/</span><b>Icons</b></span>
+    <span class="sample-chip">Sample</span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="contrast-tool" data-mode="system" type="button" aria-label="Contrast: system. Activate to change.">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4h4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-4z" fill="currentColor"/></svg>
+      <span class="tool-k">Contrast</span><span class="tool-v" id="contrast-label">System</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage icon-stage" aria-label="Icon study samples">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Icon study</span>
+        <span class="top-mid">Instrument glyphs · 05 samples</span>
+        <span><span class="dot-live">●</span> 26.10.2026</span>
+      </div>
+
+      <div class="hero-main">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">05</span>
+            <h1 class="hero-title">Icons</h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>24</b>grid</span>
+            <span class="stage-chip"><b>1.75</b>stroke</span>
+            <span class="stage-chip"><b>45°</b>cuts</span>
+            <span class="stage-chip"><b>SEMANTIC</b>dots</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <p class="hero-serif">The instrument hand.</p>
+          <p class="hero-copy">Five glyphs for the parts of the product that repeat. One monoline hand on the 24 grid: a deliberate cut or gap, a dot only where it means something, and nothing decorative.</p>
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="hero-note"><span class="pulse" aria-hidden="true"></span>Sample · direction check · not the full set</div>
+        </div>
+      </div>
+
+      <div class="glyph-deck">
+        <article class="glyph-tile">
+          <div class="tile-top"><span>01</span><span>Execution</span></div>
+          <div class="glyph-stage"><svg class="glyph glyph-hero" aria-hidden="true"><use href="#i-run"/></svg></div>
+          <div class="tile-bottom"><b>Run</b><span>execute a turn</span></div>
+        </article>
+        <article class="glyph-tile">
+          <div class="tile-top"><span>02</span><span>Agents</span></div>
+          <div class="glyph-stage"><svg class="glyph glyph-hero" aria-hidden="true"><use href="#i-agent"/></svg></div>
+          <div class="tile-bottom"><b>Agent</b><span>who is working</span></div>
+        </article>
+        <article class="glyph-tile">
+          <div class="tile-top"><span>03</span><span>Data</span></div>
+          <div class="glyph-stage"><svg class="glyph glyph-hero" aria-hidden="true"><use href="#i-trace"/></svg></div>
+          <div class="tile-bottom"><b>Trace</b><span>where it went</span></div>
+        </article>
+        <article class="glyph-tile">
+          <div class="tile-top"><span>04</span><span>Tools</span></div>
+          <div class="glyph-stage"><svg class="glyph glyph-hero" aria-hidden="true"><use href="#i-tool"/></svg></div>
+          <div class="tile-bottom"><b>Tool</b><span>what it can call</span></div>
+        </article>
+        <article class="glyph-tile">
+          <div class="tile-top"><span>05</span><span>System</span></div>
+          <div class="glyph-stage"><svg class="glyph glyph-hero" aria-hidden="true"><use href="#i-search"/></svg></div>
+          <div class="tile-bottom"><b>Search</b><span>find anything</span></div>
+        </article>
+      </div>
+
+      <div class="stage-spec">
+        <span>Canvas <b>24</b></span>
+        <span>Keyline <b>20</b></span>
+        <span>Stroke <b>1.75</b></span>
+        <span>Cuts <b>45°</b></span>
+        <span>Caps <b>round</b></span>
+        <span>Sample <b>05</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Icon study contents">
+    <div class="ruler-in">
+      <a href="#geometry" class="active" aria-current="true"><span class="n">A1</span>Geometry</a>
+      <a href="#sizes"><span class="n">A2</span>Sizes</a>
+      <a href="#inuse"><span class="n">A3</span>In use</a>
+      <a href="#scope"><span class="n">A4</span>Scope</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+    <!-- A1 GEOMETRY -->
+    <section class="chapter" id="geometry" aria-labelledby="h-geometry">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A1</div>
+        <div>
+          <p class="ch-kicker">Geometry</p>
+          <h2 class="t-h2" id="h-geometry">Drawn like <em>a part.</em></h2>
+          <p class="t-lede">One monoline hand on a 24 unit canvas: a 20 unit keyline, round caps and joins, a 45° cut where a shape turns, and a dot only where the meaning sits.</p>
+        </div>
+        <div class="folio">Geometry · A1 / A4</div>
+      </header>
+
+      <div class="icon-geometry">
+        <div class="board anatomy-board">
+          <div class="anatomy-head"><span class="board-label">Construction · Agent</span><span class="chip">24 grid</span></div>
+          <div class="anatomy">
+            <svg class="glyph anatomy-glyph" aria-hidden="true"><use href="#i-agent"/></svg>
+            <span class="anatomy-keyline" aria-hidden="true"></span>
+            <span class="anatomy-callout cut">3u cut · 45°</span>
+            <span class="anatomy-callout dot">2.7u dot</span>
+            <span class="anatomy-callout stroke">1.75 stroke</span>
+            <span class="anatomy-callout safe">20 keyline</span>
+          </div>
+          <div class="anatomy-foot"><span>Agent · i-agent</span><span>24 canvas · 2 safe</span></div>
+        </div>
+
+        <div class="geometry-spec">
+          <p class="board-label">The hand</p>
+          <h3 class="t-h3">A cut, a dot, <em>nothing else.</em></h3>
+          <p class="geometry-copy">A cut or gap gives the turning shapes their interruption; the tool takes a socket instead. That one deliberate mark makes the set recognisable without a logo or a gimmick. Rounded caps keep the machined geometry calm at 16.</p>
+          <ul class="spec-rows">
+            <li><span>Canvas</span><b>24 × 24</b></li>
+            <li><span>Keyline</span><b>20 × 20</b></li>
+            <li><span>Stroke</span><b>1.75 · round</b></li>
+            <li><span>Cut</span><b>3u at 45°</b></li>
+            <li><span>Dot</span><b>2.7u Ø</b></li>
+            <li><span>Fill</span><b>Dots only</b></li>
+          </ul>
+          <div class="cut-index">
+            <span class="board-label">The marks</span>
+            <div class="cut-row">
+              <div><svg class="glyph icon-24" aria-hidden="true"><use href="#i-run"/></svg><span>notch</span></div>
+              <div><svg class="glyph icon-24" aria-hidden="true"><use href="#i-agent"/></svg><span>chamfer</span></div>
+              <div><svg class="glyph icon-24" aria-hidden="true"><use href="#i-trace"/></svg><span>node</span></div>
+              <div><svg class="glyph icon-24" aria-hidden="true"><use href="#i-tool"/></svg><span>socket</span></div>
+              <div><svg class="glyph icon-24" aria-hidden="true"><use href="#i-search"/></svg><span>gap</span></div>
+            </div>
+          </div>
+          <p class="geometry-note"><b>Dots are meaning.</b> The agent carries the brand's two eyes; trace has a current node; tool has a socket. Run and search are pure line.</p>
+        </div>
+      </div>
+      <p class="section-cap"><b>The cut and the dot are the signature.</b> A cut appears once on a turning shape; a dot sits where the glyph means — the agent keeps the brand’s two eyes. Everything else is a clean monoline.</p>
+    </section>
+
+    <!-- A2 SIZES -->
+    <section class="chapter" id="sizes" aria-labelledby="h-sizes">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A2</div>
+        <div>
+          <p class="ch-kicker">Sizes &amp; states</p>
+          <h2 class="t-h2" id="h-sizes">Legible at 16. <em>Calm at 48.</em></h2>
+          <p class="t-lede">The same five paths, from a 16px toolbar to a 48px empty state. Icons are currentColor; only the active state borrows signal.</p>
+        </div>
+        <div class="folio">Sizes · A2 / A4</div>
+      </header>
+
+      <div class="board icon-matrix-board">
+        <div class="matrix-head"><span class="board-label">Size matrix · five glyphs</span><span class="chip">16 → 48 px</span></div>
+        <div class="matrix-scroll">
+          <table class="icon-matrix">
+            <thead><tr><th scope="col">Glyph</th><th scope="col">16</th><th scope="col">20</th><th scope="col">24</th><th scope="col">32</th><th scope="col">48</th></tr></thead>
+            <tbody>
+              <tr><th scope="row"><span>Run</span><code>i-run</code></th><td><svg class="glyph icon-16" aria-hidden="true"><use href="#i-run"/></svg></td><td><svg class="glyph icon-20" aria-hidden="true"><use href="#i-run"/></svg></td><td><svg class="glyph icon-24" aria-hidden="true"><use href="#i-run"/></svg></td><td><svg class="glyph icon-32" aria-hidden="true"><use href="#i-run"/></svg></td><td><svg class="glyph icon-48" aria-hidden="true"><use href="#i-run"/></svg></td></tr>
+              <tr><th scope="row"><span>Agent</span><code>i-agent</code></th><td><svg class="glyph icon-16" aria-hidden="true"><use href="#i-agent"/></svg></td><td><svg class="glyph icon-20" aria-hidden="true"><use href="#i-agent"/></svg></td><td><svg class="glyph icon-24" aria-hidden="true"><use href="#i-agent"/></svg></td><td><svg class="glyph icon-32" aria-hidden="true"><use href="#i-agent"/></svg></td><td><svg class="glyph icon-48" aria-hidden="true"><use href="#i-agent"/></svg></td></tr>
+              <tr><th scope="row"><span>Trace</span><code>i-trace</code></th><td><svg class="glyph icon-16" aria-hidden="true"><use href="#i-trace"/></svg></td><td><svg class="glyph icon-20" aria-hidden="true"><use href="#i-trace"/></svg></td><td><svg class="glyph icon-24" aria-hidden="true"><use href="#i-trace"/></svg></td><td><svg class="glyph icon-32" aria-hidden="true"><use href="#i-trace"/></svg></td><td><svg class="glyph icon-48" aria-hidden="true"><use href="#i-trace"/></svg></td></tr>
+              <tr><th scope="row"><span>Tool</span><code>i-tool</code></th><td><svg class="glyph icon-16" aria-hidden="true"><use href="#i-tool"/></svg></td><td><svg class="glyph icon-20" aria-hidden="true"><use href="#i-tool"/></svg></td><td><svg class="glyph icon-24" aria-hidden="true"><use href="#i-tool"/></svg></td><td><svg class="glyph icon-32" aria-hidden="true"><use href="#i-tool"/></svg></td><td><svg class="glyph icon-48" aria-hidden="true"><use href="#i-tool"/></svg></td></tr>
+              <tr><th scope="row"><span>Search</span><code>i-search</code></th><td><svg class="glyph icon-16" aria-hidden="true"><use href="#i-search"/></svg></td><td><svg class="glyph icon-20" aria-hidden="true"><use href="#i-search"/></svg></td><td><svg class="glyph icon-24" aria-hidden="true"><use href="#i-search"/></svg></td><td><svg class="glyph icon-32" aria-hidden="true"><use href="#i-search"/></svg></td><td><svg class="glyph icon-48" aria-hidden="true"><use href="#i-search"/></svg></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="matrix-note">At 16 the glyph holds without a special “small” drawing; the cut and the dots survive. At 48 the same stroke reads as a drawing, not a broken line.</p>
+      </div>
+
+      <div class="state-context">
+        <div class="board state-board">
+          <div class="matrix-head"><span class="board-label">Interaction states · Run</span><span class="chip">currentColor</span></div>
+          <div class="state-grid">
+            <div class="state-item"><span class="state-key"><svg class="glyph icon-24" aria-hidden="true"><use href="#i-run"/></svg></span><b>Default</b><span>ink-2</span></div>
+            <div class="state-item"><span class="state-key is-hover"><svg class="glyph icon-24" aria-hidden="true"><use href="#i-run"/></svg></span><b>Hover</b><span>ink</span></div>
+            <div class="state-item"><span class="state-key is-active"><svg class="glyph icon-24" aria-hidden="true"><use href="#i-run"/></svg></span><b>Active</b><span>signal</span></div>
+            <div class="state-item"><span class="state-key is-disabled"><svg class="glyph icon-24" aria-hidden="true"><use href="#i-run"/></svg></span><b>Disabled</b><span>ctl</span></div>
+          </div>
+          <p class="matrix-note">The icon never changes shape between states. Signal only tells you that it is live or selected.</p>
+        </div>
+
+        <div class="board context-board">
+          <div class="matrix-head"><span class="board-label">currentColor · two contexts</span><span class="chip">same path</span></div>
+          <div class="context-pair">
+            <div class="context-tile" data-ctx="light">
+              <span class="context-label">Light</span>
+              <div class="context-icons">
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-run"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-agent"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-trace"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-tool"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-search"/></svg>
+              </div>
+            </div>
+            <div class="context-tile" data-ctx="dark">
+              <span class="context-label">Dark</span>
+              <div class="context-icons">
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-run"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-agent"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-trace"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-tool"/></svg>
+                <svg class="glyph icon-20" aria-hidden="true"><use href="#i-search"/></svg>
+              </div>
+            </div>
+          </div>
+          <p class="matrix-note">The sprite carries no colour. Every glyph inherits the ink of the surface it sits on.</p>
+        </div>
+      </div>
+      <p class="section-cap"><b>One drawing, every size.</b> The system does not redraw icons as they scale; it trusts the geometry and the stroke.</p>
+    </section>
+    <!-- A3 IN USE -->
+    <section class="chapter" id="inuse" aria-labelledby="h-inuse">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A3</div>
+        <div>
+          <p class="ch-kicker">In the instrument</p>
+          <h2 class="t-h2" id="h-inuse">Five glyphs, <em>one toolbar.</em></h2>
+          <p class="t-lede">A real truex command surface: search in the field, the tool and trace in the tools, the agent at the side, and run as the one primary action.</p>
+        </div>
+        <div class="folio">In use · A3 / A4</div>
+      </header>
+
+      <div class="inuse-stage">
+        <div class="ui-surface">
+          <div class="ui-bar">
+            <span class="ui-brand"><span class="ui-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>truex</span>
+            <span class="ui-crumb"><b>Insights</b><span>/</span>Session · T4</span>
+            <div class="ui-tools">
+              <span class="ui-icon" title="Search"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-search"/></svg></span>
+              <span class="ui-icon" title="Tools"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-tool"/></svg></span>
+              <span class="ui-icon is-active" title="Trace"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-trace"/></svg></span>
+              <span class="ui-icon" title="Agent"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-agent"/></svg></span>
+              <span class="ui-divider" aria-hidden="true"></span>
+              <span class="ui-run"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-run"/></svg>Run</span>
+            </div>
+          </div>
+
+          <div class="ui-body">
+            <div class="ui-palette">
+              <div class="ui-input"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-search"/></svg><span>Run a command or find a tool</span><kbd>⌘ K</kbd></div>
+              <div class="ui-list">
+                <div class="ui-item is-active"><span class="ui-icon"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-run"/></svg></span><b>Run the turn</b><small>Action</small><span>⌘↵</span></div>
+                <div class="ui-item"><span class="ui-icon"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-tool"/></svg></span><b>Stripe · read invoices</b><small>Tool</small><span>↵</span></div>
+                <div class="ui-item"><span class="ui-icon"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-trace"/></svg></span><b>Open the trace</b><small>T4 · 52s</small><span>⌘T</span></div>
+                <div class="ui-item"><span class="ui-icon"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-agent"/></svg></span><b>Ask Atlas</b><small>Agent</small><span>⌘A</span></div>
+              </div>
+              <div class="ui-pal-foot"><span><svg class="glyph icon-16" aria-hidden="true"><use href="#i-tool"/></svg>14 tools available</span><span>Esc to close</span></div>
+            </div>
+
+            <aside class="ui-side">
+              <div class="ui-agent"><span class="ui-agent-mark" aria-hidden="true"><svg class="glyph icon-20"><use href="#i-agent"/></svg></span><div><b>Atlas</b><span>Docs · main</span></div><span class="ui-live">Live</span></div>
+              <div class="ui-trace">
+                <span class="board-label">Latest trace</span>
+                <div class="ui-trace-row"><svg class="glyph icon-20" aria-hidden="true"><use href="#i-trace"/></svg><div><b>5 steps · 52s</b><span>Open the receipt</span></div></div>
+              </div>
+              <div class="ui-side-note"><svg class="glyph icon-16" aria-hidden="true"><use href="#i-search"/></svg>Shortcuts, labels and icons all read at 16.</div>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <div class="ui-callouts">
+        <div><span class="pin" aria-hidden="true">1</span><b>Search · 16</b><span>The lens leads the field and the palette.</span></div>
+        <div><span class="pin" aria-hidden="true">2</span><b>Trace · active</b><span>Signal-soft is the selected state, not a new colour.</span></div>
+        <div><span class="pin" aria-hidden="true">3</span><b>Run · primary</b><span>The one filled action on the surface.</span></div>
+      </div>
+      <p class="section-cap"><b>The set is quiet in a toolbar.</b> The glyphs identify, the labels explain, and the single signal-filled action is run.</p>
+    </section>
+
+    <!-- A4 SCOPE -->
+    <section class="chapter" id="scope" aria-labelledby="h-scope">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">A4</div>
+        <div>
+          <p class="ch-kicker">Scope</p>
+          <h2 class="t-h2" id="h-scope">Approve the hand. <em>Then we draw the set.</em></h2>
+          <p class="t-lede">Five samples are enough to judge the cut, the dot, the weight and the silences. If the hand is right, the necessary set is drawn in one pass.</p>
+        </div>
+        <div class="folio">Scope · A4 / A4</div>
+      </header>
+
+      <div class="scope-grid">
+        <div class="board scope-board">
+          <div class="matrix-head"><span class="board-label">Working principles</span><span class="chip">The hand</span></div>
+          <ul class="principle-list">
+            <li class="principle"><span class="n">01</span><div><b>One hand.</b><p>24 grid, 1.75 stroke, round caps. No per-icon style, no second thickness.</p></div></li>
+            <li class="principle"><span class="n">02</span><div><b>One interruption.</b><p>A cut, a gap or a socket; the rest is calm monoline.</p></div></li>
+            <li class="principle"><span class="n">03</span><div><b>Dots mean.</b><p>Agent eyes, trace node, tool socket. A dot is never decoration.</p></div></li>
+            <li class="principle"><span class="n">04</span><div><b>Colour is inherited.</b><p>CurrentColor by default; signal only for active and live. No identity in UI icons.</p></div></li>
+            <li class="principle"><span class="n">05</span><div><b>16 is the test.</b><p>Draw at 24, approve at 16. If a detail dies at 16, it was not needed.</p></div></li>
+          </ul>
+        </div>
+
+        <div class="board scope-board">
+          <div class="matrix-head"><span class="board-label">The rest of the set</span><span class="chip">Proposed · not drawn</span></div>
+          <p class="scope-copy">The five samples test the hand across five of the six families. Files join in the full pass; the set follows the same hand and stays deliberately small.</p>
+          <div class="scope-cats">
+            <div class="scope-cat"><span>Execution</span><b>5</b></div>
+            <div class="scope-cat"><span>Agents</span><b>4</b></div>
+            <div class="scope-cat"><span>Tools</span><b>5</b></div>
+            <div class="scope-cat"><span>Data</span><b>5</b></div>
+            <div class="scope-cat"><span>Files</span><b>5</b></div>
+            <div class="scope-cat"><span>System</span><b>10</b></div>
+          </div>
+          <p class="scope-total"><span>Total</span><b>34 glyphs</b></p>
+          <p class="scope-note">Execution: run, stop, pause, retry, clock. Agents: agent, crew, fork, handoff. Tools: tool, command, link, plugin, key. Data: chart, table, receipt, trace, pulse. Files: file, folder, upload, download, copy. System: search, settings, help, lock, close, plus, check, warning, error, chevron.</p>
+        </div>
+      </div>
+
+      <div class="study-cta">
+        <span class="sample-chip">Sample</span>
+        <p><b>Approve the hand — the cut, the dot, the 1.75 stroke — and we complete the set.</b> The colour and typography are already locked; the glyphs will join the same sprite and ship with the system.</p>
+      </div>
+      <p class="section-cap"><b>Five glyphs. One hand.</b> The next step is the full set, drawn together so no icon drifts.</p>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Icon study — Instrument glyphs / Five samples</span>
+      </div>
+    </div>
+    <p class="foot-serif">The instrument hand. <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<script src="color.js"></script>
+</body>
+</html>

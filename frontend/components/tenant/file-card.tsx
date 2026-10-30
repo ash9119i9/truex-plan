@@ -1,14 +1,8 @@
 "use client";
 import { createContext, useContext, useEffect, useState } from "react";
-import { Icon } from "@/components/v2/icon";
-import {
-  fileTag,
-  formatBytes,
-  typeName,
-  type ChatFile,
-  type ViewerTarget,
-} from "@/lib/tenant-files";
-import "@/styles/v2/chat-files.css";
+import { Button } from "@/components/tx/button";
+import { type ChatFile, type ViewerTarget } from "@/lib/tenant-files";
+import { DocumentCard } from "./document-card";
 
 export type { ViewerTarget };
 
@@ -77,8 +71,8 @@ export interface WritingFile {
   path: string;
 }
 
-// The files a reply made, under its last paragraph: each with Open (the
-// viewer) and its own Download. A file still being written shows Writing…
+// The files a reply made, under its last paragraph, as DocumentCards
+// (DESIGN-SPEC 12.3): each opens the viewer and has its own Download. A file still being written shows Writing…
 // and can be opened to watch it. A file that couldn't be saved says so,
 // with Retry; it has nothing to open or download until it is saved.
 export function FileCard({
@@ -124,106 +118,51 @@ export function FileCard({
   const isActive = (path: string) =>
     actions.active?.runId === runId && actions.active.path === path;
   return (
-    <section className="file-card" aria-label="Files from this reply">
-      <p className="file-card-head">{heading}</p>
-      <ul>
-        {visible.map((row) => {
-          const path = row.kind === "file" ? row.file.path : row.path;
-          const name = path.slice(path.lastIndexOf("/") + 1);
-          const tag = fileTag(name);
-          if (row.kind === "unsaved")
-            return (
-              <li key={path} className="file-row is-unsaved">
-                <span className={`file-tile ft-${tag.tone}`} aria-hidden="true">
-                  {tag.label}
-                </span>
-                <span className="file-open is-static">
-                  <span className="file-name">{name}</span>
-                  <span className="file-meta file-unsaved">
-                    {retry?.busy ? (
-                      <span className="file-writing">
-                        <span className="spinner" aria-hidden="true" />
-                        Saving…
-                      </span>
-                    ) : (
-                      "Couldn't save this file"
-                    )}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className="text-btn file-retry"
-                  aria-label={`Retry saving ${name}`}
-                  disabled={retry?.busy === true}
-                  onClick={() => actions.retry(runId, failed)}
-                >
-                  Retry
-                </button>
-              </li>
-            );
+    <section className="dc-stack" aria-label="Files from this reply">
+      {ready !== total && <p className="dc-stack-head">{heading}</p>}
+      {visible.map((row) => {
+        const path = row.kind === "file" ? row.file.path : row.path;
+        const name = path.slice(path.lastIndexOf("/") + 1);
+        if (row.kind === "unsaved")
           return (
-            <li
+            <DocumentCard
               key={path}
-              className={isActive(path) ? "file-row is-active" : "file-row"}
-            >
-              <span className={`file-tile ft-${tag.tone}`} aria-hidden="true">
-                {tag.label}
-              </span>
-              <button
-                type="button"
-                className="file-open"
-                onClick={() => actions.open({ runId, path })}
-                aria-label={`Open ${name}`}
-              >
-                <span className="file-name">{name}</span>
-                <span className="file-meta">
-                  {row.kind === "file" ? (
-                    <>
-                      {typeName(name)} · {formatBytes(row.file.size)}
-                      {row.file.version > 1 && (
-                        <span className="file-version">
-                          v{row.file.version}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="file-writing">
-                      <span className="spinner" aria-hidden="true" />
-                      Writing…
-                    </span>
-                  )}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="icon-btn ghost"
-                aria-label={`Download ${name}`}
-                title="Download"
-                disabled={row.kind !== "file"}
-                onClick={() =>
-                  row.kind === "file" && actions.download(row.file)
-                }
-              >
-                <Icon name="arrowUp" size={15} className="file-download" />
-              </button>
-            </li>
+              name={name}
+              size={0}
+              state={retry?.busy ? "saving" : "unsaved"}
+              onRetry={() => actions.retry(runId, failed)}
+            />
           );
-        })}
-      </ul>
+        return (
+          <DocumentCard
+            key={path}
+            name={name}
+            size={row.kind === "file" ? row.file.size : 0}
+            version={row.kind === "file" ? row.file.version : undefined}
+            state={row.kind === "file" ? "ready" : "writing"}
+            active={isActive(path)}
+            onOpen={() => actions.open({ runId, path })}
+            onDownload={
+              row.kind === "file" ? () => actions.download(row.file) : undefined
+            }
+          />
+        );
+      })}
       {retry && !retry.busy && (
-        <p className="file-card-note" role="alert">
+        <p className="dc-stack-note" role="alert">
           {retry.message}
         </p>
       )}
       {rows.length > SHOWN && (
-        <button
-          type="button"
-          className="file-more"
+        <Button
+          size="xs"
+          variant="ghost"
+          className="dc-more"
           aria-expanded={expanded}
           onClick={() => setExpanded((open) => !open)}
         >
           {expanded ? "Show fewer" : `+${rows.length - SHOWN} more`}
-        </button>
+        </Button>
       )}
     </section>
   );

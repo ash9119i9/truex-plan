@@ -1,0 +1,1012 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · System 01 — Typography</title>
+<meta name="description" content="truex design system, chapter 01: typography. Bricolage Grotesque, Instrument Serif and Geist Mono — locked from Design System v2.2.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="space.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="corner.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to the chapter</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex system, back to top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><b>01 Type</b><span class="bar-sep" aria-hidden="true">/</span><a href="02-color.html">02 Colour</a><span class="bar-sep" aria-hidden="true">/</span><a href="03-space.html">03 Space</a><span class="bar-sep" aria-hidden="true">/</span><a href="04-corners.html">04 Corners</a><span class="bar-sep" aria-hidden="true">/</span><a href="05-primitives.html">05 Primitives</a><span class="bar-sep" aria-hidden="true">/</span><a href="06-patterns.html">06 Patterns</a></span>
+    <span class="lock-chip">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      Locked
+    </span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="size-tool" type="button" aria-label="Text size: 100 percent. Activate to change.">
+      <span aria-hidden="true" style="font-family:var(--f-ui);font-weight:700;font-size:.8rem;letter-spacing:-.02em">Aa</span>
+      <span class="tool-k">Type</span><span class="tool-v" id="size-label">100%</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage" aria-label="Chapter 01: Typography">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Design system</span>
+        <span class="top-mid">Source v2.2 · Instrument</span>
+        <span><span class="dot-live">●</span> Locked 25.10.2026</span>
+      </div>
+
+      <div class="hero-main">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">01</span>
+            <h1 class="hero-title">Typography</h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>03</b>families</span>
+            <span class="stage-chip"><b>13</b>roles</span>
+            <span class="stage-chip"><b>REM</b>native</span>
+            <span class="stage-chip"><b>AA</b>text</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <p class="hero-serif">Set like an instrument.</p>
+          <p class="hero-copy">One grotesque carries the interface. One serif signs it. One mono measures it. The trio is <b>locked from v2.2</b> — this chapter is the final word on how it is set.</p>
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="hero-note"><span class="pulse" aria-hidden="true"></span>The lock is the system — no new sizes</div>
+        </div>
+      </div>
+
+      <div class="face-deck">
+        <article class="face">
+          <div class="face-top"><span>Family 01</span><b>UI + Display</b></div>
+          <div class="face-glyph" aria-hidden="true" style="font-family:var(--f-ui);font-weight:800;font-variation-settings:var(--cut-hero);font-optical-sizing:none">Aa</div>
+          <div class="face-mid">
+            <div class="face-name">Bricolage Grotesque</div>
+            <p class="face-note">Variable grotesque. Three axes, one workhorse.</p>
+          </div>
+          <div class="face-sample" style="font-weight:720;letter-spacing:-.03em;font-variation-settings:var(--cut-heading);font-optical-sizing:none">Agents at work</div>
+        </article>
+        <article class="face">
+          <div class="face-top"><span>Family 02</span><b>Editorial</b></div>
+          <div class="face-glyph" aria-hidden="true" style="font-family:var(--f-serif);font-style:italic;font-weight:400;letter-spacing:-.02em">Aa</div>
+          <div class="face-mid">
+            <div class="face-name">Instrument Serif</div>
+            <p class="face-note">The human exception. Italic, once per surface.</p>
+          </div>
+          <div class="face-sample serif">a one-page plan</div>
+        </article>
+        <article class="face">
+          <div class="face-top"><span>Family 03</span><b>Data + Labels</b></div>
+          <div class="face-glyph" aria-hidden="true" style="font-family:var(--f-mono);font-weight:500;letter-spacing:-.06em;font-feature-settings:'zero' 1">01</div>
+          <div class="face-mid">
+            <div class="face-name">Geist Mono</div>
+            <p class="face-note">The instrument readout. Values never move.</p>
+          </div>
+          <div class="face-sample mono">T4 · 00:04:38</div>
+        </article>
+      </div>
+
+      <div class="stage-spec">
+        <span>Families <b>03</b></span>
+        <span>Roles <b>13</b></span>
+        <span>Base <b>15px</b></span>
+        <span>Measure <b>42rem</b></span>
+        <span>Baseline <b>23.25px</b></span>
+        <span>Heritage <b>v2.2</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Chapter contents">
+    <div class="ruler-in">
+      <a href="#families" class="active" aria-current="true"><span class="n">1.1</span>Families</a>
+      <a href="#scale"><span class="n">1.2</span>Scale</a>
+      <a href="#hierarchy"><span class="n">1.3</span>In use</a>
+      <a href="#numerals"><span class="n">1.4</span>Numerals</a>
+      <a href="#serif"><span class="n">1.5</span>Serif</a>
+      <a href="#micro"><span class="n">1.6</span>Micro</a>
+      <a href="#measure"><span class="n">1.7</span>Measure</a>
+      <a href="#rules"><span class="n">1.8</span>Rules</a>
+      <a href="#build"><span class="n">1.9</span>Build</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+    <!-- 1.1 FAMILIES -->
+    <section class="chapter" id="families" aria-labelledby="h-families">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.1</div>
+        <div>
+          <p class="ch-kicker">Casting</p>
+          <h2 class="t-h2" id="h-families">Three faces, <em>one voice.</em></h2>
+          <p class="t-lede">One family does the work, one signs it, one measures it. The division is strict because hierarchy depends on it: each face has a job, and no job has two faces.</p>
+        </div>
+        <div class="folio">Families · 01 / 09</div>
+      </header>
+
+      <article class="family-major" aria-label="Bricolage Grotesque specimen">
+        <div class="family-main">
+          <div class="family-specimen">
+            <div class="specimen-top">
+              <span class="board-label">Specimen 01 · Aa</span>
+              <span class="board-label">Variable · 3 axes</span>
+            </div>
+            <div class="cut-ladder" role="group" aria-label="The four Bricolage cuts">
+              <div class="cut-cell"><span class="cut-k"><span>Text</span><span>400</span></span><span class="cut-aa" style="font-weight:400;font-variation-settings:'opsz' 14, 'wdth' 100">Aa</span><span class="cut-v">14 · 100</span></div>
+              <div class="cut-cell"><span class="cut-k"><span>Heading</span><span>700</span></span><span class="cut-aa" style="font-weight:700;font-variation-settings:'opsz' 48, 'wdth' 90">Aa</span><span class="cut-v">48 · 90</span></div>
+              <div class="cut-cell"><span class="cut-k"><span>Display</span><span>780</span></span><span class="cut-aa" style="font-weight:780;font-variation-settings:'opsz' 96, 'wdth' 82">Aa</span><span class="cut-v">96 · 82</span></div>
+              <div class="cut-cell"><span class="cut-k"><span>Brand</span><span>800</span></span><span class="cut-aa" style="font-weight:800;font-variation-settings:'opsz' 48, 'wdth' 85">Aa</span><span class="cut-v">48 · 85</span></div>
+            </div>
+            <div class="specimen-body">
+              <div class="specimen-glyph" data-bricolage aria-hidden="true" style="font-weight:780;font-variation-settings:'opsz' 96, 'wdth' 82">Aa</div>
+              <div class="specimen-samples">
+                <div class="sample-display" data-bricolage style="font-weight:780;font-variation-settings:'opsz' 96, 'wdth' 82">Agents at work</div>
+                <p class="sample-body">The interface voice. Quiet at 15px, engineered at 96px. Optical size does the work — not decoration.</p>
+                <div class="sample-caption" id="cut-readout">opsz 96 · wdth 82 · wght 780</div>
+              </div>
+            </div>
+          </div>
+          <div class="family-spec">
+            <div class="family-role"><span>Family 01</span><span class="chip chip-signal">UI + Display</span></div>
+            <div>
+              <h3 class="family-name">Bricolage Grotesque</h3>
+              <p class="family-meta">Variable grotesque · SIL OFL 1.1<br>opsz 12–96 · wdth 75–100 · wght 300–800</p>
+            </div>
+            <p class="family-voice"><b>The workhorse.</b> It carries every reading surface and every declaration. The cut changes by role: text stays open, display turns narrow and dense.</p>
+            <div class="family-controls" aria-label="Bricolage variable axes">
+              <div class="axis">
+                <label for="ax-opsz">opsz</label>
+                <input id="ax-opsz" type="range" min="12" max="96" step="1" value="96">
+                <output id="out-opsz" for="ax-opsz">96</output>
+              </div>
+              <div class="axis">
+                <label for="ax-wdth">wdth</label>
+                <input id="ax-wdth" type="range" min="75" max="100" step="1" value="82">
+                <output id="out-wdth" for="ax-wdth">82</output>
+              </div>
+              <div class="axis">
+                <label for="ax-wght">wght</label>
+                <input id="ax-wght" type="range" min="300" max="800" step="1" value="780">
+                <output id="out-wght" for="ax-wght">780</output>
+              </div>
+              <div class="preset-row" role="group" aria-label="Cut presets">
+                <button class="preset" type="button" data-cut="text" aria-pressed="false">Text</button>
+                <button class="preset" type="button" data-cut="heading" aria-pressed="false">Heading</button>
+                <button class="preset" type="button" data-cut="display" aria-pressed="true">Display</button>
+                <button class="preset" type="button" data-cut="brand" aria-pressed="false">Brand</button>
+              </div>
+            </div>
+            <div class="cast-notes">
+              <div>
+                <p class="cast-title">Use</p>
+                <ul class="cast-list">
+                  <li>Interface copy and labels</li>
+                  <li>Headings and display</li>
+                  <li>Agent names, controls, titles</li>
+                </ul>
+              </div>
+              <div>
+                <p class="cast-title">Never</p>
+                <ul class="cast-list never">
+                  <li>Tabular data or code</li>
+                  <li>Editorial accents</li>
+                  <li>All-caps prose</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <div class="family-minors">
+        <article class="family-minor" aria-label="Instrument Serif specimen">
+          <div class="minor-specimen">
+            <div class="specimen-top"><span class="board-label">Specimen 02 · Aa</span><span class="board-label">Serif · italic</span></div>
+            <div class="minor-glyph" aria-hidden="true" style="font-family:var(--f-serif);font-style:italic;font-weight:400">Aa</div>
+            <p class="minor-sample">The human margin note, at headline size.</p>
+          </div>
+          <div class="minor-spec">
+            <div class="minor-top"><h3 class="minor-name">Instrument Serif</h3><span class="minor-role">Editorial accent</span></div>
+            <p class="family-meta">Serif · 400 roman + italic · SIL OFL 1.1<br>The italic is the cast cut.</p>
+            <p class="minor-voice"><b>The exception.</b> One italic phrase, at headline size, per surface. It signs the thought the interface is making — then it stops.</p>
+            <div class="font-compare" aria-label="Roman compared with the cast italic">
+              <div><span class="cmp roman">Aa</span><span class="lbl">Roman · reference</span></div>
+              <div><span class="cmp" style="font-style:italic">Aa</span><span class="lbl">Italic · locked</span></div>
+            </div>
+            <div class="serif-rules">
+              <span class="rule-chip"><b>Use</b> headline accents</span>
+              <span class="rule-chip"><b>Use</b> one hero numeral</span>
+              <span class="rule-chip"><b>Never</b> UI, body, tables</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="family-minor" aria-label="Geist Mono specimen">
+          <div class="minor-specimen">
+            <div class="specimen-top"><span class="board-label">Specimen 03 · 01</span><span class="board-label">Mono · tabular</span></div>
+            <div class="minor-glyph" data-geist aria-hidden="true" style="font-family:var(--f-mono);font-weight:500;letter-spacing:-.05em">01</div>
+            <p class="minor-sample">Labels, time and every figure that must align.</p>
+          </div>
+          <div class="minor-spec">
+            <div class="minor-top"><h3 class="minor-name">Geist Mono</h3><span class="minor-role">Data + labels</span></div>
+            <p class="family-meta">Monospace · 400 / 500 / 600 · SIL OFL 1.1<br>tabular numerals · slashed zero</p>
+            <p class="minor-voice"><b>The instrument readout.</b> Everything scanned rather than read: micro labels, timestamps, receipts, code, columns of figures.</p>
+            <div class="geist-controls">
+              <div class="seg" role="group" aria-label="Geist Mono weight">
+                <button type="button" data-geist-weight="400">400</button>
+                <button type="button" data-geist-weight="500" aria-pressed="true">500</button>
+                <button type="button" data-geist-weight="600">600</button>
+              </div>
+              <div class="geist-sample" data-geist-sample>142.2k · 00:04:38</div>
+              <div class="geist-caption">Tabular · zero 1 · fixed advance</div>
+            </div>
+            <div class="serif-rules">
+              <span class="rule-chip"><b>Use</b> labels and values</span>
+              <span class="rule-chip"><b>Use</b> code and time</span>
+              <span class="rule-chip"><b>Never</b> prose or headings</span>
+            </div>
+          </div>
+        </article>
+      </div>
+
+      <div class="pairing">
+        <p class="pairing-line">Close the books <em>in one pass.</em><span class="mono">T4 · 00:04:38 · LEDGER / MAIN</span></p>
+        <div class="pairing-label"><b>The pairing</b>One line, three voices</div>
+      </div>
+      <p class="section-cap"><b>Read it as hierarchy:</b> Bricolage sets the claim, Instrument Serif signs it, Geist Mono records it. That order never reverses.</p>
+    </section>
+
+    <!-- 1.2 SCALE -->
+    <section class="chapter" id="scale" aria-labelledby="h-scale">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.2</div>
+        <div>
+          <p class="ch-kicker">The scale</p>
+          <h2 class="t-h2" id="h-scale">Thirteen roles, <em>exact cuts.</em></h2>
+          <p class="t-lede">Pick the role; the numbers follow. Every size is rem, every cut is declared, and there is no fourteenth size. If a job has no role, it does not ship.</p>
+        </div>
+        <div class="folio">Scale · 02 / 09</div>
+      </header>
+
+      <div class="scale-group">
+        <div class="scale-group-head"><h3>Display</h3><span>03 roles · one statement per surface</span></div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Hero</b><span>Opening statement</span><code>.t-hero</code></div>
+          <div class="scale-sample"><span class="t-hero">Make it count</span></div>
+          <div class="scale-meta"><b>Bricolage · 800</b><span>52–108px · LH .90</span><span>clamp(3.25rem, 7vw, 6.75rem)</span><span>TR −.04em · opsz 96 / wdth 80</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Display</b><span>Page-defining title</span><code>.t-display</code></div>
+          <div class="scale-sample"><span class="t-display">Agents at work</span></div>
+          <div class="scale-meta"><b>Bricolage · 780</b><span>56px · 3.5rem</span><span>LH .95 · TR −.045em</span><span>opsz 96 / wdth 82</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Section</b><span>Section and chapter titles</span><code>.t-h2</code></div>
+          <div class="scale-sample"><span class="t-h2">Read like an instrument</span></div>
+          <div class="scale-meta"><b>Bricolage · 760</b><span>36–60px · LH .98</span><span>clamp(2.25rem, 4.6vw, 3.75rem)</span><span>TR −.045em · opsz 96 / wdth 82</span></div>
+        </div>
+      </div>
+
+      <div class="scale-group">
+        <div class="scale-group-head"><h3>Reading</h3><span>06 roles · the working text</span></div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Sub-head</b><span>Sub-section title</span><code>.t-h3</code></div>
+          <div class="scale-sample"><span class="t-h3">The conversation stream</span></div>
+          <div class="scale-meta"><b>Bricolage · 700</b><span>24px · 1.5rem</span><span>LH 1.15 · TR −.03em</span><span>opsz 48 / wdth 90</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Card title</b><span>Card and panel titles</span><code>.t-h4</code></div>
+          <div class="scale-sample"><span class="t-h4">Quarterly pipeline review</span></div>
+          <div class="scale-meta"><b>Bricolage · 700</b><span>17px · 1.0625rem</span><span>LH 1.25 · TR −.02em</span><span>opsz 48 / wdth 90</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Lede</b><span>Intro copy</span><code>.t-lede</code></div>
+          <div class="scale-sample"><span class="t-lede">Every live thing runs on one page clock.</span></div>
+          <div class="scale-meta"><b>Bricolage · 400</b><span>17px · 1.0625rem</span><span>LH 1.55 · max 46rem</span><span>TR 0 · opsz 14 / wdth 100</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Body</b><span>All reading copy</span><code>.t-body</code></div>
+          <div class="scale-sample"><span class="t-body">Every surface is built at response width and annotated in place.</span></div>
+          <div class="scale-meta"><b>Bricolage · 400</b><span>15px · .9375rem</span><span>LH 1.55 · max 42rem</span><span>TR 0 · opsz 14 / wdth 100</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Control</b><span>Buttons, names, rows</span><code>.t-ui</code></div>
+          <div class="scale-sample"><span class="t-ui">Run evaluation</span></div>
+          <div class="scale-meta"><b>Bricolage · 600</b><span>14px · .875rem</span><span>LH 1.4 · TR −.005em</span><span>opsz 14 / wdth 100</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Meta</b><span>Secondary lines</span><code>.t-meta</code></div>
+          <div class="scale-sample"><span class="t-meta">Updated 4 minutes ago</span></div>
+          <div class="scale-meta"><b>Bricolage · 500</b><span>13px · .8125rem</span><span>LH 1.4 · TR 0</span><span>opsz 14 / wdth 100</span></div>
+        </div>
+      </div>
+
+      <div class="scale-group">
+        <div class="scale-group-head"><h3>Instrument</h3><span>04 roles · labels, accents, values</span></div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Micro label</b><span>State and metadata</span><code>.t-micro</code></div>
+          <div class="scale-sample"><span class="t-micro" style="color:var(--ink-3)">Turn 04 · Stream · 00:04:38</span></div>
+          <div class="scale-meta"><b>Geist Mono · 600</b><span>11px · .6875rem</span><span>uppercase · LH 1.3</span><span>TR +.12em · zero 1</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Editorial</b><span>One accent phrase</span><code>.t-editorial</code></div>
+          <div class="scale-sample"><span class="t-editorial">a one-page onboarding plan</span></div>
+          <div class="scale-meta"><b>Instrument Serif · 400 italic</b><span>36px · 2.25rem</span><span>1.02–1.06em · LH 1</span><span>TR −.02em · no synthesis</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Numeral</b><span>Headline figures</span><code>.t-num</code></div>
+          <div class="scale-sample"><span class="t-num">142.2k</span> <span class="t-num" style="font-size:1.5rem;color:var(--ink-2)">00:04:38</span></div>
+          <div class="scale-meta"><b>Geist Mono · 500</b><span>36px · 2.25rem</span><span>LH 1.1 · tabular</span><span>zero 1</span></div>
+        </div>
+
+        <div class="scale-row">
+          <div class="scale-role"><b>Code</b><span>Inline and block code</span><code>.t-code</code></div>
+          <div class="scale-sample"><code class="t-code">DS.Live.pause()</code></div>
+          <div class="scale-meta"><b>Geist Mono · 400</b><span>.86em · 13.8px at 15px</span><span>LH 1.55 · zero 1</span></div>
+        </div>
+      </div>
+      <p class="section-cap"><b>One size has one job.</b> The scale is short by design: role names are the API, raw font sizes are not. At 150% and 200% every value scales from the root.</p>
+    </section>
+    <!-- 1.3 HIERARCHY -->
+    <section class="chapter" id="hierarchy" aria-labelledby="h-hierarchy">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.3</div>
+        <div>
+          <p class="ch-kicker">Hierarchy in use</p>
+          <h2 class="t-h2" id="h-hierarchy">A contract, <em>not a mood.</em></h2>
+          <p class="t-lede">A real turn, built only from the thirteen roles. One declaration, one serif accent, one block of body, two kinds of instrument type. Nothing competes.</p>
+        </div>
+        <div class="folio">In use · 03 / 09</div>
+      </header>
+
+      <div class="surface-stage">
+        <div class="surface">
+          <div class="app-bar">
+            <span class="app-brand">
+              <span class="app-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+              <span class="app-word">truex</span>
+            </span>
+            <div class="app-crumb"><span class="crumb-scope">Workspace</span><span class="sep">/</span><b>Finance</b><span class="sep">/</span><b>September close</b></div>
+            <div class="app-state"><span class="live-dot" aria-hidden="true"></span>Live<span class="turn">T4 / 06</span></div>
+          </div>
+
+          <div class="surface-body">
+            <div class="thread">
+              <div class="user-turn">
+                <span class="user-meta">You · 09:41</span>
+                <div class="user-bubble">Close September and flag anything that moved more than five percent.</div>
+              </div>
+
+              <article class="agent-turn">
+                <div class="agent-head">
+                  <span class="agent-avatar" aria-hidden="true">L</span>
+                  <span class="agent-name">Ledger</span>
+                  <span class="pin" aria-hidden="true">5</span>
+                  <span class="agent-meta">Main · T4 · 00:01:22</span>
+                  <span class="pin" aria-hidden="true">4</span>
+                </div>
+                <h3 class="t-h3 answer-head">September is ready to close — with <em>two items open.</em><span class="pin" aria-hidden="true">1</span></h3>
+                <p class="t-body answer-copy">Recognition landed <span class="num">3.1%</span> under plan on a softer EMEA close.<span class="pin" aria-hidden="true">2</span> Holding the accruals until Monday moves <span class="num">$182,400</span> into October; posting tonight keeps the month in September. <a href="#hierarchy">Review the accruals</a> or hold the ledger.</p>
+
+                <div class="metric-row">
+                  <div class="metric"><span class="t-micro">Recognised</span><b>$4,281,920</b><small>SEP · FY26</small></div>
+                  <div class="metric"><span class="t-micro">Vs plan</span><b class="down">−3.1%</b><small>NET OF FX</small></div>
+                  <div class="metric"><span class="t-micro">Open items</span><b>02 <span class="pin" aria-hidden="true">3</span></b><small>BEFORE POSTING</small></div>
+                </div>
+
+                <div class="run-strip">
+                  <span class="run-item"><span class="g" aria-hidden="true">✓</span>Reconciled <span class="num">412</span> lines</span>
+                  <span class="run-item"><span class="g" aria-hidden="true">✓</span>Matched <span class="num">38</span> invoices</span>
+                  <span class="run-item warn"><span class="g" aria-hidden="true">!</span><span class="num">2</span> accruals flagged</span>
+                </div>
+
+                <div class="evidence">
+                  <div class="evidence-head">
+                    <span class="t-micro">Open accruals</span>
+                    <span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>Review first</span>
+                  </div>
+                  <div class="evidence-scroll">
+                    <div class="e-table" role="table" aria-label="Open accruals">
+                      <div class="e-row head" role="row"><span role="columnheader">Line</span><span role="columnheader" style="text-align:right">Amount</span><span role="columnheader" style="text-align:right">Δ M/M</span><span role="columnheader" style="text-align:right">State</span></div>
+                      <div class="e-row" role="row"><span class="line" role="cell">Cloud infrastructure<small>AWS</small></span><span class="n" role="cell">$182,400</span><span class="n delta" role="cell">↑ 12.4%</span><span class="chip chip-warn" role="cell"><span class="g" aria-hidden="true">!</span>Review</span></div>
+                      <div class="e-row" role="row"><span class="line" role="cell">Professional services<small>Meridian</small></span><span class="n" role="cell">$64,900</span><span class="n delta" role="cell">↓ 8.2%</span><span class="chip chip-warn" role="cell"><span class="g" aria-hidden="true">!</span>Flagged</span></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="agent-foot">
+                  <span class="t-micro">14 tools · 38.2k tokens · 00:01:22</span>
+                  <div class="foot-actions">
+                    <button class="btn btn-sm" type="button">Receipt</button>
+                    <button class="btn btn-sm btn-primary" type="button">Continue</button>
+                  </div>
+                </div>
+              </article>
+
+              <div class="composer">
+                <span class="plus" aria-hidden="true">+</span>
+                <input type="text" placeholder="Ask a follow-up or assign a step" aria-label="Message Ledger">
+                <button class="send" type="button" aria-label="Send message" aria-hidden="true">→</button>
+              </div>
+            </div>
+
+            <aside class="surface-rail" aria-label="Turn receipt and crew">
+              <div class="rail-card">
+                <div class="rail-head"><span class="t-micro">Receipt</span><span class="pin" aria-hidden="true">6</span></div>
+                <div class="rail-row"><span class="k">Route</span><span class="v">frontier</span></div>
+                <div class="rail-row"><span class="k">Tools</span><span class="v">14</span></div>
+                <div class="rail-row"><span class="k">Tokens</span><span class="v">38,206</span></div>
+                <div class="rail-row"><span class="k">Wall</span><span class="v">01:22</span></div>
+              </div>
+              <div class="rail-card">
+                <div class="rail-head"><span class="t-micro">Crew</span><span class="t-micro">03</span></div>
+                <div class="crew-row"><span class="crew-dot" style="background:var(--id-2)" aria-hidden="true"></span><span class="crew-name">Ledger</span><span class="crew-role">Main</span></div>
+                <div class="crew-row"><span class="crew-dot" style="background:var(--id-1)" aria-hidden="true"></span><span class="crew-name">Vera</span><span class="crew-role">Research</span></div>
+                <div class="crew-row"><span class="crew-dot" style="background:var(--id-3)" aria-hidden="true"></span><span class="crew-name">Miles</span><span class="crew-role">Review</span></div>
+              </div>
+              <div class="rail-card">
+                <div class="rail-head"><span class="t-micro">Checks</span><span class="t-micro">3 / 4</span></div>
+                <div class="check-row"><span class="g" aria-hidden="true">✓</span>Ledger balanced<span>ok</span></div>
+                <div class="check-row"><span class="g" aria-hidden="true">✓</span>FX revalued<span>ok</span></div>
+                <div class="check-row warn"><span class="g" aria-hidden="true">!</span>Approvals<span>2 open</span></div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+      <p class="board-label" style="margin-top:1.25rem;display:block">Annotation · six roles, one surface</p>
+      <div class="pin-legend">
+        <div class="legend-item"><span class="pin" aria-hidden="true">1</span><b>H3 · serif accent</b><span>24 / 1.15 · 700. The declaration, with the surface's one italic phrase.</span></div>
+        <div class="legend-item"><span class="pin" aria-hidden="true">2</span><b>Body · 15 / 1.55</b><span>Reading copy. Inline figures step into mono, capped at 42rem.</span></div>
+        <div class="legend-item"><span class="pin" aria-hidden="true">3</span><b>Numeral · mono 500</b><span>Tabular, slashed zero. The decimal holds while the value changes.</span></div>
+        <div class="legend-item"><span class="pin" aria-hidden="true">4</span><b>Micro · 11 / 600</b><span>Turn identity and time. Uppercase, tracked +.12em, metadata only.</span></div>
+        <div class="legend-item"><span class="pin" aria-hidden="true">5</span><b>UI · 14 / 600</b><span>Names, controls and rows. Bricolage at the working cut.</span></div>
+        <div class="legend-item"><span class="pin" aria-hidden="true">6</span><b>Receipt · mono</b><span>Every label–value pair in the rail. The instrument's ledger.</span></div>
+      </div>
+      <p class="section-cap">Switch the theme or the text size — the surface reflows; the ranks do not. <b>The serif appears once.</b> The numbers stay in mono.</p>
+    </section>
+
+    <!-- 1.4 NUMERALS -->
+    <section class="chapter" id="numerals" aria-labelledby="h-numerals">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.4</div>
+        <div>
+          <p class="ch-kicker">Numerals</p>
+          <h2 class="t-h2" id="h-numerals">Figures are read in columns. <em>Set them that way.</em></h2>
+          <p class="t-lede">Every figure is Geist Mono with tabular numerals and a slashed zero. Change a digit and nothing moves. Instrument Serif gets exactly one numeral — and only when the figure is the headline.</p>
+        </div>
+        <div class="folio">Numerals · 04 / 09</div>
+      </header>
+
+      <div class="num-stage">
+        <div class="num-lead">
+          <div class="num-top">
+            <span class="num-kicker">Net revenue · September 2026</span>
+            <button class="btn btn-sm btn-ghost" id="shuffle" type="button">Shuffle figures</button>
+            <span class="vh" id="num-live" aria-live="polite"></span>
+          </div>
+          <div class="num-big" id="num-big">$4.28M</div>
+          <div class="num-delta"><b id="num-delta">+3.2%</b><span>vs August · net of FX</span></div>
+          <p class="num-note">The serif numeral is the one accent on this surface. Every other figure stays in Geist Mono, tabular, so columns never shift.</p>
+        </div>
+        <div class="num-side">
+          <div class="num-cell"><span class="k">Cash position</span><span class="v" data-num="cash">$1.92M</span><span class="m">Operating · unrestricted</span></div>
+          <div class="num-cell"><span class="k">DSO</span><span class="v" data-num="dso">38.4d</span><span class="m">Trailing 90 days</span></div>
+          <div class="num-cell"><span class="k">Close time</span><span class="v" data-num="close">03:04:38</span><span class="m">Wall clock · T4</span></div>
+          <div class="num-cell"><span class="k">Open items</span><span class="v" data-num="open">02</span><span class="m">Awaiting a decision</span></div>
+        </div>
+      </div>
+
+      <div class="board ledger-board">
+        <div class="ledger-top">
+          <span class="board-label">Ledger movements · USD</span>
+          <span class="chip"><span class="g" aria-hidden="true">≡</span>4 lines</span>
+        </div>
+        <div class="table-scroll">
+          <table class="ledger" aria-label="Ledger movements for September">
+            <thead>
+              <tr><th scope="col">Line</th><th scope="col" class="n">September</th><th scope="col" class="n">August</th><th scope="col" class="n">Δ M/M</th></tr>
+            </thead>
+            <tbody>
+              <tr data-row="cloud"><td>Cloud infrastructure<span class="row-sub">AWS · 42 seats</span></td><td class="n">182,400</td><td class="n">162,300</td><td class="n"><span class="up">↑ 12.4%</span></td></tr>
+              <tr data-row="payroll"><td>Payroll<span class="row-sub">US + EMEA · September</span></td><td class="n">1,284,600</td><td class="n">1,262,100</td><td class="n"><span class="up">↑ 1.8%</span></td></tr>
+              <tr data-row="services"><td>Professional services<span class="row-sub">Meridian · advisory</span></td><td class="n">64,900</td><td class="n">70,700</td><td class="n"><span class="down">↓ 8.2%</span></td></tr>
+              <tr data-row="fx"><td>FX revaluation<span class="row-sub">EUR · GBP exposure</span></td><td class="n">−21,300</td><td class="n">−14,900</td><td class="n"><span class="down">↓ 43.0%</span></td></tr>
+              <tr class="total"><td>Total movements</td><td class="n" data-total-sep>1,510,600</td><td class="n" data-total-aug>1,480,200</td><td class="n"><span class="up" data-total-delta>↑ 2.1%</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="ledger-note">Direction is arithmetic, not judgement: a rising expense line carries the same glyph as a rising revenue line. Colour never travels without one.</p>
+      </div>
+
+      <div class="digit-grid">
+        <div class="digit-cell">
+          <div class="digit-sample">0&nbsp;&nbsp;O</div>
+          <p><b>Zero 1.</b> The zero is slashed, so a figure can never read as a letter.</p>
+        </div>
+        <div class="digit-cell">
+          <div class="digit-sample">1,234.56</div>
+          <p><b>Group and align.</b> Thousands separators, fixed decimals, right alignment.</p>
+        </div>
+        <div class="digit-cell">
+          <div class="digit-sample">00:04:38</div>
+          <p><b>Hold the width.</b> Timestamps run without moving the labels around them.</p>
+        </div>
+      </div>
+      <p class="section-cap"><b>One serif numeral, then none.</b> The headline figure gets the human accent; every value that must align, compare or update is Geist Mono.</p>
+    </section>
+
+    <!-- 1.5 SERIF -->
+    <section class="chapter" id="serif" aria-labelledby="h-serif">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.5</div>
+        <div>
+          <p class="ch-kicker">Editorial accent</p>
+          <h2 class="t-h2" id="h-serif">One italic phrase, <em>and only one.</em></h2>
+          <p class="t-lede">Instrument Serif is the system's human voice, not a second heading font. It appears at headline size, in italic, once per surface — then it gets out of the way.</p>
+        </div>
+        <div class="folio">Serif · 05 / 09</div>
+      </header>
+
+      <div class="editorial-stage">
+        <div class="editorial-top">
+          <span>Instrument Serif · <b>the accent</b></span>
+          <span>One phrase per surface</span>
+        </div>
+        <p class="editorial-line">The quarter,<br><em>in three moves.</em></p>
+        <div class="editorial-foot">
+          <span>Q3 board pack · <b>12 pages</b></span>
+          <span>Prepared 14 Oct 2026</span>
+        </div>
+      </div>
+
+      <div class="editorial-uses">
+        <div class="serif-example">
+          <div class="ex-k"><span>Permitted 01 · headline</span><b>✓ Use</b></div>
+          <div class="ex-sample"><span class="t-h3">Close the month, <em>not the team.</em></span></div>
+          <p class="ex-body">One clause, at headline size, inside a Bricolage heading. The accent signs the thought; it does not replace the heading.</p>
+        </div>
+        <div class="serif-example">
+          <div class="ex-k"><span>Permitted 02 · numeral</span><b>✓ Use</b></div>
+          <div class="ex-sample"><span class="t-editorial" style="font-size:2.75rem;color:var(--signal-ink)">28%</span></div>
+          <p class="ex-body">One headline figure per surface. In tables, receipts and comparisons, the figure goes back to mono.</p>
+        </div>
+        <div class="serif-example">
+          <div class="ex-k"><span>Permitted 03 · quote</span><b>✓ Use</b></div>
+          <div class="ex-sample"><span class="t-editorial">A plan is a promise you can edit.</span></div>
+          <p class="ex-body">A pull quote at headline scale. Never at body size, never over a photo, never in a control.</p>
+        </div>
+      </div>
+
+      <div class="serif-forbidden">
+        <div class="forbidden-cell">
+          <div class="fk"><span aria-hidden="true">✕</span>Not this · control</div>
+          <div class="forbidden-sample"><span class="t-editorial" style="font-size:1.15rem;letter-spacing:0">Continue →</span></div>
+          <p>Controls wear Bricolage. The serif never sits in a button, tab or menu.</p>
+        </div>
+        <div class="forbidden-cell">
+          <div class="fk"><span aria-hidden="true">✕</span>Not this · body</div>
+          <div class="forbidden-sample"><span class="t-editorial" style="font-size:1rem;line-height:1.4;letter-spacing:0">The close moved faster than the forecast expected.</span></div>
+          <p>Body copy in serif loses its texture and its speed. Reading stays grotesque.</p>
+        </div>
+        <div class="forbidden-cell">
+          <div class="fk"><span aria-hidden="true">✕</span>Not this · data</div>
+          <div class="forbidden-sample"><span class="t-editorial" style="font-size:1.05rem;letter-spacing:.06em">SEPTEMBER · ACTUAL</span></div>
+          <p>Table labels are read by scanning. They belong to Geist Mono, never the accent.</p>
+        </div>
+        <div class="forbidden-cell">
+          <div class="fk"><span aria-hidden="true">✕</span>Not this · caps</div>
+          <div class="forbidden-sample"><span class="t-editorial" style="font-size:1.3rem;letter-spacing:.08em">BOARD PACK</span></div>
+          <p>Uppercase lives in mono micro labels. Caps fight the serif's italic.</p>
+        </div>
+      </div>
+
+      <div class="serif-rules">
+        <span class="rule-chip"><b>Italic only</b> · roman is not cast</span>
+        <span class="rule-chip"><b>400 only</b> · no synthetic bold</span>
+        <span class="rule-chip"><b>1.02–1.06em</b> optical size</span>
+        <span class="rule-chip"><b>1.5rem floor</b> · headline size</span>
+        <span class="rule-chip"><b>One phrase</b> per surface</span>
+        <span class="rule-chip"><b>No caps</b> · no UI · no tables</span>
+      </div>
+      <p class="section-cap"><b>The serif signs; it does not speak for the interface.</b> If a screen needs a second accent, it needs a better hierarchy instead.</p>
+    </section>
+    <!-- 1.6 MICRO -->
+    <section class="chapter" id="micro" aria-labelledby="h-micro">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.6</div>
+        <div>
+          <p class="ch-kicker">Instrument type</p>
+          <h2 class="t-h2" id="h-micro">The small type is <em>the instrument panel.</em></h2>
+          <p class="t-lede">Micro labels and code share Geist Mono, tabular figures and a slashed zero. Labels are uppercase, tracked +0.12em, and live at 11px. They are metadata, never instructions.</p>
+        </div>
+        <div class="folio">Micro · 06 / 09</div>
+      </header>
+
+      <div class="micro-anatomy">
+        <div class="micro-top">
+          <span class="board-label">Micro label · anatomy</span>
+          <span class="chip chip-signal"><span class="g" aria-hidden="true">↗</span>Enlarged for inspection</span>
+        </div>
+        <div class="micro-big"><span>Turn 04</span><span class="sep">·</span><span>Stream</span><span class="sep">·</span><span>00:04:38</span></div>
+        <div class="micro-props">
+          <div class="micro-prop"><div class="k">Family</div><div class="v">Geist Mono</div></div>
+          <div class="micro-prop"><div class="k">Weight</div><div class="v">600</div></div>
+          <div class="micro-prop"><div class="k">Size</div><div class="v">.6875rem · 11px</div></div>
+          <div class="micro-prop"><div class="k">Case</div><div class="v">Uppercase</div></div>
+          <div class="micro-prop"><div class="k">Tracking</div><div class="v">+0.12em</div></div>
+          <div class="micro-prop"><div class="k">Colour</div><div class="v">ink-3</div></div>
+        </div>
+        <div class="micro-actual">
+          <span class="t-micro">Turn 04 · Stream · 00:04:38</span>
+          <span class="t-meta dim">Actual size at 100% — 11px</span>
+        </div>
+      </div>
+
+      <div class="label-wall">
+        <div class="label-cell"><span class="t-micro">Main · T4 · 00:01:22</span><p>Turn identity. The unit of work, never a heading.</p></div>
+        <div class="label-cell"><span class="t-micro">Reconciled · 412 lines</span><p>State plus a count. The number stays in the same face.</p></div>
+        <div class="label-cell"><span class="t-micro">AA 4.8:1</span><p>A contrast receipt. Two facts, one label.</p></div>
+        <div class="label-cell"><span class="t-micro">Sep 2026</span><p>Period context. Short, fixed, scannable.</p></div>
+        <div class="label-cell"><span class="t-micro">Tool · Stripe</span><p>A connected tool. Category first, then the name.</p></div>
+        <div class="label-cell"><span class="t-micro">38.2k tokens</span><p>Usage. Lowercase unit, mono advance.</p></div>
+        <div class="label-cell"><span class="t-micro">Updated 4m ago</span><p>Relative time. Never a date and a time together.</p></div>
+        <div class="label-cell inverse"><span class="t-micro">Live · T4</span><p>On inverse, the label keeps its rank — only the value changes.</p></div>
+        <div class="label-cell soft"><span class="t-micro">Review before posting</span><p>State on a tinted surface. Colour is never the only signal.</p></div>
+        <div class="label-cell"><span class="t-micro">⌘ K</span><p>Keys. The glyph does the naming; the label stays out.</p></div>
+        <div class="label-cell"><span class="t-micro">USD · FY26</span><p>Unit and fiscal year. Two tokens, one dot.</p></div>
+        <div class="label-cell"><span class="t-micro">Open 02</span><p>A count with a state word. Always paired.</p></div>
+      </div>
+
+      <div class="code-card">
+        <div class="code-head">
+          <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+          system/type.css
+          <button class="copy" type="button" data-copy="#code-micro" aria-label="Copy micro label CSS">Copy</button>
+        </div>
+        <pre class="code" id="code-micro"><code><span class="c">/* the instrument voice */</span>
+<span class="p">.t-micro</span> {
+  <span class="p">font-family</span>: <span class="k">var</span>(--f-mono);
+  <span class="p">font-size</span>: <span class="n">0.6875rem</span>;
+  <span class="p">font-weight</span>: <span class="n">600</span>;
+  <span class="p">letter-spacing</span>: <span class="n">0.12em</span>;
+  <span class="p">text-transform</span>: <span class="k">uppercase</span>;
+  <span class="p">font-feature-settings</span>: <span class="s">"zero"</span> <span class="n">1</span>;
+}</code></pre>
+      </div>
+
+      <div class="micro-rules">
+        <span class="rule-chip"><b>Uppercase only</b> · labels</span>
+        <span class="rule-chip"><b>+0.12em</b> tracking</span>
+        <span class="rule-chip"><b>11px floor</b> · metadata</span>
+        <span class="rule-chip"><b>Never prose</b> · never headings</span>
+        <span class="rule-chip"><b>Middot separators</b> · no dashes</span>
+        <span class="rule-chip"><b>Zero 1</b> · always</span>
+      </div>
+      <p class="section-cap"><b>Mono is a tool, not a texture.</b> Labels, values, code and time belong to Geist Mono because they must be scanned or aligned; a sentence belongs to Bricolage because it must be read.</p>
+    </section>
+
+    <!-- 1.7 MEASURE -->
+    <section class="chapter" id="measure" aria-labelledby="h-measure">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.7</div>
+        <div>
+          <p class="ch-kicker">Measure &amp; rhythm</p>
+          <h2 class="t-h2" id="h-measure">A line is <em>a unit of reading.</em></h2>
+          <p class="t-lede">Body copy stops at 42rem — the width at which a line still reads as one breath. Ledes get 46rem. Nothing is justified; nothing is centred past two lines.</p>
+        </div>
+        <div class="folio">Measure · 07 / 09</div>
+      </header>
+
+      <div class="board measure-wide-board">
+        <div class="measure-meta">
+          <span class="board-label">Anti-pattern · full bleed</span>
+          <span class="measure-chip"><span aria-hidden="true">!</span>Beyond the return</span>
+        </div>
+        <p class="wide-text" id="measure-wide-text">Recognition landed <span class="num">3.1%</span> under plan on a softer EMEA close, with two accruals still awaiting a human decision; holding them until Monday moves <span class="num">$182,400</span> into October, while posting tonight keeps the month in September and settles the ledger before the board pack is due on Wednesday. The audit trail must reconcile to the same close date, and the decision is the difference between a clean close and a reopened month.</p>
+        <div class="limit-line" aria-hidden="true"><span>42 rem</span></div>
+        <div class="measure-meta" style="margin-top:1rem">
+          <span class="ch" data-ch="wide">≈ — ch</span>
+          <span class="t-meta dim">The eye loses the return before the sentence ends.</span>
+        </div>
+      </div>
+
+      <div class="board measure-target-board">
+        <div class="measure-target">
+          <div class="measure-meta">
+            <span class="board-label">The measure · 42 rem</span>
+            <span class="measure-chip" style="color:var(--ok-ink)"><span aria-hidden="true">✓</span>One breath</span>
+          </div>
+          <p class="t-body" id="measure-target-text">Recognition landed <span class="num">3.1%</span> under plan on a softer EMEA close. Two accruals still need a decision: hold them until Monday and <span class="num">$182,400</span> moves into October; post tonight and September closes clean.</p>
+          <div class="measure-ruler" aria-hidden="true"><span>42 rem</span><div class="line"></div><span data-ch="target">≈ — ch</span></div>
+        </div>
+      </div>
+
+      <div class="board rhythm-board">
+        <div class="rhythm-demo" data-lines="off">
+          <div class="measure-meta">
+            <span class="board-label">Line boxes · 15 / 1.55</span>
+            <button class="btn btn-sm" id="rhythm-toggle" type="button" aria-pressed="false">Show line boxes</button>
+          </div>
+          <p class="demo-text t-body">The close moved faster than the forecast expected, but two accruals still need a human decision. We can post the adjustment tonight or hold the ledger until Monday's review. Either choice closes the month with a clean audit trail.</p>
+        </div>
+        <div class="rhythm-side">
+          <div class="linebox">
+            <div class="linebox-bars" aria-hidden="true"><div class="lb-half"></div><div class="lb-core">EM 15</div><div class="lb-half"></div></div>
+            <div class="lb-legend"><div><b>4.125px</b> half-leading</div><div><b>15px</b> em box</div><div><b>4.125px</b> half-leading</div><div><b>23.25px</b> line box</div></div>
+          </div>
+          <div class="rhythm-formula">15px × 1.55 = 23.25px</div>
+          <p class="t-meta dim">Half-leading sits above and below the em box. The line box is the rhythm; the type is the voice.</p>
+        </div>
+      </div>
+
+      <div class="rhythm-rules">
+        <div class="rhythm-rule"><span class="g" aria-hidden="true">✓</span><span><b>Balance headings.</b> Let display lines break evenly.</span></div>
+        <div class="rhythm-rule"><span class="g" aria-hidden="true">✓</span><span><b>Pretty paragraphs.</b> No orphan on the last line.</span></div>
+        <div class="rhythm-rule"><span class="g" aria-hidden="true">✓</span><span><b>Left align.</b> Reading starts from one edge.</span></div>
+        <div class="rhythm-rule"><span class="g" aria-hidden="true">✓</span><span><b>Never justify.</b> No rivers, no stretched spaces.</span></div>
+      </div>
+      <p class="section-cap"><b>Measure is a design token, not a preference.</b> <code>--measure-body: 42rem</code> caps every reading surface. The live character count above uses the current text size.</p>
+    </section>
+
+    <!-- 1.8 RULES -->
+    <section class="chapter" id="rules" aria-labelledby="h-rules">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.8</div>
+        <div>
+          <p class="ch-kicker">Rules &amp; accessibility</p>
+          <h2 class="t-h2" id="h-rules">Ten rules. <em>No exceptions.</em></h2>
+          <p class="t-lede">The lock is only useful if it is enforced. These are the constraints a reviewer applies to every truex surface — and the accessibility contract underneath them.</p>
+        </div>
+        <div class="folio">Rules · 08 / 09</div>
+      </header>
+
+      <div class="rules-grid">
+        <div class="rule"><span class="n">01</span><div><h3>Use the role, not a size.</h3><p>If it is not in the thirteen, it does not ship. Drift begins with one hand-tuned heading.</p></div></div>
+        <div class="rule"><span class="n">02</span><div><h3>One serif phrase per surface.</h3><p>At headline size, in italic, once. A second accent is a hierarchy problem, not a styling opportunity.</p></div></div>
+        <div class="rule"><span class="n">03</span><div><h3>Mono never sets prose.</h3><p>Geist Mono is for labels, values, time and code — anything scanned or aligned. Reading stays Bricolage.</p></div></div>
+        <div class="rule"><span class="n">04</span><div><h3>Numbers are tabular.</h3><p>Every figure uses tabular numerals with a slashed zero. Changing a digit must never move the column.</p></div></div>
+        <div class="rule"><span class="n">05</span><div><h3>Body lines stop at 42rem.</h3><p>The measure protects the return sweep. Ledes get 46rem; micro labels get a line, not a paragraph.</p></div></div>
+        <div class="rule"><span class="n">06</span><div><h3>Uppercase lives in mono.</h3><p>Headings are sentence case. All-caps is a property of micro labels, tracked +0.12em, never emphasis.</p></div></div>
+        <div class="rule"><span class="n">07</span><div><h3>Heavy is display-only.</h3><p>Bricolage at 760+ is for display and headings. Body never exceeds 500; UI controls sit at 600.</p></div></div>
+        <div class="rule"><span class="n">08</span><div><h3>Optical size is a token.</h3><p>opsz and wdth are assigned by role. They are the voice of the cut, not a per-screen effect.</p></div></div>
+        <div class="rule"><span class="n">09</span><div><h3>No fake syntax.</h3><p>No letterspacing on lowercase, no synthetic bold, no fake italic. <code>font-synthesis: none</code> is enforced.</p></div></div>
+        <div class="rule"><span class="n">10</span><div><h3>Small has a floor.</h3><p>11px is the metadata floor and 13px is the floor for anything essential. Body is 15px at 100%.</p></div></div>
+      </div>
+
+      <div class="board acc-board">
+        <div class="acc-cell">
+          <p class="t-micro dim">01 · Text scaling</p>
+          <h3>The page scales, not the layout.</h3>
+          <p>Every size is rem. At 200% this is a larger view of the same page — not a broken one.</p>
+          <div class="scale-buttons" role="group" aria-label="Preview text size">
+            <button class="btn btn-sm" type="button" data-setsize="100" aria-pressed="true">100%</button>
+            <button class="btn btn-sm" type="button" data-setsize="150" aria-pressed="false">150%</button>
+            <button class="btn btn-sm" type="button" data-setsize="200" aria-pressed="false">200%</button>
+          </div>
+          <div class="acc-sample"><p class="t-body">September closes at <span class="num">06:40</span>. The books balance; two accruals await review.</p></div>
+        </div>
+        <div class="acc-cell">
+          <p class="t-micro dim">02 · Text contrast</p>
+          <h3>Every text pair passes AA.</h3>
+          <p>Measured against the surface it sits on. Large display inherits the same pairs.</p>
+          <div class="contrast-cols">
+            <div>
+              <div class="contrast-title">On light</div>
+              <ul class="contrast-list">
+                <li><span class="sw" style="background:#1F2A30"></span>Ink<span class="ratio">13.86</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#5F6D73"></span>Ink 2<span class="ratio">5.06</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#637077"></span>Ink 3<span class="ratio">4.82</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#2A72A3"></span>Signal ink<span class="ratio">4.92</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#F6F9FA"></span>On inverse<span class="ratio">13.86</span><span class="pass">✓ AA</span></li>
+              </ul>
+            </div>
+            <div>
+              <div class="contrast-title">On dark</div>
+              <ul class="contrast-list">
+                <li><span class="sw" style="background:#EEF4F6"></span>Ink<span class="ratio">16.14</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#B7C3C8"></span>Ink 2<span class="ratio">9.95</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#8B999F"></span>Ink 3<span class="ratio">6.11</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#8DC9EF"></span>Signal ink<span class="ratio">10.02</span><span class="pass">✓ AA</span></li>
+                <li><span class="sw" style="background:#171717"></span>On inverse<span class="ratio">16.14</span><span class="pass">✓ AA</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="acc-cell">
+          <p class="t-micro dim">03 · Loading</p>
+          <h3>Loaded once, declared twice.</h3>
+          <p>Google Fonts with preconnect and <code>display=swap</code>; every stack falls back to the platform.</p>
+          <div class="acc-stack">--f-ui: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;<br>--f-serif: "Instrument Serif", ui-serif, Georgia, serif;<br>--f-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;</div>
+          <p style="margin-top:.65rem">All three families are SIL OFL 1.1. Self-host them for air-gapped deployments.</p>
+        </div>
+        <div class="acc-cell">
+          <p class="t-micro dim">04 · Floors</p>
+          <h3>Small has a floor.</h3>
+          <ul class="acc-limits">
+            <li><span class="g" aria-hidden="true">✓</span><span>11px is the metadata floor; 13px for anything essential.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Body is 15px; ledes are 17px at 100%.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Never justify. Never centre past two lines.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>No text baked into images; <code>lang</code> is always declared.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Line height is unitless; fallback metrics cannot collapse it.</span></li>
+          </ul>
+        </div>
+      </div>
+      <p class="section-cap"><b>200% is the test, not an edge case.</b> Use the Type control in the bar and read this page again before shipping a new surface.</p>
+    </section>
+
+    <!-- 1.9 BUILD -->
+    <section class="chapter" id="build" aria-labelledby="h-build">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">1.9</div>
+        <div>
+          <p class="ch-kicker">Implementation</p>
+          <h2 class="t-h2" id="h-build">One file, <em>no new sizes.</em></h2>
+          <p class="t-lede">The chapter ships as <code>type.css</code>: families, cuts, thirteen role classes and the measure. The role specimens on this page are set from it; the chapter shell only arranges them.</p>
+        </div>
+        <div class="folio">Build · 09 / 09</div>
+      </header>
+
+      <div class="impl-grid">
+        <div class="impl-copy">
+          <p><b>Use the role, not a raw size.</b> Link <code>type.css</code> after your reset and apply a role class. Product code should never carry a font size that is not a token.</p>
+          <p><b>The optical cut is pinned.</b> <code>font-optical-sizing: none</code> lets the declared opsz axis render instead of the browser's automatic guess. That is why display reads narrow and text stays open.</p>
+
+          <div class="role-index" aria-label="The thirteen role classes">
+            <div class="role-chip"><code>.t-hero</code><span>52–108</span></div>
+            <div class="role-chip"><code>.t-display</code><span>56</span></div>
+            <div class="role-chip"><code>.t-h2</code><span>36–60</span></div>
+            <div class="role-chip"><code>.t-h3</code><span>24</span></div>
+            <div class="role-chip"><code>.t-h4</code><span>17</span></div>
+            <div class="role-chip"><code>.t-lede</code><span>17</span></div>
+            <div class="role-chip"><code>.t-body</code><span>15</span></div>
+            <div class="role-chip"><code>.t-ui</code><span>14</span></div>
+            <div class="role-chip"><code>.t-meta</code><span>13</span></div>
+            <div class="role-chip"><code>.t-micro</code><span>11</span></div>
+            <div class="role-chip"><code>.t-editorial</code><span>36</span></div>
+            <div class="role-chip"><code>.t-num</code><span>36</span></div>
+            <div class="role-chip"><code>.t-code</code><span>0.86em</span></div>
+          </div>
+
+          <ul class="checklist">
+            <li><span class="g" aria-hidden="true">✓</span><span>Families load with opsz, wdth and wght axes.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>All sizes are rem; no raw px in product type.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>One serif accent per surface, at 1.5rem or larger.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Numbers use <code>.num</code> or <code>.t-num</code>.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Body measure is capped at <code>42rem</code>.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Heading and paragraph wrapping are declared.</span></li>
+          </ul>
+        </div>
+
+        <div class="impl-code">
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              system/type.css · tokens
+              <button class="copy" type="button" data-copy="#code-tokens" aria-label="Copy type tokens CSS">Copy</button>
+            </div>
+            <pre class="code" id="code-tokens"><code><span class="c">/* families */</span>
+<span class="p">--f-ui</span>: <span class="s">"Bricolage Grotesque"</span>, ui-sans-serif, system-ui, sans-serif;
+<span class="p">--f-serif</span>: <span class="s">"Instrument Serif"</span>, ui-serif, Georgia, serif;
+<span class="p">--f-mono</span>: <span class="s">"Geist Mono"</span>, ui-monospace, <span class="s">"SF Mono"</span>, monospace;
+
+<span class="c">/* the cuts, assigned by role */</span>
+<span class="p">--cut-text</span>: <span class="s">"opsz"</span> <span class="n">14</span>, <span class="s">"wdth"</span> <span class="n">100</span>;
+<span class="p">--cut-heading</span>: <span class="s">"opsz"</span> <span class="n">48</span>, <span class="s">"wdth"</span> <span class="n">90</span>;
+<span class="p">--cut-h2</span>: <span class="s">"opsz"</span> <span class="n">96</span>, <span class="s">"wdth"</span> <span class="n">82</span>;
+<span class="p">--cut-hero</span>: <span class="s">"opsz"</span> <span class="n">96</span>, <span class="s">"wdth"</span> <span class="n">80</span>;
+
+<span class="c">/* sizes, rem-native */</span>
+<span class="p">--t-hero</span>: <span class="k">clamp</span>(<span class="n">3.25rem</span>, <span class="n">7vw</span>, <span class="n">6.75rem</span>);
+<span class="p">--t-display</span>: <span class="n">3.5rem</span>;
+<span class="p">--t-h2</span>: <span class="k">clamp</span>(<span class="n">2.25rem</span>, <span class="n">4.6vw</span>, <span class="n">3.75rem</span>);
+<span class="p">--t-h3</span>: <span class="n">1.5rem</span>;  <span class="p">--t-h4</span>: <span class="n">1.0625rem</span>;
+<span class="p">--t-body</span>: <span class="n">0.9375rem</span>;  <span class="p">--t-ui</span>: <span class="n">0.875rem</span>;
+<span class="p">--t-micro</span>: <span class="n">0.6875rem</span>;
+
+<span class="p">--measure-body</span>: <span class="n">42rem</span>;
+<span class="p">--baseline</span>: <span class="n">1.453125rem</span>;</code></pre>
+          </div>
+
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              markup · role classes
+              <button class="copy" type="button" data-copy="#code-markup" aria-label="Copy role class markup">Copy</button>
+            </div>
+            <pre class="code" id="code-markup"><code><span class="p">&lt;h3</span> <span class="k">class</span>=<span class="s">"t-h3"</span><span class="p">&gt;</span>
+  September closes <span class="p">&lt;em&gt;</span>with two exceptions.<span class="p">&lt;/em&gt;</span>
+<span class="p">&lt;/h3&gt;</span>
+
+<span class="p">&lt;p</span> <span class="k">class</span>=<span class="s">"t-body measure"</span><span class="p">&gt;</span>…<span class="p">&lt;/p&gt;</span>
+
+<span class="p">&lt;span</span> <span class="k">class</span>=<span class="s">"t-micro"</span><span class="p">&gt;</span>TURN 04 · 00:04:38<span class="p">&lt;/span&gt;</span>
+<span class="p">&lt;span</span> <span class="k">class</span>=<span class="s">"t-num"</span><span class="p">&gt;</span>142.2k<span class="p">&lt;/span&gt;</span></code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-note">
+        <div class="lock-left">
+          <span class="seal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+          <div><b>Chapter 01 · Typography is locked.</b><small>Source · Design System v2.2 (Instrument) · 25 October 2026</small></div>
+        </div>
+        <div class="lock-right">Files · type.css / index.html<br><a href="02-color.html">Next · 02 Colour →</a></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Chapter 01 — Typography / Locked 25 Oct 2026</span>
+      </div>
+    </div>
+    <p class="foot-serif">Set like an instrument. <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<script src="spec.js"></script>
+</body>
+</html>

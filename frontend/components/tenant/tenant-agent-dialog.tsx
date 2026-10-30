@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ApiRequestError, userMessage } from "@/lib/api";
 import { LOOKS, TINTS, tintOf } from "@/lib/agent-look";
 import {
@@ -16,8 +16,31 @@ import {
   type TenantAgent,
   type TenantModel,
 } from "@/lib/tenant-agents";
-import { Badge, Robot } from "@/components/v2/agent-badge";
-import { Icon } from "@/components/v2/icon";
+import { Lanyard, Robot } from "@/components/v2/agent-badge";
+import { IdCard, issueDate } from "./agent-id-card";
+import { Icon } from "@/components/tx/icon";
+import { Button } from "@/components/tx/button";
+import { Chip } from "@/components/tx/chip";
+import { Segmented } from "@/components/tx/segmented";
+import { Switch } from "@/components/tx/field";
+import { useRovingFocus } from "@/lib/roving-focus";
+import { modelLabel } from "@/lib/turn";
+import {
+  DESK_STEPS,
+  BEHAVIOUR_IDEAS,
+  BLANK_GUIDE,
+  deskProblem,
+  featuredModels,
+  guideSummary,
+  linesOf,
+  RULE_IDEAS,
+  TOPIC_OPTIONS,
+  type DeskGuide,
+  type DeskStep,
+} from "@/lib/agent-desk";
+import { DeskRadios, GuideEditor, SignPad } from "./desk-guide";
+import { AgentIssued } from "./agent-issued";
+import { agentHandle } from "../../../shared/contracts";
 import {
   fetchConnectors,
   isNotConfigured,
@@ -34,13 +57,11 @@ import {
   type SkillCatalog,
 } from "@/lib/tenant-skills";
 import { warnFailure } from "@/lib/api";
-// Connect card, tool rows, connector banner and picker styles.
-import "@/styles/v2/connectors.css";
 
-// Create or edit a personal or workspace agent. Reuses the agent dialog's
-// form, look/tint pickers and badge preview (styles/v2/agent-dialog.css).
-// Who can use an agent is chosen once, at creation; sharing later is the
-// picker's "Share with workspace" action.
+// The Agent ID desk (DESIGN-SPEC 15.3): create or edit a personal or workspace
+// agent in four steps, with its ID card as the live preview. Saving sends the
+// same payload as before. Who can use an agent is chosen once, at creation;
+// sharing later is the board's "Share with workspace" action.
 
 const SCOPES: { id: AgentScope; label: string; hint: string }[] = [
   { id: "personal", label: "Just me", hint: "Only you can see and use it." },
@@ -59,6 +80,8 @@ export function TenantAgentDialog({
   helpersAllowed = false,
   onClose,
   onSaved,
+  onSayHi,
+  initialStep = "identity",
 }: {
   open: boolean;
   /** The agent being edited, or null to create one. */
@@ -69,11 +92,40 @@ export function TenantAgentDialog({
   helpersAllowed?: boolean;
   onClose: () => void;
   onSaved: (agent: TenantAgent) => void;
+  /** After issuing: start a chat with the new agent (the celebration's Say hi). */
+  onSayHi?: (agent: TenantAgent) => void;
+  /** The step the desk opens on (tests and deep links). */
+  initialStep?: DeskStep;
 }) {
   const [form, setForm] = useState<AgentForm>(() => formOf(editing, models));
   const [scope, setScope] = useState<AgentScope>("personal");
+  // What it answers, its rules and behaviour, and the signature (spec 15.3
+  // steps 3 and 4). They drive the card but aren't saved yet: see submit.
+  const [guide, setGuide] = useState<DeskGuide>(BLANK_GUIDE);
+  const setGuidePart = (part: Partial<DeskGuide>) =>
+    setGuide((g) => ({ ...g, ...part }));
   const [saving, setSaving] = useState(false);
+  // Issue ID (spec 15.3): the card flips to its front and the ISSUED seal
+  // lands; then the desk fades and gives way to the celebration (the legacy
+  // dialog's), which stays until Say hi or Done. The agent is saved first.
+  const [sealed, setSealed] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [celebrated, setCelebrated] = useState<TenantAgent | null>(null);
+  const issuedAgent = useRef<TenantAgent | null>(null);
+  const issueTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const [error, setError] = useState("");
+  const titleId = useId();
+  const [step, setStep] = useState<DeskStep>(initialStep);
+  // The card side on show: the front while choosing who it is, the back for
+  // what it can open (spec 15.3, as in the study).
+  const [face, setFace] = useState<"front" | "back">(
+    initialStep === "identity" ? "front" : "back",
+  );
+  const [visited, setVisited] = useState<Set<DeskStep>>(() => new Set());
+  const [allModels, setAllModels] = useState(false);
+  const [modelQuery, setModelQuery] = useState("");
+  const heading = useRef<HTMLHeadingElement>(null);
+  const opened = useRef(false);
   // The connector catalog for the picker. null while loading or when the
   // feature is off / the fetch failed — in which case the section is hidden
   // (existing selections on an edited agent are left untouched either way).
@@ -82,6 +134,29 @@ export function TenantAgentDialog({
   // edited agent already has are shown either way.
   const [skillCatalog, setSkillCatalog] = useState<SkillCatalog | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const tiltRef = useRef<HTMLDivElement>(null);
+  // The card settles slightly when something is added; restarting a CSS
+  // animation needs a reflow between.
+  const thud = (delay = 160) =>
+    setTimeout(() => {
+      const el = wrapRef.current;
+      if (!el) return;
+      el.classList.remove("is-thud");
+      void el.offsetWidth;
+      el.classList.add("is-thud");
+    }, delay);
+  // The card leans toward the pointer across the stage.
+  const lean = (x: number, y: number) => {
+    tiltRef.current?.style.setProperty(
+      "--tx",
+      `${((0.5 - y) * 10).toFixed(2)}deg`,
+    );
+    tiltRef.current?.style.setProperty(
+      "--ty",
+      `${((x - 0.5) * 14).toFixed(2)}deg`,
+    );
+  };
   const ids = useRef(requestIds());
   // Answers that arrive after the dialog closed or reopened are ignored.
   const generation = useRef(0);
@@ -91,13 +166,26 @@ export function TenantAgentDialog({
     generation.current++;
     setForm(formOf(editing, models));
     setScope("personal");
+    setGuide(BLANK_GUIDE);
+    setSealed(false);
+    setLeaving(false);
+    setCelebrated(null);
+    issuedAgent.current = null;
     setSaving(false);
     setError("");
+    setStep(initialStep);
+    setFace(initialStep === "identity" ? "front" : "back");
+    setVisited(new Set());
+    setAllModels(false);
+    setModelQuery("");
+    opened.current = false;
     ids.current.reset();
     const focus = setTimeout(() => nameRef.current?.focus(), 30);
     return () => {
       generation.current++;
       clearTimeout(focus);
+      issueTimers.current.forEach(clearTimeout);
+      issueTimers.current = [];
     };
     // Only opening or switching agents resets the form; models arriving
     // later fill in the default model below without discarding typing.
@@ -150,6 +238,58 @@ export function TenantAgentDialog({
     };
   }, [open, editing]);
 
+  // Closing returns focus to whatever opened the desk (spec 18).
+  useEffect(() => {
+    if (!open) return;
+    const trigger =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    return () => {
+      if (trigger?.isConnected) trigger.focus();
+    };
+  }, [open]);
+
+  // Moving to a step moves focus to its heading; opening focuses the name.
+  useEffect(() => {
+    if (!open) return;
+    if (opened.current) heading.current?.focus();
+    opened.current = true;
+  }, [step, open]);
+  const stepIndex = DESK_STEPS.findIndex((s) => s.id === step);
+  const stepRoving = useRovingFocus(
+    DESK_STEPS.map(() => ({})),
+    stepIndex,
+    (next) => {
+      setVisited((v) => new Set(v).add(step));
+      setStep(DESK_STEPS[next].id);
+      setFace(next === 0 ? "front" : "back");
+    },
+    "horizontal",
+  );
+  // The model cards on show: three featured, or the whole (searched) list.
+  const listed = allModels
+    ? models.filter((m) =>
+        m.displayName.toLowerCase().includes(modelQuery.trim().toLowerCase()),
+      )
+    : featuredModels(models, form.modelId);
+  const modelIndex = Math.max(
+    0,
+    listed.findIndex((m) => m.id === form.modelId),
+  );
+  const modelRoving = useRovingFocus(
+    listed.map(() => ({})),
+    modelIndex,
+    (next) => {
+      const m = listed[next];
+      if (m) {
+        setForm((f) => ({ ...f, modelId: m.id }));
+        setError("");
+      }
+    },
+    "both",
+  );
+
   if (!open) return null;
 
   const set = <K extends keyof AgentForm>(key: K, value: AgentForm[K]) => {
@@ -160,6 +300,8 @@ export function TenantAgentDialog({
   // Toggles a connector in the form, preserving selection order; a new slug
   // is appended (so the order stays stable) and the cap is enforced here too.
   const toggleConnector = (slug: string) => {
+    setFace("back");
+    if (!form.connectorSlugs.includes(slug)) thud();
     setForm((f) => {
       const has = f.connectorSlugs.includes(slug);
       const next = has
@@ -184,6 +326,8 @@ export function TenantAgentDialog({
   const atConnectorCap = form.connectorSlugs.length >= MAX_CONNECTORS;
   // Toggles a skill, keeping the chosen order; a new one is appended.
   const toggleSkill = (id: string) => {
+    setFace("back");
+    if (!form.skillIds.includes(id)) thud();
     setForm((f) => {
       const has = f.skillIds.includes(id);
       const next = has
@@ -217,7 +361,33 @@ export function TenantAgentDialog({
         ? await updateTenantAgent(editing.id, editing.revision, changes!)
         : await createTenantAgent(form, scope, ids.current.for(form, scope));
       if (generation.current !== version) return;
-      onSaved(saved);
+      // TODO(agent-guide): send the Rules step and the signature once
+      // platform-next stores `instructions` and `sig` (DESIGN-SPEC 15.1).
+      // Uncomment when the endpoint exists:
+      // await saveAgentGuide(saved.id, {
+      //   topics: guide.topics,
+      //   rules: linesOf(guide.rules),
+      //   rulesAs: guide.rulesAs,
+      //   behaviour: linesOf(guide.behaviour),
+      //   behaviourAs: guide.behaviourAs,
+      //   sig: guide.sig || null,
+      // });
+      if (editing) {
+        onSaved(saved);
+        return;
+      }
+      issuedAgent.current = saved;
+      // The flip takes 0.8 s and overshoots; the seal waits until it settles.
+      const flip = face === "back" ? 850 : 0;
+      setFace("front");
+      issueTimers.current = [
+        setTimeout(() => {
+          setSealed(true);
+          thud(240);
+        }, flip),
+        setTimeout(() => setLeaving(true), flip + 1300),
+        setTimeout(() => setCelebrated(saved), flip + 1550),
+      ];
     } catch (e) {
       if (generation.current !== version) return;
       setError(
@@ -226,409 +396,658 @@ export function TenantAgentDialog({
           : userMessage(e),
       );
     } finally {
-      if (generation.current === version) setSaving(false);
+      // An issued card keeps "Issuing…" until the desk closes.
+      if (generation.current === version && !issuedAgent.current)
+        setSaving(false);
     }
+  };
+  // Hands the issued agent back and says so. Closing mid-seal does this at
+  // once, so the new agent is never lost from the list.
+  const finishIssue = () => {
+    const agent = issuedAgent.current;
+    if (!agent) return;
+    issuedAgent.current = null;
+    issueTimers.current.forEach(clearTimeout);
+    issueTimers.current = [];
+    onSaved(agent);
+  };
+  const close = () => (issuedAgent.current ? finishIssue() : onClose());
+  const sayHi = () => {
+    const agent = issuedAgent.current;
+    finishIssue();
+    if (agent) onSayHi?.(agent);
   };
 
   const scopeLabel = editing
     ? editing.source === "tenant"
-      ? "workspace agent"
-      : "personal agent"
+      ? "Workspace agent"
+      : "Personal agent"
     : scope === "tenant"
-      ? "workspace agent"
-      : "personal agent";
+      ? "Workspace agent"
+      : "Personal agent";
+  const identityProblem = deskProblem(form);
+  const at = DESK_STEPS.findIndex((s) => s.id === step);
+  const last = at === DESK_STEPS.length - 1;
+  const footProblem =
+    identityProblem && step !== "identity"
+      ? `${identityProblem} on the Identity step first`
+      : null;
+  // Names for the card's back, from the catalogues or the saved agent.
+  const connectorName = (slug: string) =>
+    connectors?.find((c) => c.slug === slug)?.displayName ??
+    editing?.connectors.find((c) => c.slug === slug)?.displayName ??
+    slug;
+  // R/W only means something where the connector has write tools; without the
+  // catalogue, the saved access stands.
+  const connectorWrites = (slug: string) => {
+    const c = connectors?.find((x) => x.slug === slug);
+    return c ? c.writeTools.length > 0 : true;
+  };
+  const skillName = (id: string) =>
+    skillRows.find((s) => s.id === id)?.displayName ?? id;
+  const stepCount = (id: DeskStep) =>
+    id === "access"
+      ? form.connectorSlugs.length + form.skillIds.length
+      : id === "rules"
+        ? linesOf(guide.rules).length + linesOf(guide.behaviour).length
+        : 0;
+  const go = (next: DeskStep) => {
+    setStep(next);
+    setFace(next === "identity" ? "front" : "back");
+    setVisited((v) => new Set(v).add(step));
+  };
 
+  const idCard = (
+    <IdCard
+      name={form.name.trim()}
+      handle={form.name.trim() ? agentHandle(form.name) : ""}
+      purpose={form.description.trim()}
+      look={form.look}
+      tint={form.tint}
+      model={selectedModel ? modelLabel(selectedModel.displayName) : ""}
+      issued={editing ? undefined : issueDate(new Date())}
+      workspace={editing ? editing.source === "tenant" : scope === "tenant"}
+      access={form.connectorSlugs.map((slug) => ({
+        name: connectorName(slug),
+        write:
+          (form.connectorAccess[slug] ?? "read_write") === "read_write" &&
+          connectorWrites(slug),
+      }))}
+      skills={form.skillIds.map(skillName)}
+      sealed={sealed}
+      sig={guide.sig}
+      guide={guideSummary(guide)}
+      face={face}
+    />
+  );
+  if (celebrated)
+    return (
+      <AgentIssued
+        name={celebrated.name}
+        handle={agentHandle(celebrated.name)}
+        issued={issueDate(new Date())}
+        canChat={celebrated.available && !!onSayHi}
+        onSayHi={sayHi}
+        onDone={close}
+      >
+        {idCard}
+      </AgentIssued>
+    );
   return (
     <div
-      className="scrim center"
-      onMouseDown={onClose}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
+      className={leaving ? "idd-scrim is-leaving" : "idd-scrim"}
+      onMouseDown={close}
     >
       <div
-        className="agent-dialog"
+        className="idd"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="tad-title"
+        aria-labelledby={titleId}
         onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && !e.defaultPrevented) close();
+        }}
       >
-        <button
-          type="button"
-          className="icon-btn ghost dialog-x"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          <Icon name="x" size={15} />
-        </button>
         <form
-          className="nad-form"
+          className="idd-form"
           onSubmit={(e) => {
             e.preventDefault();
-            void submit();
+            if (!last) go(DESK_STEPS[at + 1].id);
+            else void submit();
           }}
         >
-          <div className="nad-head">
-            <h2 id="tad-title">{editing ? "Edit agent" : "New agent"}</h2>
-            <p>
-              A specialist with its own purpose and model. Chats with it are
-              always private to the person chatting.
-            </p>
-          </div>
-
-          <label className="field">
-            <span className="field-label">Name</span>
-            <input
-              ref={nameRef}
-              className="input"
-              value={form.name}
-              required
-              maxLength={AGENT_NAME_MAX}
-              placeholder="Research Scout"
-              onChange={(e) => set("name", e.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span className="field-label">
-              Purpose
-              <span className="field-hint">
-                {form.description.trim().length}/{AGENT_DESCRIPTION_MAX}
-              </span>
-            </span>
-            <textarea
-              className="input"
-              value={form.description}
-              required
-              rows={2}
-              maxLength={AGENT_DESCRIPTION_MAX}
-              placeholder="What this specialist owns"
-              onChange={(e) => set("description", e.target.value)}
-            />
-          </label>
-
-          {!editing && (
-            <fieldset className="field tad-scope">
-              <legend className="field-label">Who can use it</legend>
-              {SCOPES.map((s) => (
-                <label
+          <header className="idd-head">
+            <h2 id={titleId} className="t-h3">
+              {editing ? `Edit ${editing.name}` : "New agent"}
+            </h2>
+            <p className="idd-sub">{DESK_STEPS[at].sub}</p>
+          </header>
+          <div
+            className="idd-steps"
+            role="tablist"
+            aria-label="Steps"
+            onKeyDown={stepRoving.onKeyDown}
+          >
+            {DESK_STEPS.map((s, i) => {
+              const done =
+                visited.has(s.id) && (s.id !== "identity" || !identityProblem);
+              return (
+                <button
                   key={s.id}
-                  className={
-                    "tad-scope-option" + (scope === s.id ? " is-active" : "")
+                  ref={stepRoving.ref(i)}
+                  type="button"
+                  role="tab"
+                  id={`${titleId}-${s.id}`}
+                  aria-selected={s.id === step}
+                  aria-controls={`${titleId}-panel`}
+                  tabIndex={stepRoving.tabIndex(i)}
+                  className={s.id === step ? "idd-step is-on" : "idd-step"}
+                  onClick={() => go(s.id)}
+                >
+                  <span
+                    className={done ? "idd-step-no is-done" : "idd-step-no"}
+                    aria-hidden="true"
+                  >
+                    {done ? <Icon name="check" size="sm" /> : i + 1}
+                  </span>
+                  <span className="idd-step-label">{s.label}</span>
+                  {stepCount(s.id) > 0 && (
+                    <span className="idd-step-count mono">
+                      {stepCount(s.id)}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div
+            className="idd-body"
+            role="tabpanel"
+            id={`${titleId}-panel`}
+            aria-labelledby={`${titleId}-${step}`}
+          >
+            {/* The step's name, for screen readers; it takes focus when the step opens. */}
+            <h3 className="idd-h" tabIndex={-1} ref={heading}>
+              {DESK_STEPS[at].label}
+            </h3>
+
+            {step === "identity" && (
+              <>
+                <DeskField
+                  label="Name"
+                  hint={
+                    form.name.trim() ? `@${agentHandle(form.name)}` : undefined
                   }
                 >
-                  <input
-                    type="radio"
-                    name="tad-scope"
-                    value={s.id}
-                    checked={scope === s.id}
-                    onChange={() => {
-                      setScope(s.id);
+                  {(a11y) => (
+                    <input
+                      ref={nameRef}
+                      className="tx-input"
+                      {...a11y}
+                      value={form.name}
+                      maxLength={AGENT_NAME_MAX}
+                      placeholder="Research Scout"
+                      onChange={(e) => set("name", e.target.value)}
+                    />
+                  )}
+                </DeskField>
+                <DeskField
+                  label="Purpose"
+                  hint={`${form.description.trim().length}/${AGENT_DESCRIPTION_MAX}`}
+                >
+                  {(a11y) => (
+                    <textarea
+                      className="tx-input"
+                      {...a11y}
+                      value={form.description}
+                      rows={2}
+                      maxLength={AGENT_DESCRIPTION_MAX}
+                      placeholder="What this specialist owns"
+                      onChange={(e) => set("description", e.target.value)}
+                    />
+                  )}
+                </DeskField>
+                <fieldset
+                  className="idd-set"
+                  aria-labelledby={`${titleId}-photo`}
+                >
+                  <div className="idd-label-row">
+                    <span className="idd-label" id={`${titleId}-photo`}>
+                      Photo
+                    </span>
+                    <div className="idd-photo-tools">
+                      <div
+                        className="idd-tints"
+                        role="radiogroup"
+                        aria-label="Backdrop"
+                      >
+                        {TINTS.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            role="radio"
+                            aria-checked={form.tint === t.id}
+                            aria-label={t.label}
+                            title={t.label}
+                            className="idd-tint"
+                            style={{ background: t.bg }}
+                            onClick={() => {
+                              set("tint", t.id);
+                              setFace("front");
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        className="idd-link"
+                        onClick={() => {
+                          set(
+                            "look",
+                            (form.look +
+                              1 +
+                              Math.floor(Math.random() * (LOOKS.length - 1))) %
+                              LOOKS.length,
+                          );
+                          setFace("front");
+                        }}
+                      >
+                        shuffle
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    className="idd-looks"
+                    role="radiogroup"
+                    aria-label="Look"
+                  >
+                    {LOOKS.map((l, i) => (
+                      <button
+                        key={l.name}
+                        type="button"
+                        role="radio"
+                        aria-checked={form.look === i}
+                        aria-label={l.name}
+                        title={l.name}
+                        className={
+                          form.look === i ? "idd-look is-on" : "idd-look"
+                        }
+                        style={
+                          form.look === i
+                            ? { background: tintOf(form.tint).bg }
+                            : undefined
+                        }
+                        onClick={() => {
+                          set("look", i);
+                          setFace("front");
+                        }}
+                      >
+                        <Robot look={i} size={36} />
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <fieldset className="idd-set">
+                  <legend className="idd-label">Model</legend>
+                  {allModels && models.length > 7 && (
+                    <input
+                      className="tx-input idd-model-search"
+                      type="search"
+                      aria-label="Search models"
+                      placeholder="Search models"
+                      value={modelQuery}
+                      onChange={(e) => setModelQuery(e.target.value)}
+                    />
+                  )}
+                  {models.length === 0 ? (
+                    <p className="idd-note is-bad" role="alert">
+                      {modelsError || "No models available"}
+                    </p>
+                  ) : (
+                    <div
+                      className="idd-models"
+                      role="radiogroup"
+                      aria-label="Model"
+                      onKeyDown={modelRoving.onKeyDown}
+                    >
+                      {listed.map((m, i) => (
+                        <button
+                          key={m.id}
+                          ref={modelRoving.ref(i)}
+                          type="button"
+                          role="radio"
+                          aria-checked={m.id === form.modelId}
+                          className={
+                            m.id === form.modelId
+                              ? "idd-model is-on"
+                              : "idd-model"
+                          }
+                          tabIndex={i === modelIndex ? 0 : -1}
+                          onClick={() => set("modelId", m.id)}
+                        >
+                          <span className="idd-model-name">
+                            {modelLabel(m.displayName)}
+                          </span>
+                          <span className="idd-model-dot" aria-hidden="true">
+                            {m.id === form.modelId && (
+                              <Icon name="check" size="sm" />
+                            )}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {models.length > 3 && (
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      aria-expanded={allModels}
+                      onClick={() => setAllModels((all) => !all)}
+                    >
+                      {allModels ? "Fewer" : `All models (${models.length})`}
+                    </Button>
+                  )}
+                  {models.length > 0 && !selectedModel && (
+                    <p className="idd-note is-bad">
+                      Its model is no longer available. Choose another to save.
+                    </p>
+                  )}
+                </fieldset>
+              </>
+            )}
+
+            {step === "access" && (
+              <>
+                <fieldset className="idd-set">
+                  <legend className="idd-label">Connected tools</legend>
+                  {connectors === null ? (
+                    <p className="idd-note">
+                      No connected tools to offer here.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="idd-stickers">
+                        {connectors.map((c) => {
+                          const checked = form.connectorSlugs.includes(c.slug);
+                          return (
+                            <span
+                              key={c.slug}
+                              className={
+                                checked ? "idd-sticker is-on" : "idd-sticker"
+                              }
+                            >
+                              <button
+                                type="button"
+                                aria-pressed={checked}
+                                disabled={!checked && atConnectorCap}
+                                onClick={() => toggleConnector(c.slug)}
+                              >
+                                <span
+                                  className="idd-sticker-mark"
+                                  aria-hidden="true"
+                                >
+                                  {c.displayName.charAt(0).toUpperCase()}
+                                </span>
+                                {c.displayName}
+                              </button>
+                              {checked && c.writeTools.length > 0 && (
+                                <ConnectorAccessChoice
+                                  slug={c.slug}
+                                  displayName={c.displayName}
+                                  access={
+                                    form.connectorAccess[c.slug] ?? "read_write"
+                                  }
+                                  onChange={setConnectorAccess}
+                                />
+                              )}
+                              {checked && c.connection.status !== "active" && (
+                                <span className="idd-note">
+                                  Not connected yet. Connect it from Connected
+                                  tools.
+                                </span>
+                              )}
+                            </span>
+                          );
+                        })}
+                      </div>
+                      <p className="idd-note">
+                        Tools that change data ask for your approval each time.
+                        Up to {MAX_CONNECTORS}.
+                      </p>
+                    </>
+                  )}
+                </fieldset>
+                {skillRows.length > 0 && (
+                  <fieldset className="idd-set">
+                    <legend className="idd-label">Skills</legend>
+                    <div className="idd-chips">
+                      {skillRows.map((skill) => {
+                        const checked = form.skillIds.includes(skill.id);
+                        const note = skillNote(
+                          skill,
+                          skillCatalog?.scripts ?? false,
+                        );
+                        return (
+                          <Chip
+                            key={skill.id}
+                            pressed={checked}
+                            disabled={
+                              !checked && (atSkillCap || !skill.available)
+                            }
+                            title={skill.description || undefined}
+                            onClick={() => toggleSkill(skill.id)}
+                          >
+                            {skill.displayName}
+                            {note ? ` · ${note}` : ""}
+                          </Chip>
+                        );
+                      })}
+                    </div>
+                    <p className="idd-note">
+                      Instructions and files it reads when a task calls for
+                      them. Up to {MAX_SKILLS}.
+                    </p>
+                  </fieldset>
+                )}
+                <fieldset className="idd-set">
+                  <legend className="idd-label">
+                    Knowledge{" "}
+                    <span className="tx-pill tx-pill-line tx-pill-sm">
+                      Soon
+                    </span>
+                  </legend>
+                </fieldset>
+                {(helpersAllowed || editing?.helpers) && (
+                  <fieldset className="idd-set">
+                    <legend className="idd-label">Helpers</legend>
+                    <Switch
+                      label="Use helper agents"
+                      checked={form.helpers}
+                      onChange={(on) => set("helpers", on)}
+                    />
+                    <p className="idd-note">
+                      For work that spans several sources, it can run helpers in
+                      parallel. A helper never changes an outside system on its
+                      own; every such change still asks you first.
+                    </p>
+                    {!helpersAllowed && form.helpers && (
+                      <p className="idd-note">
+                        Helpers are off in this workspace. Chats run without
+                        them.
+                      </p>
+                    )}
+                  </fieldset>
+                )}
+              </>
+            )}
+
+            {step === "rules" && (
+              <>
+                <DeskRadios
+                  legend="What it answers"
+                  value={guide.topics}
+                  options={TOPIC_OPTIONS.map((option) => ({
+                    id: option.id,
+                    label: option.label,
+                    hint: option.hint(form.description.trim()),
+                  }))}
+                  onChange={(topics) => {
+                    setGuidePart({ topics });
+                    setFace("back");
+                  }}
+                />
+                <GuideEditor
+                  label="Rules"
+                  noun="rule"
+                  value={guide.rules}
+                  as={guide.rulesAs}
+                  onChange={(rules) => {
+                    setGuidePart({ rules });
+                    setFace("back");
+                  }}
+                  onAs={(rulesAs) => setGuidePart({ rulesAs })}
+                  placeholder="Never share customer data outside the workspace"
+                  ideas={RULE_IDEAS}
+                />
+                <GuideEditor
+                  label="Behaviour"
+                  noun="behaviour"
+                  value={guide.behaviour}
+                  as={guide.behaviourAs}
+                  onChange={(behaviour) => {
+                    setGuidePart({ behaviour });
+                    setFace("back");
+                  }}
+                  onAs={(behaviourAs) => setGuidePart({ behaviourAs })}
+                  placeholder="Lead with the answer, then the detail"
+                  ideas={BEHAVIOUR_IDEAS}
+                />
+              </>
+            )}
+
+            {step === "sign" && (
+              <>
+                {!editing ? (
+                  <DeskRadios
+                    legend="Who can use it"
+                    value={scope}
+                    options={SCOPES}
+                    onChange={(next) => {
+                      setScope(next);
+                      setFace("front");
                       setError("");
                     }}
                   />
-                  <span>
-                    <span className="strong block">{s.label}</span>
-                    <span className="muted sm">{s.hint}</span>
-                  </span>
-                </label>
-              ))}
-            </fieldset>
-          )}
-
-          <div className="field">
-            <span className="field-label" id="tad-look">
-              Look
-            </span>
-            <div
-              className="look-grid"
-              role="radiogroup"
-              aria-labelledby="tad-look"
-            >
-              {LOOKS.map((l, i) => (
-                <button
-                  key={l.name}
-                  type="button"
-                  role="radio"
-                  aria-checked={form.look === i}
-                  aria-label={l.name}
-                  title={l.name}
-                  className={"look" + (form.look === i ? " is-active" : "")}
-                  style={{ background: tintOf(form.tint).bg }}
-                  onClick={() => set("look", i)}
-                >
-                  <Robot look={i} size={40} />
-                </button>
-              ))}
-            </div>
-            <div className="tint-row" role="radiogroup" aria-label="Tint">
-              <span className="field-label">Tint</span>
-              {TINTS.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={form.tint === t.id}
-                  aria-label={t.label}
-                  title={t.label}
-                  className={"tint" + (form.tint === t.id ? " is-active" : "")}
-                  style={{ background: t.bg }}
-                  onClick={() => set("tint", t.id)}
-                />
-              ))}
-            </div>
-          </div>
-
-          <label className="field">
-            <span className="field-label">Model</span>
-            <span className="select full">
-              <select
-                value={form.modelId}
-                disabled={!models.length}
-                aria-invalid={!!modelsError || undefined}
-                aria-describedby={modelsError ? "tad-model-error" : undefined}
-                onChange={(e) => set("modelId", e.target.value)}
-              >
-                {!models.length ? (
-                  <option value="">
-                    {modelsError ? "Models unavailable" : "No models available"}
-                  </option>
                 ) : (
-                  <>
-                    {!selectedModel && (
-                      <option value={form.modelId} disabled>
-                        Current model unavailable — choose another
-                      </option>
-                    )}
-                    {models.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.displayName}
-                      </option>
-                    ))}
-                  </>
+                  <p className="idd-note">
+                    {editing.source === "tenant"
+                      ? "Everyone in this workspace can use it."
+                      : "Only you can use it."}
+                  </p>
                 )}
-              </select>
-              <Icon name="chevron" size={14} />
-            </span>
-            {modelsError ? (
-              <span id="tad-model-error" className="field-hint is-bad">
-                {modelsError}
-              </span>
-            ) : (
-              models.length > 0 &&
-              !selectedModel && (
-                <span className="field-hint is-bad">
-                  Its model is no longer available. Choose another to save.
-                </span>
-              )
-            )}
-          </label>
-
-          {connectors && connectors.length > 0 && (
-            <fieldset className="field">
-              <legend className="field-label">Connected tools</legend>
-              <p className="muted sm">
-                Let this agent use a tool&apos;s data. Tools that change data
-                ask for your approval each time. Up to {MAX_CONNECTORS}.
-              </p>
-              <div className="connector-picker">
-                {connectors.map((c) => {
-                  const checked = form.connectorSlugs.includes(c.slug);
-                  const disabled = !checked && atConnectorCap;
-                  const hint = tokenEstimateHint(c.toolTokenEstimate);
-                  const notConnected = c.connection.status !== "active";
-                  return (
-                    <label
-                      key={c.slug}
-                      className={[
-                        "connector-pick",
-                        checked && "is-checked",
-                        disabled && "is-disabled",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={disabled}
-                        onChange={() => toggleConnector(c.slug)}
-                      />
-                      <span className="connector-pick-text">
-                        <span className="strong block">{c.displayName}</span>
-                        {c.description && (
-                          <span className="muted sm block">
-                            {c.description}
-                          </span>
-                        )}
-                        {hint && (
-                          <span className="connector-pick-hint">{hint}</span>
-                        )}
-                        {checked && notConnected && (
-                          <span className="connector-pick-hint">
-                            Not connected yet — you can connect from Connected
-                            tools.
-                          </span>
-                        )}
-                        {checked && c.writeTools.length > 0 && (
-                          <ConnectorAccessChoice
-                            slug={c.slug}
-                            displayName={c.displayName}
-                            access={
-                              form.connectorAccess[c.slug] ?? "read_write"
-                            }
-                            onChange={setConnectorAccess}
-                          />
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              {atConnectorCap && (
-                <p className="connector-pick-hint">
-                  You&apos;ve reached the limit of {MAX_CONNECTORS}. Remove one
-                  to choose another.
-                </p>
-              )}
-            </fieldset>
-          )}
-
-          {skillRows.length > 0 && (
-            <fieldset className="field">
-              <legend className="field-label">Skills</legend>
-              <p className="muted sm">
-                Instructions and files the agent reads when a task calls for
-                them. Up to {MAX_SKILLS}.
-              </p>
-              <div className="connector-picker">
-                {skillRows.map((skill) => {
-                  const checked = form.skillIds.includes(skill.id);
-                  // An unavailable skill can only be removed.
-                  const disabled = !checked && (atSkillCap || !skill.available);
-                  const note = skillNote(skill, skillCatalog?.scripts ?? false);
-                  return (
-                    <label
-                      key={skill.id}
-                      className={[
-                        "connector-pick",
-                        checked && "is-checked",
-                        disabled && "is-disabled",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={disabled}
-                        onChange={() => toggleSkill(skill.id)}
-                      />
-                      <span className="connector-pick-text">
-                        <span className="strong block">
-                          {skill.displayName}
-                          {note && (
-                            <span className="skill-pick-note"> · {note}</span>
-                          )}
-                        </span>
-                        {skill.description && (
-                          <span className="muted sm block">
-                            {skill.description}
-                          </span>
-                        )}
-                        {note === "Unavailable" && checked && (
-                          <span className="connector-pick-hint">
-                            No longer offered. New chats run without it.
-                          </span>
-                        )}
-                        {note === "Needs coding" && checked && (
-                          <span className="connector-pick-hint">
-                            Its instructions work here; its scripts need coding,
-                            which is off in this workspace.
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-              {atSkillCap && (
-                <p className="connector-pick-hint">
-                  You&apos;ve reached the limit of {MAX_SKILLS}. Remove one to
-                  choose another.
-                </p>
-              )}
-            </fieldset>
-          )}
-
-          {(helpersAllowed || editing?.helpers) && (
-            <fieldset className="field">
-              <legend className="field-label">Helpers</legend>
-              <label
-                className={
-                  form.helpers ? "connector-pick is-checked" : "connector-pick"
-                }
-              >
-                <input
-                  type="checkbox"
-                  checked={form.helpers}
-                  onChange={(e) => set("helpers", e.target.checked)}
-                />
-                <span className="connector-pick-text">
-                  <span className="strong block">Use helper agents</span>
-                  <span className="muted sm block">
-                    For work that spans several sources, the agent can run
-                    helpers in parallel to look things up and prepare parts of
-                    the answer. A helper never changes an outside system on its
-                    own — every such change still asks you first.
-                  </span>
-                  {!helpersAllowed && form.helpers && (
-                    <span className="connector-pick-hint">
-                      Helpers are off in this workspace. Chats run without them.
+                <section
+                  className="idd-set"
+                  aria-labelledby={`${titleId}-sign`}
+                >
+                  <div className="idd-label-row">
+                    <span className="idd-label" id={`${titleId}-sign`}>
+                      Signature <span className="idd-hint">optional</span>
                     </span>
-                  )}
-                </span>
-              </label>
-            </fieldset>
-          )}
-
+                  </div>
+                  <SignPad
+                    value={guide.sig}
+                    onChange={(sig) => {
+                      setGuidePart({ sig });
+                      setFace("back");
+                    }}
+                    onStart={() => setFace("back")}
+                  />
+                </section>
+              </>
+            )}
+          </div>
           {error && (
-            <p className="field-hint is-bad" role="alert">
+            <p className="idd-note is-bad idd-error" role="alert">
               {error}
             </p>
           )}
-          <div className="nad-actions">
-            <span className="grow" />
-            <button type="button" className="btn-soft lg" onClick={onClose}>
-              Cancel
-            </button>
-            <button
+          <footer className="idd-foot">
+            {footProblem && (
+              <span className="idd-note is-bad">{footProblem}</span>
+            )}
+            <span className="pt-spacer" />
+            {at === 0 ? (
+              <Button size="lg" onClick={close}>
+                Cancel
+              </Button>
+            ) : (
+              <Button size="lg" onClick={() => go(DESK_STEPS[at - 1].id)}>
+                Back
+              </Button>
+            )}
+            <Button
               type="submit"
-              className="btn-solid lg"
-              disabled={!canSubmit}
+              variant="primary"
+              size="lg"
+              disabled={last && !canSubmit}
+              working={saving ? (editing ? "Saving…" : "Issuing…") : undefined}
             >
-              {editing
-                ? saving
-                  ? "Saving…"
-                  : "Save changes"
-                : saving
-                  ? "Creating…"
-                  : "Create agent"}
-            </button>
-          </div>
+              {!last ? (
+                <>
+                  Continue
+                  <Icon name="chev" size="sm" />
+                </>
+              ) : editing ? (
+                "Save changes"
+              ) : (
+                "Issue ID"
+              )}
+            </Button>
+          </footer>
         </form>
 
-        <div className="nad-stage">
-          <Badge
-            name={form.name}
-            handle=""
-            subtitle={scopeLabel}
-            look={form.look}
-            tint={form.tint}
-            modelLabel={selectedModel?.shortLabel ?? ""}
+        <div
+          className="idd-stage"
+          onPointerMove={(e) => {
+            const box = e.currentTarget.getBoundingClientRect();
+            lean(
+              (e.clientX - box.left) / box.width,
+              (e.clientY - box.top) / box.height,
+            );
+          }}
+          onPointerLeave={() => lean(0.5, 0.5)}
+        >
+          <Button
+            className="idd-x"
+            iconOnly
+            icon="x"
+            variant="ghost"
+            size="sm"
+            aria-label="Close"
+            onClick={close}
           />
-          <span className="nad-stage-note" aria-live="polite">
-            live preview · drag it around
+          <Lanyard
+            onTap={() => setFace((f) => (f === "front" ? "back" : "front"))}
+          >
+            <div ref={wrapRef} className="idc-wrap">
+              <div ref={tiltRef} className="idc-tilt">
+                {idCard}
+              </div>
+            </div>
+          </Lanyard>
+          <span className="idd-stage-note" aria-hidden="true">
+            Drag to swing · tap to flip
           </span>
+          <Segmented
+            label="Card side"
+            size="sm"
+            options={[
+              { value: "front", label: "Front" },
+              { value: "back", label: "Back" },
+            ]}
+            value={face}
+            onChange={setFace}
+          />
         </div>
       </div>
     </div>
@@ -636,10 +1055,9 @@ export function TenantAgentDialog({
 }
 
 // The read/write access choice for one attached connector, shown only when it
-// has write tools. Read and write (the default) lets its write tools run,
-// each guarded by a per-call approval in the chat; Read only strips them.
-// Rendered as buttons (not radios) inside the connector's label so a click
-// sets access without toggling the connector's own checkbox.
+// has write tools (spec 15.3 READ / R/W). R/W (the default, as before) lets
+// its write tools run, each guarded by a per-call approval in the chat; Read
+// strips them.
 function ConnectorAccessChoice({
   slug,
   displayName,
@@ -651,36 +1069,43 @@ function ConnectorAccessChoice({
   access: ConnectorAccess;
   onChange: (slug: string, access: ConnectorAccess) => void;
 }) {
-  const options: { value: ConnectorAccess; label: string }[] = [
-    { value: "read_write", label: "Read and write" },
-    { value: "read_only", label: "Read only" },
-  ];
-  const pick = (e: MouseEvent<HTMLButtonElement>, value: ConnectorAccess) => {
-    // The choice sits inside the connector's <label>; stop the click from
-    // toggling that checkbox.
-    e.preventDefault();
-    e.stopPropagation();
-    onChange(slug, value);
-  };
   return (
-    <span
-      className="connector-access"
-      role="group"
-      aria-label={`${displayName} access`}
-    >
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          className={
-            "connector-access-opt" + (access === o.value ? " is-active" : "")
-          }
-          aria-pressed={access === o.value}
-          onClick={(e) => pick(e, o.value)}
-        >
-          {o.label}
-        </button>
-      ))}
-    </span>
+    <Segmented
+      label={`${displayName} access`}
+      size="sm"
+      options={[
+        { value: "read_only", label: "Read" },
+        { value: "read_write", label: "R/W" },
+      ]}
+      value={access}
+      onChange={(value) => onChange(slug, value)}
+    />
+  );
+}
+
+// A desk field: the label row carries a mono hint on the right (the handle, a
+// count), as in the study, tied to the control by aria-describedby.
+function DeskField({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: (a11y: { id: string; "aria-describedby"?: string }) => ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className="tx-field">
+      <div className="idd-label-row">
+        <label htmlFor={id}>{label}</label>
+        {hint && (
+          <span className="idd-hint mono" id={`${id}-hint`}>
+            {hint}
+          </span>
+        )}
+      </div>
+      {children({ id, "aria-describedby": hint ? `${id}-hint` : undefined })}
+    </div>
   );
 }

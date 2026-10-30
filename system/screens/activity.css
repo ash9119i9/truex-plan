@@ -1,0 +1,209 @@
+/* activity — the Working indicator and ToolActivityRows between an agent's
+   reasoning and its answer. Quiet text lines that match the ThinkingBlock:
+   small type, a status glyph, a hairline rule under grouped calls. */
+.cs-msg-tools,
+.cs-msg-working { min-width: 0; padding-inline-start: calc(1.375rem + var(--sp-2)); }
+.cs-msg-tools:empty,
+.cs-msg-working[hidden] { display: none; }
+
+/* ── 4.4 Working indicator ────────────────────────────────────────────────── */
+.wk {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 1.75rem;
+  color: var(--ink-2);
+  font: 550 var(--t-meta)/1 var(--f-ui);
+}
+.wk-spin { width: .75rem; height: .75rem; border-width: 1.5px; }
+
+/* ── group · "Used 4 tools · 6.3s ▸" ──────────────────────────────────────── */
+.tg { min-width: 0; }
+.tg-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  height: 1.75rem;
+  margin-inline-start: calc(-1 * var(--sp-2));
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-pill); corner-shape: round;
+  background: none;
+  color: var(--ink-2);
+  font: 550 var(--t-meta)/1 var(--f-ui);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--tx-d-1) var(--tx-ease), color var(--tx-d-1) var(--tx-ease);
+}
+.tg-head:hover { background: var(--well); color: var(--ink); }
+.tg-head:focus-visible { outline: none; box-shadow: var(--focus); }
+.tg-ic { display: grid; place-items: center; width: 1rem; height: 1rem; flex: none; color: var(--ok-ink); }
+.tg.has-bad .tg-ic { color: var(--bad-ink); }
+.tg.has-stop .tg-ic { color: var(--ink-3); }
+.tg-meta { color: var(--ink-3); font-size: var(--t-micro); letter-spacing: .02em; }
+.tg-flag { color: var(--bad-ink); font-size: var(--t-micro); }
+.tg.has-stop .tg-flag { color: var(--ink-3); }
+.tg-flag:empty { display: none; }
+.tg-chev { color: var(--ink-3); transition: transform var(--tx-d-2) var(--tx-ease); }
+.tg.is-open .tg-chev { transform: rotate(90deg); }
+.tg.is-solo .tg-head { display: none; }
+
+.tg-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--tx-d-2) var(--tx-ease); }
+.tg.is-open .tg-body, .tg.is-solo .tg-body { grid-template-rows: 1fr; }
+.tg-clip { min-height: 0; overflow: hidden; }
+.tg:not(.is-open):not(.is-solo) .tg-clip { visibility: hidden; transition: visibility 0s linear var(--tx-d-2); }
+.tg-list {
+  list-style: none;
+  margin: var(--sp-1) 0 var(--sp-1);
+  padding: 0 0 0 var(--sp-3);
+  border-inline-start: 2px solid var(--line);
+  display: grid;
+  gap: 2px;
+}
+.tg.is-solo .tg-list { margin: 0; padding: 0; border: 0; }
+
+/* ── 4.5 ToolActivityRow ──────────────────────────────────────────────────── */
+.ta { min-width: 0; }
+.ta-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 1.75rem;
+  min-width: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+}
+.ta-ic { display: grid; place-items: center; width: 1rem; height: 1rem; flex: none; color: var(--ok-ink); }
+.ta-spin { width: .75rem; height: .75rem; border-width: 1.5px; }
+.ta-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.ta[data-status="inProgress"] .ta-name { color: var(--ink); }
+.ta-ro { flex: none; color: var(--ink-3); }
+.ta-time { flex: none; margin-inline-start: auto; color: var(--ink-3); font-size: var(--t-micro); letter-spacing: .02em; }
+.ta-time:empty { display: none; }
+.ta-more {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 1.5rem;
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-pill); corner-shape: round;
+  background: none;
+  color: var(--ink-3);
+  font: 550 var(--t-micro)/1 var(--f-ui);
+  cursor: pointer;
+  transition: background-color var(--tx-d-1) var(--tx-ease), color var(--tx-d-1) var(--tx-ease);
+}
+.ta-time:empty + .ta-more { margin-inline-start: auto; }
+.ta-more:hover { background: var(--well); color: var(--ink); }
+.ta-more:focus-visible { outline: none; box-shadow: var(--focus); }
+.ta-more .tx-ic { transition: transform var(--tx-d-2) var(--tx-ease); }
+.ta-more[aria-expanded="true"] .tx-ic { transform: rotate(180deg); }
+
+/* failed · ⚠ in bad ink with the message under the name */
+.ta.is-bad .ta-ic { color: var(--bad-ink); }
+.ta.is-bad .ta-name { color: var(--bad-ink); }
+.ta-err,
+.ta-deny {
+  margin: 0 0 var(--sp-1);
+  padding-inline-start: calc(1rem + var(--sp-2));
+  font-size: .75rem;
+  line-height: 1.45;
+}
+.ta-err { color: var(--bad-ink); }
+
+/* declined · muted, with a way to the approval that blocked it */
+.ta[data-status="stopped"] .ta-ic,
+.ta[data-status="stopped"] .ta-name { color: var(--ink-3); }
+.ta[data-status="declined"] .ta-ic,
+.ta[data-status="declined"] .ta-name { color: var(--ink-3); }
+.ta[data-status="declined"] .ta-name { text-decoration: line-through; text-decoration-color: var(--line-strong); }
+.ta-deny { color: var(--ink-3); }
+.ta-deny a { color: var(--signal-ink); font-weight: 550; text-underline-offset: 2px; }
+
+/* details · result summary and masked arguments */
+.ta-detail { margin: 2px 0 var(--sp-2); padding-inline-start: calc(1rem + var(--sp-2)); }
+.ta-sum { margin: 0 0 var(--sp-2); max-width: 36rem; font-size: .75rem; line-height: 1.5; color: var(--ink-2); }
+.ta-sum:last-child { margin-bottom: 0; }
+.ta-k { margin-bottom: 4px; font: 600 .625rem/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.ta-args {
+  margin: 0;
+  max-height: 12rem;
+  overflow: auto;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink-2);
+  font: .6875rem/1.5 var(--f-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+
+/* ── 4.6 WebSearchRow ─────────────────────────────────────────────────────── */
+.ws-ic { color: var(--ink-3); }
+.ta-web[data-status="completed"] .ws-ic { color: var(--signal-ink); }
+.ta-web .ws-name { font-weight: 500; }
+.ws-q { color: var(--ink); font-weight: 600; quotes: "\201C" "\201D"; }
+.ws-host { color: var(--ink); font-weight: 600; }
+.ta.is-bad .ws-q, .ta.is-bad .ws-host { color: inherit; }
+.ws-more { color: var(--ink-3); font-size: var(--t-micro); font-weight: 550; }
+
+/* sources · favicon chips under the row */
+.ws-srcs {
+  list-style: none;
+  margin: 0 0 var(--sp-1);
+  padding: 0 0 0 calc(1rem + var(--sp-2));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ws-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 12rem;
+  height: 1.375rem;
+  padding: 0 var(--sp-2) 0 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill); corner-shape: round;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: 550 var(--t-micro)/1 var(--f-ui);
+  text-decoration: none;
+  transition: border-color var(--tx-d-1) var(--tx-ease), background-color var(--tx-d-1) var(--tx-ease), color var(--tx-d-1) var(--tx-ease);
+}
+a.ws-src:hover { border-color: var(--line-strong); background: var(--surface-2); color: var(--ink); }
+a.ws-src:focus-visible { outline: none; box-shadow: var(--focus); }
+.ws-fav-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  border-radius: 50%; corner-shape: round;
+  background: var(--well-2);
+  overflow: hidden;
+}
+.ws-letter { font: 700 .5625rem/1 var(--f-ui); color: var(--ink-2); }
+.ws-fav { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: var(--surface); }
+.ws-src-host { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-src-more { padding-inline: var(--sp-2); color: var(--ink-3); }
+.ws-qs { margin: 0; padding-inline-start: 1.1rem; font-size: .75rem; line-height: 1.6; color: var(--ink-2); }
+
+@media (max-width: 640px) {
+  .cs-msg-tools, .cs-msg-working { padding-inline-start: 0; }
+  .ta-ro { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tg-head, .tg-chev, .tg-body, .ta-more, .ta-more .tx-ic, .ws-src { transition: none; }
+  .tg:not(.is-open):not(.is-solo) .tg-clip { transition: none; }
+}
+:root[data-eff-motion="reduce"] .tg-head,
+:root[data-eff-motion="reduce"] .tg-chev,
+:root[data-eff-motion="reduce"] .tg-body,
+:root[data-eff-motion="reduce"] .ta-more .tx-ic,
+:root[data-eff-motion="reduce"] .tg:not(.is-open):not(.is-solo) .tg-clip { transition: none; }

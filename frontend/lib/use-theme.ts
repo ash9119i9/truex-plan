@@ -1,67 +1,66 @@
 "use client";
 import { useCallback, useSyncExternalStore } from "react";
+import { resolveTheme } from "./theme-boot";
 
-// Theme mechanism from the design spec (Foundations §1): localStorage["truex-theme"]
-// holds "" | "light" | "dark". Missing defaults to light; an explicit empty
-// value is Auto and lets prefers-color-scheme decide.
-// State lives in one module-level store so every useTheme() caller stays in sync
-// (the topbar toggle and the account menu both flip it).
-export type Theme = "" | "light" | "dark";
-const KEY = "truex-theme";
-const DARK_QUERY = "(prefers-color-scheme: dark)";
-
-// Inline in <head> so the attribute is set before first paint (no flash).
-export const THEME_BOOT_SCRIPT = `var t="light";try{var s=localStorage.getItem("${KEY}");if(s===""||s==="light"||s==="dark")t=s}catch(e){}if(t)document.documentElement.dataset.theme=t;else delete document.documentElement.dataset.theme;`;
+// The theme choice for React. The attributes on <html>, set by THEME_BOOT_SCRIPT before first
+// paint (lib/theme-boot.ts), are the state; this hook reads them and writes a new choice.
+export type Theme = "auto" | "light" | "dark";
+const KEY = "tx-sys-theme";
+const QUERIES = [
+  "(prefers-color-scheme: dark)",
+  "(prefers-contrast: more)",
+  "(prefers-reduced-motion: reduce)",
+];
 
 const listeners = new Set<() => void>();
-let current: Theme | null = null;
-
-function read(): Theme {
-  if (current !== null) return current;
-  try {
-    const saved = localStorage.getItem(KEY);
-    current =
-      saved === "" || saved === "light" || saved === "dark" ? saved : "light";
-  } catch {
-    current = "light";
-  }
-  return current;
-}
 
 function write(theme: Theme) {
-  current = theme;
-  const root = document.documentElement;
-  if (theme) root.dataset.theme = theme;
-  else delete root.dataset.theme;
+  document.documentElement.dataset.theme = theme;
+  resolveTheme();
   try {
     localStorage.setItem(KEY, theme);
   } catch {}
   listeners.forEach((l) => l());
 }
 
+// Re-resolves before notifying, so a caller never reads a stale data-eff-theme whichever
+// media listener runs first.
+function onSystemChange() {
+  resolveTheme();
+  listeners.forEach((l) => l());
+}
+
 function subscribe(listener: () => void) {
+  if (listeners.size === 0)
+    QUERIES.forEach((q) =>
+      matchMedia(q).addEventListener("change", onSystemChange),
+    );
   listeners.add(listener);
-  const mq = matchMedia(DARK_QUERY);
-  mq.addEventListener("change", listener);
   return () => {
     listeners.delete(listener);
-    mq.removeEventListener("change", listener);
+    if (listeners.size === 0)
+      QUERIES.forEach((q) =>
+        matchMedia(q).removeEventListener("change", onSystemChange),
+      );
   };
 }
 
 // A string snapshot keeps useSyncExternalStore's identity check stable.
-const snapshot = () => `${read()}|${matchMedia(DARK_QUERY).matches ? 1 : 0}`;
-const serverSnapshot = () => "light|0";
+const snapshot = () => {
+  const { theme, effTheme } = document.documentElement.dataset;
+  return `${theme ?? "auto"}|${effTheme ?? "light"}`;
+};
+const serverSnapshot = () => "auto|light";
 
 export function useTheme() {
-  const [saved, system] = useSyncExternalStore(
+  const [saved, effective] = useSyncExternalStore(
     subscribe,
     snapshot,
     serverSnapshot,
   ).split("|");
   const theme = saved as Theme;
-  const isDark = theme === "dark" || (!theme && system === "1");
-  // Flips the resolved theme, so the first toggle from "system" is explicit.
+  const isDark = effective === "dark";
+  // Flips the resolved theme, so the first toggle from Auto is an explicit choice.
   const toggle = useCallback(() => write(isDark ? "light" : "dark"), [isDark]);
   return { theme, isDark, toggle, setTheme: write };
 }

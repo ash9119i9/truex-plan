@@ -1,0 +1,897 @@
+/* ============================================================================
+   truex screen study · 01 · chat
+   Layout only. Everything here composes the locked foundations and the tx- /
+   pt- layers; no new colour, type, radius or shadow is introduced.
+
+   Regions   sidebar 232 · chat fluid · activity 360 · composer 740 · dock
+   Reference index.html for the region split, rebuilt on the 4px lattice.
+   ============================================================================ */
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--page);
+  color: var(--ink);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+button { cursor: pointer; }
+img, svg { display: block; max-width: 100%; }
+a { color: inherit; }
+.sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* ── frame ────────────────────────────────────────────────────────────────── */
+.cs-shell {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  padding: var(--sp-2);
+  gap: var(--sp-2);
+  background: var(--page);
+}
+/* index.html's chassis: the rail sits on the frame, the two cards sit on it.
+   In dark the frame is a step above the page, so the rail is not swallowed. */
+html[data-eff-theme="dark"] .cs-shell { background: var(--well); }
+.cs-shell.is-rail-off .cs-sidebar { display: none; }
+.cs-shell.is-act-off .cs-activity { display: none; }
+
+/* ── sidebar ──────────────────────────────────────────────────────────────── */
+.cs-sidebar {
+  width: var(--rail);
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-4) var(--sp-3) var(--sp-3);
+  overflow: hidden;
+}
+/* wordmark only, aligned with the text of the rows below */
+.cs-brand {
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+  padding-inline: var(--sp-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+/* one step up the scale: the wordmark reads as the rail's title */
+.cs-brand .pt-brand-word { font-size: var(--t-h3); }
+.cs-brand:focus-visible { outline: none; border-radius: var(--r-xs); box-shadow: var(--focus); }
+.cs-new {
+  width: 100%;
+  height: var(--tx-h);
+  margin-block: var(--sp-4) var(--sp-3);
+  justify-content: flex-start;
+  gap: var(--sp-1);
+  font-size: var(--t-meta);
+  box-shadow:
+    inset 0 -2px 0 color-mix(in srgb, var(--ink) 30%, transparent),
+    var(--sh-1);
+}
+html[data-eff-theme="dark"] .cs-new {
+  box-shadow:
+    inset 0 -2px 0 color-mix(in srgb, var(--on-inv) 30%, transparent),
+    var(--sh-1);
+}
+.cs-new .tx-kbd {
+  margin-inline-start: auto;
+  background: color-mix(in srgb, var(--on-inv) 12%, transparent);
+  border-color: color-mix(in srgb, var(--on-inv) 26%, transparent);
+  color: inherit;
+  box-shadow: none;
+}
+/* workspace sections · same row rhythm as the chats, with a glyph */
+.cs-side-nav {
+  display: grid;
+  gap: 2px;
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.cs-nav-item {
+  width: 100%;
+  height: 2rem;
+  padding-inline: var(--sp-2);
+  justify-content: flex-start;
+  gap: var(--sp-2);
+  font-size: var(--t-meta);
+  font-weight: 500;
+}
+.cs-nav-item .tx-ic { color: var(--ink-3); transition: color var(--tx-d-1) var(--tx-ease); }
+.cs-nav-item:hover .tx-ic { color: var(--ink-2); }
+/* not built yet: stays in place so the map is honest, reads as quiet, no hover */
+.cs-nav-item[aria-disabled="true"] { opacity: 1; color: var(--ink-3); cursor: default; }
+.cs-nav-item[aria-disabled="true"] .tx-ic { color: var(--ink-3); opacity: .7; }
+.cs-soon { margin-inline-start: auto; color: var(--ink-3); font-weight: 500; }
+.cs-side-label {
+  padding: 0 var(--sp-2) var(--sp-1);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.cs-session { min-height: 2rem; padding-block: var(--sp-1); font-weight: 500; }
+.cs-session .pt-session-time { opacity: .85; }
+.cs-view-all {
+  justify-self: start;
+  padding-inline: var(--sp-2);
+  color: var(--ink-3);
+}
+/* older groups open in place, under Previous, with the same rhythm */
+.cs-older { display: grid; gap: var(--sp-4); }
+.cs-older[hidden] { display: none; }
+/* room for the 4px arrival slide, so the row lands fully in view */
+.cs-older .cs-session { scroll-margin-bottom: var(--sp-3); }
+.cs-older.is-in { animation: cs-older-in .5s cubic-bezier(.22,1,.36,1) both; }
+@keyframes cs-older-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .cs-older.is-in { animation: none; } }
+/* only the conversation list gives up space; the rest keeps its size */
+.cs-sidebar > * { flex: none; }
+.cs-sidebar > .cs-side-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.cs-side-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  align-content: start;
+  gap: var(--sp-4);
+  padding-top: var(--sp-4);
+  margin-inline: calc(var(--sp-1) * -1);
+  padding-inline: var(--sp-1);
+  scrollbar-width: thin;
+}
+.cs-session[aria-current="page"] {
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+.cs-session[aria-current="page"] .pt-session-time { color: inherit; opacity: .72; }
+.cs-side-foot {
+  position: relative;
+  flex: none;
+  margin-top: auto;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+/* the whole row is the account control; one quiet chevron says it opens */
+.cs-account {
+  width: 100%;
+  height: auto;
+  min-height: 2.75rem;
+  padding: var(--sp-1) var(--sp-2);
+  justify-content: flex-start;
+  gap: var(--sp-2);
+  text-align: start;
+}
+.cs-account[aria-expanded="true"] { background: var(--well); color: var(--ink); }
+/* in dark the rail already sits on --well, so the open row steps up one */
+html[data-eff-theme="dark"] .cs-account[aria-expanded="true"],
+html[data-eff-theme="dark"] .cs-account:not(:disabled):hover { background: var(--well-2); }
+html[data-eff-theme="dark"] .cs-avatar { background: var(--surface-2); }
+.cs-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--av-md);
+  height: var(--av-md);
+  border-radius: 50%;
+  background: var(--well-2);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+.cs-user-text { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 1px; }
+.cs-user-name { font-size: var(--t-meta); font-weight: 600; line-height: 1.2; color: var(--ink); }
+.cs-user-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-micro);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-3);
+}
+.cs-account-chev { flex: none; color: var(--ink-3); transition: color var(--tx-d-1) var(--tx-ease); }
+.cs-account:hover .cs-account-chev,
+.cs-account[aria-expanded="true"] .cs-account-chev { color: var(--ink-2); }
+/* opens upward over the list, the same width as the row */
+.cs-account-menu {
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(100% + var(--sp-1));
+  z-index: 5;
+  min-width: 0;
+  box-shadow: 0 0 0 1px var(--line), var(--sh-2);
+  border: 0;
+  transform-origin: 50% 100%;
+}
+.cs-account-menu[hidden] { display: none; }
+.cs-account-menu .tx-menu-item { font-size: var(--t-meta); padding-block: var(--sp-1); min-height: 2rem; }
+.cs-account-menu.is-in { animation: cs-menu-in .22s var(--tx-ease) both; }
+@keyframes cs-menu-in {
+  from { opacity: 0; transform: translateY(4px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-account-menu.is-in, .cs-agent-menu.is-in, .cs-agent-tag[data-state="working"] .cs-agent-av::after { animation: none; }
+}
+
+/* ── chat stage ───────────────────────────────────────────────────────────── */
+.cs-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* clip, not hidden: a clipped box can't be scrolled by focus or scrollIntoView */
+  overflow: hidden;
+  overflow: clip;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+}
+.cs-topbar {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: var(--topbar);
+  padding: 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  transition: height .45s cubic-bezier(.22,1,.36,1);
+}
+.cs-topbar.is-slim { height: 2.75rem; }
+.cs-top-left { flex: none; display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+/* a new conversation has no agent yet: the picker sits in the composer */
+.cs-shell.is-new .cs-top-left { display: none; }
+.cs-top-left::after { content: ""; width: 1px; height: 1rem; background: var(--line-strong); }
+
+/* the agent for this conversation · fixed once the first message is sent */
+.cs-agent-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--t-meta);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.cs-agent-av {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--av-sm);
+  height: var(--av-sm);
+  border-radius: 50%;
+  background: var(--well-2);
+  color: var(--ink-2);
+  font-size: .625rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+html[data-eff-theme="dark"] .cs-agent-av { background: var(--well); }
+/* state rides on the avatar: a still grey dot at rest, a slow breath while working */
+.cs-agent-tag .cs-agent-av::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--ink-3);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.cs-agent-tag[data-state="working"] .cs-agent-av::after {
+  background: var(--ink);
+  animation: cs-breathe 2.4s ease-in-out infinite;
+}
+@keyframes cs-breathe { 50% { opacity: .35; } }
+
+/* picker · the agent chip in the new-conversation composer */
+.cs-agent { position: relative; display: inline-flex; }
+.cs-agent-pick { gap: var(--sp-1); padding-inline: 3px var(--sp-2); }
+.cs-agent-pick .cs-agent-av { width: var(--av-xs); height: var(--av-xs); font-size: .5625rem; }
+.cs-agent-pick[aria-expanded="true"] { background: var(--well); border-color: var(--line-strong); }
+.cs-agent-chev { color: var(--ink-3); transition: transform var(--tx-d-2) var(--tx-ease); }
+.cs-agent-pick[aria-expanded="true"] .cs-agent-chev { transform: rotate(180deg); }
+.cs-agent-menu {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  left: 0;
+  z-index: 30;
+  width: 17rem;
+  min-width: 0;
+  max-width: calc(100vw - var(--sp-6)); /* the primitive caps at 100% of the chip */
+  border: 0;
+  box-shadow: 0 0 0 1px var(--line), var(--sh-2);
+  text-align: start;
+  transform-origin: 0 0;
+}
+.cs-agent-menu.is-up { top: auto; bottom: calc(100% + var(--sp-1)); transform-origin: 0 100%; }
+.cs-agent-menu[hidden] { display: none; }
+.cs-agent-menu.is-in { animation: cs-menu-down .22s var(--tx-ease) both; }
+@keyframes cs-menu-down {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to { opacity: 1; transform: none; }
+}
+.cs-agent-item { grid-template-columns: auto minmax(0, 1fr) auto; font-size: var(--t-meta); }
+.cs-agent-item small { font-size: var(--t-micro); }
+.cs-agent-check { visibility: hidden; color: var(--ink-2); }
+.cs-agent-item[aria-checked="true"] { background: var(--well); }
+.cs-agent-item[aria-checked="true"] .cs-agent-check { visibility: visible; }
+/* in dark the avatar and the selected row share --well; drop the avatar a step */
+html[data-eff-theme="dark"] .cs-agent-item[aria-checked="true"] .cs-agent-av { background: var(--surface); }
+.cs-agent-menu .tx-menu-item:not(.cs-agent-item) { font-size: var(--t-meta); }
+
+.cs-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-ui);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.cs-top-actions { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-1); }
+.cs-share { gap: var(--sp-1); }
+.cs-theme { width: var(--tx-h-sm); padding: 0; justify-content: center; }
+.cs-theme-sun { display: none; }
+html[data-eff-theme="dark"] .cs-theme-sun { display: block; }
+html[data-eff-theme="dark"] .cs-theme-moon { display: none; }
+
+.cs-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.cs-hero {
+  display: none;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--sp-6) var(--sp-5) var(--sp-5);
+}
+.cs-shell.is-new .cs-hero { display: flex; }
+.cs-shell.is-new .cs-thread-in,
+.cs-shell.is-new .cs-composer-wrap { display: none; }
+.cs-hero-in {
+  width: 100%;
+  max-width: var(--thread);
+  margin-block: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.cs-greet {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 1.75rem;
+  padding: 0 var(--sp-3) 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+  font-weight: 550;
+}
+.cs-greet-ic { flex: none; color: var(--ink-3); }
+.cs-hero-h {
+  margin: var(--sp-4) 0 0;
+  max-width: 40rem;
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: clamp(2.125rem, 4.5vw, 2.75rem);
+  font-weight: 780;
+  line-height: 1.02;
+  letter-spacing: -.045em;
+  font-variation-settings: var(--cut-hero);
+  font-optical-sizing: none;
+  text-wrap: balance;
+}
+.cs-hero-h em {
+  padding-right: .04em;
+  color: var(--signal-ink);
+  font-family: var(--f-serif);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.04em;
+  letter-spacing: var(--tr-editorial);
+}
+.cs-hero-composer { width: 100%; margin-top: var(--sp-5); text-align: start; }
+.cs-composer-hero {
+  padding: var(--sp-3) var(--sp-3) var(--sp-2) var(--sp-4);
+  box-shadow: none;
+}
+.cs-composer.cs-composer-hero .pt-composer-input { min-height: 4.75rem; }
+.cs-thread-in {
+  width: 100%;
+  max-width: var(--thread);
+  margin-inline: auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-3);
+}
+
+/* ── messages · user and agent ─────────────────────────────────────────────
+   A user message is the inverse bubble, right-aligned. An agent message is
+   open text under a name row, its body indented to the name. Richer agent
+   parts (work log, metrics, follow-ups) join .cs-msg-body later. */
+.cs-thread { display: flex; flex-direction: column; gap: var(--sp-5); min-width: 0; }
+.cs-msg { min-width: 0; animation: cs-msg-in .28s var(--tx-ease) both; }
+.cs-msg [hidden], .cs-msg[hidden] { display: none !important; }
+@keyframes cs-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.cs-msg-user { display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-1); }
+.cs-msg-user .pt-bubble { white-space: pre-wrap; }
+
+.cs-msg-agent { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cs-msg-agent .pt-agent-head { gap: var(--sp-2); }
+.cs-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding-inline-start: calc(1.375rem + var(--sp-2));
+}
+.cs-msg-body .pt-answer-body { white-space: pre-wrap; }
+.cs-msg-body:empty, .cs-msg-think:empty { display: none; }
+
+/* streaming · a soft caret trails the last word */
+.cs-msg-agent.is-streaming .cs-msg-body .pt-answer-body:last-child::after {
+  content: "";
+  display: inline-block;
+  width: .45em;
+  height: 1em;
+  margin-inline-start: 2px;
+  border-radius: var(--r-xs);
+  background: var(--signal);
+  vertical-align: -.15em;
+  animation: cs-caret 1s steps(2, start) infinite;
+}
+@keyframes cs-caret { to { visibility: hidden; } }
+
+/* compaction · a dashed divider where earlier messages were summarised */
+.cs-compact {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink-3);
+  animation: cs-msg-in .28s var(--tx-ease) both;
+}
+.cs-compact-rule { flex: 1; min-width: var(--sp-5); border-top: 1px dashed var(--line-strong); }
+.cs-compact-text {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 30rem;
+  font-size: .75rem;
+  font-weight: 550;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
+}
+.cs-compact-text .tx-ic { flex: none; }
+
+/* steer · a normal message sent mid-turn, sitting in the reply where it landed */
+.cs-msg-user.is-steer { margin-block: var(--sp-3); }
+
+/* stopped · the reader pressed Stop mid-turn; neutral, never an error */
+.cs-stopped {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-3);
+  font-size: var(--t-meta);
+}
+.cs-stopped .tx-ic { flex: none; }
+.cs-stop .tx-ic { margin-inline-end: 4px; }
+
+/* follow-ups · short text lines between the reply and its receipt */
+.cs-next {
+  margin-top: var(--sp-3);
+  margin-inline-start: calc(1.375rem + var(--sp-2));
+  min-width: 0;
+}
+.cs-next-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.cs-next-list > li { max-width: 100%; animation: cs-msg-in .28s var(--tx-ease) both; animation-delay: calc(var(--i, 0) * 60ms); }
+.cs-next-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  max-width: 100%;
+  padding: 3px 2px;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--ink-2);
+  font: 500 var(--t-meta)/1.45 var(--f-ui);
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color var(--tx-d-1) var(--tx-ease);
+}
+.cs-next-mark { flex: none; color: var(--ink-3); transition: color var(--tx-d-1) var(--tx-ease), transform var(--tx-d-1) var(--tx-ease); }
+.cs-next-q {
+  min-width: 0;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--tx-d-1) var(--tx-ease);
+}
+.cs-next-row:hover { color: var(--ink); }
+.cs-next-row:hover .cs-next-q { text-decoration-color: var(--line-strong); }
+.cs-next-row:hover .cs-next-mark { color: var(--signal-ink); transform: translateX(2px); }
+.cs-next-row:focus-visible { outline: none; color: var(--ink); box-shadow: var(--focus); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-msg, .cs-compact, .cs-next-list > li, .cs-msg-agent.is-streaming .cs-msg-body .pt-answer-body:last-child::after { animation: none; }
+}
+:root[data-eff-motion="reduce"] .cs-msg,
+:root[data-eff-motion="reduce"] .cs-compact,
+:root[data-eff-motion="reduce"] .cs-next-list > li { animation: none; }
+
+/* ── bottom · composer + navigation ───────────────────────────────────────── */
+.cs-bottom {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-5) var(--sp-3);
+  background: linear-gradient(180deg, transparent, var(--surface) 30%);
+  transition: padding-bottom .6s cubic-bezier(.45,0,.35,1);
+}
+/* room for the raised dock: its 76px footprint plus a 16px gap to the composer */
+.cs-bottom.is-dock-up {
+  padding-bottom: 92px;
+  transition: padding-bottom .8s cubic-bezier(.22,1,.36,1);
+}
+/* an empty conversation has no composer down here; the dock floats over the
+   page and the hero stays exactly where it is */
+.cs-shell.is-new .cs-bottom.is-dock-up { padding-bottom: var(--sp-3); }
+.cs-composer-wrap { width: 100%; max-width: var(--thread); }
+.cs-composer { width: 100%; transition: padding var(--tx-d-1) var(--tx-ease); }
+/* textarea.tx-input now ships resize: vertical and a 5rem floor; the composer
+   grows with its content instead, so both are taken back here */
+.cs-composer .pt-composer-input {
+  min-height: 2.25rem;
+  resize: none;
+  transition:
+    min-height var(--tx-d-1) var(--tx-ease),
+    padding var(--tx-d-1) var(--tx-ease);
+}
+.cs-composer .tx-chip { height: 1.75rem; padding-inline: var(--sp-2); font-size: var(--t-meta); }
+.cs-composer.is-slim { padding-block: var(--sp-1); }
+.cs-composer.is-slim .pt-composer-input { min-height: 1.75rem; padding-block: 2px; }
+.cs-composer.is-slim .tx-chip { height: 1.5rem; padding-inline: var(--sp-2); font-size: var(--t-micro); }
+
+/* The dock is a fixed instrument: its magnification is measured in CSS px, so
+   its keys keep that geometry at every text size and never outgrow the stage.
+   A 64px pane of frosted glass — hairline ring, one long soft shadow — holding
+   40px round keys that swell gently to 52px under the pointer. Every key rests
+   as the same quiet tinted well; the one under the pointer rises to a lit cap.
+   Colour arrives quickly and leaves slowly, so a sweep leaves a soft wake.
+   It rests below the edge and rises when the pointer reaches the bottom. */
+.cs-dock {
+  --dock-glass: color-mix(in srgb, var(--surface) 72%, transparent);
+  --dock-ring: color-mix(in srgb, var(--line-strong) 80%, transparent);
+  --dock-key: color-mix(in srgb, var(--ink) 5%, transparent);
+  --dock-key-hi: var(--surface);
+  /* flat: a hairline ring, no blurred halo, so nothing fades onto the page */
+  --dock-key-lift: 0 0 0 1px var(--line);
+  --dock-lift: 0 0 0 1px var(--dock-ring);
+  --dock-soft: cubic-bezier(.25,.1,.25,1);
+  /* circle keys · a soft top highlight and a hairline rim */
+  --dock-shine: color-mix(in srgb, #fff 70%, transparent);
+  --dock-rim: color-mix(in srgb, var(--ink) 7%, transparent);
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  max-width: 100%;
+  height: var(--sp-8);
+  padding: 0 var(--sp-3) 10px; /* 2px of headroom over a fully swollen key */
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--dock-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  color: var(--ink-2);
+  box-shadow: var(--dock-lift);
+  transform: translateX(-50%);
+  transition: transform .9s cubic-bezier(.16,1,.3,1), opacity .6s var(--dock-soft);
+  will-change: transform, opacity;
+}
+:root[data-eff-theme="dark"] .cs-dock {
+  --dock-glass: color-mix(in srgb, var(--surface-2) 74%, transparent);
+  --dock-ring: color-mix(in srgb, var(--line-strong) 90%, transparent);
+  --dock-key: color-mix(in srgb, var(--ink) 6%, transparent);
+  --dock-key-hi: color-mix(in srgb, var(--ink) 14%, transparent);
+  --dock-shine: color-mix(in srgb, #fff 9%, transparent);
+  --dock-rim: color-mix(in srgb, #fff 6%, transparent);
+}
+.cs-dock.is-stowed {
+  transform: translateX(-50%) translateY(calc(100% + 24px)) scale(.97);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform .7s cubic-bezier(.65,0,.35,1), opacity .5s var(--dock-soft);
+}
+.cs-dock.is-stowed:focus-within {
+  transform: translateX(-50%);
+  opacity: 1;
+  pointer-events: auto;
+  transition: transform .9s cubic-bezier(.16,1,.3,1), opacity .6s var(--dock-soft);
+}
+.cs-dock-btn {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  /* a true circle: corner.css would otherwise square it into a squircle */
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dock-key);
+  color: var(--ink-2);
+  box-shadow: inset 0 1px 0 var(--dock-shine), inset 0 0 0 1px var(--dock-rim);
+  /* width/height are sprung frame by frame in chat.js, not by a transition;
+     colour leaves slowly so the pointer trails a soft wake */
+  transition:
+    background-color .6s var(--dock-soft),
+    color .6s var(--dock-soft),
+    box-shadow .6s var(--dock-soft);
+}
+.cs-dock-btn:hover {
+  background: var(--dock-key-hi);
+  color: var(--ink);
+  box-shadow: inset 0 1px 0 var(--dock-shine), var(--dock-key-lift);
+  transition-duration: .28s;
+}
+.cs-dock-btn:active { transition-duration: .1s; filter: brightness(.97); }
+.cs-dock-btn:focus-visible { outline: none; box-shadow: inset 0 1px 0 var(--dock-shine), var(--focus); }
+.cs-dock-ic {
+  display: grid;
+  place-items: center;
+}
+.cs-dock-glyph { width: 20px; height: 20px; }
+.cs-dock-tip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translate(-50%, 4px) scale(.96);
+  transform-origin: 50% 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s var(--dock-soft), transform .35s var(--dock-soft);
+}
+:root[data-eff-theme="dark"] .cs-dock-tip {
+  background: var(--well);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.cs-dock-btn:hover .cs-dock-tip,
+.cs-dock-btn:focus-visible .cs-dock-tip {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  transition: opacity .35s var(--dock-soft) .15s, transform .5s cubic-bezier(.16,1,.3,1) .15s;
+}
+.cs-dock-tip .tx-kbd {
+  min-width: 18px;
+  height: 18px;
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--ink-3);
+  box-shadow: none;
+}
+
+/* ── activity panel ───────────────────────────────────────────────────────── */
+.cs-activity {
+  width: var(--inspector);
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* clip, not hidden: a clipped box can't be scrolled by focus or scrollIntoView */
+  overflow: hidden;
+  overflow: clip;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+}
+.cs-activity-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--topbar);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.cs-activity-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--t-ui);
+  font-weight: 650;
+  letter-spacing: -.01em;
+}
+.cs-activity-title .tx-pulse { --tx-c: var(--signal); flex: none; }
+.cs-activity-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+.cs-activity-tabs { flex: none; padding-inline: var(--sp-3); }
+.cs-activity-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  align-content: start;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  scrollbar-width: thin;
+}
+.cs-activity-runs { display: grid; gap: var(--sp-4); }
+.cs-activity-idle { display: none; }
+.cs-activity-idle .tx-tile { width: 2rem; height: 2rem; }
+.cs-activity-idle .tx-tile .tx-ic { width: 1.125rem; height: 1.125rem; }
+.cs-shell.is-new .cs-activity-idle { display: grid; }
+.cs-shell.is-new .cs-activity-runs { display: none; }
+.cs-shell.is-new .cs-activity-title .tx-pulse { animation: none; opacity: .45; }
+.cs-live {
+  padding: var(--sp-3);
+  border-radius: var(--r);
+  background: var(--surface-2);
+  box-shadow: none;
+}
+.cs-live-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.cs-mono { font-family: var(--f-mono); font-size: var(--t-micro); color: var(--ink-3); }
+.cs-live-title { display: block; margin-top: var(--sp-2); font-size: var(--t-ui); font-weight: 650; }
+.cs-live-copy { margin: var(--sp-1) 0 var(--sp-2); font-size: var(--t-meta); line-height: var(--lh-meta); color: var(--ink-2); }
+.cs-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+.cs-eyebrow {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.cs-timeline { list-style: none; margin: 0; padding: 0; }
+.cs-timeline li {
+  display: grid;
+  grid-template-columns: 1.5rem minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: start;
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+}
+.cs-timeline li:first-child { border-top: 0; }
+.cs-row-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.cs-row-text b { font-size: var(--t-meta); font-weight: 600; color: var(--ink); }
+.cs-row-text small { font-size: var(--t-micro); color: var(--ink-3); }
+.cs-time { font-family: var(--f-mono); font-size: var(--t-micro); color: var(--ink-3); white-space: nowrap; padding-top: 1px; }
+.cs-checks { display: grid; gap: var(--sp-1); }
+.cs-check-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: var(--sp-1) 0;
+  border-top: 1px solid var(--line);
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+}
+.cs-check-row:first-child { border-top: 0; }
+.cs-check { font-family: var(--f-mono); font-size: var(--t-micro); color: var(--ink-3); white-space: nowrap; }
+
+/* ── responsive ───────────────────────────────────────────────────────────── */
+@media (max-width: 1220px) {
+  .cs-activity { width: 20rem; }
+}
+@media (max-width: 1080px) {
+  .cs-activity { display: none; }
+}
+@media (max-width: 880px) {
+  .cs-sidebar { display: none; }
+  .cs-share-label { display: none; }
+  .cs-share { width: var(--tx-h-sm); padding: 0; justify-content: center; }
+}
+@media (max-width: 640px) {
+  .cs-shell { padding: 0; gap: 0; }
+  .cs-stage { border: 0; border-radius: 0; }
+  .cs-topbar { padding-inline: var(--sp-3); }
+  .cs-thread-in { padding: var(--sp-4) var(--sp-3) var(--sp-3); }
+  .cs-msg-body { padding-inline-start: 0; }
+  .cs-next { margin-inline-start: 0; }
+  .cs-hero { padding: var(--sp-5) var(--sp-3) var(--sp-4); }
+  .cs-hero-h { margin-top: var(--sp-3); }
+  .cs-hero-composer { margin-top: var(--sp-4); }
+  .cs-bottom { padding: 0 var(--sp-3) var(--sp-2); }
+}
+@media (max-width: 520px) {
+  .cs-agent-tag .cs-agent-name { display: none; }
+  .cs-dock-tip { display: none; }
+}
+@media (max-width: 400px) {
+  .cs-dock { gap: var(--sp-2); padding-inline: var(--sp-2); }
+}
+/* A key for a region the layout has hidden is a dead instrument — it would
+   report a panel as open that no width can show. Breakpoints match the rules
+   above (.cs-activity at 1080, .cs-sidebar at 880). */
+@media (max-width: 1080px) {
+  .cs-dock-btn[data-cs-panel="activity"] { display: none; }
+}
+@media (max-width: 880px) {
+  .cs-dock-btn[data-cs-panel="rail"] { display: none; }
+}
+@media (hover: none) {
+  .cs-bottom { transition: none; }
+  .cs-dock { position: static; transform: none; will-change: auto; transition: none; }
+  .cs-dock.is-stowed { transform: none; opacity: 1; pointer-events: auto; transition: none; }
+  .cs-dock-tip { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-scroll, .cs-side-scroll, .cs-activity-scroll { scroll-behavior: auto; }
+  .cs-topbar, .cs-composer, .cs-composer .pt-composer-input { transition: none; }
+  .cs-bottom, .cs-bottom.is-dock-up { transition: none; }
+  .cs-dock { transition: opacity .25s ease; }
+  .cs-dock-btn, .cs-dock-ic, .cs-dock-tip { transition: none; }
+}
+@media (prefers-reduced-motion: reduce) and (hover: hover) {
+  .cs-dock.is-stowed { transform: translateX(-50%); }
+}
+
+html[data-textsize="150"] .cs-activity,
+html[data-textsize="200"] .cs-activity { display: none; }
+html[data-textsize="200"] .cs-agent-tag .cs-agent-name,
+html[data-textsize="200"] .cs-share-label { display: none; }

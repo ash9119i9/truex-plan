@@ -1,0 +1,109 @@
+/* elicit — 6.4 McpElicitationCard. Shares the pinned .ap shell, option
+   toggles (.aq-opt) and inputs (.aq-text) from approval.css. */
+.el .ap-ic { background: var(--signal-soft); color: var(--signal-ink); }
+.el-sub { margin: 4px 0 0; color: var(--ink-3); font-size: .75rem; line-height: 1.4; }
+.el-sub b { color: var(--ink-2); font-weight: 600; }
+
+/* form · one field per row, label above its control */
+.el-form { margin-top: var(--sp-3); }
+.el-set { display: grid; gap: var(--sp-3); min-width: 0; margin: 0; padding: 0; border: 0; }
+.el-set:disabled { opacity: .7; }
+.el-field { display: grid; gap: 4px; min-width: 0; }
+.el-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; color: var(--ink); font: 600 var(--t-meta)/1.35 var(--f-ui); }
+.el-label b { font-weight: 600; }
+.el-opt { color: var(--ink-3); font-size: .6875rem; font-weight: 500; }
+.el-hint { color: var(--ink-3); font-size: .75rem; line-height: 1.4; }
+.el-field .aq-text,
+.el-field .aq-opts { margin-top: 2px; }
+.el-group { grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); }
+.el-group .aq-opt { align-items: center; }
+.aq-opt.is-multi .aq-tick { border-radius: 4px; corner-shape: round; }
+.el-field.is-bad .el-group .aq-opt { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.el-err { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--bad-ink); font-size: .75rem; font-weight: 550; }
+.el-err[hidden] { display: none; }
+.el-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--bad) 35%, var(--line));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--bad-soft) 70%, var(--surface));
+  color: var(--bad-ink);
+  font-size: var(--t-meta);
+  font-weight: 600;
+}
+.el-summary[hidden] { display: none; }
+
+.el-check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color var(--tx-d-1) var(--tx-ease), background-color var(--tx-d-1) var(--tx-ease);
+}
+.el-check:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.el-check:has(input:focus-visible) { box-shadow: var(--focus); }
+.el-check:has(input:checked) { border-color: var(--signal); background: color-mix(in srgb, var(--signal-soft) 60%, var(--surface)); }
+.el-check input { flex: none; width: 1rem; height: 1rem; margin: 2px 0 0; accent-color: var(--signal); }
+.el-check input:focus-visible { outline: none; }
+.el-check-text { display: grid; gap: 2px; min-width: 0; }
+.el-check-text b { color: var(--ink); font: 600 var(--t-meta)/1.35 var(--f-ui); }
+
+/* url · the host first, the full link under it */
+.el-link {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.el-link .at-logo { color: var(--signal-ink); }
+.el-link-text { display: grid; gap: 2px; min-width: 0; }
+.el-link-text b { color: var(--ink); font: 650 var(--t-meta)/1.3 var(--f-ui); }
+.el-link-text code { color: var(--ink-3); font: .6875rem/1.45 var(--f-mono); overflow-wrap: anywhere; }
+.el-warn { display: flex; align-items: flex-start; gap: 6px; margin: var(--sp-2) 0 0; color: var(--warn-ink); font-size: .75rem; line-height: 1.45; }
+.el-warn .tx-ic { flex: none; margin-top: 2px; }
+
+/* verification · the code to compare, large and copyable */
+.el-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-3); }
+.el-code {
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font: 650 1.5rem/1 var(--f-mono);
+  letter-spacing: .14em;
+}
+
+/* a long form scrolls inside the card; its actions stay pinned to the bottom,
+   and focus never lands behind them */
+.el[data-mode="form"] { scroll-padding-bottom: 4.5rem; }
+.el[data-mode="form"] .el-foot {
+  position: sticky;
+  bottom: calc(-1 * var(--sp-3));
+  z-index: 1;
+  margin: var(--sp-3) calc(-1 * var(--sp-3)) calc(-1 * var(--sp-3));
+  padding: var(--sp-2) var(--sp-3) var(--sp-3);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+.el[data-mode="form"] .el-foot .ap-btns,
+.el[data-mode="form"] .el-foot .ap-msg,
+.el[data-mode="form"] .el-foot .ap-err { margin-top: 0; }
+
+
+@media (max-width: 640px) {
+  .el-group { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) { .el-check { transition: none; } }
