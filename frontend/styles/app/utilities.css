@@ -1,0 +1,20 @@
+/* The few text utilities screens still use (tokens only). Layout helpers come
+   from patterns.css (.pt-spacer) and visually hidden text from primitives.css
+   (.tx-sr). */
+.grow {
+  flex: 1;
+  min-width: 0;
+}
+.block {
+  display: block;
+}
+.strong {
+  font-weight: 600;
+  color: var(--ink);
+}
+.muted {
+  color: var(--ink-3);
+}
+.sm {
+  font-size: var(--t-meta);
+}

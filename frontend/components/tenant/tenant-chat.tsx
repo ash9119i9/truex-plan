@@ -2,13 +2,17 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ApiRequestError, userMessage, warnFailure } from "@/lib/api";
-import { fitPanel } from "@/lib/fit-panel";
+import { CHAT_MIN, fitPanel, PANEL_W } from "@/lib/fit-panel";
+import { FOLD, useLayoutWidth } from "@/lib/layout-width";
+import { useExit } from "@/lib/use-exit";
 import {
   cachedFileContent,
   downloadFile,
@@ -20,11 +24,11 @@ import {
   withFiles,
   type ChatFile,
 } from "@/lib/tenant-files";
-import { tintOf } from "@/lib/agent-look";
 import {
   defaultAgent,
   fetchTenantAgents,
   fetchTenantModels,
+  groupAgents,
   withAgent,
   type TenantAgent,
   type TenantModel,
@@ -34,6 +38,7 @@ import {
   archiveChat,
   canSendMessage,
   chatParam,
+  exchangesOf,
   fetchChat,
   fetchChats,
   fetchOlderMessages,
@@ -96,17 +101,20 @@ import {
 } from "@/lib/tenant-connectors";
 import { Panel } from "@/components/v2/shell";
 import { Hero } from "@/components/v2/hero";
-import { Icon } from "@/components/v2/icon";
+import { Icon } from "@/components/tx/icon";
+import { Button } from "@/components/tx/button";
 import {
   useWorkspace,
+  WorkspaceSidebar,
   WorkspaceStage,
 } from "@/components/auth/tenant-workspace";
-import { AgentPicker } from "./agent-picker";
+import { AgentPick, dockAgentMenu } from "./agent-picker";
+import { TeamBoard } from "./team-board";
 import { TenantAgentDialog } from "./tenant-agent-dialog";
 import { ChatList } from "./chat-list";
 import { ChatComposer } from "./chat-composer";
+import { ChatTopbar } from "./chat-topbar";
 import {
-  ChatHeader,
   NetworkActionsContext,
   Transcript,
   type Connection,
@@ -123,9 +131,15 @@ import {
   type ViewerTarget,
 } from "./file-card";
 import { FileViewer } from "./file-viewer";
-import "@/styles/v2/tenant-chat.css";
-// Connect card, tool rows, connector banner and picker styles.
-import "@/styles/v2/connectors.css";
+import { CommandPalette } from "./command-palette";
+import { FloatingDock } from "./floating-dock";
+import { ActivityPanel } from "@/components/activity/panel";
+import { turnView, type TurnView } from "@/lib/activity";
+import { RequestDock } from "./request-dock";
+import { useFocusTrap } from "@/lib/focus-trap";
+import { ariaKeys, useShortcuts } from "@/lib/shortcuts";
+import type { PaletteItem } from "@/lib/palette";
+import "@/styles/app/tools.css";
 
 type Load =
   | { state: "loading" }
@@ -143,8 +157,7 @@ const UPLOADS_AT_ONCE = 2;
 const imagePreview = (file: File, name: string): { preview?: Blob } =>
   isImage(name) ? { preview: file } : {};
 
-// Below this width the sidebar is a drawer (Layout & shell §7).
-const NARROW = "(max-width: 720px)";
+const sidebarNode = () => document.querySelector<HTMLElement>(".cs-sidebar");
 
 /**
  * The tenant chat page: the member's chats in the sidebar, and either a new
@@ -153,13 +166,33 @@ const NARROW = "(max-width: 720px)";
  * reopens it and a reply in progress is followed again from its snapshot.
  */
 export function TenantChat() {
-  const { me, actions } = useWorkspace();
+  const { me, actions, setNew } = useWorkspace();
+  const router = useRouter();
+  // The URL this page opened at. Read from the router, not window.location:
+  // on a client navigation here the page renders before the address changes.
+  const searchParams = useSearchParams();
   // A fresh object on every session check; the stream must not refollow.
   const recheck = useRef(actions.recheck);
   recheck.current = actions.recheck;
-  const narrow = useMedia(NARROW);
+  // The room the shell has at the current text size (DESIGN-SPEC 11.11);
+  // at or below the sidebar fold the sidebar is a drawer.
+  const layoutW = useLayoutWidth();
+  const narrow = layoutW <= FOLD.sidebar;
+  // At or below the activity fold the Activity Panel and its dock key are
+  // hidden (DESIGN-SPEC 11.11); 150% and 200% text reach it on a laptop.
+  const activityFits = layoutW > FOLD.activity;
   const [drawer, setDrawer] = useState(false);
   useEffect(() => setDrawer(false), [narrow]);
+  // Wide screens: ⌘B or the toggle hides the sidebar (DESIGN-SPEC 11.10).
+  const [sidebarHidden, setSidebarHidden] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // The Activity Panel and the turn it shows (null: the latest).
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityTurn, setActivityTurn] = useState<number | null>(null);
+  // Expanded to the wide size (legacy session panel "max").
+  const [activityWide, setActivityWide] = useState(false);
+  // The floating dock is raised; the composer reserves its height meanwhile.
+  const [dockUp, setDockUp] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const [announcement, setAnnouncement] = useState("");
 
@@ -169,6 +202,10 @@ export function TenantChat() {
   const [models, setModels] = useState<TenantModel[]>([]);
   const [modelsError, setModelsError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // "Browse all agents" shows every agent with Edit, Share and Archive.
+  const [browsing, setBrowsing] = useState(
+    () => searchParams.get("view") === "agents",
+  );
   const [dialog, setDialog] = useState<{ editing: TenantAgent | null } | null>(
     null,
   );
@@ -238,6 +275,11 @@ export function TenantChat() {
     );
   };
   const selected = agents.find((a) => a.id === selectedId) ?? null;
+  // The picker offers active agents in the directory's order.
+  const pickable = useMemo(() => {
+    const groups = groupAgents(agents);
+    return [...groups.builtin, ...groups.personal, ...groups.tenant];
+  }, [agents]);
 
   // ---- The chat list ----
   const [chats, setChats] = useState<ChatSummary[]>([]);
@@ -287,7 +329,7 @@ export function TenantChat() {
 
   // ---- The open chat ----
   const [openId, setOpenId] = useState<string | null>(() =>
-    typeof window === "undefined" ? null : chatParam(window.location.search),
+    chatParam(searchParams.toString()),
   );
   // Read by async work to drop answers for a chat no longer shown.
   const openRef = useRef(openId);
@@ -331,7 +373,14 @@ export function TenantChat() {
   const navigate = useCallback(
     (chatId: string | null, how: "push" | "replace" = "push") => {
       setDrawer(false);
-      if (chatId === openRef.current) return;
+      // Any navigation leaves the Agents board; "Agents" sets it again after.
+      setBrowsing(false);
+      if (chatId === openRef.current) {
+        // Already on the new-chat screen, so drop `?view=agents` too.
+        if (!chatId && window.location.search)
+          window.history.replaceState(null, "", window.location.pathname);
+        return;
+      }
       openRef.current = chatId;
       setOpenId(chatId);
       setStopError("");
@@ -408,6 +457,69 @@ export function TenantChat() {
 
   const openThread = openId && thread?.chat.id === openId ? thread : null;
   const openLive = live && live.chatId === openId ? live.reply : null;
+
+  // Only the open chat is followed, so a reply running elsewhere is noticed
+  // by re-reading the first page of the list while one runs. Running chats
+  // are the most recent, so they are on that page.
+  const backgroundBusy = chats.some(
+    (chat) => chat.activeRunId && chat.id !== openId,
+  );
+  useEffect(() => {
+    if (!backgroundBusy) return;
+    let timer = 0;
+    let stopped = false;
+    const poll = () => {
+      timer = window.setTimeout(() => {
+        fetchChats()
+          .then(
+            (page) => {
+              // The open chat keeps its own state: a page read before its
+              // reply finished would bring the pulse back.
+              if (!stopped)
+                setChats((list) =>
+                  page.chats
+                    .filter((chat) => chat.id !== openRef.current)
+                    .reduce(withChat, list),
+                );
+            },
+            (error: unknown) => warnFailure("chat list", error),
+          )
+          .finally(() => {
+            if (!stopped) poll();
+          });
+      }, 4000);
+    };
+    poll();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
+  }, [backgroundBusy]);
+
+  // A reply that finishes in a chat that is not open marks it unread until
+  // it is opened. Kept for this session only; the platform has no read state.
+  const [unread, setUnread] = useState<ReadonlySet<string>>(() => new Set());
+  const runningRef = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const running = new Set(
+      chats.filter((chat) => chat.activeRunId).map((chat) => chat.id),
+    );
+    const finished = [...runningRef.current].filter(
+      (chatId) => !running.has(chatId) && chatId !== openId,
+    );
+    runningRef.current = running;
+    if (finished.length)
+      setUnread((current) => new Set([...current, ...finished]));
+  }, [chats, openId]);
+  useEffect(() => {
+    if (!openId) return;
+    setUnread((current) => {
+      if (!current.has(openId)) return current;
+      const next = new Set(current);
+      next.delete(openId);
+      return next;
+    });
+  }, [openId]);
 
   // Follows the open chat's reply until it is saved. Leaving the chat stops
   // following; the reply keeps running and is picked up again on return.
@@ -648,6 +760,24 @@ export function TenantChat() {
     ids.reset();
     void dispatch(openId ?? NEW, text, true);
   };
+
+  // The transcript's copies keep their identity across stream frames, so
+  // saved exchanges (memoized rows) do not re-render; each call runs the
+  // latest committed `resend` / `sendFollowUp`.
+  const sendsRef = useRef({ resend, sendFollowUp });
+  useLayoutEffect(() => {
+    sendsRef.current = { resend, sendFollowUp };
+  });
+  const onResend = useCallback(
+    (text: string) => sendsRef.current.resend(text),
+    [],
+  );
+  const onFollowUp = useCallback(
+    (runId: string, item: FollowUpItem) =>
+      sendsRef.current.sendFollowUp(runId, item),
+    [],
+  );
+  const newChat = useCallback(() => navigate(null), [navigate]);
 
   // Starts sign-in to a connector named on the Connect card: stores where to
   // return so the member lands back on this chat, then navigates to the
@@ -1000,7 +1130,7 @@ export function TenantChat() {
   // ---- The mobile drawer ----
   useEffect(() => {
     if (!narrow || !drawer) return;
-    document.querySelector<HTMLElement>(".tchat-side .btn-new")?.focus();
+    document.querySelector<HTMLElement>(".cs-sidebar .cs-new")?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setDrawer(false);
@@ -1009,6 +1139,7 @@ export function TenantChat() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [narrow, drawer]);
+  useFocusTrap(sidebarNode, narrow && drawer);
 
   const shownFailure = failure?.key === draftKey ? failure.failure : null;
   const shownConnectCard =
@@ -1055,6 +1186,12 @@ export function TenantChat() {
   );
   const shownLive = openLive ?? pendingLive;
   const creating = !openId && !!shownThread;
+  // The frame shows the new-conversation layout (11.4) until a chat exists.
+  const frameNew = !openId && !creating;
+  useEffect(() => {
+    setNew(frameNew);
+  }, [frameNew, setNew]);
+  useEffect(() => () => setNew(false), [setNew]);
 
   // ---- Files ----
   const shownFiles = useMemo(
@@ -1062,6 +1199,23 @@ export function TenantChat() {
     [chatFiles, openId],
   );
   const shownViewer = viewer && viewer.chatId === openId ? viewer : null;
+  // Where the Activity Panel fits, a file opens inside it; below its fold
+  // the file panel floats beside the chat instead.
+  const viewerInPanel = activityFits && !!shownThread;
+  const panelViewer = viewerInPanel ? shownViewer : null;
+  const floatViewer = viewerInPanel ? null : shownViewer;
+  const openFile = useCallback(
+    (target: ViewerTarget) => {
+      if (!openId) return;
+      setViewer({ chatId: openId, target });
+      // The panel opens at the wide size, which the fit rules may refuse.
+      if (viewerInPanel) {
+        setActivityOpen(true);
+        setActivityWide(true);
+      }
+    },
+    [openId, viewerInPanel],
+  );
   // The viewed reply's files that couldn't be saved.
   const viewerRun = shownViewer?.target.runId;
   const viewerUnsaved = !viewerRun
@@ -1082,7 +1236,11 @@ export function TenantChat() {
         ? current
         : { chatId: openId, target: { runId: liveRunId, path: writingPath } },
     );
-  }, [openId, liveRunId, writingPath, narrow]);
+    if (viewerInPanel) {
+      setActivityOpen(true);
+      setActivityWide(true);
+    }
+  }, [openId, liveRunId, writingPath, narrow, viewerInPanel]);
   const closeViewer = useCallback(() => {
     setViewer((current) => {
       if (current) dismissed.current.add(current.target.runId);
@@ -1176,79 +1334,328 @@ export function TenantChat() {
   );
   const fileActions = useMemo<FileActions>(
     () => ({
-      open: (target) => openId && setViewer({ chatId: openId, target }),
+      open: openFile,
       content: fileContent,
       download,
       active: shownViewer?.target ?? null,
       retry: retryFiles,
       retryState: (runId) => retries[runId],
     }),
-    [openId, fileContent, download, shownViewer, retryFiles, retries],
+    [openFile, fileContent, download, shownViewer, retryFiles, retries],
   );
-  const viewportWidth = useViewportWidth();
-  const viewerFit = fitPanel(viewportWidth, 560, 640, !narrow, true);
+  const viewerFit = fitPanel(
+    layoutW,
+    560,
+    640,
+    !narrow && !sidebarHidden,
+    true,
+  );
+
+  // The topbar (DESIGN-SPEC 11.3): a new conversation has no agent yet.
+  const isNew = frameNew;
+  const topChat = shownThread?.chat ?? chats.find((c) => c.id === openId);
+  const onBoard =
+    !openId && !creating && browsing && agentsLoad.state === "ready";
+  const topTitle = onBoard
+    ? "Agents"
+    : isNew
+      ? "New conversation"
+      : topChat?.title || (topChat ? "New chat" : "Loading…");
+  const topAgent = topChat?.agent
+    ? {
+        name: topChat.agent.name,
+        state: hasPendingApproval(openLive)
+          ? ("waiting" as const)
+          : topChat.activeRunId || openLive
+            ? ("working" as const)
+            : ("ready" as const),
+      }
+    : null;
+
+  // The wide panel is offered only where the chat keeps 640px beside it;
+  // the sidebar yields to it when both don't fit (legacy fit rules).
+  const wideFit = fitPanel(
+    layoutW,
+    PANEL_W.max,
+    CHAT_MIN.max,
+    !narrow && !sidebarHidden,
+    true,
+  );
+  // A floating file (560px) beside it would squeeze the chat.
+  const canWide = !wideFit.overlay && !floatViewer;
+  const shownWide = activityOpen && activityWide && canWide;
+  const sidebarYields = shownWide && !wideFit.sidebar;
+  // Hidden by the user, or pushed out by the wide panel.
+  const sidebarOff = sidebarHidden || sidebarYields;
+  const toggleSidebar = () => {
+    if (narrow) setDrawer((open) => !open);
+    // Opening the sidebar wins: the wide panel shrinks back.
+    else if (sidebarYields) setActivityWide(false);
+    else setSidebarHidden((hidden) => !hidden);
+  };
+  // The dock's Account key opens the account menu in the sidebar, showing the
+  // sidebar first if it is hidden.
+  const openAccount = () => {
+    if (narrow) setDrawer(true);
+    else {
+      setSidebarHidden(false);
+      if (sidebarYields) setActivityWide(false);
+    }
+    requestAnimationFrame(() =>
+      document.querySelector<HTMLElement>(".cs-sidebar .cs-account")?.click(),
+    );
+  };
+  // Closing the panel closes a file open inside it.
+  const toggleActivity = () => {
+    if (activityOpen && panelViewer) closeViewer();
+    setActivityOpen((open) => !open);
+    setActivityTurn(null);
+  };
+  // Focus goes back to the dock key that opened it, which raises the dock.
+  const closeActivity = () => {
+    if (panelViewer) closeViewer();
+    setActivityOpen(false);
+    document
+      .querySelector<HTMLElement>('.cs-dock-btn[aria-label="Activity"]')
+      ?.focus();
+  };
+  // The panel exists for an open conversation on a wide enough shell; the
+  // dock key and ⌘. exist exactly where it does.
+  const canActivity = !!shownThread && activityFits;
+  const activityShown = activityOpen && canActivity;
+  // Stays mounted through its slide out (the --panel-out duration).
+  const activityMounted = useExit(activityShown, 320);
+  useShortcuts({
+    sidebar: toggleSidebar,
+    palette: () => setPaletteOpen((open) => !open),
+    ...(canActivity ? { activity: toggleActivity } : {}),
+  });
+  // One report per turn of the open conversation, for the Activity Panel.
+  const turns = useMemo(() => {
+    if (!shownThread) return [];
+    const exchanges = exchangesOf(shownThread);
+    if (shownLive && !exchanges.some((e) => e.runId === shownLive.runId))
+      exchanges.push({ runId: shownLive.runId, messages: [], run: null });
+    return exchanges.map((exchange) =>
+      turnView(
+        exchange,
+        shownLive?.runId === exchange.runId ? shownLive : null,
+        shownFiles,
+        shownThread.chat.connectors,
+      ),
+    );
+  }, [shownThread, shownLive, shownFiles]);
+  // A file open in the panel shows the turn that made it.
+  const fileTurn = panelViewer
+    ? turns.findIndex((t) => t.runId === panelViewer.target.runId)
+    : -1;
+  const turnIndex =
+    fileTurn >= 0
+      ? fileTurn
+      : Math.min(activityTurn ?? turns.length - 1, turns.length - 1);
+  const showInChat = (turn: TurnView) => {
+    const target =
+      turn.state === "needs"
+        ? document.querySelector<HTMLElement>(".cs-pinned .rq")
+        : document.querySelector<HTMLElement>(
+            `[data-run="${CSS.escape(turn.runId)}"]`,
+          );
+    target?.scrollIntoView({
+      block: "nearest",
+      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+    target?.focus({ preventScroll: true });
+  };
+  const paletteItems = useMemo<PaletteItem[]>(
+    () => [
+      // Ahead of the history, so a long one can't push it past the cap.
+      {
+        id: "agents",
+        group: "Go to",
+        label: "Agents",
+        keywords: "team board specialists",
+      },
+      ...chats.map((chat) => ({
+        id: `chat:${chat.id}`,
+        group: "Go to" as const,
+        label: chat.title || "Untitled conversation",
+      })),
+      {
+        id: "new",
+        group: "Actions",
+        label: "New conversation",
+        shortcut: "new",
+      },
+      {
+        id: "sidebar",
+        group: "Actions",
+        label: (narrow ? drawer : !sidebarOff)
+          ? "Hide sidebar"
+          : "Show sidebar",
+        keywords: "conversations",
+        shortcut: "sidebar",
+      },
+      {
+        id: "tools",
+        group: "Actions",
+        label: "Connected tools",
+        keywords: "connectors mcp",
+      },
+    ],
+    [chats, narrow, drawer, sidebarOff],
+  );
+  const runPalette = (id: string) => {
+    if (id.startsWith("chat:")) navigate(id.slice(5));
+    else if (id === "new") navigate(null);
+    else if (id === "sidebar") toggleSidebar();
+    else if (id === "agents") {
+      navigate(null);
+      setBrowsing(true);
+    } else if (id === "tools")
+      router.push(`/t/${me.tenant.id}/connected-tools`);
+  };
+  // Hiding the sidebar while focus is in it leaves focus on the toggle that
+  // brings it back, not on the page body.
+  useEffect(() => {
+    if (!sidebarOff) return;
+    const focused = document.activeElement;
+    if (!focused || focused === document.body || focused.closest(".cs-sidebar"))
+      toggleRef.current?.focus();
+  }, [sidebarOff]);
+
+  const sidebarToggle =
+    narrow || sidebarOff ? (
+      <Button
+        ref={toggleRef}
+        iconOnly
+        icon="sidebar"
+        variant="ghost"
+        size="sm"
+        aria-label="Conversations"
+        aria-expanded={narrow ? drawer : false}
+        aria-keyshortcuts={ariaKeys("sidebar")}
+        onClick={toggleSidebar}
+      />
+    ) : null;
+
+  const dock = (
+    <FloatingDock
+      sidebarOpen={narrow ? drawer : !sidebarOff}
+      onSidebar={toggleSidebar}
+      onSearch={() => setPaletteOpen(true)}
+      onNew={() => navigate(null)}
+      onAgent={() => {
+        navigate(null);
+        setBrowsing(true);
+      }}
+      onAccount={openAccount}
+      agentMenu={
+        agentsLoad.state === "ready"
+          ? {
+              items: dockAgentMenu(pickable, selectedId),
+              onSelect: (id) => {
+                if (id === "new") openDialog(null);
+                else if (id === "browse") {
+                  navigate(null);
+                  setBrowsing(true);
+                } else {
+                  // A new chat with that agent, ready to type.
+                  navigate(null);
+                  setSelectedId(id.slice("agent:".length));
+                }
+              },
+            }
+          : undefined
+      }
+      onUpChange={setDockUp}
+      activityOpen={activityOpen}
+      onActivity={canActivity ? toggleActivity : undefined}
+    />
+  );
 
   let stage: ReactNode;
-  if (!openId && !creating) {
+  if (onBoard) {
     stage = (
-      <section className="workspace-empty tchat-new" aria-label="New chat">
-        <Hero agentHue={selected ? tintOf(selected.tint).dot : undefined}>
-          {shownConnectCard && (
-            <ConnectCard
-              required={shownConnectCard}
-              connecting={connecting}
-              onConnect={(slug) => void connect(slug)}
-            />
-          )}
-          <ChatComposer
-            hero
-            value={draft}
-            onChange={setDraft}
-            onSend={send}
-            onStop={() => undefined}
-            agentName={selected?.name ?? null}
-            busy={false}
-            sending={sending}
-            ending={null}
-            disabled={!selected?.available}
-            failure={shownFailure}
-            stopError=""
-            focusKey={NEW}
-            uploads={uploadSettings}
-            files={files}
-            onAddFiles={attachFiles}
-            onRemoveFile={removeFile}
-            fileError={fileErrors[draftKey] ?? ""}
-          />
-          {agentsLoad.state === "loading" && (
-            <p className="workspace-empty-note" aria-busy="true">
-              Loading agents…
-            </p>
-          )}
-          {agentsLoad.state === "error" && (
-            <div className="workspace-empty-note" role="alert">
-              <p>{agentsLoad.message}</p>
-              <button
-                type="button"
-                className="btn-soft"
-                onClick={() => setAgentsAttempt((n) => n + 1)}
-              >
-                Try again
-              </button>
-            </div>
-          )}
-          {agentsLoad.state === "ready" && (
-            <AgentPicker
-              agents={agents}
-              selectedId={selectedId}
-              onSelect={(agent) => setSelectedId(agent.id)}
-              onNew={() => openDialog(null)}
-              onEdit={(agent) => openDialog(agent)}
-              onChanged={agentChanged}
-            />
-          )}
-        </Hero>
+      <section className="cs-scroll" aria-label="Agents">
+        <TeamBoard
+          agents={agents}
+          selectedId={selectedId}
+          onChat={(agent) => {
+            setSelectedId(agent.id);
+            setBrowsing(false);
+          }}
+          onEdit={(agent) => openDialog(agent)}
+          onNew={() => openDialog(null)}
+          onClose={() => setBrowsing(false)}
+          onChanged={agentChanged}
+        />
       </section>
+    );
+  } else if (!openId && !creating) {
+    stage = (
+      <>
+        <section className="cs-scroll" aria-label="New chat">
+          <Hero name={me.user.name}>
+            {shownConnectCard && (
+              <ConnectCard
+                required={shownConnectCard}
+                connecting={connecting}
+                onConnect={(slug) => void connect(slug)}
+              />
+            )}
+            <ChatComposer
+              hero
+              value={draft}
+              onChange={setDraft}
+              onSend={send}
+              onStop={() => undefined}
+              agentName={selected?.name ?? null}
+              busy={false}
+              sending={sending}
+              ending={null}
+              disabled={!selected?.available}
+              failure={shownFailure}
+              stopError=""
+              focusKey={NEW}
+              uploads={uploadSettings}
+              files={files}
+              onAddFiles={attachFiles}
+              onRemoveFile={removeFile}
+              fileError={fileErrors[draftKey] ?? ""}
+              bar={
+                agentsLoad.state === "ready" && (
+                  <AgentPick
+                    agents={pickable}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    onNew={() => openDialog(null)}
+                    onBrowse={() => setBrowsing(true)}
+                  />
+                )
+              }
+            />
+            {agentsLoad.state === "loading" && (
+              <p className="cs-hero-note" aria-busy="true">
+                Loading agents…
+              </p>
+            )}
+            {agentsLoad.state === "error" && (
+              <div className="cs-hero-note" role="alert">
+                <p>{agentsLoad.message}</p>
+                <Button
+                  size="sm"
+                  onClick={() => setAgentsAttempt((n) => n + 1)}
+                >
+                  Try again
+                </Button>
+              </div>
+            )}
+          </Hero>
+        </section>
+        <div className="cs-bottom">{dock}</div>
+      </>
     );
   } else if (shownThread) {
     const chat = shownThread.chat;
@@ -1263,14 +1670,7 @@ export function TenantChat() {
       latestRunId: shownThread.messages.at(-1)?.runId ?? null,
     };
     stage = (
-      <section className="tchat-open" aria-label={chat.title || "Chat"}>
-        <ChatHeader
-          chat={chat}
-          busy={busy}
-          creating={creating}
-          onRename={rename}
-          onArchive={archive}
-        />
+      <section className="cs-open" aria-label={chat.title || "Chat"}>
         <FileActionsContext.Provider value={fileActions}>
           <NetworkActionsContext.Provider value={networkActions}>
             <Transcript
@@ -1281,28 +1681,21 @@ export function TenantChat() {
               olderError={olderError}
               onLoadOlder={loadOlder}
               onReconnect={reconnect}
-              onResend={resend}
-              onFollowUp={sendFollowUp}
-              onApprove={(approvalId, decision) =>
-                void approve(approvalId, decision)
-              }
-              approvalBusy={approvalBusy}
+              onResend={onResend}
+              onFollowUp={onFollowUp}
               tenantId={me.tenant.id}
               files={shownFiles}
+              onNewChat={newChat}
             />
           </NetworkActionsContext.Provider>
         </FileActionsContext.Provider>
-        <div className="bottom">
+        <div className={dockUp ? "cs-bottom is-dock-up" : "cs-bottom"}>
           {note && !busy ? (
-            <div className="tchat-readonly" role="status">
+            <div className="tx-card cs-readonly" role="status">
               <p>{note}</p>
-              <button
-                type="button"
-                className="btn-soft"
-                onClick={() => navigate(null)}
-              >
+              <Button size="sm" onClick={() => navigate(null)}>
                 Start a new chat
-              </button>
+              </Button>
             </div>
           ) : (
             <>
@@ -1313,6 +1706,12 @@ export function TenantChat() {
                   onConnect={(slug) => void connect(slug)}
                 />
               )}
+              <RequestDock
+                live={shownLive}
+                connectors={chat.connectors}
+                busy={approvalBusy}
+                onApprove={approve}
+              />
               <ChatComposer
                 value={draft}
                 onChange={setDraft}
@@ -1342,117 +1741,168 @@ export function TenantChat() {
               />
             </>
           )}
+          {dock}
         </div>
       </section>
     );
   } else if (opened.state === "error") {
     stage = (
-      <section className="workspace-empty" aria-label="Chat">
-        <div className="tchat-state">
+      <section className="cs-scroll" aria-label="Chat">
+        <div className="cs-state">
           <p role="alert">{opened.message}</p>
           {opened.notFound ? (
-            <button
-              type="button"
-              className="btn-soft"
-              onClick={() => navigate(null)}
-            >
+            <Button size="sm" onClick={() => navigate(null)}>
               Start a new chat
-            </button>
+            </Button>
           ) : (
-            <button
-              type="button"
-              className="btn-soft"
+            <Button
+              size="sm"
               onClick={() => {
                 if (openId) void load(openId);
               }}
             >
               Try again
-            </button>
+            </Button>
           )}
         </div>
       </section>
     );
   } else {
     stage = (
-      <section className="workspace-empty" aria-label="Chat" aria-busy="true">
-        <p className="tchat-state">Loading chat…</p>
+      <section className="cs-scroll" aria-label="Chat" aria-busy="true">
+        <p className="cs-state">Loading chat…</p>
       </section>
     );
   }
+
+  // Back to the Files list of the same turn.
+  const closePanelFile = () => {
+    setActivityTurn(turnIndex);
+    closeViewer();
+  };
+  const fileViewer = (target: ViewerTarget, onClose = closeViewer) =>
+    openId && (
+      <FileViewer
+        chatId={openId}
+        target={target}
+        files={shownFiles}
+        live={openLive}
+        onSelect={(next) => setViewer({ chatId: openId, target: next })}
+        onClose={onClose}
+        onDownload={download}
+        unsaved={viewerUnsaved}
+        saving={retries[target.runId]}
+        onSave={() => retryFiles(target.runId, viewerUnsaved)}
+      />
+    );
 
   return (
     <>
       <Panel
         kind="sidebar"
         // Gives way to an open file before the file floats over the chat.
-        open={narrow ? drawer : !shownViewer || viewerFit.sidebar}
-        label="Chats"
-        className="tchat-side"
+        open={
+          narrow ? drawer : !sidebarOff && (!floatViewer || viewerFit.sidebar)
+        }
+        label="Conversations and workspace"
+        modal={narrow}
       >
-        <ChatList
-          chats={chats}
-          activeId={openId}
-          state={listState}
-          error={listError}
-          hasMore={!!cursor}
-          loadingMore={loadingMore}
-          onOpen={(chatId) => navigate(chatId)}
+        <WorkspaceSidebar
+          current={browsing && !openId ? "agents" : "chat"}
           onNew={() => navigate(null)}
-          onRetry={() => setListAttempt((n) => n + 1)}
-          onMore={() => void loadMore()}
-          onConnectedTools={() =>
-            window.location.assign(`/t/${me.tenant.id}/connected-tools`)
-          }
-        />
+          onAgents={() => {
+            navigate(null);
+            setBrowsing(true);
+            if (narrow) setDrawer(false);
+          }}
+        >
+          <ChatList
+            chats={chats}
+            activeId={openId}
+            unread={unread}
+            state={listState}
+            error={listError}
+            hasMore={!!cursor}
+            loadingMore={loadingMore}
+            onOpen={(chatId) => navigate(chatId)}
+            onRetry={() => setListAttempt((n) => n + 1)}
+            onMore={() => void loadMore()}
+          />
+        </WorkspaceSidebar>
       </Panel>
       {narrow && drawer && (
         <div
-          className="tchat-scrim"
+          className="cs-scrim"
           aria-hidden="true"
           onClick={() => setDrawer(false)}
         />
       )}
       <WorkspaceStage
-        start={
-          narrow ? (
-            <button
-              ref={toggleRef}
-              type="button"
-              className="icon-btn"
-              aria-label="Chats"
-              aria-expanded={drawer}
-              onClick={() => setDrawer((open) => !open)}
-            >
-              <Icon name="sidebar" size={16} />
-            </button>
-          ) : null
+        title={topTitle}
+        agent={topAgent}
+        start={sidebarToggle}
+        topbar={
+          shownThread && !isNew ? (
+            <ChatTopbar
+              chat={shownThread.chat}
+              busy={!!shownThread.chat.activeRunId}
+              waiting={hasPendingApproval(openLive)}
+              creating={creating}
+              start={sidebarToggle}
+              onRename={rename}
+              onArchive={archive}
+            />
+          ) : undefined
         }
       >
         {stage}
       </WorkspaceStage>
+      {activityMounted && shownThread && activityFits && (
+        <ActivityPanel
+          closing={!activityShown}
+          turns={turns}
+          index={turnIndex}
+          agent={
+            shownThread.chat.agent
+              ? {
+                  name: shownThread.chat.agent.name,
+                  source: shownThread.chat.agent.source,
+                  model: shownThread.chat.model?.displayName ?? null,
+                }
+              : null
+          }
+          onIndex={(index) => {
+            if (panelViewer) closeViewer();
+            setActivityTurn(index);
+          }}
+          onClose={closeActivity}
+          onShowInChat={showInChat}
+          onOpenFile={(file) =>
+            openFile({ runId: file.runId, path: file.path })
+          }
+          onDownloadFile={download}
+          file={
+            panelViewer &&
+            openId &&
+            fileViewer(panelViewer.target, closePanelFile)
+          }
+          onCloseFile={closePanelFile}
+          wide={shownWide}
+          onToggleWide={
+            canWide ? () => setActivityWide((wide) => !wide) : undefined
+          }
+        />
+      )}
       <Panel
         kind="activity"
-        open={!!shownViewer}
+        open={!!floatViewer}
         width={560}
         // Floats over the chat only when even without the sidebar the chat
         // would be under 640px.
         overlay={viewerFit.overlay}
         label="File"
       >
-        {shownViewer && openId && (
-          <FileViewer
-            chatId={openId}
-            target={shownViewer.target}
-            files={shownFiles}
-            live={openLive}
-            onSelect={(target) => setViewer({ chatId: openId, target })}
-            onClose={closeViewer}
-            onDownload={download}
-            unsaved={viewerUnsaved}
-            saving={retries[shownViewer.target.runId]}
-            onSave={() => retryFiles(shownViewer.target.runId, viewerUnsaved)}
-          />
-        )}
+        {floatViewer && openId && fileViewer(floatViewer.target)}
       </Panel>
       <TenantAgentDialog
         open={dialog !== null}
@@ -1461,13 +1911,25 @@ export function TenantChat() {
         modelsError={modelsError}
         helpersAllowed={helpersAllowed}
         onClose={() => setDialog(null)}
+        onSayHi={(agent) => {
+          // A new chat with the new agent, ready to type.
+          navigate(null);
+          setSelectedId(agent.id);
+        }}
         onSaved={(agent) => {
           agentChanged(agent);
           if (!dialog?.editing && agent.available) setSelectedId(agent.id);
           setDialog(null);
         }}
       />
-      <p className="sr-only" role="status" aria-live="polite">
+      {paletteOpen && (
+        <CommandPalette
+          items={paletteItems}
+          onRun={runPalette}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
+      <p className="tx-sr" role="status" aria-live="polite">
         {announcement}
       </p>
     </>
@@ -1484,33 +1946,6 @@ function firstWritingPath(live: LiveReply): string | null {
     )
       return item.preview.path;
   return null;
-}
-
-function useViewportWidth(): number {
-  const [width, setWidth] = useState(() =>
-    typeof window === "undefined" ? 1440 : window.innerWidth,
-  );
-  useEffect(() => {
-    const update = () => setWidth(window.innerWidth);
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return width;
-}
-
-function useMedia(query: string): boolean {
-  const [matches, setMatches] = useState(
-    () => typeof window !== "undefined" && window.matchMedia(query).matches,
-  );
-  useEffect(() => {
-    const list = window.matchMedia(query);
-    const update = () => setMatches(list.matches);
-    update();
-    list.addEventListener("change", update);
-    return () => list.removeEventListener("change", update);
-  }, [query]);
-  return matches;
 }
 
 // Shown above the composer after a 409 CONNECTION_REQUIRED: the draft is kept,
@@ -1541,7 +1976,7 @@ function ConnectCard({
             <button
               key={c.slug}
               type="button"
-              className="btn-solid"
+              className="tx-btn tx-primary"
               disabled={connecting !== null}
               onClick={() => onConnect(c.slug)}
             >

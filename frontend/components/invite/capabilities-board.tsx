@@ -3,7 +3,7 @@
 // Right pane of the join page (join-tenant-v3-dev-spec.html, "Capabilities board").
 // Decorative: the board itself is aria-hidden and the legend is the readable version.
 // The copy is product-level only. The page is public, so it never shows tenant counts or names.
-// Styles: styles/v2/invite-board.css (the page imports it), scoped under .join-page .right.
+// Styles: styles/app/capabilities-board.css (artwork), scoped under .join-page .right.
 
 import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 

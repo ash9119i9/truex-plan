@@ -1,0 +1,540 @@
+/* The Activity Panel (DESIGN-SPEC 14), ported from
+   system/screens/business-activity.css; tokens only. */
+
+.ap {
+  --ap-w: var(--inspector);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  width: var(--ap-w);
+  max-width: 100%;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  overflow: hidden;
+}
+/* ≤ 1220: the narrow panel (11.11) */
+@container app (max-width: 76.25rem) {
+  .ap {
+    --ap-w: var(--inspector-sm);
+  }
+}
+/* ≤ 1080, which 150% and 200% text reach on a laptop: the panel is hidden
+   and so is its dock key (11.11). The chat renders neither below this fold
+   (FOLD.activity); this is the CSS twin. */
+@container app (max-width: 67.5rem) {
+  .ap {
+    display: none;
+  }
+}
+/* Expanded (legacy session panel "max"), offered only where the chat keeps
+   640px beside it (fitPanel). Outranks the narrow width above; the ≤ 1080
+   fold below still hides it. */
+.ap.is-wide {
+  --ap-w: 35rem;
+}
+/* Slides in from the right edge like the dock rising. Its negative margin
+   gives its width and gap back to the chat while it moves, so the chat
+   widens in step instead of jumping. */
+.ap {
+  transition:
+    width var(--panel-in),
+    margin var(--panel-in),
+    transform var(--panel-in),
+    opacity var(--panel-in);
+}
+@starting-style {
+  .ap {
+    margin-inline-start: calc((var(--ap-w) + var(--sp-2)) * -1);
+    transform: translateX(calc(100% + var(--sp-4)));
+    opacity: 0;
+  }
+}
+.ap.is-closing {
+  margin-inline-start: calc((var(--ap-w) + var(--sp-2)) * -1);
+  transform: translateX(calc(100% + var(--sp-4)));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    width var(--panel-out),
+    margin var(--panel-out),
+    transform var(--panel-out),
+    opacity var(--panel-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ap,
+  .ap.is-closing {
+    transition: none;
+  }
+}
+:root[data-eff-motion="reduce"] .ap,
+:root[data-eff-motion="reduce"] .ap.is-closing {
+  transition: none;
+}
+.ap-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-h);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+}
+.ap-head > .tx-btn {
+  flex: none;
+}
+.ap-scope {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.ap-scope [aria-current="page"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font-weight: 650;
+  white-space: nowrap;
+}
+/* four tabs never fit at 390 px and 200% text: they scroll, not clip */
+.ap > .tx-tabs {
+  flex: none;
+  padding-inline: var(--sp-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ap-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+/* An open file scrolls its own body, under its fixed header. */
+.ap-body.has-file {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ap-body.has-file > .file-viewer {
+  flex: 1;
+}
+.ap-body:focus-visible {
+  outline: none;
+  box-shadow: inset var(--focus);
+}
+.ap-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-4);
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.ap-foot .tx-chip-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ap-foot .tx-btn {
+  flex: none;
+}
+.ap-k,
+.ap-micro {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.ap-empty {
+  margin: 0;
+  padding: var(--sp-4);
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.ap-sec .ap-empty {
+  padding: 0;
+}
+
+/* sections */
+.ap-sec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+}
+.ap-sec + .ap-sec,
+.ap-notice + .ap-sec {
+  border-top: 1px solid var(--line);
+}
+.ap-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.ap-h {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  font-size: var(--t-meta);
+  font-weight: 650;
+  letter-spacing: 0;
+  font-variation-settings: var(--cut-text);
+  color: var(--ink);
+}
+.ap-micro {
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+}
+.ap-q {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--t-ui);
+  font-weight: 550;
+  line-height: var(--lh-ui);
+  color: var(--ink);
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+.ap-facts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+}
+
+/* needs you, issue, stopped */
+.ap-notice {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0 var(--sp-4) var(--sp-4);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--well);
+}
+.ap-notice.is-warn {
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
+  background: var(--warn-soft);
+}
+.ap-notice.is-bad {
+  border-color: color-mix(in srgb, var(--bad) 30%, var(--line));
+  background: var(--bad-soft);
+}
+.ap-notice-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--t-meta);
+  font-weight: 650;
+  color: var(--ink);
+}
+.ap-notice.is-warn .ap-notice-title {
+  color: var(--warn-ink);
+}
+.ap-notice.is-bad .ap-notice-title {
+  color: var(--bad-ink);
+}
+.ap-notice-copy,
+.ap-hint {
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+}
+.ap-hint {
+  color: var(--ink-3);
+}
+.ap-notice-foot {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+.ap-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-meta);
+  color: var(--ink);
+}
+.ap-tag {
+  margin-inline-start: var(--sp-1);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-xs);
+  background: var(--ok-soft);
+  color: var(--ok-ink);
+  font-size: var(--t-micro);
+}
+
+/* steps: a rail of nodes */
+.ap-steps {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ap-step summary {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  list-style: none;
+}
+.ap-step summary::-webkit-details-marker {
+  display: none;
+}
+.ap-step summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.ap-node {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.ap-step.is-run .ap-node {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+.ap-step.is-wait .ap-node {
+  background: var(--warn-soft);
+  color: var(--warn-ink);
+}
+.ap-step.is-fail .ap-node {
+  background: var(--bad-soft);
+  color: var(--bad-ink);
+}
+.ap-step.is-decl .ap-node,
+.ap-step.is-stop .ap-node {
+  background: var(--well-2);
+  color: var(--ink-3);
+}
+.ap-step-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ap-step-title {
+  font-size: var(--t-meta);
+  font-weight: 550;
+  color: var(--ink);
+}
+.ap-step.is-run .ap-step-title {
+  color: var(--signal-ink);
+}
+.ap-step-sub {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.ap-step-time {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.ap-dl {
+  display: grid;
+  grid-template-columns: 4.75rem minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-2);
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding-inline-start: var(--sp-6);
+  font-size: var(--t-meta);
+}
+.ap-dl.is-technical {
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.ap-dl dt {
+  color: var(--ink-3);
+}
+.ap-dl dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.ap-result.is-done {
+  color: var(--ok-ink);
+}
+.ap-result.is-fail {
+  color: var(--bad-ink);
+}
+.ap-result.is-wait {
+  color: var(--warn-ink);
+}
+
+/* agent and crew */
+.ap-agent {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.ap-av {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--av-lg);
+  height: var(--av-lg);
+  border-radius: var(--r);
+  background: var(--id-main-soft);
+  color: var(--id-main-ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-meta);
+  font-weight: 600;
+}
+.ap-agent-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-h);
+  min-width: 0;
+}
+.ap-agent-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--t-ui);
+  font-weight: 650;
+}
+.ap-agent-model {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.ap-crew {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ap-crew-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-h);
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--crew, var(--id-main));
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.ap-crew-name {
+  font-size: var(--t-meta);
+  font-weight: 650;
+  color: var(--ink);
+}
+.ap-crew-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--t-micro);
+  color: var(--ink-2);
+}
+.ap-dot {
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--line-strong);
+}
+.ap-crew-status.is-live .ap-dot {
+  background: var(--signal);
+}
+.ap-crew-status.is-ok .ap-dot {
+  background: var(--ok);
+}
+.ap-crew-status.is-bad .ap-dot {
+  background: var(--bad);
+}
+
+/* tiles and charts */
+.ap-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) 0;
+}
+.ap-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-h);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+}
+.ap-tile small {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.ap-tile b {
+  font-size: var(--t-h4);
+  font-weight: 600;
+  color: var(--ink);
+}
+.ap-bar {
+  display: flex;
+  gap: var(--sp-h);
+  height: 0.5rem;
+  border-radius: var(--r-mark);
+  overflow: hidden;
+}
+.ap-bar > span {
+  min-width: var(--sp-1);
+  border-radius: var(--r-mark);
+}
+.ap-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-meta);
+}
+.ap-legend li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto 3rem;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.ap-legend .num {
+  text-align: end;
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-2);
+}
+.ap-swatch {
+  width: var(--sp-2);
+  height: var(--sp-2);
+  border-radius: var(--r-mark);
+}
+.ap .tx-state {
+  margin: var(--sp-4);
+}

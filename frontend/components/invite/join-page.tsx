@@ -3,11 +3,14 @@
 // Invite acceptance page, left pane (join-tenant-v3-dev-spec.html, "Left pane components" and
 // "Page states"), with the user's decisions: the inviter row shows the workspace, Expired is a
 // banner only, there is no terms line, and Join goes to Google sign-in with the typed name.
-// Styles: styles/v2/invite.css, class names prefixed jp- so the app's global classes can't leak in.
+// Styles: styles/app/auth.css (tokens only), class names prefixed jp- so the app's global classes can't leak in.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CapabilitiesBoard, type BoardProfile } from "./capabilities-board";
 import { auraFor } from "@/lib/invite-aura";
+import { Button } from "@/components/tx/button";
+import { AppMark } from "@/components/tx/app-mark";
+import { LoginTheme } from "@/components/auth/login-card";
 import {
   NAME_MAX,
   barPercent,
@@ -31,18 +34,7 @@ import {
   type Notice,
 } from "@/lib/invite-form";
 
-type Theme = "" | "light" | "dark";
-const THEME_KEY = "truex-theme"; // same key and attribute as useTheme()
 const NAME_ERROR = "Add your full name so teammates know who joined.";
-
-function readTheme(): Theme {
-  try {
-    const t = localStorage.getItem(THEME_KEY);
-    return t === "" || t === "light" || t === "dark" ? t : "light";
-  } catch {
-    return "light";
-  }
-}
 
 function Arrow() {
   return (
@@ -114,7 +106,6 @@ export function JoinPage({ token }: { token: string }) {
     error: null,
     email: null,
   });
-  const [theme, setTheme] = useState<Theme>("light");
   const [name, setName] = useState("");
   const [nameError, setNameError] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -157,7 +148,6 @@ export function JoinPage({ token }: { token: string }) {
         );
       }
     }
-    setTheme(readTheme());
     load();
     // Coming back with the browser's Back button after Join restores this page from cache.
     const onShow = (e: PageTransitionEvent) => {
@@ -173,16 +163,6 @@ export function JoinPage({ token }: { token: string }) {
       ? `Join ${workspace} · truex`
       : "Join a workspace · truex";
   }, [workspace]);
-
-  function applyTheme(t: Theme) {
-    setTheme(t);
-    const root = document.documentElement;
-    if (t) root.dataset.theme = t;
-    else delete root.dataset.theme;
-    try {
-      localStorage.setItem(THEME_KEY, t);
-    } catch {}
-  }
 
   const kind: InviteKind | null = lookup
     ? inviteKind(lookup, params.joined, params.error)
@@ -305,43 +285,20 @@ export function JoinPage({ token }: { token: string }) {
       <div className="jp-left">
         <header className="jp-top">
           <div className="jp-brand" aria-label="truex agents">
-            <span className="jp-brand-mark" aria-hidden="true">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinejoin="round"
-              >
-                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
-              </svg>
-            </span>
-            <span className="jp-brand-word">truex</span>
+            <AppMark />
+            <span className="pt-brand-word">truex</span>
             <span className="jp-brand-slash" aria-hidden="true">
               /
             </span>
             <span className="jp-brand-sub">agents</span>
           </div>
-          <div className="jp-seg" role="group" aria-label="Theme">
-            {(["", "light", "dark"] as const).map((t) => (
-              <button
-                key={t || "auto"}
-                type="button"
-                aria-pressed={theme === t}
-                onClick={() => applyTheme(t)}
-              >
-                {t === "" ? "Auto" : t === "light" ? "Light" : "Dark"}
-              </button>
-            ))}
-          </div>
+          <LoginTheme />
         </header>
 
         <main className="jp-invite">
           {loadError ? (
             <>
-              <h1>This invite didn&apos;t load</h1>
+              <h1 className="t-h2">This invite didn&apos;t load</h1>
               <Banner
                 notice={{
                   tone: "warn",
@@ -349,9 +306,9 @@ export function JoinPage({ token }: { token: string }) {
                   rest: "Check your connection and try again.",
                 }}
               />
-              <button type="button" className="jp-btn" onClick={load}>
+              <Button variant="primary" onClick={load}>
                 Try again
-              </button>
+              </Button>
             </>
           ) : !lookup || !kind || !check ? (
             <div
@@ -392,7 +349,7 @@ export function JoinPage({ token }: { token: string }) {
                 </div>
               ) : null}
 
-              <h1 id="jp-h">
+              <h1 id="jp-h" className="t-h2">
                 {workspace ? (
                   <>
                     Take your seat at <em>{workspace}</em>
@@ -447,7 +404,7 @@ export function JoinPage({ token }: { token: string }) {
                   <div className="jp-fields">
                     <div className="jp-field">
                       <label className="jp-field-label" htmlFor="jp-email">
-                        Email <span className="jp-field-hint">from invite</span>
+                        Email <span className="jp-tx-hint">from invite</span>
                       </label>
                       <div className="jp-input-wrap">
                         <svg
@@ -475,7 +432,7 @@ export function JoinPage({ token }: { token: string }) {
                     <div className="jp-field">
                       <label className="jp-field-label" htmlFor="jp-name">
                         Your name{" "}
-                        <span className={`jp-field-hint${nameOk ? " ok" : ""}`}>
+                        <span className={`jp-tx-hint${nameOk ? " ok" : ""}`}>
                           {nameOk ? "looks good" : "shown to teammates"}
                         </span>
                       </label>
@@ -518,7 +475,7 @@ export function JoinPage({ token }: { token: string }) {
 
                 {showForm || joinedLike ? (
                   <button
-                    className="jp-btn"
+                    className="tx-btn tx-primary tx-lg jp-submit"
                     type="submit"
                     disabled={busy || opening}
                   >
@@ -538,7 +495,7 @@ export function JoinPage({ token }: { token: string }) {
                     )}
                   </button>
                 ) : null}
-                <p className="sr-only" aria-live="polite">
+                <p className="tx-sr" aria-live="polite">
                   {live}
                 </p>
 

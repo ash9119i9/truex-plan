@@ -5,6 +5,7 @@
 // tenant through api(). The business user never sees a URL, a token or the
 // word "MCP"; connectors have a display name ("GitHub") and read-only tools.
 import { api, ApiRequestError } from "./api.ts";
+import { mask } from "./mask.ts";
 
 // A connection's status, as the platform reports it (slice 2/4 contract).
 // "not_connected": the member has never signed in to this connector; "active":
@@ -398,6 +399,14 @@ export function humanizeToolName(name: string): string {
     .replace(/\s+/g, " ");
 }
 
+export const sentence = (text: string) =>
+  text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
+
+// A tool step's name, masked (D12): "GitHub · Create branch".
+export function toolStepName(connector: string, tool: string): string {
+  return `${mask(connector)} · ${sentence(humanizeToolName(mask(tool)))}`;
+}
+
 // A duration for a tool card: "1.2 s", "0.4 s", "12 s". Mirrors the chat's own
 // usageLine seconds() so a tool card reads like the rest of the transcript.
 export function toolDuration(durationMs: number | null): string {
@@ -666,13 +675,6 @@ export function parseApprovalEvent(value: unknown): ApprovalEvent | null {
     auto: e.auto === true,
     allowForChat: e.allowForChat !== false,
   };
-}
-
-// The card's title in plain words: "GitHub wants to create branch". The tool
-// name is humanized generically (snake_case → words); no provider-specific
-// table is hard-coded.
-export function approvalCardTitle(connector: string, tool: string): string {
-  return `${connector} wants to ${humanizeToolName(tool)}`;
 }
 
 // The one-line outcome a settled approval shows in place of the card, or on a

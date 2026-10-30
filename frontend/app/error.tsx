@@ -18,8 +18,8 @@ export default function ErrorPage({
   }, [error]);
   return (
     <main className="app-error">
-      <div className="app-error-card" role="alert">
-        <h1>Something went wrong</h1>
+      <div className="tx-card tx-state app-error-card" role="alert">
+        <h1 className="t-h3">Something went wrong</h1>
         <p>
           This page hit an unexpected problem. Your conversations are saved, so
           you can try again safely.
@@ -29,7 +29,7 @@ export default function ErrorPage({
         )}
         <button
           type="button"
-          className="button button-primary"
+          className="tx-btn tx-primary"
           onClick={() => (tryAgain ? tryAgain() : location.reload())}
         >
           Try again

@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · Agent Team</title>
+<meta name="description" content="truex screen study: the agent team as a pinned board of ID photos. Same pinned-board graphics as the earlier study, rebuilt on the locked foundations — signal, identities, type and theming all come from the system.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+/* Foundation theme bootstrap — identical to the other screens, so this page
+   honours the four contexts (light/dark × normal/more) and remembers choice. */
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../type.css">
+<link rel="stylesheet" href="../color.css">
+<link rel="stylesheet" href="../space.css">
+<link rel="stylesheet" href="../corner.css">
+<link rel="stylesheet" href="../primitives.css">
+<link rel="stylesheet" href="agents.css">
+</head>
+<body>
+<main class="page">
+  <div class="top">
+    <span class="brand mono">truex / agents</span>
+    <div class="top-actions">
+      <button class="tx-btn tx-ghost tx-icon" id="theme" aria-label="Toggle theme">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="tx-btn tx-primary" data-new>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New agent
+      </button>
+    </div>
+  </div>
+
+  <header class="hero">
+    <h1 class="t-display">What the <em>team</em> can help with</h1>
+    <p class="t-lede" id="sub"></p>
+  </header>
+
+  <div class="tools">
+    <label class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input class="tx-input" id="q" placeholder="Search by name, handle or purpose" aria-label="Search agents">
+    </label>
+    <div class="tx-seg" role="radiogroup" aria-label="Filter agents" id="pills"></div>
+  </div>
+
+  <section class="board" id="board" aria-label="Agent team">
+    <svg class="doodle bolt" width="54" height="64" viewBox="0 0 54 64" aria-hidden="true"><path d="M30 2 10 34h16l-6 28 26-38H30z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M4 18l6 3M46 44l6 2M40 8l4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <svg class="doodle squig" width="90" height="30" viewBox="0 0 90 30" aria-hidden="true"><path d="M2 20c8-14 14-14 20 0s12 14 20 0 14-14 20 0 12 14 26-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <ul class="team" id="team"></ul>
+    <svg class="pins" id="pins" aria-hidden="true"></svg>
+  </section>
+  <div class="board-foot"><span class="tag mono" id="filter-tag">All</span><span class="tag mono num" id="count"></span></div>
+
+  <section class="spec">
+    <h2 class="t-h4">Porting into app.tsx</h2>
+    <ul>
+      <li>Same pinned-board graphics as the earlier study (polaroid robots, push-pins, grid-paper board, counter-tilted captions, doodles). Everything chromatic and typographic now comes from the linked foundation — <code>color.css</code>, <code>type.css</code>, <code>space.css</code>, <code>corner.css</code>, <code>primitives.css</code> — so no raw signal or ink lives on this page.</li>
+      <li>Signal (<code>--signal</code>, the system's sky blue) is spent only on live work and interaction: the live card's pin, the <code>tx-pill-live</code> "in chat" badge, the primary button and focus. Idle pins are a neutral metal. The board grid is a neutral <code>--ink</code> wash; doodles are pencil (<code>--ink-3</code>).</li>
+      <li>The robots, their pastel tints and the metal pin are printed artwork — a fixed material in every theme — so, like the ID card in <code>agent-id</code>, their colours are named once in a scoped block and nowhere else.</li>
+      <li>Frame colour is the agent's identity tint <code>dot</code>; the caption uses the system serif italic (the editorial voice) — the retired study's Caveat is dropped because it isn't a foundation family.</li>
+      <li>The new creation fields show on the card: connected <code>mcps</code> render as chips carrying each server's catalogue accent dot; <code>skills</code> and <code>knowledge</code> fold into the mono count line next to the model.</li>
+    </ul>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="agents.js"></script>
+</body>
+</html>

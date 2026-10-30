@@ -1,0 +1,87 @@
+/* ============================================================================
+   truex system · chapter 03 · space, radius, elevation & layout
+   Locked 2026-10-26. Structural source: Design System v2.2 (Instrument).
+
+   Contract
+   --------
+   One 4px lattice. Two lanes: control (2–16) and composition (24–96).
+   One radius ladder, one continuous corner, plus a 3px mark for data.
+   Three shadow tiers, one light. Shadows move here from color.css because
+   they are spatial, not chromatic; only their ink is theme-aware.
+
+   Components consume these variables only. No raw px, rem or box-shadow
+   belongs in product CSS.
+   ============================================================================ */
+
+:root {
+  /* space: one lattice, two lanes ----------------------------------------- */
+  --sp-h: 0.125rem;   /*  2 · optical nudge, inside chips only */
+  --sp-1: 0.25rem;    /*  4 · icon ↔ label */
+  --sp-2: 0.5rem;     /*  8 · control interior, row gap */
+  --sp-3: 0.75rem;    /* 12 · compact padding, control groups */
+  --sp-4: 1rem;       /* 16 · card padding, default stack */
+  --sp-5: 1.5rem;     /* 24 · group gap, panel padding */
+  --sp-6: 2rem;       /* 32 · block gap, dialog padding */
+  --sp-7: 3rem;       /* 48 · section gap, compact page */
+  --sp-8: 4rem;       /* 64 · section gap, desktop page */
+  --sp-9: 6rem;       /* 96 · chapter break, hero air */
+
+  /* radius: six surfaces plus one data mark ------------------------------- */
+  --r-mark: 3px;      /* data marks, bars, ticks */
+  --r-xs: 6px;        /* badges, swatches, checkbox */
+  --r-sm: 10px;       /* inputs, buttons, menu rows */
+  --r: 14px;          /* cards, wells, popovers */
+  --r-lg: 22px;       /* panels, boards, sheets */
+  --r-xl: 30px;       /* stage surfaces, large overlays */
+  --r-pill: 999px;    /* status, switches, segmented controls */
+
+  /* corner character: radius sets size, shape sets continuity ---------------
+     squircle = a superellipse, not a quarter-circle. It removes the curvature
+     jump where an arc meets a straight edge. Rectangular surfaces use it;
+     data marks, circles and capsules stay round. Chromium renders it natively;
+     Safari and Firefox fall back to a normal round corner. */
+  --corner-surface: squircle;
+  --corner-mark: round;
+
+  /* layout: fixed metrics, fluid between ---------------------------------- */
+  --wrap: 80rem;
+  --gutter: clamp(1.25rem, 4vw, 3rem);
+  --topbar: 3.5rem;
+  --rail: 14.5rem;          /* 232 · navigation rail */
+  --rail-collapsed: 4rem;   /*  64 */
+  --thread: 46.25rem;       /* 740 · conversation measure */
+  --inspector: 22.5rem;     /* 360 · activity panel */
+  --inspector-sm: 20rem;    /* 320 · activity panel at ≤ 1220 px */
+  --av-xs: 1.25rem;         /*  20 · avatar, extra small */
+  --av-sm: 1.5rem;          /*  24 · avatar, small */
+  --av-md: 2rem;            /*  32 · avatar, medium */
+  --av-lg: 3rem;            /*  48 · avatar, large (agents screens) */
+  --dot: 0.4375rem;         /*   7 · state dot */
+  --overlay: 57.5rem;       /* 920 · work dialog */
+  --palette: 33.75rem;      /* 540 · command palette */
+  --grid-cols: 12;
+  --grid-gap: var(--sp-5);
+  --section-y: clamp(3.5rem, 8vh, 6rem);
+
+  /* elevation: light, standard contrast ----------------------------------- */
+  --sh-1: 0 1px 0 rgb(255 255 255 / 70%) inset, 0 1px 2px rgb(31 42 48 / 5%);
+  --sh-2: 0 1px 0 rgb(255 255 255 / 80%) inset, 0 1px 2px rgb(31 42 48 / 5%), 0 10px 24px -12px rgb(31 42 48 / 14%);
+  --sh-3: 0 1px 2px rgb(31 42 48 / 6%), 0 24px 48px -18px rgb(31 42 48 / 22%);
+  --key: inset 0 -1.5px 0 rgb(31 42 48 / 10%), 0 1px 2px rgb(31 42 48 / 8%);
+}
+
+/* the grid steps down with the text size, not the device ------------------- */
+@media (max-width: 72rem) {
+  :root { --grid-cols: 8; --grid-gap: var(--sp-4); }
+}
+@media (max-width: 40rem) {
+  :root { --grid-cols: 4; --grid-gap: var(--sp-3); }
+}
+
+/* elevation: dark, standard contrast -------------------------------------- */
+:root[data-eff-theme="dark"] {
+  --sh-1: 0 1px 0 rgb(255 255 255 / 4%) inset, 0 1px 2px rgb(0 0 0 / 40%);
+  --sh-2: 0 1px 0 rgb(255 255 255 / 5%) inset, 0 1px 2px rgb(0 0 0 / 40%), 0 12px 28px -12px rgb(0 0 0 / 60%);
+  --sh-3: 0 1px 0 rgb(255 255 255 / 6%) inset, 0 28px 56px -18px rgb(0 0 0 / 75%);
+  --key: inset 0 -1.5px 0 rgb(0 0 0 / 35%), inset 0 1px 0 rgb(255 255 255 / 6%);
+}

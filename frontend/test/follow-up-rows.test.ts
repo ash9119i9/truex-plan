@@ -17,12 +17,17 @@ const render = (props: Record<string, unknown>) =>
 
 test("renders up to three real buttons labelled Follow Up", () => {
   const html = render({ items, onSelect: async () => true });
-  assert.match(html, /<h3 class="tchat-followup-label"[^>]*>Follow Up<\/h3>/);
-  assert.equal((html.match(/class="tchat-fu-row"/g) ?? []).length, 3);
+  // DESIGN-SPEC 11.7: a .cs-next list of "↳ question" rows, labelled for AT.
+  assert.match(html, /<section class="cs-next" aria-labelledby="[^"]+">/);
+  assert.match(html, /<h3 class="tx-sr"[^>]*>Follow Up<\/h3>/);
+  assert.equal((html.match(/class="cs-next-row"/g) ?? []).length, 3);
+  assert.equal(
+    (html.match(/class="cs-next-mark" aria-hidden="true">↳</g) ?? []).length,
+    3,
+  );
   assert.equal((html.match(/<button/g) ?? []).length, 3);
   // Only act carries the action mark; the rest are replies.
   assert.equal((html.match(/data-intent="act"/g) ?? []).length, 1);
-  assert.equal((html.match(/tchat-fu-kind/g) ?? []).length, 3);
   // The accessible name is the row's text: no aria-label replaces it.
   assert.doesNotMatch(html, /aria-label=/);
   assert.match(html, />Check the access sequence</);

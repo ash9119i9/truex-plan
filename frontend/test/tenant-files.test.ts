@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { applyStreamEvent, liveReply, parseRun } from "../lib/tenant-chat.ts";
 import type { Activity } from "../lib/tenant-coding.ts";
 import {
+  filesByRun,
   filesOfRun,
   fileTag,
   lineCount,
@@ -82,13 +83,39 @@ test("a reply's files: the newest version of each path it stored", () => {
   );
 });
 
-test("previews by type; office files and unknown ones are download-only", () => {
+test("files by run: each reply's files in one pass, as filesOfRun gives them", () => {
+  const v1 = file({ version: 1, createdAt: "2026-10-22T10:00:01.000Z" });
+  const v2 = file({ version: 2, createdAt: "2026-10-22T10:00:03.000Z" });
+  const csv = file({
+    path: "data/a.csv",
+    name: "a.csv",
+    createdAt: "2026-10-22T10:00:02.000Z",
+  });
+  const other = file({ runId: OTHER_RUN, path: "x.md", name: "x.md" });
+  const upload = file({ runId: OTHER_RUN, path: "in.pdf", upload: true });
+  const all = [v2, other, csv, upload, v1];
+  const byRun = filesByRun(all);
+  assert.deepEqual([...byRun.keys()].sort(), [RUN, OTHER_RUN].sort());
+  for (const runId of [RUN, OTHER_RUN])
+    assert.deepEqual(byRun.get(runId), filesOfRun(all, runId));
+  assert.deepEqual(
+    byRun.get(OTHER_RUN)?.map((f) => f.path),
+    ["x.md"],
+    "the member's uploads are not the reply's files",
+  );
+  // A run with only uploads made no files and is absent, not an empty list.
+  assert.equal(filesByRun([upload]).has(OTHER_RUN), false);
+  assert.equal(filesByRun([]).size, 0);
+});
+
+test("previews by type; legacy office files and unknown ones are download-only", () => {
   assert.equal(previewKind("a.MD"), "markdown");
   assert.equal(previewKind("a.csv"), "csv");
   assert.equal(previewKind("index.html"), "html");
   assert.equal(previewKind("app.py"), "text");
   assert.equal(previewKind("chart.png"), "image");
-  assert.equal(previewKind("plan.docx"), "none");
+  assert.equal(previewKind("plan.docx"), "docx");
+  assert.equal(previewKind("plan.doc"), "none");
   assert.equal(previewKind("Makefile"), "none");
   assert.deepEqual(fileTag("plan.xlsx"), { label: "xlsx", tone: "xlsx" });
   assert.deepEqual(fileTag("Makefile"), { label: "file", tone: "md" });

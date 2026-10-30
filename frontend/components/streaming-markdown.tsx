@@ -53,7 +53,7 @@ export function CopyTextButton({
     <span className="message-copy">
       <button
         type="button"
-        className="text-btn"
+        className="tx-btn tx-ghost tx-xs"
         aria-label={label}
         disabled={state === "copying"}
         onClick={copy}
@@ -87,12 +87,17 @@ function CodeBlock({
       ? child.props.children
       : null;
   if (code === null) return <pre {...props}>{children}</pre>;
+  const language =
+    (isValidElement<{ className?: string }>(child) &&
+      /language-([\w+#.-]+)/.exec(child.props.className ?? "")?.[1]) ||
+    "code";
   return (
     <div className="code-block" data-wrapped={wrapped}>
-      <div className="code-actions">
+      <div className="code-bar">
+        <span className="code-lang">{language}</span>
         <button
           type="button"
-          className="text-btn"
+          className="tx-btn tx-ghost tx-xs"
           aria-pressed={wrapped}
           onClick={() => setWrapped((value) => !value)}
         >

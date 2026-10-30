@@ -1,0 +1,251 @@
+/* Files in the stream (DESIGN-SPEC 12.3 DocumentCard, 12.4 attachments).
+   Ported from system/screens/files.css and attach.css; tokens only. */
+
+.dc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  max-width: 32rem;
+}
+.dc-stack.is-sent {
+  align-items: flex-end;
+  align-self: flex-end;
+  width: 100%;
+}
+.dc-stack-head,
+.dc-stack-note {
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.dc-stack-note {
+  color: var(--bad-ink);
+}
+.dc-more {
+  align-self: flex-start;
+}
+
+.dc {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-width: 0;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--sh-1);
+  transition: border-color var(--tx-d-1) var(--tx-ease);
+}
+.dc:hover {
+  border-color: var(--line-strong);
+}
+.dc.is-active {
+  border-color: var(--signal);
+}
+.dc.is-unsaved {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+.dc-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink-2);
+}
+.dc-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.dc-open.is-static {
+  cursor: default;
+}
+.dc-open:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.dc-name {
+  display: flex;
+  min-width: 0;
+  font-size: var(--t-ui);
+  font-weight: 600;
+  color: var(--ink);
+}
+.dc-base {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dc-ext {
+  flex: none;
+}
+.dc-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.dc-meta.is-live {
+  color: var(--signal-ink);
+}
+.dc-meta.is-bad {
+  color: var(--bad-ink);
+}
+
+/* sent images keep their own picture */
+.sent-images {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sent-image {
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: inherit;
+}
+button.sent-image {
+  cursor: zoom-in;
+}
+button.sent-image:hover {
+  border-color: var(--line-strong);
+}
+button.sent-image:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.sent-image img {
+  display: block;
+  max-width: min(16rem, 60vw);
+  max-height: 16rem;
+  object-fit: contain;
+}
+.sent-images li:only-child .sent-image img {
+  max-width: min(20rem, 70vw);
+  max-height: 20rem;
+}
+.sent-image-wait {
+  display: block;
+  width: 10rem;
+  height: 7.5rem;
+  background: var(--surface-2);
+}
+
+/* ── attachments in the composer ──────────────────────────────────────────── */
+.ac-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  max-height: 8.75rem;
+  margin: 0;
+  padding: 0 0 var(--sp-1);
+  overflow-y: auto;
+  list-style: none;
+}
+.ac {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 14rem;
+  min-width: 0;
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.ac-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--av-md);
+  height: var(--av-md);
+  border-radius: var(--r-xs);
+  background: var(--well);
+  color: var(--ink-2);
+}
+.ac-thumb {
+  object-fit: cover;
+}
+.ac.is-uploading .ac-tile {
+  color: var(--signal-ink);
+}
+.ac.is-failed {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad-soft) 55%, var(--surface));
+}
+.ac-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ac-name {
+  display: flex;
+  min-width: 0;
+  font-size: var(--t-meta);
+  font-weight: 600;
+  color: var(--ink);
+}
+.ac-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.ac.is-failed .ac-meta {
+  color: var(--bad-ink);
+}
+.ac-remove {
+  flex: none;
+}
+/* files dragged over the composer */
+.cs-composer.is-drop {
+  border-color: var(--signal);
+  border-style: dashed;
+}
+
+@container app (max-width: 40rem) {
+  .dc-stack {
+    max-width: none;
+  }
+  .ac {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dc {
+    transition: none;
+  }
+}
+:root[data-eff-motion="reduce"] .dc {
+  transition: none;
+}

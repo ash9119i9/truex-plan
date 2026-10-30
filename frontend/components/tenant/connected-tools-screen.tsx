@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { userMessage } from "@/lib/api";
 import {
   callbackErrorMessage,
@@ -19,8 +20,8 @@ import {
   type ConnectorsResult,
   type StatusTone,
 } from "@/lib/tenant-connectors";
-import { Icon, type IconName } from "@/components/v2/icon";
-import "@/styles/v2/connectors.css";
+import { Icon, type IconName } from "@/components/tx/icon";
+import "@/styles/app/tools.css";
 
 // Connected tools: the catalog merged with the member's own status. The
 // member signs in to a connector (Connect), re-checks or removes it, and
@@ -140,14 +141,14 @@ export function ConnectedTools({
         role="status"
         aria-live="polite"
       >
-        <Icon name="check" size={16} />
+        <Icon name="check" />
         <span className="grow">
           {connectorName(callback.slug, known)} is connected.
         </span>
         {returnPath && (
-          <a className="btn-soft" href={returnPath}>
+          <Link className="tx-btn" href={returnPath}>
             Back to chat
-          </a>
+          </Link>
         )}
       </div>
     ) : callback.kind === "error" ? (
@@ -156,7 +157,7 @@ export function ConnectedTools({
         role="alert"
         aria-live="assertive"
       >
-        <Icon name="plug" size={16} />
+        <Icon name="plug" />
         <span className="grow">
           {callbackErrorMessage(
             callback.code,
@@ -202,7 +203,7 @@ export function ConnectedTools({
           <p>{load.message}</p>
           <button
             type="button"
-            className="btn-soft"
+            className="tx-btn"
             onClick={() => setAttempt((n) => n + 1)}
           >
             Try again
@@ -339,7 +340,7 @@ function ConnectorRow({
   return (
     <li className="connector-card">
       <span className="connector-logo" aria-hidden="true">
-        <Icon name={icon} size={22} />
+        <Icon name={icon} size="lg" />
       </span>
       <div className="connector-text">
         <span className="connector-name block">{connector.displayName}</span>
@@ -361,7 +362,7 @@ function ConnectorRow({
         {status.action === "connect" && (
           <button
             type="button"
-            className="btn-solid"
+            className="tx-btn tx-primary"
             disabled={busy !== null}
             onClick={() => void connect()}
           >
@@ -373,7 +374,7 @@ function ConnectorRow({
         {status.action === "reconnect" && (
           <button
             type="button"
-            className="btn-solid"
+            className="tx-btn tx-primary"
             disabled={busy !== null}
             onClick={() => void connect()}
           >
@@ -383,7 +384,7 @@ function ConnectorRow({
         {status.action === "admin" && (
           <button
             type="button"
-            className="btn-soft"
+            className="tx-btn"
             disabled={busy !== null}
             onClick={() => void connect()}
           >
@@ -394,7 +395,7 @@ function ConnectorRow({
           <>
             <button
               type="button"
-              className="btn-soft"
+              className="tx-btn"
               disabled={busy !== null}
               onClick={() => void verify()}
             >
@@ -402,7 +403,7 @@ function ConnectorRow({
             </button>
             <button
               type="button"
-              className="btn-danger"
+              className="tx-btn tx-danger"
               disabled={busy !== null}
               onClick={() => void remove()}
             >
@@ -439,7 +440,7 @@ function ConnectorRow({
       )}
 
       {error && (
-        <p className="connector-error field-hint is-bad" role="alert">
+        <p className="connector-error tx-hint tx-errmsg" role="alert">
           {error}
         </p>
       )}

@@ -1,0 +1,1017 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · System 04 — Corners</title>
+<meta name="description" content="truex design system, chapter 04: continuous corners. The geometry, optics and psychology of the squircle — measured, nested and applied to every rectangular surface.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="space.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="corner.css">
+<link rel="stylesheet" href="corner-page.css">
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-run" viewBox="0 0 24 24"><path d="M8.5 6 L18.5 12 L8.5 18 V15 L11.5 12 L8.5 9 Z"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 24 24"><path d="M8.5 6.5 H15.5 A2 2 0 0 1 17.5 8.5 V14.5 L14.5 17.5 H8.5 A2 2 0 0 1 6.5 15.5 V8.5 A2 2 0 0 1 8.5 6.5 Z"/><circle cx="10.2" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="13.8" cy="12" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-trace" viewBox="0 0 24 24"><path d="M6.6 18 H9.5 V13.5 H14 L18 8.5"/><circle cx="5" cy="18" r="1.6"/><circle cx="18" cy="8.5" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M12 3.8 L19 7.8 V15.8 L12 19.8 L5 15.8 V7.8 Z"/><circle cx="12" cy="11.8" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M13.1 15.15 A5.6 5.6 0 1 1 15.15 13.1"/><path d="M14.1 14.1 L19.3 19.3"/></symbol>
+</svg>
+<a class="skip" href="#content">Skip to the chapter</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex system, back to top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><a href="index.html">01 Type</a><span class="bar-sep" aria-hidden="true">/</span><a href="02-color.html">02 Colour</a><span class="bar-sep" aria-hidden="true">/</span><a href="03-space.html">03 Space</a><span class="bar-sep" aria-hidden="true">/</span><b>04 Corners</b><span class="bar-sep" aria-hidden="true">/</span><a href="05-primitives.html">05 Primitives</a><span class="bar-sep" aria-hidden="true">/</span><a href="06-patterns.html">06 Patterns</a></span>
+    <span class="cn-proposal"><i aria-hidden="true"></i> Proposal</span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="contrast-tool" data-mode="system" type="button" aria-label="Contrast: system. Activate to change.">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4h4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-4z" fill="currentColor"/></svg>
+      <span class="tool-k">Contrast</span><span class="tool-v" id="contrast-label">System</span>
+    </button>
+    <button class="tool" id="size-tool" type="button" aria-label="Text size: 100 percent. Activate to change.">
+      <span aria-hidden="true" style="font-family:var(--f-ui);font-weight:700;font-size:.8rem;letter-spacing:-.02em">Aa</span>
+      <span class="tool-k">Type</span><span class="tool-v" id="size-label">100%</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage stage-corner" aria-label="Chapter 04: continuous corners">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Design system</span>
+        <span class="top-mid">Corner geometry · continuous curvature</span>
+        <span><span class="dot-live">●</span> 26.10.2026</span>
+      </div>
+
+      <div class="hero-main">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">04</span>
+            <h1 class="hero-title">Corners</h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>K 2</b>squircle</span>
+            <span class="stage-chip"><b>n 4</b>exponent</span>
+            <span class="stage-chip"><b>G2</b>continuous</span>
+            <span class="stage-chip"><b>0px</b>layout shift</span>
+            <span class="stage-chip"><b>3–30</b>radius</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <p class="hero-serif">The edge, without the snap.</p>
+          <p class="hero-copy">A circular corner arrives at the straight edge as a step in curvature. A superellipse arrives at zero. Every rectangular surface in the system now uses that continuous curve — <b>same footprint, calmer edge, no mask and no layout change</b>.</p>
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="hero-note"><span class="pulse" aria-hidden="true"></span>Measured in Chromium 155 · fallback is the same radius, round</div>
+        </div>
+      </div>
+
+      <div class="cn-bench" id="hero-demo" style="--hr:56px">
+        <div class="cn-bench-head">
+          <span class="board-label">Corner instrument · live</span>
+          <span class="cn-native" id="native-support"><i aria-hidden="true"></i> Native superellipse</span>
+        </div>
+        <div class="cn-bench-body">
+          <div class="cn-plate-wrap">
+            <div class="cn-plate" data-ctx="light" id="hero-plate">
+              <div class="cnp-in">
+                <div class="cnp-top">
+                  <span class="cnp-eyebrow"><svg class="glyph glyph-xs" aria-hidden="true"><use href="#i-agent"/></svg> Run 04 · Retrace</span>
+                  <span class="cnp-status"><span class="status-glyph" aria-hidden="true">✓</span> Complete</span>
+                </div>
+                <p class="cnp-title">Reconciled the Q3 invoice trail.</p>
+                <p class="cnp-copy">128 of 131 invoices matched. Three vendor IDs do not resolve; one subtotal is duplicated. The trail is attached.</p>
+                <div class="cnp-evidence" aria-label="Three invoice exceptions">
+                  <div class="cnp-ev-head"><span>Exceptions · 03</span><span>vendor / amount / reason</span></div>
+                  <div class="cnp-ev-row"><span class="cnp-ev-id">INV-9438</span><span>Aperture</span><span class="cnp-ev-amt">$8,120</span><span class="cnp-ev-issue"><i aria-hidden="true">!</i> vendor ID</span></div>
+                  <div class="cnp-ev-row"><span class="cnp-ev-id">INV-9442</span><span>Northwind</span><span class="cnp-ev-amt">$12,400</span><span class="cnp-ev-issue"><i aria-hidden="true">!</i> duplicate</span></div>
+                  <div class="cnp-ev-row"><span class="cnp-ev-id">INV-9451</span><span>Kestrel</span><span class="cnp-ev-amt">$2,860</span><span class="cnp-ev-issue"><i aria-hidden="true">!</i> no PO</span></div>
+                </div>
+                <div class="cnp-trace" aria-label="Trace durations: plan 4 seconds, read 10, match 18, check 4, write 16">
+                  <span style="--w:8%;--c:var(--cx-r1)"></span>
+                  <span style="--w:19%;--c:var(--cx-r2)"></span>
+                  <span style="--w:35%;--c:var(--signal)"></span>
+                  <span style="--w:8%;--c:var(--cx-r3)"></span>
+                  <span style="--w:30%;--c:var(--cx-r4)"></span>
+                </div>
+                <div class="cnp-trace-foot">
+                  <span>Plan <b>4s</b></span><span>Read <b>10s</b></span><span>Match <b>18s</b></span><span>Check <b>4s</b></span><span>Write <b>16s</b></span><b>52s</b>
+                </div>
+                <div class="cnp-stats">
+                  <span><b>128</b>matched</span>
+                  <span><b>03</b>exceptions</span>
+                  <span><b>$0.42</b>cost</span>
+                </div>
+                <div class="cnp-compose">
+                  <span class="cnp-placeholder">Ask Retrace to verify…</span>
+                  <span class="cnp-send" aria-hidden="true"><svg class="glyph glyph-xs"><use href="#i-run"/></svg></span>
+                </div>
+              </div>
+            </div>
+            <div class="cn-plate-meta">
+              <span class="cn-plate-label">r <b id="hero-r-label">56</b> · <span id="hero-shape-label">superellipse(2)</span></span>
+              <span class="cn-plate-note">same footprint · no radius inflation</span>
+            </div>
+          </div>
+
+          <aside class="cn-bench-side" aria-label="Live corner measurements">
+            <div class="cn-measure">
+              <span class="cn-m-label">Curve</span>
+              <code class="cn-m-code">corner-shape:<br><b id="hero-code">squircle</b></code>
+            </div>
+            <div class="cn-measure">
+              <span class="cn-m-label">Footprint</span>
+              <span class="cn-m-big"><b id="hero-r-big">56</b><small>px</small></span>
+              <span class="cn-m-sub">unchanged by shape</span>
+            </div>
+            <div class="cn-measure">
+              <span class="cn-m-label">Diagonal inset</span>
+              <span class="cn-m-big"><b id="hero-inset">8.9</b><small>px</small></span>
+              <span class="cn-m-sub">to the corner point</span>
+            </div>
+            <div class="cn-measure">
+              <span class="cn-m-label">At the tangent</span>
+              <span class="cn-m-big"><b id="hero-kappa">0</b><small>κ</small></span>
+              <span class="cn-m-sub" id="hero-continuity">G2 · no step</span>
+            </div>
+            <div class="cn-detail">
+              <span class="cn-m-label">Corner detail · same radius</span>
+              <div class="cn-detail-shape" id="hero-detail" data-ctx="light" aria-hidden="true">
+                <span id="hero-detail-label">r 56</span>
+                <svg id="hero-detail-svg" viewBox="0 0 112 112"><path id="hero-detail-arc" d="M0 56 A56 56 0 0 1 56 0" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4"/></svg>
+              </div>
+              <span class="cn-detail-note">dashed arc = the circular baseline</span>
+            </div>
+          </aside>
+        </div>
+        <div class="cn-bench-foot">
+          <div class="cn-control">
+            <span class="cn-c-label">Shape</span>
+            <div class="seg on-stage" role="group" aria-label="Hero corner shape">
+              <button type="button" data-hero-corner="round" aria-pressed="false">Round</button>
+              <button type="button" data-hero-corner="squircle" aria-pressed="true">Continuous</button>
+            </div>
+          </div>
+          <label class="cn-control cn-radius-control" for="hero-radius">
+            <span class="cn-c-label">Radius <b id="hero-radius-label">56</b></span>
+            <input id="hero-radius" type="range" min="24" max="96" step="4" value="56">
+          </label>
+          <div class="cn-bench-note">
+            <span class="cn-note-mark" aria-hidden="true">G2</span>
+            <span>Curvature reaches zero at both tangents. Nothing to catch the eye.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-spec">
+        <span>Surfaces <b>All</b></span>
+        <span>Round <b>By name</b></span>
+        <span>Shape <b>Squircle</b></span>
+        <span>Exponent <b>4</b></span>
+        <span>Fallback <b>Round</b></span>
+        <span>Layout shift <b>0px</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Chapter contents">
+    <div class="ruler-in">
+      <a href="#kink" class="active" aria-current="true"><span class="n">4.1</span>Kink</a>
+      <a href="#curve"><span class="n">4.2</span>Curve</a>
+      <a href="#ladder"><span class="n">4.3</span>Ladder</a>
+      <a href="#nest"><span class="n">4.4</span>Nesting</a>
+      <a href="#surface"><span class="n">4.5</span>Surface</a>
+      <a href="#charter"><span class="n">4.6</span>Charter</a>
+      <a href="#contract"><span class="n">4.7</span>Contract</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+    <!-- 4.1 KINK -->
+    <section class="chapter" id="kink" aria-labelledby="h-kink">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">4.1</div>
+        <div>
+          <p class="ch-kicker">Geometry · curvature</p>
+          <h2 class="t-h2" id="h-kink">A circle lands <em>with a step.</em></h2>
+          <p class="t-lede">Curvature is the second derivative of the edge. A circular arc holds one curvature and then stops. Your eye reads that stop as a faint notch. A superellipse starts at zero, peaks at 45°, and returns to zero — no step, no notch.</p>
+        </div>
+        <div class="folio">Kink · 4.1 / 7</div>
+      </header>
+
+      <div class="cn-kink board">
+        <div class="cn-kink-head">
+          <div>
+            <span class="board-label">Magnified 120px · same footprint</span>
+            <h3 class="cn-subhead">Same radius. <em>Different derivative.</em></h3>
+          </div>
+          <span class="cn-proof"><span class="cn-proof-dot" aria-hidden="true"></span> curvature continuity</span>
+        </div>
+        <div class="cn-kink-body">
+          <div class="cn-kink-pair">
+            <figure class="cn-kink-fig">
+              <div class="cn-kink-tile is-round"><span class="cn-kink-tag">K 1</span></div>
+              <figcaption>
+                <b>Circular arc</b>
+                <code>corner-shape: round</code>
+                <span>Curvature jumps from 0 to 1/r at the tangent, then back to 0.</span>
+                <span class="cn-kink-metric">G1 · κ step</span>
+              </figcaption>
+            </figure>
+            <figure class="cn-kink-fig">
+              <div class="cn-kink-tile is-squircle">
+                <span class="cn-kink-tag">K 2</span>
+                <svg class="cn-circle-overlay" viewBox="0 0 240 240" aria-hidden="true"><path d="M0 120 A120 120 0 0 1 120 0" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 5"/></svg>
+              </div>
+              <figcaption>
+                <b>Continuous curve</b>
+                <code>corner-shape: squircle</code>
+                <span>Curvature starts at 0, peaks at 45°, and returns to 0.</span>
+                <span class="cn-kink-metric">G2 · κ continuous</span>
+              </figcaption>
+            </figure>
+          </div>
+
+          <figure class="cn-graph-card">
+            <figcaption>
+              <span class="board-label">Curvature along the corner</span>
+              <span class="cn-graph-legend"><i class="is-round" aria-hidden="true"></i>round <i class="is-cont" aria-hidden="true"></i>squircle</span>
+            </figcaption>
+            <svg id="kink-graph" class="cn-graph" viewBox="0 0 440 232" role="img" aria-label="Curvature graph: a circular arc has a constant curvature with vertical steps at both ends; a squircle has a smooth curvature that starts and ends at zero."></svg>
+            <div class="cn-graph-foot">
+              <span>tangent</span>
+              <span>45°</span>
+              <span>tangent</span>
+            </div>
+          </figure>
+        </div>
+        <div class="cn-kink-notes">
+          <div><span class="cn-note-n">OPTICS</span><b>The notch</b><p>A curvature step survives anti-aliasing. On a large surface it reads as a slight pinch exactly where the arc meets the line. The squircle removes the step by redistributing curvature: zero at the tangents, about 2.5× the circle's at 45°.</p></div>
+          <div><span class="cn-note-n">MATERIAL</span><b>The stress point</b><p>A hard tangent concentrates stress in a physical fillet and breaks the run of a specular highlight. A continuous fillet spreads both.</p></div>
+          <div><span class="cn-note-n">TOUCH</span><b>The safe edge</b><p>The bounding box does not move. The continuous curve simply leaves more material in the corner and never presents a point to the hand.</p></div>
+          <div><span class="cn-note-n">MIND</span><b>The calm read</b><p>Contour is processed before detail. A continuous boundary removes the small alarm a sharp join creates, while the straight edges keep authority.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4.2 CURVE -->
+    <section class="chapter" id="curve" aria-labelledby="h-curve">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">4.2</div>
+        <div>
+          <p class="ch-kicker">The family · K</p>
+          <h2 class="t-h2" id="h-curve">A corner is a <em>family, not a radius.</em></h2>
+          <p class="t-lede">The parameter K chooses the curvature family. K 1 is a circle, K 2 a squircle, K ∞ approaches a square. The system fixes K at 2; move it here and the radius never changes — only the amount of material left in the corner.</p>
+        </div>
+        <div class="folio">Curve · 4.2 / 7</div>
+      </header>
+
+      <div class="cn-curve board" id="curve-lab">
+        <div class="cn-curve-head">
+          <span class="board-label">Superellipse lab · <span class="cn-eq-inline">|x|<sup>2K</sup> + |y|<sup>2K</sup> = 1</span></span>
+          <span class="cn-curve-badge">same footprint · K changes shape</span>
+        </div>
+        <div class="cn-curve-body">
+          <div class="cn-specimen-wrap">
+            <div class="cn-specimen" role="img" aria-label="A large corner specimen with the circular baseline overlaid">
+              <div class="cn-spec-fill" data-ctx="light" id="curve-plate">
+                <svg class="cn-spec-ghost" viewBox="0 0 100 100" aria-hidden="true"><path d="M0 48 A48 48 0 0 1 48 0" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4" vector-effect="non-scaling-stroke"/></svg>
+                <span class="cn-spec-tangent cn-tg1" aria-hidden="true"></span>
+                <span class="cn-spec-tangent cn-tg2" aria-hidden="true"></span>
+                <span class="cn-spec-diag" aria-hidden="true"></span>
+                <span class="cn-spec-word" id="curve-spec-word">K 2.0</span>
+                <span class="cn-spec-caption">one corner · r is fixed</span>
+              </div>
+            </div>
+            <div class="cn-spec-foot">
+              <span><i class="cn-legend-line" aria-hidden="true"></i> plate edge · superellipse</span>
+              <span><i class="cn-legend-dash" aria-hidden="true"></i> circular baseline</span>
+              <b id="curve-r-label">r 211px</b>
+            </div>
+          </div>
+
+          <div class="cn-console">
+            <div class="cn-console-top">
+              <div>
+                <span class="board-label">K</span>
+                <div class="cn-k-value"><b id="curve-k">2.0</b><span id="curve-k-name">squircle</span></div>
+              </div>
+              <span class="cn-console-badge" id="curve-class">G2</span>
+            </div>
+            <label class="cn-range-label" for="curve-range">Curvature family</label>
+            <input id="curve-range" type="range" min="1" max="4" step="0.1" value="2" aria-label="Superellipse parameter K, from 1 round to 4 near-square">
+            <div class="cn-k-ticks" aria-hidden="true"><span>1 · round</span><span>2 · squircle</span><span>3</span><span>4</span></div>
+
+            <div class="cn-eq" id="curve-eq">|x|<sup>4.00</sup> + |y|<sup>4.00</sup> = 1</div>
+
+            <div class="cn-readout">
+              <div><span>Exponent n</span><b id="curve-n">4.00</b></div>
+              <div><span>Diagonal inset</span><b id="curve-inset">33.6</b><small>px</small></div>
+              <div><span>Corner area removed</span><b id="curve-area">7.3</b><small>%</small></div>
+              <div><span>Tangent curvature</span><b id="curve-kappa">0</b><small>κ</small></div>
+            </div>
+
+            <div class="cn-kappa-card">
+              <div class="cn-kappa-head">
+                <span class="board-label">Curvature along the corner</span>
+                <span class="cn-kappa-legend"><i aria-hidden="true"></i> current</span>
+              </div>
+              <svg id="curve-spark" class="cn-kappa" viewBox="0 0 260 76" role="img" aria-label="Curvature of the current superellipse along the corner."></svg>
+              <span class="cn-kappa-note" id="curve-kappa-note">0 at both tangents · peak 2.52× at 45°</span>
+            </div>
+
+            <div class="cn-console-foot">
+              <code id="curve-code">corner-shape: superellipse(2)</code>
+              <button class="copy" data-copy="#curve-code" type="button">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="cn-family">
+          <span class="board-label">The family</span>
+          <div class="cn-family-strip" role="group" aria-label="Preset curvature values">
+            <button type="button" class="cn-k-btn" data-k="1" aria-pressed="false">
+              <span class="cn-family-shape" style="--k:1" aria-hidden="true"></span>
+              <span class="cn-family-meta"><b>K 1</b><span>round</span></span>
+            </button>
+            <button type="button" class="cn-k-btn" data-k="1.5" aria-pressed="false">
+              <span class="cn-family-shape" style="--k:1.5" aria-hidden="true"></span>
+              <span class="cn-family-meta"><b>K 1.5</b><span>soft</span></span>
+            </button>
+            <button type="button" class="cn-k-btn" data-k="2" aria-pressed="true">
+              <span class="cn-family-shape" style="--k:2" aria-hidden="true"></span>
+              <span class="cn-family-meta"><b>K 2</b><span>squircle</span></span>
+            </button>
+            <button type="button" class="cn-k-btn" data-k="3" aria-pressed="false">
+              <span class="cn-family-shape" style="--k:3" aria-hidden="true"></span>
+              <span class="cn-family-meta"><b>K 3</b><span>tight</span></span>
+            </button>
+            <button type="button" class="cn-k-btn" data-k="4" aria-pressed="false">
+              <span class="cn-family-shape" style="--k:4" aria-hidden="true"></span>
+              <span class="cn-family-meta"><b>K 4</b><span>near-square</span></span>
+            </button>
+          </div>
+          <p class="cn-family-note">The family is continuous. K 2 is the balance point: the silhouette stays precise, the tangent stays calm.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4.3 LADDER -->
+    <section class="chapter" id="ladder" aria-labelledby="h-ladder">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">4.3</div>
+        <div>
+          <p class="ch-kicker">Footprint · radius</p>
+          <h2 class="t-h2" id="h-ladder">One ladder. <em>Six footprints.</em></h2>
+          <p class="t-lede">Radius sets the footprint; it does not set the shape. The six values from chapter 03 now carry the continuous curve. The diagonal inset shows what actually changed — and what deliberately did not.</p>
+        </div>
+        <div class="folio">Ladder · 4.3 / 7</div>
+      </header>
+
+      <div class="cn-ladder board" id="ladder-demo">
+        <div class="cn-ladder-head">
+          <div>
+            <span class="board-label">Radius ladder · live</span>
+            <h3 class="cn-subhead">The shape is constant. <em>The footprint changes.</em></h3>
+          </div>
+          <div class="cn-ladder-tools">
+            <span class="cn-c-label">Shape</span>
+            <div class="seg" role="group" aria-label="Ladder corner shape">
+              <button type="button" data-ladder-shape="round" aria-pressed="false">Round</button>
+              <button type="button" data-ladder-shape="squircle" aria-pressed="true">Continuous</button>
+            </div>
+          </div>
+        </div>
+        <div class="cn-ladder-cols" aria-hidden="true">
+          <span>Token</span><span>Surface in use</span><span>Diagonal inset · px<small>R circular · C continuous</small></span>
+        </div>
+
+        <div class="cn-rung is-mark" data-r="3" data-shape="round">
+          <div class="cn-rung-token"><code>--r-mark</code><b>3</b><span>data mark</span></div>
+          <div class="cn-rung-spec">
+            <div class="cn-mark-spec" aria-label="A data mark with round bar ends">
+              <span class="cn-mark-bars" aria-hidden="true">
+                <i style="--h:38%"></i><i style="--h:62%"></i><i style="--h:48%"></i><i style="--h:82%"></i><i style="--h:58%"></i><i style="--h:96%"></i>
+              </span>
+              <span class="cn-mark-meta">Data mark · round by charter</span>
+            </div>
+          </div>
+          <div class="cn-rung-inset">
+            <div class="cn-inset-pair is-fixed"><span class="cn-inset-k">R</span><span class="cn-inset-bar"><i style="--v:10%"></i></span><b data-inset="3">0.9</b></div>
+            <div class="cn-inset-pair is-fixed is-muted"><span class="cn-inset-k">C</span><span class="cn-inset-bar"><i style="--v:0"></i></span><b>—</b></div>
+          </div>
+        </div>
+
+        <div class="cn-rung" data-r="6">
+          <div class="cn-rung-token"><code>--r-xs</code><b>6</b><span>badges · swatches</span></div>
+          <div class="cn-rung-spec">
+            <div class="cn-badge-spec">
+              <span class="cn-stamp">Queued</span>
+              <span class="cn-stamp is-ok"><span class="cn-stamp-dot" aria-hidden="true"></span>Passed</span>
+              <span class="cn-swatch is-a" aria-hidden="true"></span>
+              <span class="cn-swatch is-b" aria-hidden="true"></span>
+            </div>
+          </div>
+          <div class="cn-rung-inset">
+            <div class="cn-inset-pair" data-mode="round"><span class="cn-inset-k">R</span><span class="cn-inset-bar"><i style="--v:20%"></i></span><b data-inset="6">1.8</b></div>
+            <div class="cn-inset-pair" data-mode="squircle"><span class="cn-inset-k">C</span><span class="cn-inset-bar"><i style="--v:10%"></i></span><b data-inset="6">1.0</b></div>
+          </div>
+        </div>
+
+        <div class="cn-rung" data-r="10">
+          <div class="cn-rung-token"><code>--r-sm</code><b>10</b><span>inputs · buttons</span></div>
+          <div class="cn-rung-spec">
+            <div class="cn-field-spec">
+              <svg class="glyph glyph-xs" aria-hidden="true"><use href="#i-search"/></svg>
+              <span>Search runs…</span>
+              <kbd>⌘K</kbd>
+            </div>
+          </div>
+          <div class="cn-rung-inset">
+            <div class="cn-inset-pair" data-mode="round"><span class="cn-inset-k">R</span><span class="cn-inset-bar"><i style="--v:33%"></i></span><b data-inset="10">2.9</b></div>
+            <div class="cn-inset-pair" data-mode="squircle"><span class="cn-inset-k">C</span><span class="cn-inset-bar"><i style="--v:18%"></i></span><b data-inset="10">1.6</b></div>
+          </div>
+        </div>
+
+        <div class="cn-rung" data-r="14">
+          <div class="cn-rung-token"><code>--r</code><b>14</b><span>cards · popovers</span></div>
+          <div class="cn-rung-spec">
+            <div class="cn-menu-spec" role="img" aria-label="A popover menu with three rows">
+              <span class="cn-menu-row is-on">Rename run <kbd>⌘R</kbd></span>
+              <span class="cn-menu-row">Duplicate</span>
+              <span class="cn-menu-row">Archive</span>
+            </div>
+          </div>
+          <div class="cn-rung-inset">
+            <div class="cn-inset-pair" data-mode="round"><span class="cn-inset-k">R</span><span class="cn-inset-bar"><i style="--v:47%"></i></span><b data-inset="14">4.1</b></div>
+            <div class="cn-inset-pair" data-mode="squircle"><span class="cn-inset-k">C</span><span class="cn-inset-bar"><i style="--v:25%"></i></span><b data-inset="14">2.2</b></div>
+          </div>
+        </div>
+
+        <div class="cn-rung" data-r="22">
+          <div class="cn-rung-token"><code>--r-lg</code><b>22</b><span>panels · boards</span></div>
+          <div class="cn-rung-spec">
+            <div class="cn-card-spec" role="img" aria-label="A run receipt card with a small chart">
+              <div class="cn-card-head"><span>Run receipt</span><b>52s</b></div>
+              <div class="cn-card-bars" aria-hidden="true">
+                <i style="--h:30%;--c:var(--cx-r1)"></i><i style="--h:55%;--c:var(--cx-r2)"></i><i style="--h:42%;--c:var(--signal)"></i><i style="--h:72%;--c:var(--cx-r3)"></i><i style="--h:48%;--c:var(--cx-r4)"></i><i style="--h:88%;--c:var(--cx-r1)"></i><i style="--h:60%;--c:var(--cx-r2)"></i>
+              </div>
+              <div class="cn-card-foot"><span>18.4k tokens</span><span>$0.42</span></div>
+            </div>
+          </div>
+          <div class="cn-rung-inset">
+            <div class="cn-inset-pair" data-mode="round"><span class="cn-inset-k">R</span><span class="cn-inset-bar"><i style="--v:73%"></i></span><b data-inset="22">6.4</b></div>
+            <div class="cn-inset-pair" data-mode="squircle"><span class="cn-inset-k">C</span><span class="cn-inset-bar"><i style="--v:40%"></i></span><b data-inset="22">3.5</b></div>
+          </div>
+        </div>
+
+        <div class="cn-rung" data-r="30">
+          <div class="cn-rung-token"><code>--r-xl</code><b>30</b><span>stage · overlays</span></div>
+          <div class="cn-rung-spec">
+            <div class="cn-panel-spec" role="img" aria-label="An activity panel with a nested card">
+              <div class="cn-panel-head"><span>Agent activity</span><span class="cn-live-chip"><i aria-hidden="true"></i>Live</span></div>
+              <div class="cn-panel-body">
+                <div class="cn-panel-spark" aria-hidden="true">
+                  <i style="--h:28%"></i><i style="--h:44%"></i><i style="--h:38%"></i><i style="--h:66%"></i><i style="--h:54%"></i><i style="--h:82%"></i><i style="--h:70%"></i><i style="--h:94%"></i>
+                </div>
+                <div class="cn-panel-nest">Nested card · r 14</div>
+              </div>
+            </div>
+          </div>
+          <div class="cn-rung-inset">
+            <div class="cn-inset-pair" data-mode="round"><span class="cn-inset-k">R</span><span class="cn-inset-bar"><i style="--v:100%"></i></span><b data-inset="30">8.8</b></div>
+            <div class="cn-inset-pair" data-mode="squircle"><span class="cn-inset-k">C</span><span class="cn-inset-bar"><i style="--v:55%"></i></span><b data-inset="30">4.8</b></div>
+          </div>
+        </div>
+      </div>
+      <p class="cn-section-note"><b>Below 6px the curve is sub-pixel.</b> The 3px data mark stays round by charter; every rectangular surface from 6 to 30 takes the continuous curve. The ladder is shared with chapter 03 — this layer changes the shape, never the footprint.</p>
+    </section>
+
+    <!-- 4.4 NESTING -->
+    <section class="chapter" id="nest" aria-labelledby="h-nest">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">4.4</div>
+        <div>
+          <p class="ch-kicker">Containment · concentric</p>
+          <h2 class="t-h2" id="h-nest">A corner <em>inside a corner.</em></h2>
+          <p class="t-lede">An inner corner is not a smaller copy. It shares the corner center and returns the inset in radius. For a circle that offset is exact; for a squircle the center and both tangents align, and R − p is the closest same-exponent fit. Same radius offsets the center and opens the gap at 45°.</p>
+        </div>
+        <div class="folio">Nesting · 4.4 / 7</div>
+      </header>
+
+      <div class="cn-nest board" id="nest-demo" data-mode="concentric">
+        <div class="cn-nest-head">
+          <div>
+            <span class="board-label">Concentric lab · live</span>
+            <h3 class="cn-subhead">Shared center. <em>Different radius.</em></h3>
+          </div>
+          <div class="seg" role="group" aria-label="Nesting rule">
+            <button type="button" data-nest-mode="concentric" aria-pressed="true">Concentric</button>
+            <button type="button" data-nest-mode="same" aria-pressed="false">Same radius</button>
+          </div>
+        </div>
+        <div class="cn-nest-body">
+          <div class="cn-nest-live">
+            <div class="cn-nest-stage">
+              <div class="cn-nest-outer" id="nest-outer" style="--nr:30px;--pad:16px">
+                <div class="cn-nest-inner" id="nest-inner">
+                  <div class="cn-nest-inner-head">
+                    <span>Composer</span>
+                    <span class="cn-nest-ready"><i aria-hidden="true"></i>Ready</span>
+                  </div>
+                  <div class="cn-nest-field">
+                    <span class="cn-nest-draft">Reconcile the Q3 invoice trail.<em>Flag the three exceptions before posting.</em><i class="cn-caret" aria-hidden="true"></i></span>
+                    <span class="cn-nest-send" aria-hidden="true"><svg class="glyph glyph-xs"><use href="#i-run"/></svg></span>
+                  </div>
+                  <div class="cn-nest-chips">
+                    <span>Model · R2</span>
+                    <span>Attach</span>
+                    <span>Tools · 04</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="cn-nest-controls">
+              <label class="cn-control cn-nest-pad" for="nest-pad">
+                <span class="cn-c-label">Inset p <b id="nest-pad-label">16</b></span>
+                <input id="nest-pad" type="range" min="4" max="32" step="2" value="16">
+              </label>
+              <div class="cn-nest-readout" aria-live="polite">
+                <span>R <b id="nest-outer-label">30</b></span>
+                <span>p <b id="nest-pad-readout">16</b></span>
+                <span>r <b id="nest-inner-label">14</b></span>
+              </div>
+              <div class="cn-nest-verdict" id="nest-verdict">
+                <i class="cn-verdict-dot" aria-hidden="true"></i>
+                <b id="nest-verdict-title">Concentric</b>
+                <span id="nest-verdict-note">shared center · aligned tangent</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="cn-nest-rules">
+            <span class="board-label">The rule</span>
+            <div class="cn-formula">r<sub>inner</sub> = max(0,&nbsp; R<sub>outer</sub> − <span id="formula-p">16</span>)</div>
+            <p class="cn-nest-copy">The corner center is the invariant. Padding moves the inner box, so the radius gives back the inset. For a circle that is exact; for a squircle it keeps the center and both tangents aligned.</p>
+            <p class="cn-nest-fine">The offset curve is not a superellipse. R − p is the closest same-exponent fit; the residual sits at 45° and is about a pixel at our 30px ceiling.</p>
+
+            <div class="cn-diagrams" aria-label="Concentric and same-radius corner diagrams">
+              <figure class="cn-diagram is-concentric">
+                <div class="cn-dg-board" aria-hidden="true">
+                  <div class="cn-dg-outer"></div>
+                  <div class="cn-dg-inner"></div>
+                  <svg viewBox="0 0 152 152">
+                    <path d="M28 0 V28 M0 28 H28" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4"/>
+                    <circle cx="28" cy="28" r="2.4" fill="currentColor"/>
+                  </svg>
+                </div>
+                <figcaption><b>Concentric</b><span>one center · close gap</span></figcaption>
+              </figure>
+              <figure class="cn-diagram is-same">
+                <div class="cn-dg-board" aria-hidden="true">
+                  <div class="cn-dg-outer"></div>
+                  <div class="cn-dg-inner"></div>
+                  <svg viewBox="0 0 152 152">
+                    <path d="M28 28 V0 M28 28 H0" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4"/>
+                    <path d="M44 44 V16 M44 44 H16" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="3 4"/>
+                    <circle cx="28" cy="28" r="2.4" fill="currentColor"/>
+                    <circle cx="44" cy="44" r="2.4" fill="var(--warn)"/>
+                    <circle cx="24" cy="24" r="2" fill="var(--warn)"/>
+                  </svg>
+                </div>
+                <figcaption><b>Same radius</b><span>offset center · gap opens</span></figcaption>
+              </figure>
+            </div>
+
+            <div class="cn-nest-values" aria-label="Inner radius at four insets">
+              <span data-pad="8"><b>p 08</b><i>→</i><strong>r 22</strong></span>
+              <span data-pad="16" class="is-on"><b>p 16</b><i>→</i><strong>r 14</strong></span>
+              <span data-pad="24"><b>p 24</b><i>→</i><strong>r 06</strong></span>
+              <span data-pad="32"><b>p 32</b><i>→</i><strong>r 00</strong></span>
+            </div>
+
+            <p class="cn-nest-warn"><b>Same radius</b> separates the centers; the gap opens at the diagonal and the inner corner reads as a separate, over-rounded object. Correct the radius, not the padding.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4.5 SURFACE -->
+    <section class="chapter" id="surface" aria-labelledby="h-surface">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">4.5</div>
+        <div>
+          <p class="ch-kicker">Applied · product surface</p>
+          <h2 class="t-h2" id="h-surface">The proof is <em>the surface.</em></h2>
+          <p class="t-lede">One working screen: shell, rail, thread, receipt, evidence, composer and inspector. Every rectangular surface carries the same continuous curve; every circle, capsule and data mark stays round. Toggle the shape and watch nothing move except the edge.</p>
+        </div>
+        <div class="folio">Surface · 4.5 / 7</div>
+      </header>
+
+      <div class="cn-surface board" id="surface-demo">
+        <div class="cn-surface-head">
+          <div>
+            <span class="board-label">Product surface · live</span>
+            <h3 class="cn-subhead">One shape. <em>Every surface.</em></h3>
+          </div>
+          <div class="cn-surface-tools">
+            <span class="cn-c-label">Shape</span>
+            <div class="seg" role="group" aria-label="Product corner shape">
+              <button type="button" data-surface-shape="round" aria-pressed="false">Round</button>
+              <button type="button" data-surface-shape="squircle" aria-pressed="true">Continuous</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="cn-app" data-ctx="dark" role="img" aria-label="Illustrative product screen for the Truex finance agent Retrace: rail, conversation, run receipt, evidence table, composer and inspector.">
+          <div class="cn-app-top">
+            <span class="cn-app-brand">
+              <span class="cn-app-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+              <b>truex</b>
+            </span>
+            <span class="cn-app-crumb">Workspace <i>/</i> Finance <i>/</i> Q3 close</span>
+            <span class="cn-app-top-right">
+              <span class="cn-app-search"><svg class="glyph glyph-xs" aria-hidden="true"><use href="#i-search"/></svg><b>⌘K</b></span>
+              <span class="cn-app-avatar">A</span>
+            </span>
+          </div>
+
+          <div class="cn-app-body">
+            <aside class="cn-app-rail">
+              <div class="cn-rail-head"><span>Agents</span><span class="cn-rail-plus" aria-hidden="true">+</span></div>
+              <div class="cn-agent is-on">
+                <span class="cn-agent-avatar">R</span>
+                <span class="cn-agent-meta"><b>Retrace</b><small>Reconciling</small></span>
+                <i class="cn-agent-dot" aria-hidden="true"></i>
+              </div>
+              <div class="cn-agent">
+                <span class="cn-agent-avatar">A</span>
+                <span class="cn-agent-meta"><b>Atlas</b><small>Watching sources</small></span>
+              </div>
+              <div class="cn-agent">
+                <span class="cn-agent-avatar">W</span>
+                <span class="cn-agent-meta"><b>Witness</b><small>Awaiting approval</small></span>
+                <i class="cn-agent-dot is-warn" aria-hidden="true"></i>
+              </div>
+              <div class="cn-rail-label">Runs</div>
+              <div class="cn-run is-on"><span>Q3 invoice trail</span><small>52s · complete</small></div>
+              <div class="cn-run"><span>Vendor sweep</span><small>4m · complete</small></div>
+              <div class="cn-run"><span>Close checklist</span><small>draft</small></div>
+              <div class="cn-rail-foot">
+                <span>18.4k / 32k tokens</span>
+                <span class="cn-usage"><i style="--v:58%"></i></span>
+              </div>
+            </aside>
+
+            <div class="cn-app-main">
+              <div class="cn-thread-head">
+                <div><b>Q3 close · invoice trail</b><span>Run 04 · Retrace</span></div>
+                <span class="cn-app-status"><i aria-hidden="true"></i>Needs review</span>
+              </div>
+
+              <div class="cn-thread">
+                <div class="cn-msg is-user">
+                  <span class="cn-msg-meta">You · 10:42</span>
+                  <p>Match the Q3 invoices and flag anything that does not reconcile.</p>
+                </div>
+
+                <div class="cn-msg is-agent">
+                  <div class="cn-msg-head">
+                    <span class="cn-msg-avatar" aria-hidden="true"><svg class="glyph glyph-xs"><use href="#i-agent"/></svg></span>
+                    <span><b>Retrace</b> <small>2m ago</small></span>
+                    <span class="cn-msg-done"><span aria-hidden="true">✓</span> Complete</span>
+                  </div>
+                  <p>128 of 131 invoices matched. Three vendor IDs do not resolve; one subtotal is duplicated. I traced each exception to its source.</p>
+
+                  <div class="cn-receipt">
+                    <div class="cn-receipt-head"><span>Trace · 52s</span><span>4 tools</span></div>
+                    <div class="cn-receipt-bar" aria-hidden="true">
+                      <span style="--w:8%;background:var(--cx-r1)"></span>
+                      <span style="--w:19%;background:var(--cx-r2)"></span>
+                      <span style="--w:35%;background:var(--signal)"></span>
+                      <span style="--w:8%;background:var(--cx-r3)"></span>
+                      <span style="--w:30%;background:var(--cx-r4)"></span>
+                    </div>
+                    <div class="cn-receipt-legend"><span>Plan 4s</span><span>Read 10s</span><span>Match 18s</span><span>Check 4s</span><span>Write 16s</span><b>52s</b></div>
+                  </div>
+
+                  <div class="cn-evi" role="table" aria-label="Invoice exceptions">
+                    <div class="cn-evi-row is-head" role="row"><span role="columnheader">Invoice</span><span role="columnheader">Vendor</span><span role="columnheader">Amount</span><span role="columnheader">Issue</span></div>
+                    <div class="cn-evi-row" role="row"><span role="cell">INV-9438</span><span role="cell">Aperture</span><span role="cell">$8,120</span><span role="cell" class="is-warn"><i aria-hidden="true">!</i> vendor ID</span></div>
+                    <div class="cn-evi-row" role="row"><span role="cell">INV-9442</span><span role="cell">Northwind</span><span role="cell">$12,400</span><span role="cell" class="is-warn"><i aria-hidden="true">!</i> duplicate</span></div>
+                    <div class="cn-evi-row" role="row"><span role="cell">INV-9451</span><span role="cell">Kestrel</span><span role="cell">$2,860</span><span role="cell" class="is-warn"><i aria-hidden="true">!</i> no PO</span></div>
+                  </div>
+
+                  <div class="cn-msg-actions">
+                    <span class="cn-action is-primary">Approve 128</span>
+                    <span class="cn-action">Review 3</span>
+                    <span class="cn-action is-ghost">Export</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="cn-composer">
+                <div class="cn-composer-draft">Reconcile the Q3 invoice trail<i class="cn-caret" aria-hidden="true"></i></div>
+                <div class="cn-composer-foot">
+                  <span class="cn-composer-chip">Model · R2</span>
+                  <span class="cn-composer-chip">Tools · 04</span>
+                  <span class="cn-composer-send" aria-hidden="true"><svg class="glyph glyph-xs"><use href="#i-run"/></svg></span>
+                </div>
+              </div>
+            </div>
+
+            <aside class="cn-app-inspector">
+              <div class="cn-inspector-head"><span>Run receipt</span><span class="cn-inspector-status">Complete</span></div>
+              <div class="cn-inspector-metrics">
+                <div><span>Duration</span><b>52s</b></div>
+                <div><span>Tokens</span><b>18.4k</b></div>
+                <div><span>Cost</span><b>$0.42</b></div>
+              </div>
+              <div class="cn-inspector-section">
+                <span class="cn-inspector-label">Timeline</span>
+                <div class="cn-time-row"><span>Plan</span><i style="--w:8%"></i><b>4s</b></div>
+                <div class="cn-time-row"><span>Read</span><i style="--w:19%"></i><b>10s</b></div>
+                <div class="cn-time-row"><span>Match</span><i style="--w:35%"></i><b>18s</b></div>
+                <div class="cn-time-row"><span>Check</span><i style="--w:8%"></i><b>4s</b></div>
+                <div class="cn-time-row"><span>Write</span><i style="--w:30%"></i><b>16s</b></div>
+              </div>
+              <div class="cn-inspector-section">
+                <span class="cn-inspector-label">Approval</span>
+                <div class="cn-approval">
+                  <b>3 exceptions need a decision</b>
+                  <p>Two vendor IDs and one duplicate subtotal.</p>
+                  <div class="cn-approval-actions"><span class="cn-action is-primary">Review</span><span class="cn-action is-ghost">Dismiss</span></div>
+                </div>
+              </div>
+              <div class="cn-inspector-foot">
+                <span><svg class="glyph glyph-xs" aria-hidden="true"><use href="#i-trace"/></svg> trace_04.jsonl</span>
+                <span class="cn-inspector-copy">Copy</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+
+        <div class="cn-callouts">
+          <div class="cn-callout">
+            <span class="cn-co-shape is-panel" aria-hidden="true"></span>
+            <div><b>Panel · 30</b><span>Shell and overlay.</span></div>
+          </div>
+          <div class="cn-callout">
+            <span class="cn-co-shape is-field" aria-hidden="true"></span>
+            <div><b>Field · 10</b><span>Control interior.</span></div>
+          </div>
+          <div class="cn-callout">
+            <span class="cn-co-shape is-nest" aria-hidden="true"><i></i></span>
+            <div><b>Nested · 14 / 30</b><span>Inner = outer − inset.</span></div>
+          </div>
+          <div class="cn-callout">
+            <span class="cn-co-shape is-round" aria-hidden="true"></span>
+            <div><b>Round · 50%</b><span>People and live state.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4.6 CHARTER -->
+    <section class="chapter" id="charter" aria-labelledby="h-charter">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">4.6</div>
+        <div>
+          <p class="ch-kicker">Charter · meaning</p>
+          <h2 class="t-h2" id="h-charter">Some edges must <em>stay round.</em></h2>
+          <p class="t-lede">Continuous corners are for rectangles. A circle is a different claim: a person, a live process, a status, a capsule, a data mark. Those keep the circular arc — and the shape layer protects them by name.</p>
+        </div>
+        <div class="folio">Charter · 4.6 / 7</div>
+      </header>
+
+      <div class="cn-charter board">
+        <div class="cn-charter-head">
+          <div>
+            <span class="board-label">Round charter · opt-out by name</span>
+            <h3 class="cn-subhead">Shape is a claim. <em>Make it deliberately.</em></h3>
+          </div>
+          <span class="cn-charter-badge">explicit opt-outs</span>
+        </div>
+        <div class="cn-round-grid">
+          <article class="cn-round-item">
+            <div class="cn-round-sample" aria-hidden="true"><span class="cn-r-live"></span></div>
+            <div class="cn-round-copy"><b>Live state</b><p>A circle reads as a process that is happening now.</p><code>.live-dot · round</code></div>
+          </article>
+          <article class="cn-round-item">
+            <div class="cn-round-sample" aria-hidden="true"><span class="cn-r-avatar">R</span><span class="cn-r-avatar is-alt">A</span></div>
+            <div class="cn-round-copy"><b>People &amp; agents</b><p>Identity is circular. A squircle would read as a control.</p><code>.agent-avatar · round</code></div>
+          </article>
+          <article class="cn-round-item">
+            <div class="cn-round-sample" aria-hidden="true"><span class="cn-r-status">✓</span><span class="cn-r-status-word">Complete</span></div>
+            <div class="cn-round-copy"><b>Status</b><p>A glyph inside a circle, always paired with its word.</p><code>.status-glyph · round</code></div>
+          </article>
+          <article class="cn-round-item">
+            <div class="cn-round-sample" aria-hidden="true"><span class="cn-r-pill">Review 3</span><span class="cn-r-pill is-quiet">Attach</span></div>
+            <div class="cn-round-copy"><b>Capsules</b><p>The full round end is the affordance: filter, chip, action.</p><code>.chip · round</code></div>
+          </article>
+          <article class="cn-round-item">
+            <div class="cn-round-sample" aria-hidden="true"><span class="cn-r-bars"><i style="--h:36%"></i><i style="--h:58%"></i><i style="--h:44%"></i><i style="--h:86%"></i><i style="--h:64%"></i></span></div>
+            <div class="cn-round-copy"><b>Data marks</b><p>A mark is a measure, not a surface. Round ends, no implied container.</p><code>--r-mark · round</code></div>
+          </article>
+          <article class="cn-round-item">
+            <div class="cn-round-sample" aria-hidden="true"><span class="cn-r-icon"><svg class="glyph glyph-hero" aria-hidden="true"><use href="#i-run"/></svg></span></div>
+            <div class="cn-round-copy"><b>Icon cuts</b><p>The glyph hand uses a deliberate 45° cut; a squircle would blur it.</p><code>45° cut · SVG</code></div>
+          </article>
+        </div>
+
+        <div class="cn-access-grid">
+          <article class="cn-access-item">
+            <span class="board-label">Focus</span>
+            <div class="cn-a-focus"><span>Ask Retrace…</span></div>
+            <b>Halo follows the curve</b>
+            <p>One soft outer ring. The focus shadow takes the same continuous shape.</p>
+          </article>
+          <article class="cn-access-item">
+            <span class="board-label">Hit area</span>
+            <div class="cn-a-hit"><span aria-hidden="true"></span></div>
+            <b>Same box</b>
+            <p>Paint changes; the bounding box, padding and pointer target do not.</p>
+          </article>
+          <article class="cn-access-item">
+            <span class="board-label">Contrast</span>
+            <div class="cn-a-aa"><b>AA</b><span>Ink unchanged</span></div>
+            <b>No colour change</b>
+            <p>The shape layer is geometry only. The four colour contexts stay exactly as locked.</p>
+          </article>
+          <article class="cn-access-item">
+            <span class="board-label">Fallback</span>
+            <div class="cn-a-fallback"><span aria-hidden="true"></span><i aria-hidden="true"></i></div>
+            <b>Round, no shift</b>
+            <p>Without corner-shape the same radius renders as a circular arc. Nothing moves.</p>
+          </article>
+        </div>
+      </div>
+
+      <div class="cn-support board">
+        <div class="cn-support-main">
+          <span class="board-label">Environment</span>
+          <h3 class="cn-support-title">Native where it can be. <em>Round where it cannot.</em></h3>
+          <div class="cn-browsers">
+            <span class="cn-browser is-native"><i aria-hidden="true"></i><b>Chromium 139+</b><span>native</span></span>
+            <span class="cn-browser"><i aria-hidden="true"></i><b>Safari</b><span>preview · fallback</span></span>
+            <span class="cn-browser"><i aria-hidden="true"></i><b>Firefox</b><span>preview · fallback</span></span>
+          </div>
+          <p class="cn-support-note">No JavaScript dependency. No masks, extra nodes or clip paths. Paint-level only.</p>
+        </div>
+        <div class="cn-support-rules">
+          <span class="board-label">Rules</span>
+          <ul>
+            <li><span class="g" aria-hidden="true">✓</span>Use the radius ladder; never a raw number.</li>
+            <li><span class="g" aria-hidden="true">✓</span>Nest with <code>r = R − p</code>; never repeat R.</li>
+            <li><span class="g" aria-hidden="true">✓</span>Opt out circles, capsules and marks by class.</li>
+            <li><span class="g" aria-hidden="true">✕</span>Do not inflate the radius to fake softness.</li>
+            <li><span class="g" aria-hidden="true">✕</span>Do not use a mask for a corner the engine can draw.</li>
+          </ul>
+        </div>
+        <p class="cn-charter-quote">The rectangle is calm. <em>The circle is alive.</em></p>
+      </div>
+    </section>
+
+    <!-- 4.7 CONTRACT -->
+    <section class="chapter" id="contract" aria-labelledby="h-contract">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">4.7</div>
+        <div>
+          <p class="ch-kicker">Contract · code</p>
+          <h2 class="t-h2" id="h-contract">One property. <em>One fallback.</em></h2>
+          <p class="t-lede">The whole system is one shape token, one utility layer and one nesting rule. It loads after the page styles, declares no new colours and no new fonts, and leaves every footprint exactly where it was.</p>
+        </div>
+        <div class="folio">Contract · 4.7 / 7</div>
+      </header>
+
+      <div class="cn-contract">
+        <div class="code-card">
+          <div class="code-head">
+            <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+            <span>corner.css</span>
+            <button class="copy" data-copy="#corner-snippet" type="button">Copy</button>
+          </div>
+          <pre class="code" id="corner-snippet" tabindex="0" aria-label="Corner CSS snippet"><code><span class="c">/* truex · continuous corners · load last */</span>
+<span class="p">:root</span> {
+  <span class="p">--corner-surface</span>: <span class="n">squircle</span>; <span class="c">/* K 2 · |x|⁴ + |y|⁴ = 1 */</span>
+  <span class="p">--corner-mark</span>: <span class="n">round</span>;
+  <span class="p">--corner-mode</span>: <span class="k">var</span>(<span class="p">--corner-surface</span>);
+}
+
+<span class="k">@supports</span> (<span class="p">corner-shape</span>: <span class="n">squircle</span>) {
+  <span class="p">:where</span>(<span class="n">html *</span>) {
+    <span class="p">corner-shape</span>: <span class="k">var</span>(<span class="p">--corner-mode</span>);
+  }
+  <span class="p">.chip, .dot, .data-mark, .brand</span> {
+    <span class="p">corner-shape</span>: <span class="n">round</span>;
+  }
+}
+
+<span class="p">.panel</span> {
+  <span class="p">border-radius</span>: <span class="k">var</span>(<span class="p">--r-lg</span>);
+  <span class="p">corner-shape</span>: <span class="k">var</span>(<span class="p">--corner-mode</span>);
+}
+
+<span class="p">.panel__inner</span> {
+  <span class="p">border-radius</span>: <span class="k">max</span>(<span class="n">0px</span>, <span class="k">calc</span>(<span class="k">var</span>(<span class="p">--r-lg</span>) - <span class="k">var</span>(<span class="p">--sp-4</span>)));
+}</code></pre>
+        </div>
+
+        <div class="cn-contract-side">
+          <span class="board-label">The contract</span>
+          <div class="cn-contract-table">
+            <div><span>Footprint</span><p><code>3 · 6 · 10 · 14 · 22 · 30</code><small>one ladder, shared with 03</small></p></div>
+            <div><span>Shape</span><p><code>squircle</code><small>K 2 · exponent 4</small></p></div>
+            <div><span>Round</span><p><code>opt-out list</code><small>circles · capsules · marks · brand</small></p></div>
+            <div><span>Nesting</span><p><code>max(0, R − p)</code><small>one center, never one radius</small></p></div>
+            <div><span>Fallback</span><p><code>round</code><small>same box · same contrast · 0px shift</small></p></div>
+            <div><span>Scope</span><p><code>corner.css</code><small>last stylesheet, every chapter</small></p></div>
+          </div>
+          <div class="cn-verify">
+            <span class="board-label">Verified</span>
+            <div class="cn-verify-grid">
+              <span><b>1440 / 390 / 320</b><small>0px overflow</small></span>
+              <span><b>Light / dark</b><small>four contexts</small></span>
+              <span><b>100 / 200%</b><small>reflow</small></span>
+              <span><b>Native / fallback</b><small>shape parity</small></span>
+            </div>
+          </div>
+          <div class="cn-files">
+            <span class="board-label">Files</span>
+            <p><code>corner.css</code> canonical shape · <code>corner-page.css</code> study · <code>corner.js</code> instruments · linked last in 01–03, charts and icons.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cn-lock">
+        <div class="cn-lock-left">
+          <span class="cn-lock-mark" aria-hidden="true">04</span>
+          <div><b>Proposal · Corner geometry</b><small>Ready for sign-off. On approval this chapter locks and the shape layer stays as the system default.</small></div>
+        </div>
+        <div class="cn-lock-right"><a href="03-space.html">← Chapter 03 Space</a><br><a href="05-primitives.html">Next · 05 Primitives →</a></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Chapter 04 — Corners / Proposal 26 Oct 2026</span>
+      </div>
+    </div>
+    <p class="foot-serif">The edge, without the snap. <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<script src="space.js"></script>
+<script src="corner.js"></script>
+</body>
+</html>

@@ -1,0 +1,1232 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · Agent ID</title>
+<meta name="description" content="truex screen study: creating an agent as issuing an ID card. Identity on the front, MCP access and skills on the back, built on the locked foundations.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../type.css">
+<link rel="stylesheet" href="../color.css">
+<link rel="stylesheet" href="../space.css">
+<link rel="stylesheet" href="../corner.css">
+<link rel="stylesheet" href="../primitives.css">
+<link rel="stylesheet" href="agent-id.css">
+</head>
+<body>
+<div class="hx-backdrop" aria-hidden="true"></div>
+<div id="root"></div>
+
+<script type="text/plain" id="src">
+const { useState, useEffect, useRef, useLayoutEffect } = React;
+
+// Agent looks: shaded vector robots drawn in SVG (Robot). Tints are the badge backgrounds; `dot` doubles as the agent hue.
+interface Look { name: string; body: string; visor: string; glow: string; face: "line" | "eyes" | "happy"; acc?: string; accColor?: string }
+const LOOKS: Look[] = [
+  { name: "Graphite", body: "#3A4750", visor: "#1F2A30", glow: "#BCDEE8", face: "line" },
+  { name: "Antenna", body: "#F4F7F8", visor: "#2B3F6B", glow: "#BCDEE8", face: "eyes", acc: "antenna" },
+  { name: "Navy", body: "#2E4470", visor: "#16213A", glow: "#BCDEE8", face: "line" },
+  { name: "Listener", body: "#D5DDE1", visor: "#2B3F6B", glow: "#BCDEE8", face: "happy", acc: "headphones", accColor: "#3691CD" },
+  { name: "Scout", body: "#D8C3A0", visor: "#3A4750", glow: "#EBCB8B", face: "line", acc: "cap", accColor: "#E07B6E" },
+  { name: "Chef", body: "#F4F7F8", visor: "#2B3F6B", glow: "#BCDEE8", face: "eyes", acc: "chef" },
+  { name: "Builder", body: "#F4F7F8", visor: "#3A4750", glow: "#EBCB8B", face: "eyes", acc: "hardhat", accColor: "#F2C94C" },
+  { name: "Scarf", body: "#3A4750", visor: "#1F2A30", glow: "#F0B999", face: "happy", acc: "scarf", accColor: "#E07B6E" },
+  { name: "Mint", body: "#BFE3CF", visor: "#1F2A30", glow: "#A9D5BE", face: "eyes", acc: "antenna" },
+  { name: "Lilac", body: "#CFC8EC", visor: "#2B3F6B", glow: "#C4BDE3", face: "happy", acc: "bow", accColor: "#F0A3B5" },
+  { name: "Peach", body: "#F5C7A8", visor: "#3A4750", glow: "#F0B999", face: "line", acc: "headphones", accColor: "#3A4750" },
+  { name: "Captain", body: "#2E4470", visor: "#16213A", glow: "#BCDEE8", face: "eyes", acc: "cap", accColor: "#3691CD" },
+];
+const TINTS = [
+  { id: "ice", label: "Ice", bg: "#EAF5F8", dot: "#3691CD" },
+  { id: "mint", label: "Mint", bg: "#E7F4ED", dot: "#A9D5BE" },
+  { id: "butter", label: "Butter", bg: "#FFF3D9", dot: "#EBCB8B" },
+  { id: "peach", label: "Peach", bg: "#FBE9DD", dot: "#F0B999" },
+  { id: "lilac", label: "Lilac", bg: "#EFEDF8", dot: "#C4BDE3" },
+];
+const tintOf = (id?: string) => TINTS.find(t => t.id === id) || TINTS[0];
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+// Mix a hex colour toward white (amt > 0) or black (amt < 0); used for the robots' shading.
+const tone = (hex: string, amt: number) => {
+  const n = parseInt(hex.slice(1), 16), t = amt < 0 ? 0 : 255, k = Math.abs(amt);
+  const ch = (sh: number) => Math.round(((n >> sh) & 255) + (t - ((n >> sh) & 255)) * k).toString(16).padStart(2, "0");
+  return "#" + ch(16) + ch(8) + ch(0);
+};
+
+const PATHS: Record<string, string> = {
+  sidebar: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 3v18",
+  activity: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM15 3v18",
+  user: "M20 21a8 8 0 0 0-16 0M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10z",
+  bot: "M12 8V4H8M4 12a4 4 0 0 1 4-4h8a4 4 0 0 1 4 4v4a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4zM2 14h2M20 14h2M9 13v2M15 13v2",
+  plus: "M12 5v14M5 12h14",
+  search: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
+  home: "M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
+  folder: "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+  book: "M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5",
+  gear: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
+  arrowUp: "M12 19V5M5 12l7-7 7 7",
+  paperclip: "m21.4 11.1-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5",
+  globe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20",
+  at: "M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0zM16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.9 7.9",
+  mic: "M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v3",
+  check: "M20 6 9 17l-5-5",
+  chart: "M3 3v18h18M7 16l4-6 4 3 5-7",
+  table: "M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 9h18M3 15h18M9 3v18",
+  doc: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5",
+  sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
+  moon: "M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z",
+  share: "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13",
+  chevron: "m6 9 6 6 6-6",
+  chevronR: "m9 6 6 6-6 6",
+  chevronL: "m15 6-6 6 6 6",
+  upDown: "m7 15 5 5 5-5M7 9l5-5 5 5",
+  x: "M18 6 6 18M6 6l12 12",
+  pulse: "M3 12h4l3-8 4 16 3-8h4",
+  expand: "M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7",
+  shrink: "M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7",
+  spark: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z",
+  stop: "M6 6h12v12H6z",
+  target: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM12 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
+  plug: "M12 22v-5M9 8V2M15 8V2M18 8v5a6 6 0 0 1-12 0V8z",
+  pause: "M8 5v14M16 5v14",
+  play: "M7 4v16l13-8z",
+  pencil: "M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z",
+  lock: "M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4",
+  grid: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+  logout: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+  download: "M12 4v11M7 10l5 5 5-5M5 20h14",
+};
+
+function Icon({ name, size = 18, stroke = 1.75 }: { name: string; size?: number; stroke?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={PATHS[name]} />
+    </svg>
+  );
+}
+
+/* ---------------------------------------------------------------- new agent */
+
+function Robot({ look, size = 64 }: { look: number; size?: number }) {
+  const L = LOOKS[look] || LOOKS[0];
+  // Gradient/filter ids must be unique per instance; useId output has colons, which url(#…) dislikes.
+  const id = "rb" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  const u = (n: string) => `url(#${id}-${n})`;
+  const edge = tone(L.body, -.45);
+  const acc = L.accColor || L.body;
+  const accEdge = tone(acc, -.4);
+  const limb = { fill: u("limb"), stroke: edge, strokeWidth: 1.5 };
+  const accLine = { fill: u("acc"), stroke: accEdge, strokeWidth: 1.4, strokeLinejoin: "round" as const };
+  return (
+    <svg width={size} height={size} viewBox="0 0 120 120" aria-hidden="true" shapeRendering="geometricPrecision">
+      <defs>
+        <linearGradient id={`${id}-body`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={tone(L.body, .38)} />
+          <stop offset=".55" stopColor={L.body} />
+          <stop offset="1" stopColor={tone(L.body, -.3)} />
+        </linearGradient>
+        <linearGradient id={`${id}-limb`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={tone(L.body, -.06)} />
+          <stop offset="1" stopColor={tone(L.body, -.34)} />
+        </linearGradient>
+        <radialGradient id={`${id}-sheen`} cx=".3" cy=".2" r=".6">
+          <stop offset="0" stopColor="#fff" stopOpacity=".6" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id={`${id}-visor`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={tone(L.visor, .24)} />
+          <stop offset="1" stopColor={tone(L.visor, -.38)} />
+        </linearGradient>
+        <radialGradient id={`${id}-screen`} cx=".5" cy=".55" r=".6">
+          <stop offset="0" stopColor={L.glow} stopOpacity=".3" />
+          <stop offset="1" stopColor={L.glow} stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id={`${id}-acc`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={tone(acc, .32)} />
+          <stop offset="1" stopColor={tone(acc, -.22)} />
+        </linearGradient>
+        <linearGradient id={`${id}-chef`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FFFFFF" />
+          <stop offset="1" stopColor="#D6DEE2" />
+        </linearGradient>
+        <radialGradient id={`${id}-shadow`}>
+          <stop offset="0" stopColor="#101820" stopOpacity=".3" />
+          <stop offset="1" stopColor="#101820" stopOpacity="0" />
+        </radialGradient>
+        <filter id={`${id}-glow`} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="1.8" result="b" />
+          <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+
+      <ellipse cx="60" cy="109" rx="36" ry="6.5" fill={u("shadow")} />
+      {/* pack and legs sit behind the shell */}
+      <rect x="13" y="50" width="20" height="38" rx="9" {...limb} />
+      <rect x="37" y="82" width="19" height="25" rx="8.5" {...limb} />
+      <rect x="64" y="82" width="19" height="25" rx="8.5" {...limb} />
+      <path d="M41 101.5h11M68 101.5h11" stroke="#fff" strokeOpacity=".18" strokeWidth="2" strokeLinecap="round" />
+
+      {/* shell: base gradient, soft top-left sheen, right rim light */}
+      <rect x="24" y="22" width="72" height="72" rx="31" fill={u("body")} stroke={edge} strokeWidth="1.5" />
+      <rect x="24" y="22" width="72" height="72" rx="31" fill={u("sheen")} />
+      <path d="M90 46c3.6 10 3.4 24-2 34" fill="none" stroke="#fff" strokeOpacity=".24" strokeWidth="3" strokeLinecap="round" />
+      {L.acc !== "scarf" && <circle cx="73" cy="81" r="2.2" fill={L.glow} filter={u("glow")} />}
+
+      {L.acc === "scarf" && (
+        <g>
+          <path d="M72 79l3.5 21c.4 2.2 3.2 2.8 4.6 1.1L87 93l-5.5-15z" {...accLine} />
+          <path d="M77 97l1.2 4M81 95.5l1.6 3.6" stroke={accEdge} strokeWidth="1.2" strokeLinecap="round" />
+          <path d="M25 71c20 8.5 50 8.5 70 0v9c-20 8.5-50 8.5-70 0z" {...accLine} />
+          <path d="M31 75c16 5.5 42 5.5 58 0" fill="none" stroke="#fff" strokeOpacity=".35" strokeWidth="1.6" strokeLinecap="round" />
+        </g>
+      )}
+
+      {/* visor: bezel, glass, screen bloom, glowing face, glare */}
+      <rect x="35" y="36" width="54" height="33" rx="15" fill={tone(L.visor, -.55)} />
+      <rect x="37.5" y="38.5" width="49" height="28" rx="12.5" fill={u("visor")} />
+      <rect x="37.5" y="38.5" width="49" height="28" rx="12.5" fill={u("screen")} />
+      <g className="rb-face" filter={u("glow")}>
+        {L.face === "line" && <rect x="51" y="50" width="22" height="5.6" rx="2.8" fill={L.glow} />}
+        {L.face === "eyes" && <><circle cx="52" cy="53" r="4.1" fill={L.glow} /><circle cx="72" cy="53" r="4.1" fill={L.glow} /></>}
+        {L.face === "happy" && <path d="M47 55.5q5-6.2 10 0M67 55.5q5-6.2 10 0" fill="none" stroke={L.glow} strokeWidth="3.2" strokeLinecap="round" />}
+      </g>
+      {L.face === "eyes" && <g className="rb-face"><circle cx="53.4" cy="51.6" r="1.2" fill="#fff" /><circle cx="73.4" cy="51.6" r="1.2" fill="#fff" /></g>}
+      <path d="M43.5 45c3-2.8 8-3.8 13-3.6" fill="none" stroke="#fff" strokeOpacity=".6" strokeWidth="2.6" strokeLinecap="round" />
+      <circle cx="80.5" cy="61" r="1.5" fill="#fff" fillOpacity=".35" />
+
+      {L.acc === "antenna" && (
+        <g>
+          <path d="M60 23V10" stroke={edge} strokeWidth="3" strokeLinecap="round" />
+          <rect x="54.5" y="20" width="11" height="4.5" rx="2.25" fill={tone(L.body, -.2)} stroke={edge} strokeWidth="1.2" />
+          <circle cx="60" cy="8.5" r="9" fill={L.glow} opacity=".28" />
+          <circle cx="60" cy="8.5" r="5.2" fill={L.glow} stroke={tone(L.glow, -.4)} strokeWidth="1.2" />
+          <circle cx="58.3" cy="6.8" r="1.6" fill="#fff" opacity=".85" />
+        </g>
+      )}
+      {L.acc === "cap" && (
+        <g>
+          <path d="M80 33.5c10-1 21 0 27 3 2 1.2 1 4-1.5 4-8 0-17-1-26-2.5z" {...accLine} fill={tone(acc, -.1)} />
+          <path d="M26 38C26 10 94 10 94 38c-10-3-58-3-68 0z" {...accLine} />
+          <path d="M60 15v21" stroke={accEdge} strokeOpacity=".45" strokeWidth="1.2" />
+          <path d="M36 28c5-7 12-10 19-11" fill="none" stroke="#fff" strokeOpacity=".4" strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx="60" cy="14.5" r="2.6" fill={tone(acc, -.15)} stroke={accEdge} strokeWidth="1" />
+        </g>
+      )}
+      {L.acc === "hardhat" && (
+        <g>
+          <path d="M26 33C26 4 94 4 94 33z" {...accLine} />
+          <rect x="55" y="7.5" width="10" height="25" rx="4" fill={tone(acc, .3)} stroke={accEdge} strokeWidth="1.2" />
+          <rect x="17" y="30" width="86" height="7" rx="3.5" {...accLine} fill={tone(acc, -.08)} />
+          <path d="M34 24c3-7 9-11 16-13" fill="none" stroke="#fff" strokeOpacity=".45" strokeWidth="2.2" strokeLinecap="round" />
+        </g>
+      )}
+      {L.acc === "chef" && (
+        <g>
+          <g fill={u("chef")}>
+            <circle cx="44" cy="18" r="10.5" /><circle cx="76" cy="18" r="10.5" /><circle cx="60" cy="13" r="12.5" />
+          </g>
+          <path d="M41 11c2-2 5-3 8-3M56 5c2-1 5-1.4 7-1" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" />
+          <rect x="36" y="18" width="48" height="15" rx="5" fill={u("chef")} stroke="#B9C4CA" strokeWidth="1.2" />
+          <path d="M48 21v9M60 21v9M72 21v9" stroke="#B9C4CA" strokeOpacity=".7" strokeWidth="1" strokeLinecap="round" />
+        </g>
+      )}
+      {L.acc === "headphones" && (
+        <g>
+          <path d="M22 54C22 10 98 10 98 54" fill="none" stroke={tone(acc, -.4)} strokeWidth="7" strokeLinecap="round" />
+          <path d="M22 54C22 10 98 10 98 54" fill="none" stroke={tone(acc, .25)} strokeOpacity=".6" strokeWidth="2" strokeLinecap="round" />
+          <rect x="13" y="43" width="17" height="27" rx="7.5" {...accLine} />
+          <rect x="90" y="43" width="17" height="27" rx="7.5" {...accLine} />
+          <path d="M17 49v10M94 49v10" stroke="#fff" strokeOpacity=".45" strokeWidth="2" strokeLinecap="round" />
+        </g>
+      )}
+      {L.acc === "bow" && (
+        <g>
+          <path d="M78 20l-11-7c-2-1.2-4 .4-4 2.6v9c0 2.2 2.2 3.4 4 2.4z" {...accLine} />
+          <path d="M78 20l11-7c2-1.2 4 .4 4 2.6v9c0 2.2-2.2 3.4-4 2.4z" {...accLine} />
+          <circle cx="78" cy="20" r="3.6" {...accLine} fill={tone(acc, -.12)} />
+          <path d="M66.5 16.5l3 1.8M89.5 16.5l-3 1.8" stroke="#fff" strokeOpacity=".5" strokeWidth="1.6" strokeLinecap="round" />
+        </g>
+      )}
+    </svg>
+  );
+}
+
+// Lanyard hardware: crimp end for the ribbon, swivel, split ring and a clear tab that feeds into the badge slot.
+function Clip() {
+  const id = "cl" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  const metal = `url(#${id}-m)`;
+  return (
+    <svg className="clip" width="56" height="70" viewBox="0 0 56 70" aria-hidden="true" shapeRendering="geometricPrecision">
+      <defs>
+        <linearGradient id={`${id}-m`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#8A969D" /><stop offset=".35" stopColor="#F4F7F8" />
+          <stop offset=".62" stopColor="#B7C1C6" /><stop offset="1" stopColor="#77838A" />
+        </linearGradient>
+        <linearGradient id={`${id}-t`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#FFFFFF" stopOpacity=".85" /><stop offset="1" stopColor="#EAF2F5" stopOpacity=".6" />
+        </linearGradient>
+      </defs>
+      <rect x="20" y="35" width="16" height="35" rx="4" fill={`url(#${id}-t)`} stroke="rgb(31 42 48 / 24%)" strokeWidth=".8" />
+      <path d="M23 39v27" stroke="#fff" strokeOpacity=".9" strokeWidth="1.4" strokeLinecap="round" />
+      <circle cx="28" cy="47" r="3.3" fill={metal} stroke="#6B777E" strokeWidth=".8" />
+      <ellipse cx="28" cy="29" rx="8.5" ry="11" fill="none" stroke="#66727A" strokeWidth="5" />
+      <ellipse cx="28" cy="29" rx="8.5" ry="11" fill="none" stroke={metal} strokeWidth="3.2" />
+      <rect x="24" y="12" width="8" height="7" rx="1.6" fill={metal} stroke="#6B777E" strokeWidth=".8" />
+      <rect x="13.5" y="0" width="29" height="13.5" rx="3" fill={metal} stroke="#6B777E" strokeWidth=".8" />
+      <path d="M17 4.5h22M17 8.5h22" stroke="#6B777E" strokeOpacity=".45" strokeWidth=".8" />
+    </svg>
+  );
+}
+
+
+// Brand marks, from charts/index.html (Simple Icons, CC0; multi-colour Google, Slack and Figma). Null fill takes currentColor.
+const LOGOS = {
+  google: { vb: "0 0 24 24", parts: [
+    ["#4285F4", "M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"],
+    ["#34A853", "M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"],
+    ["#FBBC05", "M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"],
+    ["#EA4335", "M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"]] },
+  slack: { vb: "0 0 54 54", parts: [
+    ["#36C5F0", "M19.712.133a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386h5.376V5.52A5.381 5.381 0 0 0 19.712.133m0 14.365H5.376A5.381 5.381 0 0 0 0 19.884a5.381 5.381 0 0 0 5.376 5.387h14.336a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386"],
+    ["#2EB67D", "M53.76 19.884a5.381 5.381 0 0 0-5.376-5.386 5.381 5.381 0 0 0-5.376 5.386v5.387h5.376a5.381 5.381 0 0 0 5.376-5.387m-14.336 0V5.52A5.381 5.381 0 0 0 34.048.133a5.381 5.381 0 0 0-5.376 5.387v14.364a5.381 5.381 0 0 0 5.376 5.387 5.381 5.381 0 0 0 5.376-5.387"],
+    ["#ECB22E", "M34.048 54a5.381 5.381 0 0 0 5.376-5.387 5.381 5.381 0 0 0-5.376-5.386h-5.376v5.386A5.381 5.381 0 0 0 34.048 54m0-14.365h14.336a5.381 5.381 0 0 0 5.376-5.386 5.381 5.381 0 0 0-5.376-5.387H34.048a5.381 5.381 0 0 0-5.376 5.387 5.381 5.381 0 0 0 5.376 5.386"],
+    ["#E01E5A", "M0 34.249a5.381 5.381 0 0 0 5.376 5.386 5.381 5.381 0 0 0 5.376-5.386v-5.387H5.376A5.381 5.381 0 0 0 0 34.25m14.336-.001v14.364A5.381 5.381 0 0 0 19.712 54a5.381 5.381 0 0 0 5.376-5.387V34.25a5.381 5.381 0 0 0-5.376-5.387 5.381 5.381 0 0 0-5.376 5.387"]] },
+  figma: { vb: "-9.5 0 57 57", parts: [
+    ["#1ABCFE", "M19 28.5a9.5 9.5 0 1 1 19 0 9.5 9.5 0 0 1-19 0z"], ["#0ACF83", "M0 47.5A9.5 9.5 0 0 1 9.5 38H19v9.5a9.5 9.5 0 1 1-19 0z"],
+    ["#FF7262", "M19 0v19h9.5a9.5 9.5 0 1 0 0-19H19z"], ["#F24E1E", "M0 9.5A9.5 9.5 0 0 0 9.5 19H19V0H9.5A9.5 9.5 0 0 0 0 9.5z"],
+    ["#A259FF", "M0 28.5A9.5 9.5 0 0 0 9.5 38H19V19H9.5A9.5 9.5 0 0 0 0 28.5z"]] },
+  notion: { vb: "0 0 24 24", parts: [[null, "M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z"]] },
+  github: { vb: "0 0 24 24", parts: [[null, "M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"]] },
+  hubspot: { vb: "0 0 24 24", parts: [["#FF7A59", "M18.164 7.93V5.084a2.198 2.198 0 001.267-1.978v-.067A2.2 2.2 0 0017.238.845h-.067a2.2 2.2 0 00-2.193 2.193v.067a2.196 2.196 0 001.252 1.973l.013.006v2.852a6.22 6.22 0 00-2.969 1.31l.012-.01-7.828-6.095A2.497 2.497 0 104.3 4.656l-.012.006 7.697 5.991a6.176 6.176 0 00-1.038 3.446c0 1.343.425 2.588 1.147 3.607l-.013-.02-2.342 2.343a1.968 1.968 0 00-.58-.095h-.002a2.033 2.033 0 102.033 2.033 1.978 1.978 0 00-.1-.595l.005.014 2.317-2.317a6.247 6.247 0 104.782-11.134l-.036-.005zm-.964 9.378a3.206 3.206 0 113.215-3.207v.002a3.206 3.206 0 01-3.207 3.207z"]] },
+  stripe: { vb: "0 0 24 24", bg: "#635BFF", parts: [["#FFFFFF", "M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.594-7.305h.003z", "translate(5.4 5.4) scale(.55)"]] },
+  anthropic: { vb: "0 0 24 24", parts: [["#D97757", "m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"]] },
+  openai: { vb: "0 0 24 24", parts: [[null, "M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z"]] },
+  gemini: { vb: "0 0 24 24", parts: [["#3B82F6", "M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58 12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96 2.19.93 3.81 2.55t2.55 3.81"]] },
+};
+LOGOS.sentry = { vb: "0 0 24 24", parts: [["#362D59", "M13.91 2.505c-.873-1.448-2.972-1.448-3.844 0L6.904 7.92a15.478 15.478 0 0 1 8.53 12.811h-2.221A13.301 13.301 0 0 0 5.784 9.814l-2.926 5.06a7.65 7.65 0 0 1 4.435 5.848H2.194a.365.365 0 0 1-.298-.534l1.413-2.402a5.16 5.16 0 0 0-1.614-.913L.296 19.275a2.182 2.182 0 0 0 .812 2.999 2.24 2.24 0 0 0 1.086.288h6.983a9.322 9.322 0 0 0-3.845-8.318l1.11-1.922a11.47 11.47 0 0 1 4.95 10.24h5.915a17.242 17.242 0 0 0-7.885-15.28l2.244-3.845a.37.37 0 0 1 .504-.13c.255.14 9.75 16.708 9.928 16.9a.365.365 0 0 1-.327.543h-2.287c.029.612.029 1.223 0 1.831h2.297a2.206 2.206 0 0 0 1.922-3.31z"]] };
+LOGOS.linear = { vb: "0 0 24 24", parts: [["#5E6AD2", "M2.886 4.18A11.982 11.982 0 0 1 11.99 0C18.624 0 24 5.376 24 12.009c0 3.64-1.62 6.903-4.18 9.105L2.887 4.18ZM1.817 5.626l16.556 16.556c-.524.33-1.075.62-1.65.866L.951 7.277c.247-.575.537-1.126.866-1.65ZM.322 9.163l14.515 14.515c-.71.172-1.443.282-2.195.322L0 11.358a12 12 0 0 1 .322-2.195Zm-.17 4.862 9.823 9.824a12.02 12.02 0 0 1-9.824-9.824Z"]] };
+LOGOS.jira = { vb: "0 0 24 24", parts: [["#0052CC", "M11.571 11.513H0a5.218 5.218 0 0 0 5.232 5.215h2.13v2.057A5.215 5.215 0 0 0 12.575 24V12.518a1.005 1.005 0 0 0-1.005-1.005zm5.723-5.756H5.736a5.215 5.215 0 0 0 5.215 5.214h2.129v2.058a5.218 5.218 0 0 0 5.215 5.214V6.758a1.001 1.001 0 0 0-1.001-1.001zM23.013 0H11.455a5.215 5.215 0 0 0 5.215 5.215h2.129v2.057A5.215 5.215 0 0 0 24 12.483V1.005A1.001 1.001 0 0 0 23.013 0Z"]] };
+LOGOS.googledrive = { vb: "0 0 24 24", parts: [["#1FA463", "M12.01 1.485c-2.082 0-3.754.02-3.743.047.01.02 1.708 3.001 3.774 6.62l3.76 6.574h3.76c2.081 0 3.753-.02 3.742-.047-.005-.02-1.708-3.001-3.775-6.62l-3.76-6.574zm-4.76 1.73a789.828 789.861 0 0 0-3.63 6.319L0 15.868l1.89 3.298 1.885 3.297 3.62-6.335 3.618-6.33-1.88-3.287C8.1 4.704 7.255 3.22 7.25 3.214zm2.259 12.653-.203.348c-.114.198-.96 1.672-1.88 3.287a423.93 423.948 0 0 1-1.698 2.97c-.01.026 3.24.042 7.222.042h7.244l1.796-3.157c.992-1.734 1.85-3.23 1.906-3.323l.104-.167h-7.249z"]] };
+
+function Logo({ id, size = 16 }: { id: string; size?: number }) {
+  const L = (LOGOS as any)[id];
+  if (!L) return null;
+  const [vx, vy, vw, vh] = L.vb.split(" ").map(Number);
+  return (
+    <svg width={size} height={size} viewBox={L.vb} aria-hidden="true" overflow="visible">
+      {L.bg && <rect x={vx} y={vy} width={vw} height={vh} rx={vw * .24} fill={L.bg} />}
+      {L.parts.map(([fill, d, tf]: [string | null, string, string?], i: number) => <path key={i} d={d} fill={fill || "currentColor"} transform={tf} />)}
+    </svg>
+  );
+}
+
+// A server's logo, or its initials when there is no drawn mark.
+function ServerMark({ s, size }: { s: Server; size: number }) {
+  if ((LOGOS as any)[s.logo]) return <Logo id={s.logo} size={size} />;
+  const initials = s.name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  return <span className="mono" style={{ fontSize: Math.round(size * .6) }} aria-hidden="true">{initials}</span>;
+}
+
+// ---- what an agent can be given ----
+type Access = "read" | "write";
+interface Server { id: string; name: string; logo: string; tools: number; blurb: string }
+interface Skill { id: string; name: string; glyph: string; blurb: string }
+const BASE_SERVERS: Server[] = [
+  { id: "slack", name: "Slack", logo: "slack", tools: 12, blurb: "Channels, threads, posting" },
+  { id: "github", name: "GitHub", logo: "github", tools: 26, blurb: "Repos, pull requests, issues" },
+  { id: "sentry", name: "Sentry", logo: "sentry", tools: 9, blurb: "Errors, releases, stack traces" },
+  { id: "linear", name: "Linear", logo: "linear", tools: 14, blurb: "Issues, projects, cycles" },
+  { id: "notion", name: "Notion", logo: "notion", tools: 8, blurb: "Pages and databases" },
+  { id: "drive", name: "Google Drive", logo: "googledrive", tools: 6, blurb: "Docs, sheets, files" },
+  { id: "jira", name: "Jira", logo: "jira", tools: 18, blurb: "Tickets and boards" },
+  { id: "hubspot", name: "HubSpot", logo: "hubspot", tools: 11, blurb: "Contacts, deals, tickets" },
+  { id: "stripe", name: "Stripe", logo: "stripe", tools: 15, blurb: "Payments, customers, refunds" },
+  { id: "figma", name: "Figma", logo: "figma", tools: 5, blurb: "Files, frames, comments" },
+];
+const BASE_SKILLS: Skill[] = [
+  { id: "triage", name: "Triage incidents", glyph: "pulse", blurb: "Group errors, find the bad deploy, page the owner" },
+  { id: "postmortem", name: "Write postmortems", glyph: "doc", blurb: "Timeline, impact, causes and follow-ups" },
+  { id: "summarize", name: "Summarize threads", glyph: "at", blurb: "Decisions and open questions from long threads" },
+  { id: "review", name: "Review pull requests", glyph: "check", blurb: "Risky changes, missing tests, style drift" },
+  { id: "release", name: "Draft release notes", glyph: "pencil", blurb: "From merged work, in your changelog voice" },
+  { id: "sql", name: "Query with SQL", glyph: "table", blurb: "Read-only queries against your warehouse" },
+];
+// Large sample catalogue for testing scale (?catalog=large). Placeholder data, not a real line-up.
+// Servers without a drawn logo get a monogram.
+const LARGE_CATALOG = (() => { const q = new URLSearchParams(location.search); return q.get("catalog") === "large" || q.get("models") === "many"; })();
+const MORE_SERVER_NAMES = ["Asana", "Airtable", "Zendesk", "Intercom", "Datadog", "PagerDuty", "Snowflake", "BigQuery", "Postgres", "MongoDB",
+  "Vercel", "Cloudflare", "AWS", "Salesforce", "Shopify", "Twilio", "Mailchimp", "Dropbox", "Confluence", "Trello",
+  "GitLab", "Bitbucket", "CircleCI", "Grafana", "Okta", "Gmail", "Google Calendar", "Miro", "Loom", "Calendly"];
+const MORE_SKILL_NAMES = ["Reconcile invoices", "Forecast capacity", "Rotate on-call", "Audit access logs", "Write runbooks",
+  "Triage support tickets", "Score leads", "Draft customer replies", "Summarize meetings", "Plan sprints",
+  "Groom the backlog", "Track OKRs", "Check SLAs", "Write test plans", "Translate docs",
+  "Clean up data", "Build dashboards", "Monitor cloud costs", "Review contracts", "Onboard new hires"];
+const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+const MORE_SERVERS: Server[] = MORE_SERVER_NAMES.map((name, i) => ({ id: "x-" + slug(name), name, logo: "", tools: 3 + (i * 7) % 22, blurb: "Sample server for testing a long list" }));
+const MORE_SKILLS: Skill[] = MORE_SKILL_NAMES.map((name, i) => ({ id: "k-" + slug(name), name, glyph: ["spark", "chart", "doc", "table", "target", "globe", "pencil", "at"][i % 8], blurb: "Sample skill for testing a long list" }));
+const SERVERS: Server[] = LARGE_CATALOG ? [...BASE_SERVERS, ...MORE_SERVERS] : BASE_SERVERS;
+const SKILLS: Skill[] = LARGE_CATALOG ? [...BASE_SKILLS, ...MORE_SKILLS] : BASE_SKILLS;
+// Shown before "All": the first few in catalogue order, plus anything already added.
+const SERVER_FEATURED = 10, SKILL_FEATURED = 6, SKILL_SEARCH_AT = 12;
+// Picker order is array order: the featured line-up first (lightest to deepest), then everything else.
+// Featured models are always on show; the rest open under "All models". `badge` is optional.
+interface Model { id: string; displayName: string; shortLabel: string; note: string; featured?: boolean; badge?: string }
+const BASE_MODELS: Model[] = [
+  { id: "haiku", displayName: "Claude Haiku 5.5", shortLabel: "haiku 5.5", note: "Quick, simple jobs", featured: true },
+  { id: "sonnet", displayName: "Claude Sonnet 5.5", shortLabel: "sonnet 5.5", note: "Balanced, everyday", featured: true },
+  { id: "opus", displayName: "Claude Opus 5.5", shortLabel: "opus 5.5", note: "Hardest problems", featured: true },
+];
+// Sample catalogue for testing a long list (?models=many). Not a statement of what is offered.
+const MORE_MODELS: Model[] = [
+  { id: "fable", displayName: "Claude Fable 5.1", shortLabel: "fable 5.1", note: "Newest model family", badge: "New" },
+  { id: "opus5", displayName: "Claude Opus 5", shortLabel: "opus 5", note: "Previous Opus", badge: "Older" },
+  { id: "sonnet5", displayName: "Claude Sonnet 5", shortLabel: "sonnet 5", note: "Previous Sonnet", badge: "Older" },
+  { id: "haiku5", displayName: "Claude Haiku 5", shortLabel: "haiku 5", note: "Previous Haiku", badge: "Older" },
+  { id: "opus45", displayName: "Claude Opus 4.5", shortLabel: "opus 4.5", note: "Two generations back", badge: "Older" },
+  { id: "sonnet45", displayName: "Claude Sonnet 4.5", shortLabel: "sonnet 4.5", note: "Two generations back", badge: "Older" },
+];
+const MANY_MODELS = LARGE_CATALOG;
+const MODELS: Model[] = MANY_MODELS ? [...BASE_MODELS, ...MORE_MODELS] : BASE_MODELS;
+// Past this many, the full list gets a search box.
+const MODEL_SEARCH_AT = 7;
+const clip = (t: string, n: number) => { if (t.length <= n) return t; const c = t.slice(0, n); const sp = c.lastIndexOf(" "); return (sp > n * .6 ? c.slice(0, sp) : c).replace(/[\s,.;:]+$/, "") + "…"; };
+const TOPIC_OPTIONS: { id: Topics; label: string; hint: (purpose: string) => string }[] = [
+  { id: "focused", label: "Only its purpose", hint: p => p ? `Sticks to “${clip(p, 70)}” and politely declines anything else.` : "Sticks to the purpose you gave it and politely declines anything else." },
+  { id: "open", label: "General questions too", hint: () => "Answers anything it's asked, then gets back to its job." },
+];
+const SCOPES = [
+  { id: "personal", label: "Just me", hint: "Only you can see and use it." },
+  { id: "tenant", label: "Everyone in this workspace", hint: "Every member can use it; their chats stay private. It can't be made personal again." },
+] as const;
+
+// rules / behaviour: one string, a line per bullet. `*As` is how it's written; switching keeps the text.
+type GuideAs = "list" | "text";
+// topics: "focused" answers only within its purpose and declines the rest; "open" takes general questions too.
+type Topics = "focused" | "open";
+interface Draft { name: string; purpose: string; scope: "personal" | "tenant"; topics: Topics; look: number; tint: string; model: string; servers: Record<string, Access>; skills: string[]; sig: string;
+  rules: string; rulesAs: GuideAs; behaviour: string; behaviourAs: GuideAs }
+const SAMPLE_DRAFT: Draft = {
+  name: "Incident Scout", purpose: "Watch our deploys, triage Sentry errors and keep the team posted in Slack",
+  scope: "personal", topics: "focused", look: 4, tint: "peach", model: "sonnet", servers: { sentry: "read", slack: "write", github: "read" }, skills: ["triage", "postmortem"], sig: "",
+  rules: "Never post in #general\nLink the Sentry issue in every update\nHand SEV-1 incidents to the on-call human", rulesAs: "list",
+  behaviour: "Lead with the answer, then the detail. Keep updates under five lines, and ask one clarifying question when the report is unclear.", behaviourAs: "text",
+};
+const BLANK_DRAFT: Draft = { name: "", purpose: "", scope: "personal", topics: "focused", look: 2, tint: "ice", model: "sonnet", servers: {}, skills: [], sig: "", rules: "", rulesAs: "list", behaviour: "", behaviourAs: "list" };
+const NAME_MAX = 60, PURPOSE_MAX = 280;
+const GUIDE_ITEMS = 12, GUIDE_ITEM_MAX = 160, GUIDE_TEXT_MAX = 1200;
+const linesOf = (t: string) => t.split("\n").map(x => x.trim()).filter(Boolean);
+// Ready-made lines to start from; each disappears once it's been added.
+const RULE_IDEAS = ["Never share customer data outside the workspace", "Cite the source for every claim", "Escalate to a human when unsure", "Stay out of production on Fridays"];
+const BEHAVIOUR_IDEAS = ["Be concise", "Lead with the answer", "Ask before assuming", "Friendly, not chatty"];
+// "3 rules", or "written" when it's prose; empty when there's nothing.
+const guideCount = (t: string, as: GuideAs, one: string) => { const n = linesOf(t).length; return !n ? "" : as === "text" ? "written" : plural(n, one); };
+
+const serverOf = (id: string) => SERVERS.find(s => s.id === id)!;
+const skillOf = (id: string) => SKILLS.find(s => s.id === id)!;
+const modelOf = (id: string) => MODELS.find(m => m.id === id) || MODELS[0];
+// Servers in the order they were attached.
+const attachedOf = (d: Draft) => Object.keys(d.servers).map(serverOf);
+const toolsOf = (d: Draft) => attachedOf(d).reduce((n, s) => n + s.tools, 0);
+const handleOf = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 24);
+const scopeLabel = (d: Draft) => d.scope === "tenant" ? "workspace agent" : "personal agent";
+const problemOf = (d: Draft) => !d.name.trim() ? "Give it a name" : !d.purpose.trim() ? "Say what it's for" : null;
+const plural = (n: number, one: string, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+const matches = (q: string, ...fields: string[]) => fields.join(" ").toLowerCase().includes(q.trim().toLowerCase());
+const accessLabel = (a: Access) => a === "write" ? "R/W" : "READ";
+
+function Seg<T extends string>({ value, options, onChange, label, className = "" }: { value: T; options: [T, string][]; onChange: (v: T) => void; label: string; className?: string }) {
+  return (
+    <div className={"tx-seg tx-seg-sm " + className} role="radiogroup" aria-label={label}>
+      {options.map(([v, l]) => (
+        <button key={v} type="button" role="radio" aria-checked={value === v} className={"seg-b" + (value === v ? " is-on" : "")}
+          onClick={() => onChange(v)}>{l}</button>
+      ))}
+    </div>
+  );
+}
+
+// Photo field: tint swatches and shuffle share the label row so the robots get the room.
+function LookPicker({ d, set, onShuffle }: { d: Draft; set: (p: Partial<Draft>) => void; onShuffle: () => void }) {
+  return (
+    <div className="field">
+      <span className="field-label">Photo
+        <span className="photo-tools">
+          <span className="tint-row" role="radiogroup" aria-label="Backdrop">
+            {TINTS.map(t => (
+              <button key={t.id} type="button" role="radio" aria-checked={d.tint === t.id} aria-label={t.label + " backdrop"} title={t.label}
+                className={"tint sm" + (d.tint === t.id ? " is-active" : "")} style={{ background: t.bg }} onClick={() => set({ tint: t.id })} />
+            ))}
+          </span>
+          <button type="button" className="field-hint linkish" onClick={onShuffle}>shuffle</button>
+        </span>
+      </span>
+      <div className="look-grid photo-grid" role="radiogroup" aria-label="Look">
+        {LOOKS.map((l, i) => (
+          <button key={l.name} type="button" role="radio" aria-checked={d.look === i} aria-label={l.name} title={l.name}
+            className={"look" + (d.look === i ? " is-active" : "")} style={d.look === i ? { background: tintOf(d.tint).bg } : undefined} onClick={() => set({ look: i })}>
+            <Robot look={i} size={36} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================ the agent ID card */
+
+// Whoever is creating the agent signs the card. Sample value for this page.
+const ISSUER = "Ashok";
+// The card is a printed object: every agent gets the same pearl finish and silver chip, in both themes,
+// whatever model it runs on. The model is a setting, not a material.
+const METALS: Record<string, [string, string, string, string]> = {
+  gold: ["#F6DE96", "#D9AE4B", "#B88A2E", "#8C6519"],
+  silver: ["#F4F7F8", "#C9D1D6", "#97A3AA", "#6B777E"],
+  copper: ["#F6CDB3", "#DB9A76", "#B06A48", "#80462B"],
+};
+const CARD_FINISH = "pearl", CARD_METAL = "silver";
+const metalVars = (metal: string) => Object.fromEntries((METALS[metal] || METALS.silver).map((c, i) => ["--m" + i, c]));
+const MAX_SERVERS = 10, MAX_SKILLS = 6; // two rows of tiles, three rows of tags; past that it says "+N more"
+
+const hash = (s: string) => { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+const idNoOf = (d: Draft) => "AG-" + (hash(handleOf(d.name) || "draft") % 9000 + 1000);
+// A pre-drawn squiggle for "Sign for me" (and keyboard users): same 240x60 box as the pad.
+const AUTO_SIG = "M10 42c6-20 14-30 16-22s-6 24-2 24 10-26 16-24-4 20 2 20 8-14 12-14 2 12 6 12 6-16 12-16 0 14 6 14 10-8 14-12M86 30c6-8 10-10 10-4s-4 14 2 12 8-14 14-12 2 10 8 8 14-12 22-12M20 50c40-4 100-8 170-12";
+// Machine-readable zone: three 30-character lines, like the bottom of a passport or ID card.
+const mrzPad = (s: string) => (s.toUpperCase().replace(/[^A-Z0-9<]/g, "<") + "<".repeat(30)).slice(0, 30);
+const mrzOf = (d: Draft) => {
+  const no = idNoOf(d).replace("-", ""), now = new Date();
+  const ymd = String(now.getFullYear()).slice(2) + String(now.getMonth() + 1).padStart(2, "0") + String(now.getDate()).padStart(2, "0");
+  const words = (d.name.trim() || "unnamed").split(/\s+/);
+  return [
+    mrzPad("AGTRX" + no + (hash(no) % 10) + "<<" + (d.scope === "tenant" ? "W" : "P")),
+    mrzPad(ymd + (hash(ymd + no) % 10) + "<" + modelOf(d.model).shortLabel.replace(/[ .]/g, "") + "<" + Object.keys(d.servers).length + "S" + d.skills.length + "K"),
+    mrzPad(words[0] + "<<" + words.slice(1).join("<")),
+  ];
+};
+const restrictionsOf = (d: Draft) => {
+  const s = attachedOf(d), w = s.filter(x => d.servers[x.id] === "write").map(x => x.name);
+  if (!s.length) return "no access granted yet";
+  const rule = !w.length ? "read only, everywhere" : w.length === s.length ? "may write wherever it can open" : `read only, except ${shortList(w)}`;
+  return rule;
+};
+const listOf = (a: string[]) => a.length < 2 ? (a[0] || "") : a.slice(0, -1).join(", ") + " and " + a[a.length - 1];
+const shortList = (a: string[], max = 3) => a.length > max ? `${a.slice(0, max - 1).join(", ")} and ${a.length - max + 1} more` : listOf(a);
+const nGuideOf = (d: Draft) => [d.topics === "open" ? "any topic" : "on-purpose only", guideCount(d.rules, d.rulesAs, "rule"), guideCount(d.behaviour, d.behaviourAs, "behaviour")]
+  .map((t, i) => t && (t === "written" ? (i === 2 ? "behaviour written" : "rules written") : t)).filter(Boolean).join(" · ");
+const TODAY = new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase();
+
+// Security engraving for the front: a band of crossing sine lines across the body of the card. Computed once.
+const GUILLOCHE = (() => {
+  const waves: string[] = [];
+  for (let i = 0; i < 22; i++) {
+    let p = "";
+    for (let x = -10; x <= 310; x += 5) {
+      const y = 206 + i * 9 + 14 * Math.sin(x / 34 + i * .45) + 6 * Math.sin(x / 13 - i * .3);
+      p += (x === -10 ? "M" : "L") + x + " " + y.toFixed(1);
+    }
+    waves.push(p);
+  }
+  return waves;
+})();
+
+function Guilloche() {
+  return (
+    <svg className="guil" viewBox="0 0 300 476" preserveAspectRatio="none" fill="none" stroke="currentColor" aria-hidden="true">
+      {GUILLOCHE.map((p, i) => <path key={i} d={p} strokeWidth=".5" />)}
+    </svg>
+  );
+}
+
+// Decorative bars from the ID number, like a printed badge. Not scannable.
+function Barcode({ seed, w = 78, h = 22 }: { seed: string; w?: number; h?: number }) {
+  const bars: [number, number][] = [];
+  for (let x = 0, i = 0; x < w; i++) {
+    const n = hash(seed + i), bw = 1 + (n % 3) * .7;
+    if (x + bw > w) break;
+    bars.push([x, bw]); x += bw + 1 + ((n >> 4) % 3) * .6;
+  }
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} fill="currentColor" aria-hidden="true">
+      {bars.map(([x, bw], i) => <rect key={i} x={x} y="0" width={bw} height={h} />)}
+    </svg>
+  );
+}
+
+function ChipMark({ metal, w = 46 }: { metal: string; w?: number }) {
+  const m = METALS[metal] || METALS.silver;
+  const id = "ch" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  return (
+    <svg width={w} height={w * 36 / 46} viewBox="0 0 46 36" aria-hidden="true">
+      <defs>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={m[0]} /><stop offset=".5" stopColor={m[1]} /><stop offset="1" stopColor={m[2]} />
+        </linearGradient>
+      </defs>
+      <rect x=".5" y=".5" width="45" height="35" rx="7" fill={`url(#${id})`} stroke={m[3]} strokeOpacity=".7" />
+      <path d="M0 12h14M0 24h14M32 12h14M32 24h14M14 0v10M14 26v10M32 0v10M32 26v10" stroke={m[3]} strokeOpacity=".55" fill="none" />
+      <rect x="14" y="10" width="18" height="16" rx="3.5" fill="none" stroke={m[3]} strokeOpacity=".6" />
+      <path d="M5 5c4-2.6 10-3 15-2" stroke="#fff" strokeOpacity=".7" strokeWidth="1.4" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
+function Contactless() {
+  return (
+    <svg width="16" height="18" viewBox="0 0 16 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+      <path d="M3 6.5a4 4 0 0 1 0 5M6.5 4a8 8 0 0 1 0 10M10 1.5a12 12 0 0 1 0 15" />
+    </svg>
+  );
+}
+
+// Embossed in the chip's metal when the card is issued; lands on the photo's lower corner.
+function IssuedSeal({ metal }: { metal: string }) {
+  const m = METALS[metal] || METALS.silver;
+  const id = "is" + React.useId().replace(/[^a-zA-Z0-9]/g, "");
+  return (
+    <svg className="issued-seal" width="64" height="64" viewBox="0 0 64 64" aria-label={"Issued " + TODAY}>
+      <defs>
+        <linearGradient id={id + "g"} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={m[0]} /><stop offset=".5" stopColor={m[1]} /><stop offset="1" stopColor={m[2]} />
+        </linearGradient>
+        <path id={id + "p"} d="M32 12a20 20 0 1 1 0 40a20 20 0 1 1 0-40" />
+      </defs>
+      <circle cx="32" cy="32" r="31" fill={`url(#${id}g)`} stroke={m[3]} strokeOpacity=".6" />
+      <circle cx="32" cy="32" r="26.5" fill="none" stroke={m[3]} strokeOpacity=".4" strokeDasharray="1 2" />
+      <text fontFamily="Geist Mono, ui-monospace, monospace" fontSize="5.4" fontWeight="700" letterSpacing="2" fill={m[3]}>
+        <textPath href={`#${id}p`}>ISSUED · {TODAY} · </textPath>
+      </text>
+      <circle cx="32" cy="32" r="11" fill="none" stroke={m[3]} strokeOpacity=".55" />
+      <path d="M26.8 32.4l3.6 3.6 7-7.6" fill="none" stroke={m[3]} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M11 24c4-8 12-13 21-13" fill="none" stroke="#fff" strokeOpacity=".65" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IdCard({ d, face, issued, snap, cardRef }: { d: Draft; face: "front" | "back"; issued: boolean; snap: number; cardRef: React.Ref<HTMLDivElement> }) {
+  const t = tintOf(d.tint), handle = handleOf(d.name), servers = attachedOf(d), name = d.name.trim();
+  const showServers = servers.length > MAX_SERVERS ? MAX_SERVERS - 1 : servers.length;
+  const showSkills = d.skills.length > MAX_SKILLS ? MAX_SKILLS - 1 : d.skills.length;
+  return (
+    <div ref={cardRef} className={"idc" + (face === "back" ? " is-back" : "")} data-finish={CARD_FINISH} style={{ "--tint": t.dot, ...metalVars(CARD_METAL) } as any}>
+      <div className="idc-face front">
+        <Guilloche />
+        <span className="badge-slot" />
+        <div className="idc-head">
+          <span className="idc-brand">truex<small>Agent ID</small></span>
+          <span className="idc-nfc"><Contactless /></span>
+        </div>
+        <div className="idc-photo">
+          <span key={snap} className={"pose-wrap" + (snap ? " pose" : "")}><Robot look={d.look} size={160} /></span>
+          <span className="ph-no">{idNoOf(d)}</span>
+        </div>
+        <div className="idc-who">
+          <div className={"idc-name" + (name ? "" : " is-empty") + (name.length > 16 ? " is-long" : "")}>{name || "Unnamed"}</div>
+          <div className="idc-handle">@{handle || "handle"}</div>
+          <span className="idc-chip"><ChipMark metal={CARD_METAL} w={40} /></span>
+          <div className={"idc-duty" + (d.purpose.trim() ? "" : " is-empty")}>{d.purpose.trim() || "What this specialist owns"}</div>
+        </div>
+        <dl className="idc-data">
+          <div><dt>Model</dt><dd>{modelOf(d.model).displayName.replace("Claude ", "")}</dd></div>
+          <div><dt>Issued</dt><dd>{TODAY}</dd></div>
+          <div><dt>Expires</dt><dd>No expiry</dd></div>
+        </dl>
+        <div className="idc-band">
+          <span><b>{d.scope === "tenant" ? "Workspace agent" : "Personal agent"}</b><small>{d.scope === "tenant" ? "Every member can use it" : "Only " + ISSUER + " can use it"}</small></span>
+          <Barcode seed={idNoOf(d)} />
+        </div>
+        {issued && <IssuedSeal metal={CARD_METAL} />}
+      </div>
+
+      <div className="idc-face back">
+        <Guilloche />
+        <span className="badge-slot" />
+        <div className="bk-head">
+          <span className="idc-brand">truex<small>Agent ID</small></span>
+          <span className="bk-no">{idNoOf(d)}</span>
+        </div>
+        <section className="bk-sec">
+          <div className="bk-h"><span>Access</span><span>{servers.length ? `${plural(servers.length, "server")} · ${plural(toolsOf(d), "tool")}` : "none yet"}</span></div>
+          {servers.length ? (
+            <div className="acc-grid">
+              {servers.slice(0, showServers).map(s => { const w = d.servers[s.id] === "write"; return (
+                <span key={s.id} className="acc" title={`${s.name} · ${plural(s.tools, "tool")} · ${w ? "read and write" : "read only"}`}>
+                  <span className="acc-logo"><ServerMark s={s} size={18} />{w && <span className="acc-w">R/W</span>}</span>
+                  <span className="acc-n">{s.name.replace(/^Google /, "")}</span>
+                </span>
+              ); })}
+              {servers.length > showServers && <span className="acc more"><span className="acc-logo">+{servers.length - showServers}</span><span className="acc-n">more</span></span>}
+              {Array.from({ length: Math.max(0, 5 - servers.length) }, (_, i) => <span key={"slot" + i} className="acc slot" aria-hidden="true"><span className="acc-logo" /></span>)}
+            </div>
+          ) : (
+            <div className="acc-grid" aria-label="No servers yet">
+              {[0, 1, 2, 3, 4].map(i => <span key={i} className="acc slot" aria-hidden="true"><span className="acc-logo" /></span>)}
+            </div>
+          )}
+        </section>
+        <section className="bk-sec">
+          <div className="bk-h"><span>Skills</span><span>{d.skills.length ? plural(d.skills.length, "skill") : "none yet"}</span></div>
+          {d.skills.length ? (
+            <div className="sk-list">
+              {d.skills.slice(0, showSkills).map(id => <span key={id} className="sk">{skillOf(id).name}</span>)}
+              {d.skills.length > showSkills && <span className="sk more">+{d.skills.length - showSkills} more</span>}
+            </div>
+          ) : <div className="sk-list"><span className="sk slot">No skills yet</span></div>}
+        </section>
+        <div className="bk-mark" aria-hidden="true">
+          <svg viewBox="0 0 40 40" width="56" height="56"><rect x="4" y="8" width="32" height="28" rx="11" fill="none" stroke="currentColor" strokeWidth="1.2" /><ellipse cx="14.5" cy="22" rx="2.6" ry="3.6" fill="currentColor" /><ellipse cx="25.5" cy="22" rx="2.6" ry="3.6" fill="currentColor" /></svg>
+          <span>Property of {ISSUER}'s workspace</span>
+        </div>
+        <div className="bk-sign">
+          <div className="sig-strip">
+            {d.sig
+              ? <svg key={d.sig} viewBox="0 0 240 60" aria-hidden="true"><path d={d.sig} pathLength={1} /></svg>
+              : <span className="sig-empty">Not yet signed</span>}
+          </div>
+          <div className="sig-cap"><span>Authorised signature</span><span>Not valid unless signed</span></div>
+        </div>
+        <div className="bk-fine">
+          <span className="bk-rules"><b>Limits</b>{restrictionsOf(d)}</span>
+          {nGuideOf(d) && <span className="bk-rules"><b>Guide</b>{nGuideOf(d)}</span>}
+          <span className="mrz" aria-label="Machine-readable zone">{mrzOf(d).map((l, i) => <span key={i}>{l}</span>)}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The product's lanyard drag physics, plus a tap (press without moving) that flips the card.
+function Lanyard({ onTap, children }: { onTap: () => void; children: React.ReactNode }) {
+  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
+  const origin = useRef<{ x: number; y: number } | null>(null);
+  const moved = useRef(0);
+  const rest = useRef({ len: 60, r: 200 });
+  const strapRef = useRef<HTMLSpanElement>(null);
+  const end = () => { origin.current = null; setDrag(null); };
+  let swing: any, stretch: any;
+  if (drag) {
+    const { len, r } = rest.current;
+    const dy = drag.y > 0 ? 220 * Math.tanh(drag.y / 280) : -len * .25 * Math.tanh(-drag.y / 90);
+    const dx = 260 * Math.tanh(drag.x / 320);
+    const reach = Math.hypot(dx, r + dy);
+    const h = Math.max(len * .75, len + reach - r);
+    swing = { transform: `rotate(${-Math.atan2(dx, r + dy) * 180 / Math.PI}deg)` };
+    stretch = { height: h, width: clamp(24 * Math.sqrt(len / h), 16, 24) };
+  }
+  return (
+    <div className="lanyard-anchor">
+      <div className={"lanyard" + (drag ? " is-drag" : "")} style={swing} aria-hidden="true"
+        onPointerDown={e => {
+          const el = e.currentTarget;
+          el.setPointerCapture(e.pointerId);
+          rest.current = { len: strapRef.current?.offsetHeight || 60, r: Math.max(40, e.clientY - el.getBoundingClientRect().top) };
+          origin.current = { x: e.clientX, y: e.clientY }; moved.current = 0; setDrag({ x: 0, y: 0 });
+        }}
+        onPointerMove={e => {
+          const o = origin.current; if (!o) return;
+          const x = e.clientX - o.x, y = e.clientY - o.y;
+          moved.current = Math.max(moved.current, Math.hypot(x, y)); setDrag({ x, y });
+        }}
+        onPointerUp={() => { const tap = !!origin.current && moved.current < 5; end(); if (tap) onTap(); }}
+        onPointerCancel={end}>
+        <div className="lanyard-sway">
+          <span ref={strapRef} className="strap" style={stretch as any} />
+          <Clip />
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Draw on the strip with a pointer; "Sign for me" covers keyboard users. Paths are kept in a 240x60 box.
+function SignPad({ value, onChange, onStart }: { value: string; onChange: (sig: string) => void; onStart: () => void }) {
+  const [live, setLive] = useState("");
+  const path = useRef(""), down = useRef(false);
+  const at = (e: React.PointerEvent<SVGSVGElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return `${((e.clientX - r.left) / r.width * 240).toFixed(1)} ${((e.clientY - r.top) / r.height * 60).toFixed(1)}`;
+  };
+  const end = () => { if (!down.current) return; down.current = false; onChange(path.current); setLive(""); };
+  return (
+    <div className="sign">
+      <svg className="sign-pad" viewBox="0 0 240 60" role="img" aria-label={value ? "Signature drawn" : "Signature pad, empty"}
+        onPointerDown={e => { e.currentTarget.setPointerCapture(e.pointerId); down.current = true; onStart(); path.current = (value ? value + " " : "") + "M" + at(e); setLive(path.current); }}
+        onPointerMove={e => { if (!down.current) return; path.current += " L" + at(e); setLive(path.current); }}
+        onPointerUp={end} onPointerCancel={end}>
+        <line x1="12" y1="48" x2="228" y2="48" className="sign-line" />
+        <text x="12" y="44" className="sign-x">×</text>
+        <path d={live || value} />
+      </svg>
+      <div className="sign-ctl">
+        <button type="button" className="tx-btn tx-sm" onClick={() => { onStart(); onChange(AUTO_SIG); }}>Sign for me</button>
+        <button type="button" className="tx-btn tx-sm" disabled={!value} onClick={() => onChange("")}>Clear</button>
+      </div>
+    </div>
+  );
+}
+
+// Rules and behaviour share one editor: a bullet list (Enter adds a line, Backspace on an empty
+// line removes it) or free text. Both write the same newline-separated string.
+function GuideEditor({ id, label, noun, value, as, onChange, onAs, placeholder, ideas }: {
+  id: string; label: string; noun: string; value: string; as: GuideAs; onChange: (v: string) => void; onAs: (a: GuideAs) => void; placeholder: string; ideas: string[];
+}) {
+  // Rows live here so an empty row can exist while it's being typed; the draft gets the joined string.
+  // A change from outside (a suggestion, a format switch, a new draft) resets the rows.
+  const split = (v: string) => v === "" ? [] : v.split("\n");
+  const [items, setItems] = useState<string[]>(() => split(value));
+  useEffect(() => { if (items.join("\n") !== value) setItems(split(value)); }, [value]);
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const [focusAt, setFocusAt] = useState<number | null>(null);
+  useEffect(() => { if (focusAt !== null) { refs.current[focusAt]?.focus(); setFocusAt(null); } }, [focusAt]);
+  const write = (next: string[]) => { setItems(next); onChange(next.join("\n")); };
+  const count = linesOf(value).length;
+  const full = items.length >= GUIDE_ITEMS;
+  const add = (text = "", at = items.length) => { if (full) return; const next = [...items]; next.splice(at, 0, text); write(next); if (!text) setFocusAt(at); };
+  const unused = ideas.filter(i => !linesOf(value).some(l => l.toLowerCase() === i.toLowerCase()));
+  const switchTo = (a: GuideAs) => { if (a === as) return; const clean = linesOf(value); setItems(clean); onChange(clean.join("\n")); onAs(a); };
+  return (
+    <section className="cap-sec guide" aria-labelledby={id}>
+      <span className="field-label">
+        <span id={id}>{label}<span className="field-hint after">{count ? (as === "text" ? `${value.trim().length}/${GUIDE_TEXT_MAX}` : plural(count, noun)) : "none yet"}</span></span>
+        <Seg label={`${label} format`} value={as} options={[["list", "Bullets"], ["text", "Text"]]} onChange={switchTo} />
+      </span>
+      {as === "text" ? (
+        <textarea className="tx-input" rows={4} value={value} maxLength={GUIDE_TEXT_MAX} placeholder={placeholder} aria-labelledby={id}
+          onChange={e => onChange(e.target.value)} />
+      ) : (
+        <ul className="gl" aria-labelledby={id}>
+          {items.map((t, i) => (
+            <li key={i} className="gl-row">
+              <span className="gl-dot" aria-hidden="true" />
+              <input ref={el => { refs.current[i] = el; }} className="tx-input" value={t} maxLength={GUIDE_ITEM_MAX} placeholder={placeholder}
+                aria-label={`${label} ${i + 1}`}
+                onChange={e => { const next = [...items]; next[i] = e.target.value; write(next); }}
+                onKeyDown={e => {
+                  // Enter must not submit the form: it starts the next line instead.
+                  if (e.key === "Enter") { e.preventDefault(); if (t.trim()) add("", i + 1); }
+                  else if (e.key === "Backspace" && !t) { e.preventDefault(); write(items.filter((_, j) => j !== i)); setFocusAt(Math.max(0, i - 1)); }
+                }} />
+              <button type="button" className="tx-btn tx-ghost tx-icon tx-sm gl-x" aria-label={`Remove ${noun} ${i + 1}`}
+                onClick={() => { write(items.filter((_, j) => j !== i)); setFocusAt(Math.min(i, items.length - 2)); }}><Icon name="x" size={13} /></button>
+            </li>
+          ))}
+          <li className="gl-add">
+            <button type="button" className="tx-btn tx-ghost tx-sm" disabled={full} onClick={() => add()}>
+              <Icon name="plus" size={13} />{full ? `${GUIDE_ITEMS} is the most` : `Add ${noun}`}
+            </button>
+          </li>
+        </ul>
+      )}
+      {unused.length > 0 && !full && (
+        <div className="gl-ideas" role="group" aria-label={`Suggested ${noun}s`}>
+          {unused.map(i => (
+            <button key={i} type="button" className="tx-chip gl-idea" title={i} onClick={() => {
+              if (as === "text") onChange(value.trim() ? value.trim().replace(/[.!]?$/, ". ") + i + "." : i + ".");
+              else add(i);
+            }}><Icon name="plus" size={12} /><span className="gl-idea-t">{i}</span></button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Front is who it is, back is what it can open, then who carries it and the signature.
+type Step = "identity" | "access" | "rules" | "sign";
+const STEPS: [Step, string][] = [["identity", "Identity"], ["access", "Access"], ["rules", "Rules"], ["sign", "Sign & issue"]];
+const stepAt = (s: Step, k: number) => STEPS[Math.max(0, Math.min(STEPS.length - 1, STEPS.findIndex(x => x[0] === s) + k))][0];
+const STEP_COPY: Record<Step, string> = {
+  identity: "Who it is and what it's for. This prints on the front of its ID.",
+  access: "What it can open and what it's good at. This prints on the back.",
+  rules: "What it answers, the rules it follows, and how it comes across.",
+  sign: "Who can use it, and your signature.",
+};
+
+function IssueDesk({ d, set, startStep, onClose, onCreate }: {
+  d: Draft; set: (p: Partial<Draft>) => void; startStep: Step; onClose: () => void; onCreate: () => void;
+}) {
+  const [step, setStep] = useState(startStep);
+  const [face, setFace] = useState<"front" | "back">(startStep === "identity" ? "front" : "back");
+  const [q, setQ] = useState("");
+  // Long catalogues: a featured set plus anything added; "All" opens the rest. Whatever was added stays
+  // pinned while collapsed, so peeling one off doesn't make it jump out of view.
+  const [allServers, setAllServers] = useState(false);
+  const [allSkills, setAllSkills] = useState(false);
+  const [sq, setSq] = useState("");
+  const [pinSrv, setPinSrv] = useState<string[]>(() => Object.keys(d.servers));
+  const [pinSk, setPinSk] = useState<string[]>(() => d.skills);
+  const [issued, setIssued] = useState(false);
+  const [issuing, setIssuing] = useState(false);
+  const modelRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const tiltRef = useRef<HTMLDivElement>(null);
+  // A new photo fades in on the front.
+  const [snap, setSnap] = useState(0);
+  const photo = (p: Partial<Draft>) => { set(p); setFace("front"); setSnap(n => n + 1); };
+  const shuffle = () => {
+    let look = d.look; while (look === d.look) look = Math.floor(Math.random() * LOOKS.length);
+    photo({ look, tint: TINTS[Math.floor(Math.random() * TINTS.length)].id });
+  };
+  useEffect(() => { if (step === "identity") setTimeout(() => nameRef.current?.focus(), 30); }, []);
+  // Featured models are always shown, plus the choice made in the full list (pinned), so it never
+  // hides behind "Fewer" and doesn't vanish while you arrow past it.
+  const [allModels, setAllModels] = useState(false);
+  const [pinned, setPinned] = useState(d.model);
+  const [mq, setMq] = useState("");
+  const moreModels = MODELS.length - MODELS.filter(m => m.featured).length;
+  const shownModels = allModels ? MODELS.filter(m => matches(mq, m.displayName, m.note, m.badge || ""))
+    : MODELS.filter(m => m.featured || m.id === pinned || m.id === d.model);
+  const tabStop = shownModels.some(m => m.id === d.model) ? d.model : shownModels[0]?.id;
+  // Model cards behave as one radio group: arrows move the choice and the focus together.
+  const modelKey = (e: React.KeyboardEvent) => {
+    const k = ["ArrowRight", "ArrowDown"].includes(e.key) ? 1 : ["ArrowLeft", "ArrowUp"].includes(e.key) ? -1 : 0;
+    if (!k || !shownModels.length || (e.target as HTMLElement).tagName === "INPUT") return;
+    e.preventDefault();
+    const ids = shownModels.map(m => m.id), i = ids.indexOf(d.model);
+    const next = ids[i < 0 ? 0 : (i + k + ids.length) % ids.length];
+    set({ model: next });
+    setTimeout(() => modelRef.current?.querySelector<HTMLButtonElement>(`[data-id="${next}"]`)?.focus());
+  };
+
+  // The card settles slightly when something is added. Restarting a CSS animation needs a reflow between.
+  const thud = (delay = 160) => setTimeout(() => {
+    const el = wrapRef.current; if (!el) return;
+    el.classList.remove("is-thud"); void el.offsetWidth; el.classList.add("is-thud");
+  }, delay);
+  // The card leans toward the pointer across the stage.
+  const track = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    tiltRef.current?.style.setProperty("--tx", ((.5 - y) * 10).toFixed(2) + "deg");
+    tiltRef.current?.style.setProperty("--ty", ((x - .5) * 14).toFixed(2) + "deg");
+  };
+  const untrack = () => { tiltRef.current?.style.setProperty("--tx", "0deg"); tiltRef.current?.style.setProperty("--ty", "0deg"); };
+
+  const go = (s: Step) => { setStep(s); setFace(s === "identity" ? "front" : "back"); formRef.current?.scrollTo({ top: 0 }); };
+  const problem = problemOf(d);
+  const nServers = Object.keys(d.servers).length;
+  const nGuide = linesOf(d.rules).length + linesOf(d.behaviour).length;
+  const toggleServer = (id: string) => {
+    const next = { ...d.servers }, adding = !next[id];
+    if (adding) next[id] = "read"; else delete next[id]; // least privilege until someone asks for more
+    set({ servers: next }); setFace("back"); if (adding) thud();
+  };
+  const toggleSkill = (id: string) => {
+    const adding = !d.skills.includes(id);
+    set({ skills: adding ? [...d.skills, id] : d.skills.filter(x => x !== id) }); setFace("back"); if (adding) thud();
+  };
+  const issue = () => {
+    if (problem || issuing) return;
+    setIssuing(true);
+    const flip = face === "back" ? 700 : 0;
+    setFace("front");
+    setTimeout(() => { setIssued(true); thud(240); }, flip);
+    setTimeout(onCreate, flip + 1900);
+  };
+  const submit = () => { if (step === "sign") issue(); else go(stepAt(step, 1)); };
+  // A search always looks through the whole catalogue.
+  const serverWide = allServers || !!q.trim();
+  const srvShort = SERVERS.filter((s, i) => i < SERVER_FEATURED || d.servers[s.id] || pinSrv.includes(s.id));
+  const skShort = SKILLS.filter((s, i) => i < SKILL_FEATURED || d.skills.includes(s.id) || pinSk.includes(s.id));
+  const servers = (serverWide ? SERVERS : srvShort).filter(s => matches(q, s.name, s.blurb));
+  const skills = allSkills ? SKILLS.filter(s => matches(sq, s.name, s.blurb)) : skShort;
+  // "All" only appears when the short list is hiding something.
+  const srvHidden = SERVERS.length - srvShort.length, skHidden = SKILLS.length - skShort.length;
+
+  return (
+    <div className="scrim center" onMouseDown={onClose} onKeyDown={e => { if (e.key === "Escape") onClose(); }}>
+      <div className="agent-dialog idd" role="dialog" aria-modal="true" aria-labelledby="idd-title" onMouseDown={e => e.stopPropagation()}>
+        <button type="button" className="tx-btn tx-ghost tx-icon tx-sm dialog-x" onClick={onClose} aria-label="Close"><Icon name="x" size={15} /></button>
+        <form ref={formRef} className="nad-form" onSubmit={e => { e.preventDefault(); submit(); }}>
+          <div className="nad-head">
+            <h2 id="idd-title">New agent</h2>
+            <p>{STEP_COPY[step]}</p>
+          </div>
+          <div className="steps" role="tablist" aria-label="Steps">
+            {STEPS.map(([id, label], i) => { const done = i < STEPS.findIndex(s => s[0] === step) && (id !== "identity" || !problem); return (
+              <button key={id} type="button" role="tab" id={"idd-tab-" + id} aria-controls="idd-panel" aria-selected={step === id} className="step" onClick={() => go(id)}>
+                <span className={"step-n" + (done ? " is-done" : "")}>{done ? <Icon name="check" size={11} stroke={2.5} /> : i + 1}</span><span className="step-l">{label}</span>
+                {id === "access" && nServers + d.skills.length > 0 && <span className="step-count">{nServers + d.skills.length}</span>}
+                {id === "rules" && nGuide > 0 && <span className="step-count">{nGuide}</span>}
+              </button>
+            ); })}
+          </div>
+
+          <div id="idd-panel" role="tabpanel" aria-labelledby={"idd-tab-" + step} style={{ display: "contents" }}>
+            {step === "identity" && (
+              <>
+                <label className="field">
+                  <span className="field-label">Name<span className="field-hint">@{handleOf(d.name) || "handle"}</span></span>
+                  <input ref={nameRef} className="tx-input" value={d.name} maxLength={NAME_MAX} placeholder="Research Scout" onChange={e => set({ name: e.target.value })} />
+                </label>
+                <label className="field">
+                  <span className="field-label">Purpose<span className="field-hint">{d.purpose.trim().length}/{PURPOSE_MAX}</span></span>
+                  <textarea className="tx-input" rows={2} value={d.purpose} maxLength={PURPOSE_MAX} placeholder="What this specialist owns" onChange={e => set({ purpose: e.target.value })} />
+                </label>
+                <LookPicker d={d} set={photo} onShuffle={shuffle} />
+                <div className="field" onKeyDown={modelKey}>
+                  <span className="field-label model-label">
+                    <span id="idd-model">Model{allModels && <span className="field-hint after">{plural(MODELS.length, "model")}</span>}</span>
+                    {moreModels > 0 && (
+                      <span className="model-tools">
+                        {allModels && MODELS.length >= MODEL_SEARCH_AT && (
+                          <span className="cap-search inline">
+                            <Icon name="search" size={13} />
+                            <input className="tx-input" placeholder="Search models" value={mq} onChange={e => setMq(e.target.value)} aria-label="Search models" />
+                          </span>
+                        )}
+                        <button type="button" className="field-hint linkish" aria-expanded={allModels} aria-controls="idd-models"
+                          onClick={() => { if (allModels) setPinned(d.model); setAllModels(o => !o); setMq(""); }}>{allModels ? "Fewer" : `All models (${MODELS.length})`}</button>
+                      </span>
+                    )}
+                  </span>
+                  <div id="idd-models" className={"model-grid" + (allModels ? " is-all" : "")} role="radiogroup" aria-labelledby="idd-model" ref={modelRef}>
+                    {shownModels.map(m => { const on = d.model === m.id; return (
+                      <button key={m.id} type="button" role="radio" data-id={m.id} aria-checked={on} tabIndex={m.id === tabStop ? 0 : -1}
+                        className="mc" title={m.displayName} onClick={() => set({ model: m.id })}>
+                        <span className="mc-top">
+                          <span className="mc-name">{m.displayName.replace("Claude ", "")}</span>
+                          <span className="mc-dot" aria-hidden="true">{on && <Icon name="check" size={10} stroke={3} />}</span>
+                        </span>
+                        <span className="mc-sub">{m.badge && <span className="mc-badge">{m.badge}</span>}<span className="mc-note">{m.note}</span></span>
+                      </button>
+                    ); })}
+                    {!shownModels.length && <div className="mc-none">No model matches "{mq}".</div>}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {step === "access" && (
+              <>
+                <section className="cap-sec" aria-labelledby="idd-mcp">
+                  <span className="field-label">
+                    <span id="idd-mcp">MCP servers<span className="field-hint after">{nServers ? `${nServers} added · ${plural(toolsOf(d), "tool")}` : "none yet"}</span></span>
+                    <span className="model-tools">
+                      <span className="cap-search inline">
+                        <Icon name="search" size={13} />
+                        <input className="tx-input" placeholder="Search servers" value={q} onChange={e => setQ(e.target.value)} aria-label="Search MCP servers" />
+                      </span>
+                      {(allServers || srvHidden > 0) && (
+                        <button type="button" className="field-hint linkish" aria-expanded={allServers} aria-controls="idd-sheet"
+                          onClick={() => { if (allServers) setPinSrv(Object.keys(d.servers)); setAllServers(o => !o); }}>{allServers ? "Fewer" : `All (${SERVERS.length})`}</button>
+                      )}
+                    </span>
+                  </span>
+                  <div id="idd-sheet" className={"sheet" + (serverWide ? " is-all" : "")} role="group" aria-label="MCP server stickers">
+                    {servers.map(s => { const on = d.servers[s.id]; return (
+                      <div key={s.id} className={"peel" + (on ? " is-on" : "")}>
+                        <button type="button" className="peel-b" aria-pressed={!!on} title={on ? `Peel ${s.name} off` : `${s.blurb} · ${s.tools} tools`} onClick={() => toggleServer(s.id)}>
+                          <span className="stk-s">{on ? <Icon name="check" size={16} stroke={2.2} /> : <ServerMark s={s} size={20} />}</span>
+                          <span className="peel-n">{s.name}</span>
+                          {!on && <span className="peel-t">{s.tools} tools</span>}
+                        </button>
+                        {on && <Seg className="on-sheet" label={`${s.name} access`} value={on} options={[["read", "READ"], ["write", "R/W"]]}
+                          onChange={v => set({ servers: { ...d.servers, [s.id]: v } })} />}
+                      </div>
+                    ); })}
+                    {!servers.length && <div className="cap-none">No server matches "{q}".</div>}
+                  </div>
+                  <span className="cap-note">New stickers start on READ. R/W lets it create and change things.</span>
+                </section>
+
+                <section className="cap-sec" aria-labelledby="idd-skills">
+                  <span className="field-label">
+                    <span id="idd-skills">Skills<span className="field-hint after">{d.skills.length ? `${d.skills.length} added` : "none yet"}</span></span>
+                    {(allSkills || skHidden > 0) && (
+                      <span className="model-tools">
+                        {allSkills && SKILLS.length >= SKILL_SEARCH_AT && (
+                          <span className="cap-search inline">
+                            <Icon name="search" size={13} />
+                            <input className="tx-input" placeholder="Search skills" value={sq} onChange={e => setSq(e.target.value)} aria-label="Search skills" />
+                          </span>
+                        )}
+                        <button type="button" className="field-hint linkish" aria-expanded={allSkills} aria-controls="idd-chips"
+                          onClick={() => { if (allSkills) setPinSk(d.skills); setAllSkills(o => !o); setSq(""); }}>{allSkills ? "Fewer" : `All (${SKILLS.length})`}</button>
+                      </span>
+                    )}
+                  </span>
+                  <div id="idd-chips" className={"chips" + (allSkills ? " is-all" : "")}>
+                    {skills.map(s => { const on = d.skills.includes(s.id); return (
+                      <button key={s.id} type="button" className={"tx-chip" + (on ? " is-on" : "")} aria-pressed={on} title={s.blurb} onClick={() => toggleSkill(s.id)}>
+                        <Icon name={on ? "check" : s.glyph} size={13} stroke={on ? 2.4 : 1.75} />{s.name}
+                      </button>
+                    ); })}
+                    {!skills.length && <div className="cap-none">No skill matches "{sq}".</div>}
+                  </div>
+                </section>
+
+                <div className="soon slim">
+                  <span className="cap-glyph"><Icon name="book" size={14} /></span>
+                  <span className="cap-note"><span className="strong">Knowledge</span> <span className="tx-pill tx-pill-sm">Soon</span> Docs and folders it reads from.</span>
+                </div>
+              </>
+            )}
+
+            {step === "rules" && (
+              <>
+                <fieldset className="field tad-scope">
+                  <legend className="field-label">What it answers</legend>
+                  <div className="scope-row">
+                    {TOPIC_OPTIONS.map(o => (
+                      <label key={o.id} className={"tad-scope-option" + (d.topics === o.id ? " is-active" : "")}>
+                        <input type="radio" name="idd-topics" checked={d.topics === o.id} onChange={() => { set({ topics: o.id }); setFace("back"); }} />
+                        <span><span className="strong block">{o.label}</span><span className="muted sm">{o.hint(d.purpose.trim())}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <GuideEditor id="idd-rules" label="Rules" noun="rule" value={d.rules} as={d.rulesAs}
+                  onChange={v => { set({ rules: v }); setFace("back"); }} onAs={a => set({ rulesAs: a })}
+                  placeholder="Never share customer data outside the workspace" ideas={RULE_IDEAS} />
+                <GuideEditor id="idd-behaviour" label="Behaviour" noun="behaviour" value={d.behaviour} as={d.behaviourAs}
+                  onChange={v => { set({ behaviour: v }); setFace("back"); }} onAs={a => set({ behaviourAs: a })}
+                  placeholder="Lead with the answer, then the detail" ideas={BEHAVIOUR_IDEAS} />
+              </>
+            )}
+
+            {step === "sign" && (
+              <>
+                <fieldset className="field tad-scope">
+                  <legend className="field-label">Who can use it</legend>
+                  <div className="scope-row">
+                    {SCOPES.map(s => (
+                      <label key={s.id} className={"tad-scope-option" + (d.scope === s.id ? " is-active" : "")}>
+                        <input type="radio" name="idd-scope" checked={d.scope === s.id} onChange={() => { set({ scope: s.id }); setFace("front"); }} />
+                        <span><span className="strong block">{s.label}</span><span className="muted sm">{s.hint}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+
+                <section className="cap-sec" aria-labelledby="idd-sign">
+                  <span className="field-label" id="idd-sign">Signature<span className="field-hint">optional</span></span>
+                  <SignPad value={d.sig} onChange={sig => { set({ sig }); setFace("back"); }} onStart={() => setFace("back")} />
+                </section>
+              </>
+            )}
+          </div>
+
+          <div className="nad-actions">
+            {step !== "identity" && problem && <span className="hint">{problem} on the Identity step first</span>}
+            <span className="grow" />
+            {step === "identity"
+              ? <button type="button" className="tx-btn tx-lg" onClick={onClose}>Cancel</button>
+              : <button type="button" className="tx-btn tx-lg" onClick={() => go(stepAt(step, -1))}>Back</button>}
+            <button type="submit" className="tx-btn tx-primary tx-lg" disabled={step === "sign" && (!!problem || issuing)}>
+              {step !== "sign" ? <>Continue <Icon name="chevronR" size={14} /></> : issuing ? "Issuing…" : "Issue ID"}
+            </button>
+          </div>
+        </form>
+
+        <div className="nad-stage studio" onPointerMove={track} onPointerLeave={untrack}>
+          <Lanyard onTap={() => setFace(f => f === "front" ? "back" : "front")}>
+            <div ref={wrapRef} className="idc-wrap"><div ref={tiltRef} className="idc-tilt"><IdCard d={d} face={face} issued={issued} snap={snap} cardRef={cardRef} /></div></div>
+          </Lanyard>
+          <span className="studio-note" aria-hidden="true">Drag to swing · tap to flip</span>
+          <div className="stage-ctl">
+            <Seg label="Card side" value={face} options={[["front", "Front"], ["back", "Back"]]} onChange={setFace} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================ harness (this page only) */
+// ?step=access|rules|sign opens on that step, ?blank=1 starts from an empty draft, ?model=opus|haiku picks the model.
+const SAMPLE: Draft = { ...SAMPLE_DRAFT, servers: { sentry: "read", slack: "write", github: "read", linear: "read" }, skills: ["triage", "postmortem", "summarize"], sig: AUTO_SIG };
+
+// Worst case for the card: everything attached and a name that wraps.
+const FULL: Draft = { ...SAMPLE, name: "Platform Reliability Lead", purpose: "Own deploy health end to end: watch errors, open and close tickets, and post the weekly reliability digest",
+  servers: Object.fromEntries(SERVERS.map((s, i) => [s.id, i % 3 === 1 ? "write" : "read"])) as Record<string, Access>, skills: SKILLS.map(s => s.id),
+  rules: ["Never share customer data outside the workspace", "Cite the source for every claim", "Escalate to a human when unsure", "Stay out of production on Fridays",
+    "Never close a ticket it didn't open", "Tag the owning team on every incident", "Keep a running timeline during an outage", "Ask before paging more than one person"].join("\n"),
+  behaviour: ["Be concise", "Lead with the answer", "Ask before assuming", "Friendly, not chatty", "Use plain words over jargon"].join("\n"), behaviourAs: "list" };
+type Fill = "sample" | "blank" | "full";
+const DRAFTS: Record<Fill, Draft> = { sample: SAMPLE, blank: BLANK_DRAFT, full: FULL };
+
+function Harness() {
+  const q = new URLSearchParams(location.search);
+  const start: Fill = q.get("blank") ? "blank" : q.get("fill") === "full" ? "full" : "sample";
+  const [fill, setFill] = useState<Fill>(start);
+  const [d, setD] = useState<Draft>(() => ({ ...DRAFTS[start], ...(MODELS.some(m => m.id === q.get("model")) ? { model: q.get("model")! } : {}) }));
+  const [open, setOpen] = useState(true);
+  const [run, setRun] = useState(0);
+  const [toast, setToast] = useState("");
+  const [theme, setTheme] = useState(document.documentElement.dataset.effTheme || "light");
+  useEffect(() => { const r = document.documentElement; r.dataset.theme = theme; r.dataset.effTheme = theme; try { localStorage.setItem("tx-sys-theme", theme); } catch (e) {} }, [theme]);
+  const set = React.useCallback((p: Partial<Draft>) => setD(x => ({ ...x, ...p })), []);
+  const reopen = () => { setToast(""); setOpen(true); setRun(r => r + 1); };
+  return (
+    <>
+      <div className="hx-bar" role="toolbar" aria-label="Preview">
+        <span className="hx-title">Agent ID</span>
+        <Seg label="Draft" value={fill} options={[["sample", "Sample"], ["blank", "Blank"], ["full", "Full"]]}
+          onChange={v => { setFill(v); setD(DRAFTS[v]); reopen(); }} />
+        <Seg label="Catalogue" value={LARGE_CATALOG ? "large" : "small"} options={[["small", "Small catalogue"], ["large", "Large catalogue"]]}
+          onChange={v => { const u = new URLSearchParams(location.search); u.delete("models"); if (v === "large") u.set("catalog", "large"); else u.delete("catalog"); location.search = u.toString(); }} />
+        {toast && <span className="hx-toast" role="status">{toast}</span>}
+        <button type="button" className="tx-btn tx-sm" onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}>
+          <Icon name={theme === "dark" ? "sun" : "moon"} size={14} />{theme === "dark" ? "Light" : "Dark"}
+        </button>
+        {!open && <button type="button" className="tx-btn tx-primary" onClick={reopen}>Reopen</button>}
+      </div>
+      {open && <IssueDesk key={run} d={d} set={set} startStep={(["access", "rules", "sign"] as Step[]).find(x => x === q.get("step")) || "identity"}
+        onClose={() => setOpen(false)} onCreate={() => { setToast("Issued " + d.name.trim()); setOpen(false); }} />}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")!).render(<Harness />);
+
+
+</script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js" crossorigin></script>
+<script>
+  // In-browser TSX, inline so the page also opens from file://.
+  try {
+    const { code } = Babel.transform(document.getElementById("src").textContent, {
+      filename: "agent-id.tsx",
+      presets: [["typescript", { isTSX: true, allExtensions: true }], ["react", { runtime: "classic" }]],
+    });
+    new Function("React", "ReactDOM", code)(React, ReactDOM);
+  } catch (err) {
+    const el = document.createElement("pre");
+    el.id = "boot-error";
+    el.textContent = String(err && err.stack || err);
+    document.body.appendChild(el);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,902 @@
+/* The thread and its turns (DESIGN-SPEC 10.2, 10.3, 11.7, 11.8), ported from
+   system/screens/chat.css; tokens only. */
+
+.cs-open {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cs-thread-in {
+  width: 100%;
+  max-width: var(--thread);
+  margin-inline: auto;
+  padding: var(--sp-5) var(--sp-5) var(--sp-3);
+}
+.cs-thread {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-width: 0;
+}
+.cs-load-older {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.cs-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-6) var(--sp-4);
+  color: var(--ink-2);
+  text-align: center;
+}
+.cs-state p {
+  margin: 0;
+}
+.cs-readonly {
+  width: 100%;
+  max-width: var(--thread);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  color: var(--ink-2);
+  font-size: var(--t-meta);
+}
+.cs-readonly p {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+/* ── messages ─────────────────────────────────────────────────────────────── */
+.cs-msg {
+  min-width: 0;
+  animation: cs-msg-in var(--tx-d-3) var(--tx-ease) both;
+}
+@keyframes cs-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-1));
+  }
+}
+.cs-msg-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1);
+}
+.cs-msg-user .pt-bubble {
+  white-space: pre-wrap;
+}
+.cs-msg-user.is-steer {
+  margin-block: var(--sp-3);
+}
+.cs-msg-agent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.cs-msg-agent .pt-agent-head .cs-agent-av {
+  width: var(--av-sm);
+  height: var(--av-sm);
+}
+.cs-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding-inline-start: calc(var(--av-sm) + var(--sp-2));
+}
+.cs-msg-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.cs-msg-note.is-bad {
+  color: var(--bad-ink);
+}
+
+/* the work a reply did, folded under one line (10.3) */
+.cs-work {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+.cs-work-sum {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--tx-h);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--r);
+  font-size: var(--t-meta);
+  font-weight: 550;
+  color: var(--ink-2);
+  cursor: pointer;
+  list-style: none;
+}
+.cs-work-sum::-webkit-details-marker {
+  display: none;
+}
+.cs-work-sum:hover {
+  color: var(--ink);
+}
+.cs-work-sum:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.cs-work-ic {
+  color: var(--ok-ink);
+}
+.cs-work-chev {
+  margin-inline-start: auto;
+  color: var(--ink-3);
+  transition: transform var(--tx-d-2) var(--tx-ease);
+}
+.cs-work[open] .cs-work-chev {
+  transform: rotate(180deg);
+}
+.cs-work[open] > .cs-work-sum {
+  border-bottom: 1px solid var(--line);
+  border-end-start-radius: 0;
+  border-end-end-radius: 0;
+  background: var(--surface);
+}
+.cs-work-log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+}
+.cs-working {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 1.75rem;
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+}
+.cs-working.is-waiting {
+  color: var(--warn-ink);
+}
+
+/* a single call shows its row with no fold head */
+.cs-work.is-solo {
+  border: 0;
+  background: none;
+}
+.cs-work-flag {
+  font-size: var(--t-micro);
+  color: var(--bad-ink);
+}
+.cs-work-ic.is-warn {
+  color: var(--bad-ink);
+}
+
+/* ── a step in the work (ToolActivityRow, 12.2) ───────────────────────────── */
+.ta {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+}
+/* extras under the name, whether or not the row shows a time */
+.ta > .ta-details,
+.ta > .ta-files {
+  grid-column: 2 / -1;
+}
+.ta-ic {
+  display: grid;
+  place-items: center;
+  width: var(--sp-4);
+  min-height: 1.75rem;
+  color: var(--ok-ink);
+}
+.ta-main {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  min-height: 1.75rem;
+}
+.ta-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 550;
+}
+.ta-sub {
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.ta-time {
+  align-self: center;
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.ta.is-running .ta-name {
+  color: var(--ink);
+}
+.ta.is-waiting .ta-ic {
+  color: var(--warn-ink);
+}
+.ta.is-failed .ta-ic,
+.ta.is-failed .ta-name,
+.ta.is-failed .ta-sub {
+  color: var(--bad-ink);
+}
+.ta.is-declined .ta-ic,
+.ta.is-declined .ta-name,
+.ta.is-stopped .ta-ic,
+.ta.is-stopped .ta-name {
+  color: var(--ink-3);
+}
+.ta.is-declined .ta-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+}
+.ta-details pre {
+  max-height: 12rem;
+  margin: 0;
+  padding: var(--sp-2);
+  overflow: auto;
+  border-radius: var(--r-sm);
+  background: var(--well);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  line-height: var(--lh-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ta-details {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+}
+.ta-details[open] {
+  justify-items: stretch;
+}
+/* the Details toggle: a small pill button with a chevron (12.2) */
+.ta-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: var(--sp-1);
+  min-height: 1.5rem;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  list-style: none;
+  font-size: var(--t-micro);
+  font-weight: 550;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.ta-toggle::-webkit-details-marker {
+  display: none;
+}
+.ta-toggle:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.ta-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.ta-chev {
+  transition: transform var(--tx-d-1) var(--tx-ease);
+}
+.ta-details[open] .ta-chev {
+  transform: rotate(180deg);
+}
+.ta-label {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+:root[data-eff-motion="reduce"] .ta-chev {
+  transition: none;
+}
+.ta-files {
+  margin: var(--sp-1) 0 0;
+  padding-inline-start: var(--sp-4);
+  font-size: var(--t-meta);
+}
+
+/* ── TurnError (12.5): inline where the answer would be ───────────────────── */
+.te {
+  max-width: 36rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--bad) 32%, var(--line));
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--bad-soft) 60%, var(--surface));
+}
+.te-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--bad-ink);
+}
+.te-title {
+  font-size: var(--t-ui);
+  font-weight: 650;
+}
+.te-body {
+  margin: 0;
+  font-size: var(--t-meta);
+  line-height: var(--lh-meta);
+  color: var(--ink-2);
+}
+.te-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ── HelperGroup (12.6): one lane per helper ──────────────────────────────── */
+.hg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 36rem;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.hg-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--t-meta);
+  font-weight: 550;
+  color: var(--ink-2);
+}
+.hg-flag {
+  font-size: var(--t-micro);
+  color: var(--bad-ink);
+}
+.hg-lanes {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hg-lane {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--sp-2);
+  row-gap: var(--sp-1);
+  min-height: 2.75rem;
+  padding-block: var(--sp-1);
+  border-top: 1px solid var(--line);
+}
+.hg-lane > :nth-child(n + 4) {
+  grid-column: 2;
+}
+.hg-tile {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--r-sm);
+  background: var(--hg-soft, var(--well));
+  color: var(--hg-ink, var(--ink-2));
+}
+.hg-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  min-width: 0;
+}
+.hg-name {
+  font-size: var(--t-meta);
+  font-weight: 650;
+  color: var(--ink);
+}
+.hg-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  font-size: var(--t-micro);
+  color: var(--ink-2);
+}
+.hg-badge.is-running {
+  color: var(--signal-ink);
+}
+.hg-badge.is-done {
+  color: var(--ok-ink);
+}
+.hg-badge.is-failed,
+.hg-error {
+  color: var(--bad-ink);
+}
+.hg-badge.is-stopped {
+  color: var(--ink-3);
+}
+.hg-preview,
+.hg-error {
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.hg-error {
+  color: var(--bad-ink);
+}
+.hg-result summary {
+  font-size: var(--t-micro);
+  font-weight: 550;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.hg-result p {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--t-meta);
+  line-height: var(--lh-meta);
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── receipt line and trace card (12.8) ───────────────────────────────────── */
+.cs-receipt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-3);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.cs-receipt > span {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.cs-receipt .tx-chip.cs-receipt-details {
+  height: var(--tx-h-sm);
+  padding-inline: var(--sp-2);
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+}
+.cs-trace {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  max-width: 36rem;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-2);
+  animation: cs-trace-in var(--tx-d-2) var(--tx-ease) both;
+}
+.cs-trace:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+@keyframes cs-trace-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-1));
+  }
+}
+.cs-trace-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.cs-trace-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.cs-trace-title b {
+  font-size: var(--t-ui);
+  font-weight: 650;
+}
+.cs-trace-title small {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.cs-trace-part h4 {
+  margin: 0 0 var(--sp-1);
+  color: var(--ink-3);
+}
+.cs-trace-dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: var(--sp-2);
+  margin: 0;
+}
+.cs-trace-dl dt {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.cs-trace-dl dd {
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-meta);
+  color: var(--ink);
+}
+.cs-trace-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-meta);
+}
+.cs-trace-table th,
+.cs-trace-table td {
+  padding: var(--sp-1) 0;
+  border-top: 1px solid var(--line);
+  text-align: start;
+  font-weight: 500;
+}
+.cs-trace-table td {
+  text-align: end;
+  font-family: var(--f-mono);
+}
+.cs-trace-table tr:last-child th,
+.cs-trace-table tr:last-child td {
+  font-weight: 650;
+  color: var(--ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-trace {
+    animation: none;
+  }
+}
+:root[data-eff-motion="reduce"] .cs-trace {
+  animation: none;
+}
+
+/* ── the answer ───────────────────────────────────────────────────────────── */
+.pt-answer-body {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.progress-note {
+  font-size: var(--t-meta);
+  line-height: var(--lh-meta);
+  color: var(--ink-2);
+}
+/* a soft caret trails the last word while the reply streams */
+.pt-answer-body.is-live > :last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.45em;
+  height: 1em;
+  margin-inline-start: var(--sp-h);
+  border-radius: var(--r-xs);
+  background: var(--signal);
+  vertical-align: -0.15em;
+  animation: cs-caret 1s steps(2, start) infinite;
+}
+@keyframes cs-caret {
+  to {
+    visibility: hidden;
+  }
+}
+
+/* Markdown inside an answer (and a helper's output) */
+.markdown {
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink);
+}
+.markdown > :first-child {
+  margin-top: 0;
+}
+.markdown > :last-child {
+  margin-bottom: 0;
+}
+.markdown p {
+  margin: 0 0 var(--sp-3);
+}
+.markdown strong {
+  font-weight: 650;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: var(--sp-5) 0 var(--sp-2);
+  font-weight: 650;
+  line-height: var(--lh-h4);
+  letter-spacing: var(--tr-h4);
+}
+.markdown h1,
+.markdown h2 {
+  font-size: var(--t-h4);
+  font-variation-settings: var(--cut-heading);
+  letter-spacing: var(--tr-h4);
+}
+.markdown h3,
+.markdown h4 {
+  /* body-size headings read as bold text, so they take the text cut */
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  font-variation-settings: var(--cut-text);
+  letter-spacing: 0;
+}
+.markdown ul,
+.markdown ol {
+  margin: 0 0 var(--sp-3);
+  padding-inline-start: var(--sp-5);
+}
+/* the reset strips markers; answers need them back */
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li ul {
+  list-style: circle;
+}
+.markdown li {
+  margin: var(--sp-h) 0;
+}
+.markdown li::marker {
+  color: var(--ink-3);
+}
+.markdown li > p {
+  margin: 0;
+}
+.markdown a {
+  color: var(--signal-ink);
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+.markdown a:hover {
+  color: var(--ink);
+}
+.markdown blockquote {
+  margin: 0 0 var(--sp-3);
+  padding: 0 0 0 var(--sp-3);
+  border-inline-start: 2px solid var(--line-strong);
+  color: var(--ink-2);
+}
+.markdown blockquote p {
+  margin: 0;
+}
+.markdown code {
+  padding: 0 var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--well);
+  font-family: var(--f-mono);
+  font-size: var(--t-code);
+}
+.markdown pre {
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-3);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--well);
+  font-family: var(--f-mono);
+  font-size: var(--t-code);
+  line-height: var(--lh-code);
+  scrollbar-width: thin;
+}
+.markdown pre code {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: inherit;
+}
+.markdown hr {
+  margin: var(--sp-5) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.markdown table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0 0 var(--sp-3);
+  border-collapse: collapse;
+  font-size: var(--t-meta);
+  font-variant-numeric: tabular-nums;
+}
+.markdown th,
+.markdown td {
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line);
+  text-align: start;
+  vertical-align: top;
+}
+.markdown th {
+  background: var(--surface-2);
+  font-weight: 550;
+  color: var(--ink-2);
+}
+.markdown img {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+}
+.markdown .code-block {
+  min-width: 0;
+  margin: var(--sp-3) 0 var(--sp-4);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--well);
+}
+.markdown .code-block pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.markdown .code-block[data-wrapped="true"] pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* header bar inside the frame, as in .pt-command (10.3) */
+.code-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--tx-h-sm);
+  padding: var(--sp-h) var(--sp-1) var(--sp-h) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.code-lang {
+  margin-inline-end: auto;
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.message-copy {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.markdown > .message-copy {
+  margin-top: var(--sp-2);
+}
+.copy-feedback {
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.copy-feedback:empty {
+  display: none;
+}
+
+/* ── follow-ups: short text rows under the latest answer ──────────────────── */
+.cs-next {
+  min-width: 0;
+}
+.cs-next-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-h);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cs-next-list > li {
+  max-width: 100%;
+  animation: cs-msg-in var(--tx-d-3) var(--tx-ease) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+.cs-next-row {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  max-width: 100%;
+  padding: var(--sp-1) var(--sp-h);
+  border: 0;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--ink-2);
+  font-family: var(--f-ui);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  line-height: var(--lh-meta);
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color var(--tx-d-1) var(--tx-ease);
+}
+.cs-next-mark {
+  flex: none;
+  color: var(--ink-3);
+  transition:
+    color var(--tx-d-1) var(--tx-ease),
+    transform var(--tx-d-1) var(--tx-ease);
+}
+.cs-next-q {
+  min-width: 0;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.2em;
+  transition: text-decoration-color var(--tx-d-1) var(--tx-ease);
+}
+.cs-next-row:hover:not(:disabled) {
+  color: var(--ink);
+}
+.cs-next-row:hover:not(:disabled) .cs-next-q {
+  text-decoration-color: var(--line-strong);
+}
+.cs-next-row:hover:not(:disabled) .cs-next-mark {
+  color: var(--signal-ink);
+  transform: translateX(var(--sp-h));
+}
+.cs-next-row:focus-visible {
+  outline: none;
+  color: var(--ink);
+  box-shadow: var(--focus);
+}
+.cs-next-row:disabled {
+  cursor: default;
+  color: var(--ink-3);
+}
+.cs-next-row.is-picked {
+  color: var(--ink);
+}
+
+@container app (max-width: 40rem) {
+  .cs-thread-in {
+    padding: var(--sp-3) var(--sp-3) var(--sp-2);
+  }
+  .cs-msg-body {
+    padding-inline-start: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-msg,
+  .cs-next-list > li,
+  .pt-answer-body.is-live > :last-child::after {
+    animation: none;
+  }
+  .cs-work-chev {
+    transition: none;
+  }
+}
+:root[data-eff-motion="reduce"] .cs-msg,
+:root[data-eff-motion="reduce"] .cs-next-list > li,
+:root[data-eff-motion="reduce"] .pt-answer-body.is-live > :last-child::after {
+  animation: none;
+}
+:root[data-eff-motion="reduce"] .cs-work-chev {
+  transition: none;
+}

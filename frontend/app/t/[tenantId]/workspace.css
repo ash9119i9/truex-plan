@@ -1,0 +1,13 @@
+/* The signed-in workspace's product CSS: one file per surface, tokens only.
+   Loaded by this layout so sign-in, invite and error pages don't pay for it;
+   globals.css keeps the system layers, the reset and the shared pieces. */
+@import "../../../styles/app/shell.css";
+@import "../../../styles/app/composer.css";
+@import "../../../styles/app/dock.css";
+@import "../../../styles/app/turn.css";
+@import "../../../styles/app/files.css";
+@import "../../../styles/app/request.css";
+@import "../../../styles/app/activity-panel.css";
+@import "../../../styles/app/agents.css";
+@import "../../../styles/app/agent-desk.css";
+@import "../../../styles/app/agent-card.css";

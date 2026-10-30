@@ -1,0 +1,248 @@
+/* helpers — the HelperGroup inline in a reply: a compact Helper board.
+   Lanes share one track on the turn's clock. Identity hues live on the tile
+   only; bars use status (neutral done, blue running, warn needs, bad failed). */
+.cs-msg-helpers { min-width: 0; padding-inline-start: calc(1.375rem + var(--sp-2)); }
+.cs-msg-helpers:empty { display: none; }
+
+.hg { min-width: 0; }
+.hg-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  height: 1.75rem;
+  margin-inline-start: calc(-1 * var(--sp-2));
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-radius: var(--r-pill); corner-shape: round;
+  background: none;
+  color: var(--ink-2);
+  font: 550 var(--t-meta)/1 var(--f-ui);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color var(--tx-d-1) var(--tx-ease), color var(--tx-d-1) var(--tx-ease);
+}
+.hg-head:hover { background: var(--well); color: var(--ink); }
+.hg-head:focus-visible { outline: none; box-shadow: var(--focus); }
+.hg-ic { display: grid; place-items: center; width: 1rem; height: 1rem; flex: none; color: var(--ok-ink); }
+.hg[data-state="failed"] .hg-ic { color: var(--bad-ink); }
+.hg[data-state="stopped"] .hg-ic { color: var(--ink-3); }
+.hg-spin { width: .75rem; height: .75rem; border-width: 1.5px; }
+.hg-mark {
+  display: grid;
+  place-items: center;
+  width: .875rem;
+  height: .875rem;
+  border-radius: 50%; corner-shape: round;
+  background: var(--warn);
+  color: var(--surface);
+  font: 800 .5625rem/1 var(--f-ui);
+}
+.hg-meta { color: var(--ink-3); font-size: var(--t-micro); letter-spacing: .02em; }
+.hg-flag { color: var(--bad-ink); font-size: var(--t-micro); }
+.hg-flag.is-warn { color: var(--warn-ink); font-weight: 650; }
+.hg-flag.is-mute { color: var(--ink-3); }
+.hg-flag:empty { display: none; }
+.hg-chev { color: var(--ink-3); transition: transform var(--tx-d-2) var(--tx-ease); }
+.hg.is-open .hg-chev { transform: rotate(90deg); }
+
+.hg-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--tx-d-2) var(--tx-ease); }
+.hg.is-open .hg-body { grid-template-rows: 1fr; }
+.hg-clip { min-height: 0; overflow: hidden; }
+.hg:not(.is-open) .hg-clip { visibility: hidden; transition: visibility 0s linear var(--tx-d-2); }
+
+/* the board · who | track | time, one shared clock */
+.hg-board {
+  --hg-who: 10.5rem;
+  --hg-time: 3rem;
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding: var(--sp-1) var(--sp-3) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+.hg-axis,
+.hg-lane { display: grid; grid-template-columns: var(--hg-who) minmax(0, 1fr) var(--hg-time); column-gap: var(--sp-3); align-items: center; }
+.hg-axis { height: 1.375rem; }
+.hg-ax { display: flex; justify-content: space-between; color: var(--ink-3); font-size: .625rem; }
+.hg-ax-end.is-now {
+  padding: 1px 6px;
+  border-radius: var(--r-pill); corner-shape: round;
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+  font-weight: 600;
+}
+.hg-lanes { list-style: none; margin: 0; padding: 0; }
+.hg-lane { min-height: 2.75rem; padding-block: 5px; border-top: 1px solid var(--line); }
+.hg-lane:first-child { border-top-color: transparent; }
+
+.hg-who { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.hg-tile {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+  border-radius: 8px;
+  background: var(--id-main-soft);
+  color: var(--id-main-ink);
+  font: 700 .75rem/1 var(--f-ui);
+}
+.hg-tile svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.hg-tile[data-slot="1"] { background: var(--id-1-soft); color: var(--id-1-ink); }
+.hg-tile[data-slot="2"] { background: var(--id-2-soft); color: var(--id-2-ink); }
+.hg-tile[data-slot="3"] { background: var(--id-3-soft); color: var(--id-3-ink); }
+.hg-tile[data-slot="4"] { background: var(--id-4-soft); color: var(--id-4-ink); }
+.hg-tile[data-slot="5"] { background: var(--id-5-soft); color: var(--id-5-ink); }
+.hg-id { display: grid; gap: 2px; min-width: 0; }
+.hg-name-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hg-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font: 650 var(--t-meta)/1.2 var(--f-ui); }
+.hg-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-3); font-size: .6875rem; line-height: 1.2; }
+.hg-badge {
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 6px;
+  font: 650 .625rem/1.2 var(--f-ui);
+  white-space: nowrap;
+}
+.hg-badge.is-warn { background: var(--warn-soft); color: var(--warn-ink); }
+.hg-badge.is-bad { background: var(--bad-soft); color: var(--bad-ink); }
+.hg-badge:not(.is-warn):not(.is-bad) { background: var(--well-2); color: var(--ink-2); }
+
+/* the track and its bar; the label rides from the bar's start */
+.hg-track { position: relative; height: 1.625rem; min-width: 0; overflow: hidden; }
+.hg-track::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1px dashed var(--cx-grid, var(--line));
+}
+.hg-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 6px;
+  background: var(--id-main-soft);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+/* placed by paint(): inside the bar when it fits, else beside it on the
+   board's surface so the dashed track never runs through the text */
+.hg-label {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 0 4px;
+  border-radius: 4px;
+  overflow: hidden;
+  color: var(--ink-2);
+  font: 500 .75rem/1 var(--f-ui);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.hg-lt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hg-label.is-out { background: var(--surface); }
+.hg-label.is-bare .hg-tools { display: none; }
+.hg-from { color: var(--ink-3); }
+.hg-tools { display: inline-flex; gap: 3px; flex: none; }
+.hg-tool {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-3);
+  font: 550 .5625rem/1.2 var(--f-ui);
+}
+.hg-time { color: var(--ink-3); font-size: var(--t-micro); text-align: end; }
+
+/* running · blue that deepens toward now, edged in blue at its live end */
+.hg-lane[data-state="running"] .hg-bar {
+  background: linear-gradient(90deg, var(--signal-soft), color-mix(in srgb, var(--signal) 24%, var(--surface)));
+  box-shadow: inset -3px 0 0 var(--signal);
+  overflow: hidden;
+}
+.hg-lane[data-state="running"] .hg-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--signal) 18%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: hg-sheen 2.4s linear infinite;
+}
+@keyframes hg-sheen { 70%, 100% { transform: translateX(100%); } }
+.hg-lane[data-state="running"] .hg-label { color: var(--signal-ink); }
+.hg-lane[data-state="running"] .hg-time,
+.hg-lane[data-state="needs"] .hg-time { color: var(--ink-2); font-weight: 600; }
+
+/* needs you · warn bar and the ask under the lane */
+.hg-lane[data-state="needs"] .hg-bar { background: var(--warn-soft); box-shadow: inset -3px 0 0 var(--warn); }
+.hg-lane[data-state="needs"] .hg-label { color: var(--warn-ink); }
+.hg-ask {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin-top: 6px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--warn-soft) 70%, var(--surface));
+}
+.hg-ask-mark {
+  display: grid;
+  place-items: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex: none;
+  border-radius: 50%; corner-shape: round;
+  background: var(--warn);
+  color: var(--surface);
+  font: 800 .6875rem/1 var(--f-ui);
+}
+.hg-ask-text { flex: 1; min-width: 12rem; color: var(--ink); font-size: var(--t-meta); line-height: 1.4; }
+.hg-ask-btns { display: flex; gap: var(--sp-1); margin-inline-start: auto; }
+
+/* failed · bad bar and the reason under the lane */
+.hg-lane[data-state="failed"] .hg-bar { background: var(--bad-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad) 30%, transparent); }
+.hg-lane[data-state="failed"] .hg-label { color: var(--bad-ink); }
+.hg-lane[data-state="stopped"] .hg-bar { background: transparent; box-shadow: inset 0 0 0 1px var(--line-strong); }
+.hg-lane[data-state="stopped"] .hg-label { color: var(--ink-3); }
+.hg-err { grid-column: 2 / -1; margin: 4px 0 0; color: var(--bad-ink); font-size: .75rem; line-height: 1.4; }
+
+/* narrow · name and model move above their lane */
+@media (max-width: 640px) {
+  .cs-msg-helpers { padding-inline-start: 0; }
+  .hg-board { --hg-who: 0px; padding-inline: var(--sp-2); }
+  .hg-axis, .hg-lane { grid-template-columns: minmax(0, 1fr) var(--hg-time); column-gap: var(--sp-2); }
+  .hg-axis > span:first-child { display: none; }
+  .hg-who { grid-column: 1 / -1; margin-bottom: 4px; }
+  .hg-tile { width: 1.375rem; height: 1.375rem; border-radius: 6px; }
+  .hg-tile svg { width: .8125rem; height: .8125rem; }
+  .hg-id { display: flex; align-items: baseline; gap: 6px; }
+  .hg-tools { display: none; }
+  .hg-err { grid-column: 1 / -1; }
+}
+html[data-textsize="150"] .hg-board,
+html[data-textsize="200"] .hg-board { --hg-who: 0px; }
+html[data-textsize="150"] .hg-who,
+html[data-textsize="200"] .hg-who { grid-column: 1 / -1; }
+html[data-textsize="150"] .hg-axis, html[data-textsize="150"] .hg-lane,
+html[data-textsize="200"] .hg-axis, html[data-textsize="200"] .hg-lane { grid-template-columns: minmax(0, 1fr) var(--hg-time); }
+html[data-textsize="150"] .hg-axis > span:first-child,
+html[data-textsize="200"] .hg-axis > span:first-child { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-head, .hg-chev, .hg-body { transition: none; }
+  .hg:not(.is-open) .hg-clip { transition: none; }
+  .hg-lane[data-state="running"] .hg-bar::after { animation: none; display: none; }
+}
+:root[data-eff-motion="reduce"] .hg-head,
+:root[data-eff-motion="reduce"] .hg-chev,
+:root[data-eff-motion="reduce"] .hg-body,
+:root[data-eff-motion="reduce"] .hg:not(.is-open) .hg-clip { transition: none; }
+:root[data-eff-motion="reduce"] .hg-lane[data-state="running"] .hg-bar::after { animation: none; display: none; }

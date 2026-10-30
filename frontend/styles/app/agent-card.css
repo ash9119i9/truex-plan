@@ -1,0 +1,670 @@
+/* The agent's lanyard ID card (DESIGN-SPEC 15.3, 15.4), ported from
+   system/screens/agent-id.css: printed artwork, a fixed material in every
+   theme, so its colours, card geometry and sub-11 px type are raw values by
+   sanction (19.1). Not on the tokens-only list. The desk around it,
+   including the stage the card hangs in, is styles/app/agent-desk.css. */
+
+.lanyard-anchor {
+  position: absolute;
+  top: -18px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+/* the angle is written each frame while held or swinging (lib/lanyard.ts),
+   so it has no transition of its own */
+.lanyard {
+  pointer-events: auto;
+  transform-origin: 50% 0;
+  will-change: transform;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.lanyard.is-drag {
+  cursor: grabbing;
+}
+.lanyard-sway {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform-origin: 50% 0;
+  animation: sway 6s ease-in-out infinite;
+}
+.lanyard.is-drag .lanyard-sway,
+.lanyard.is-swing .lanyard-sway {
+  animation-play-state: paused;
+}
+@keyframes sway {
+  0%,
+  100% {
+    transform: rotate(-1.4deg);
+  }
+  50% {
+    transform: rotate(1.4deg);
+  }
+}
+/* The strap is brand furniture: woven brand-blue nylon with the wordmark
+   running down it, whatever agent hangs from it. */
+.strap {
+  position: relative;
+  width: 22px;
+  height: 60px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 22%);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='22' height='56'><text x='11' y='28' transform='rotate(90 11 28)' text-anchor='middle' dominant-baseline='middle' font-family='Arial,sans-serif' font-weight='700' font-size='7' letter-spacing='1.8' fill='%23FFFFFF' fill-opacity='.38'>TRUEX</text></svg>")
+      center top / 100% 56px repeat-y,
+    repeating-linear-gradient(
+      0deg,
+      rgb(255 255 255 / 0) 0 2px,
+      rgb(255 255 255 / 9%) 2px 3px
+    ),
+    linear-gradient(
+      90deg,
+      #226a9b 0%,
+      #2a7db4 26%,
+      #3691cd 50%,
+      #2a7db4 74%,
+      #226a9b 100%
+    );
+}
+.lanyard .strap {
+  transition:
+    height 0.7s cubic-bezier(0.34, 1.56, 0.64, 1),
+    width 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.lanyard.is-drag .strap {
+  transition: none;
+}
+.strap::before,
+.strap::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px dashed rgb(255 255 255 / 22%);
+}
+.strap::before {
+  left: 3.5px;
+}
+.strap::after {
+  right: 3.5px;
+}
+.clip {
+  display: block;
+  position: relative;
+  z-index: 2;
+  margin-top: -6px;
+  filter: drop-shadow(0 2px 2px rgb(31 42 48 / 22%));
+}
+.badge-slot {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 1;
+  width: 40px;
+  height: 8px;
+  margin-left: -20px;
+  border-radius: 4px;
+  background: rgb(31 42 48 / 16%);
+  box-shadow:
+    inset 0 1px 2px rgb(31 42 48 / 40%),
+    0 1px 0 rgb(255 255 255 / 75%);
+}
+
+/* ---- the card: front is who it is, back is what it can open ---- */
+.idc-wrap {
+  position: relative;
+  width: 300px;
+  height: 476px;
+  margin-top: -16px;
+  perspective: 1400px;
+}
+/* `.idc-face > .issued-seal` outranks `.idc-face > *` (position: relative),
+   so the seal sits over the photo's lower-right corner, as designed */
+.idc-face > .issued-seal {
+  position: absolute;
+  z-index: 7;
+  right: 22px;
+  top: 176px;
+  filter: drop-shadow(0 2px 3px rgb(15 20 24 / 28%));
+  animation: sealIn 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+@keyframes sealIn {
+  from {
+    opacity: 0;
+    transform: scale(1.6) rotate(-40deg);
+  }
+}
+.idc-wrap.is-thud {
+  animation: thud 0.3s ease-out;
+}
+@keyframes thud {
+  35% {
+    transform: translateY(2px) scale(0.996);
+  }
+}
+.idc-tilt {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transform: rotateX(var(--tx, 0deg)) rotateY(var(--ty, 0deg));
+  transition: transform 0.3s ease-out;
+}
+.idc {
+  --c-bg1: #fcfcfa;
+  --c-bg2: #e9edec;
+  --c-ink: #161b1f;
+  --c-ink2: #56626a;
+  --c-ink3: #8a959b;
+  --c-line: rgb(22 27 31 / 10%);
+  --c-gl: #161b1f;
+  --c-gl-o: 0.07;
+  --c-edge: rgb(255 255 255 / 90%);
+  --pr-paper: #ffffff;
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.8s cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+.idc.is-back {
+  transform: rotateY(180deg);
+}
+.idc-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  color: var(--c-ink);
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  background: linear-gradient(160deg, var(--c-bg1) 0%, var(--c-bg2) 100%);
+  box-shadow:
+    0 1px 1px rgb(15 20 24 / 10%),
+    0 6px 14px -4px rgb(15 20 24 / 16%),
+    0 34px 60px -20px rgb(15 20 24 / 45%);
+}
+.idc-face.back {
+  transform: rotateY(180deg);
+}
+/* laminate: a bevelled edge only */
+.idc-face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    inset 0 1px 0 var(--c-edge),
+    inset 0 0 0 1px var(--c-line);
+}
+.idc-face > * {
+  position: relative;
+}
+.idc-face > .badge-slot {
+  position: absolute;
+  z-index: 9;
+}
+/* fine-line security engraving */
+.idc-face > .guil {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: var(--c-gl);
+  opacity: var(--c-gl-o);
+  pointer-events: none;
+}
+.idc-head,
+.bk-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 12px 18px 0;
+}
+.idc-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 15px/1 var(--f-ui);
+  letter-spacing: -0.03em;
+}
+.idc-brand small {
+  padding-left: 8px;
+  border-left: 1px solid var(--c-line);
+  font: 600 7.5px/10px var(--f-mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--c-ink3);
+}
+.idc-nfc {
+  display: grid;
+  color: var(--c-ink3);
+}
+/* the photo window carries the agent's own backdrop */
+.idc-photo {
+  display: grid;
+  place-items: end center;
+  height: 190px;
+  margin: 4px 14px 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: radial-gradient(
+    120% 90% at 50% 20%,
+    color-mix(in srgb, var(--tint) 20%, var(--pr-paper)),
+    color-mix(in srgb, var(--tint) 50%, #e9e6df)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgb(15 20 24 / 9%),
+    inset 0 -44px 40px -40px rgb(15 20 24 / 32%),
+    0 1px 0 var(--c-edge);
+  transition: background 0.25s;
+}
+.idc-photo > .pose-wrap {
+  display: grid;
+  margin-bottom: -8px;
+}
+.idc-photo .pose-wrap > svg {
+  filter: contrast(1.04) saturate(1.03) drop-shadow(0 6px 10px rgb(0 0 0 / 16%));
+}
+.idc-who {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 14px;
+  padding: 16px 20px 0;
+}
+.idc-who > .idc-chip {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  padding-top: 3px;
+}
+.idc-name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font: 600 26px/1.08 var(--f-ui);
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.idc-name.is-long {
+  font-size: 21px;
+}
+.idc-name.is-empty,
+.idc-duty.is-empty {
+  color: var(--c-ink3);
+}
+.idc-handle {
+  margin-top: 5px;
+  overflow: hidden;
+  font: 500 10.5px var(--f-mono);
+  letter-spacing: 0.04em;
+  color: var(--c-ink3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.idc-duty {
+  grid-column: 1 / -1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 9px;
+  font: italic 400 13.5px/1.35 var(--f-serif);
+  color: var(--c-ink2);
+}
+.idc-data {
+  display: grid;
+  grid-template-columns: 0.9fr 1.15fr 1fr;
+  gap: 10px;
+  margin: auto 20px 0;
+  padding: 10px 0 12px;
+  border-top: 1px solid var(--c-line);
+}
+.idc-data.is-two {
+  grid-template-columns: 1fr 1fr;
+}
+.idc-data > div {
+  min-width: 0;
+}
+.idc-data dt {
+  font: 600 7px/1.2 var(--f-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-ink3);
+}
+.idc-data dd {
+  margin: 3px 0 0;
+  overflow: hidden;
+  font: 500 10.5px/1.2 var(--f-mono);
+  color: var(--c-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.idc-band {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 46px;
+  margin: 0 20px;
+  padding-bottom: 2px;
+  border-top: 1px solid var(--c-line);
+  color: var(--c-ink);
+}
+.idc-band > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.idc-band b {
+  font: 700 9px var(--f-mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+.idc-band small {
+  overflow: hidden;
+  font: 500 10px var(--f-mono);
+  color: var(--c-ink3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.idc-band svg {
+  flex: none;
+  opacity: 0.78;
+}
+/* back: what it can open, what it's good at, and the limits in plain words */
+.bk-sec {
+  padding: 12px 18px 0;
+}
+.bk-h {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  font: 600 7px var(--f-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-ink3);
+}
+.bk-h > span:first-child {
+  color: var(--c-ink2);
+}
+.acc-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px 6px;
+}
+.acc {
+  display: grid;
+  justify-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.acc-logo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--pr-paper);
+  color: var(--c-ink);
+  box-shadow:
+    inset 0 0 0 1px rgb(15 20 24 / 8%),
+    0 1px 1px rgb(15 20 24 / 6%),
+    0 3px 6px -3px rgb(15 20 24 / 18%);
+}
+.acc-mono {
+  font: 750 13px/1 var(--f-ui);
+  letter-spacing: -0.04em;
+}
+.acc-w {
+  position: absolute;
+  right: -5px;
+  bottom: -4px;
+  padding: 1.5px 3px;
+  border-radius: 4px;
+  background: var(--c-ink);
+  color: var(--c-bg1);
+  font: 700 6.5px/1 var(--f-mono);
+  letter-spacing: 0.08em;
+  box-shadow: 0 0 0 1.5px var(--c-bg1);
+}
+.acc-n {
+  max-width: 100%;
+  overflow: hidden;
+  font: 500 9.5px/1.2 var(--f-ui);
+  color: var(--c-ink2);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.acc.slot .acc-logo {
+  background: none;
+  box-shadow: none;
+  border: 1px dashed rgb(22 27 31 / 18%);
+}
+.acc.more .acc-logo {
+  background: none;
+  box-shadow: inset 0 0 0 1px var(--c-line);
+  font: 600 11px var(--f-mono);
+  color: var(--c-ink2);
+}
+.sk-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.sk {
+  display: inline-flex;
+  align-items: center;
+  height: 21px;
+  padding: 0 9px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px rgb(22 27 31 / 14%);
+  font: 500 10.5px/1 var(--f-ui);
+  color: var(--c-ink);
+  white-space: nowrap;
+}
+.sk.slot {
+  box-shadow: none;
+  border: 1px dashed rgb(22 27 31 / 18%);
+  color: var(--c-ink3);
+  font: italic 12px var(--f-serif);
+}
+.sk.more {
+  box-shadow: none;
+  padding: 0 4px;
+  color: var(--c-ink3);
+}
+/* the free space carries a faint watermark that gives way as the card fills */
+.bk-mark {
+  container-type: size;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-ink);
+  opacity: 0.1;
+}
+@container (max-height: 96px) {
+  .bk-mark > * {
+    display: none;
+  }
+}
+.bk-mark span {
+  font: 600 7px var(--f-mono);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+/* signature strip sits low, above the fine print */
+.bk-sign {
+  margin-top: 12px;
+  padding: 0 18px;
+}
+.sig-strip {
+  position: relative;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgb(15 20 24 / 12%);
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='150' height='7'><text x='0' y='5.4' font-family='Arial,sans-serif' font-size='4.6' letter-spacing='.6' fill='%238A959B' fill-opacity='.18'>AUTHORISED SIGNATURE · TRUEX · </text></svg>")
+      0 0 / 150px 7px,
+    #fbfbf8;
+}
+.sig-strip svg {
+  position: absolute;
+  inset: 2px 10px 0;
+  width: calc(100% - 20px);
+  height: 38px;
+}
+.sig-strip path {
+  fill: none;
+  stroke: #1a1f24;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  animation: idc-ink 1.2s ease-out both;
+}
+@keyframes idc-ink {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.sig-empty {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font: italic 12.5px var(--f-serif);
+  color: #9aa5ab;
+}
+.sig-cap {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 5px;
+  font: 600 6.5px var(--f-mono);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--c-ink3);
+}
+.bk-fine {
+  display: grid;
+  gap: 8px;
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--c-line);
+  font: 8.5px/1.45 var(--f-mono);
+  color: var(--c-ink3);
+}
+.bk-fine b {
+  margin-right: 5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--c-ink2);
+}
+.bk-rules {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* idle sway and the photo fade stop under reduced motion; the user's own
+   flip and drag remain */
+@media (prefers-reduced-motion: reduce) {
+  .lanyard-sway,
+  .idc-wrap.is-thud,
+  .issued-seal {
+    animation: none;
+  }
+  .idc-tilt {
+    transform: none;
+  }
+}
+:root[data-eff-motion="reduce"] .lanyard-sway,
+:root[data-eff-motion="reduce"] .idc-wrap.is-thud,
+:root[data-eff-motion="reduce"] .issued-seal {
+  animation: none;
+}
+:root[data-eff-motion="reduce"] .idc-tilt {
+  transform: none;
+}
+@media (max-width: 760px) {
+  .idc-wrap {
+    zoom: 0.8;
+  }
+}
+@media (min-width: 761px) and (max-height: 700px) {
+  .strap {
+    height: 22px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sig-strip path {
+    animation: none;
+  }
+}
+:root[data-eff-motion="reduce"] .sig-strip path {
+  animation: none;
+}
+
+/* confetti thrown from behind the issued card (the legacy celebration) */
+.idc-confetti {
+  position: absolute;
+  left: 50%;
+  top: 45%;
+  z-index: 2;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.idc-confetti i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--w);
+  height: var(--h);
+  background: var(--c);
+  opacity: 0;
+  animation: idc-burst var(--t) cubic-bezier(0.2, 0.7, 0.35, 1) var(--d)
+    forwards;
+}
+@keyframes idc-burst {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0deg) scale(0.5);
+  }
+  45% {
+    opacity: 1;
+    transform: translate(var(--x), var(--y)) rotate(calc(var(--r) * 0.5))
+      scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--x) * 1.15), calc(var(--y) + 170px))
+      rotate(var(--r)) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .idc-confetti {
+    display: none;
+  }
+}
+:root[data-eff-motion="reduce"] .idc-confetti {
+  display: none;
+}

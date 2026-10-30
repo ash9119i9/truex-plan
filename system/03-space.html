@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · System 03 — Space &amp; Form</title>
+<meta name="description" content="truex design system, chapter 03: space and form. One 4px lattice, six surfaces plus a data mark, three elevations and a twelve-column shell — locked from Design System v2.2.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="space.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="space-page.css">
+<link rel="stylesheet" href="corner.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to the chapter</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex system, back to top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><a href="index.html">01 Type</a><span class="bar-sep" aria-hidden="true">/</span><a href="02-color.html">02 Colour</a><span class="bar-sep" aria-hidden="true">/</span><b>03 Space</b><span class="bar-sep" aria-hidden="true">/</span><a href="04-corners.html">04 Corners</a><span class="bar-sep" aria-hidden="true">/</span><a href="05-primitives.html">05 Primitives</a><span class="bar-sep" aria-hidden="true">/</span><a href="06-patterns.html">06 Patterns</a></span>
+    <span class="lock-chip">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      Locked
+    </span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="contrast-tool" data-mode="system" type="button" aria-label="Contrast: system. Activate to change.">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4h4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-4z" fill="currentColor"/></svg>
+      <span class="tool-k">Contrast</span><span class="tool-v" id="contrast-label">System</span>
+    </button>
+    <button class="tool" id="size-tool" type="button" aria-label="Text size: 100 percent. Activate to change.">
+      <span aria-hidden="true" style="font-family:var(--f-ui);font-weight:700;font-size:.8rem;letter-spacing:-.02em">Aa</span>
+      <span class="tool-k">Type</span><span class="tool-v" id="size-label">100%</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage stage-space" aria-label="Chapter 03: Space and form">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Design system</span>
+        <span class="top-mid">Source v2.2 · Space &amp; form</span>
+        <span><span class="dot-live">●</span> Locked 26.10.2026</span>
+      </div>
+
+      <div class="hero-main">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">03</span>
+            <h1 class="hero-title">Space <em>&amp; form</em></h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>4px</b>lattice</span>
+            <span class="stage-chip"><b>10</b>steps</span>
+            <span class="stage-chip"><b>07</b>corners</span>
+            <span class="stage-chip"><b>03</b>lifts</span>
+            <span class="stage-chip"><b>12</b>columns</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <p class="hero-serif">Air is a material.</p>
+          <p class="hero-copy">One 4px lattice sets the air. One superellipse turns the corners. One light lifts what floats. The rest is arrangement — <b>locked from v2.2, finalised here</b>.</p>
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="hero-note"><span class="pulse" aria-hidden="true"></span>Math sets the air · physics lifts · psychology reads</div>
+        </div>
+      </div>
+
+      <div class="space-deck">
+        <article class="sp-card">
+          <div class="sp-card-top"><span>Instrument 01</span><b>Lattice</b></div>
+          <div class="sp-fig lattice-fig" aria-hidden="true">
+            <div class="lattice-bars">
+              <i style="--w:2.083%"></i>
+              <i style="--w:4.167%"></i>
+              <i style="--w:8.333%"></i>
+              <i style="--w:12.5%"></i>
+              <i style="--w:16.667%"></i>
+              <i style="--w:25%"></i>
+              <i style="--w:33.333%"></i>
+              <i style="--w:50%"></i>
+              <i style="--w:66.667%"></i>
+              <i style="--w:100%"></i>
+            </div>
+            <span class="lattice-mark">0 → 96</span>
+          </div>
+          <div class="sp-card-mid"><b>4px base</b><span>Every gap is a multiple. Nothing sits between two steps.</span></div>
+          <div class="sp-card-foot"><code>--sp-1 … --sp-9</code><span>2–96</span></div>
+        </article>
+
+        <article class="sp-card">
+          <div class="sp-card-top"><span>Instrument 02</span><b>Corner</b></div>
+          <div class="sp-fig corner-fig" aria-hidden="true">
+            <div class="cf-outer">
+              <span class="cf-tag">22</span>
+              <div class="cf-inner">
+                <span class="cf-tag">14</span>
+                <div class="cf-chip">6</div>
+              </div>
+            </div>
+          </div>
+          <div class="sp-card-mid"><b>22 → 14</b><span>Inner radius is outer minus the inset. Both corners stay continuous.</span></div>
+          <div class="sp-card-foot"><code>--corner-surface</code><span>one curve</span></div>
+        </article>
+
+        <article class="sp-card">
+          <div class="sp-card-top"><span>Instrument 03</span><b>Lift</b></div>
+          <div class="sp-fig lift-fig" aria-hidden="true">
+            <div class="lf lf-1">T1</div>
+            <div class="lf lf-2">T2</div>
+            <div class="lf lf-3">T3</div>
+          </div>
+          <div class="sp-card-mid"><b>03 tiers</b><span>Flat, raised, floating. Shadow is a layer, not a style.</span></div>
+          <div class="sp-card-foot"><code>--sh-1 · --sh-2 · --sh-3</code><span>one light</span></div>
+        </article>
+      </div>
+
+      <div class="stage-spec">
+        <span>Lattice <b>4px</b></span>
+        <span>Steps <b>10</b></span>
+        <span>Corners <b>07</b></span>
+        <span>Shape <b>Squircle</b></span>
+        <span>Lifts <b>03</b></span>
+        <span>Grid <b>12</b></span>
+        <span>Wrap <b>80rem</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Chapter contents">
+    <div class="ruler-in">
+      <a href="#lattice" class="active" aria-current="true"><span class="n">3.1</span>Lattice</a>
+      <a href="#density"><span class="n">3.2</span>Density</a>
+      <a href="#corner"><span class="n">3.3</span>Corner</a>
+      <a href="#lift"><span class="n">3.4</span>Lift</a>
+      <a href="#grid"><span class="n">3.5</span>Grid</a>
+      <a href="#rhythm"><span class="n">3.6</span>Rhythm</a>
+      <a href="#contract"><span class="n">3.7</span>Contract</a>
+      <a href="#build"><span class="n">3.8</span>Build</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+    <!-- 3.1 LATTICE -->
+    <section class="chapter" id="lattice" aria-labelledby="h-lattice">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.1</div>
+        <div>
+          <p class="ch-kicker">Space · scale · arithmetic</p>
+          <h2 class="t-h2" id="h-lattice">One lattice. <em>No in-betweens.</em></h2>
+          <p class="t-lede">Ten steps on a four-pixel base. The lower half builds controls; the upper half composes pages. A value between steps is not a refinement — it is a second system.</p>
+        </div>
+        <div class="folio">Lattice · 01 / 08</div>
+      </header>
+
+      <div class="space-split">
+        <div class="ladder-board board">
+          <div class="ladder-top">
+            <span class="board-label">The scale · px</span>
+            <span class="ladder-note">4px lattice · rem native</span>
+          </div>
+          <div class="ladder-rows" role="list" aria-label="Spacing scale">
+            <div class="ladder-row lane-optical" role="listitem" style="--w:2.083%">
+              <code>--sp-h</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">2</span><span class="lr-use">Optical nudge · chips</span>
+            </div>
+            <div class="ladder-row lane-control" role="listitem" style="--w:4.167%">
+              <code>--sp-1</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">4</span><span class="lr-use">Icon ↔ label</span>
+            </div>
+            <div class="ladder-row lane-control" role="listitem" style="--w:8.333%">
+              <code>--sp-2</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">8</span><span class="lr-use">Control interior · rows</span>
+            </div>
+            <div class="ladder-row lane-control" role="listitem" style="--w:12.5%">
+              <code>--sp-3</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">12</span><span class="lr-use">Compact padding</span>
+            </div>
+            <div class="ladder-row lane-control" role="listitem" style="--w:16.667%">
+              <code>--sp-4</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">16</span><span class="lr-use">Card padding</span>
+            </div>
+            <div class="ladder-row lane-compose" role="listitem" style="--w:25%">
+              <code>--sp-5</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">24</span><span class="lr-use">Group gap · panel</span>
+            </div>
+            <div class="ladder-row lane-compose" role="listitem" style="--w:33.333%">
+              <code>--sp-6</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">32</span><span class="lr-use">Block gap · dialog</span>
+            </div>
+            <div class="ladder-row lane-compose" role="listitem" style="--w:50%">
+              <code>--sp-7</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">48</span><span class="lr-use">Section gap · compact</span>
+            </div>
+            <div class="ladder-row lane-compose" role="listitem" style="--w:66.667%">
+              <code>--sp-8</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">64</span><span class="lr-use">Section gap · desktop</span>
+            </div>
+            <div class="ladder-row lane-compose" role="listitem" style="--w:100%">
+              <code>--sp-9</code><span class="lr-bar" aria-hidden="true"><i></i></span><span class="lr-px">96</span><span class="lr-use">Chapter break · hero</span>
+            </div>
+          </div>
+          <div class="ladder-lanes">
+            <span class="lane-key lane-optical"><i aria-hidden="true"></i>Optical · 2</span>
+            <span class="lane-key lane-control"><i aria-hidden="true"></i>Control lane · 4–16</span>
+            <span class="lane-key lane-compose"><i aria-hidden="true"></i>Composition lane · 24–96</span>
+            <p>No 10 · 14 · 18 · 20 · 28 · 36 · 40 · 56 · 72.</p>
+          </div>
+        </div>
+
+        <aside class="prox-board board" aria-labelledby="prox-title">
+          <span class="board-label">Proximity</span>
+          <p class="prox-title" id="prox-title">Space groups before a line explains.</p>
+          <div class="prox-demo" aria-hidden="true">
+            <div class="px-pair"><i class="px-line"></i><i class="px-line short"></i></div>
+            <div class="px-gap" style="--h:var(--sp-1)"><span>4</span></div>
+            <div class="px-pair"><i class="px-line"></i><i class="px-line short"></i></div>
+            <div class="px-gap" style="--h:var(--sp-2)"><span>8</span></div>
+            <div class="px-pair"><i class="px-line"></i><i class="px-line short"></i></div>
+            <div class="px-gap" style="--h:var(--sp-5)"><span>24</span></div>
+            <div class="px-pair"><i class="px-line"></i><i class="px-line short"></i></div>
+            <div class="px-gap" style="--h:var(--sp-7)"><span>48</span></div>
+            <div class="px-pair"><i class="px-line"></i><i class="px-line short"></i></div>
+          </div>
+          <ul class="prox-list">
+            <li><b>4</b> — label to value, inside one row.</li>
+            <li><b>8</b> — row to row, inside one group.</li>
+            <li><b>24</b> — group to group, inside one block.</li>
+            <li><b>48</b> — block to block, inside one section.</li>
+          </ul>
+        </aside>
+      </div>
+
+      <p class="section-cap"><b>Rem-native by design.</b> The scale grows with text size because every step is expressed in rem. At 200% the lattice is still the lattice; only the page gets longer.</p>
+
+      <div class="rules-grid">
+        <div class="rule"><span class="n">01</span><div><h3>Only these ten.</h3><p>A new gap is a new token request, not a local decision. Raw px never ships in layout.</p></div></div>
+        <div class="rule"><span class="n">02</span><div><h3>Two lanes, one scale.</h3><p>Control spacing lives inside a component. Composition spacing lives between components. Never swap the lanes.</p></div></div>
+        <div class="rule"><span class="n">03</span><div><h3>Space groups; lines separate.</h3><p>Reach for the next step before reaching for a border. One divider per group, maximum.</p></div></div>
+        <div class="rule"><span class="n">04</span><div><h3>Rhythm is vertical, too.</h3><p>Margins and gaps come from the same ten steps. A horizontal system with arbitrary vertical air is not a system.</p></div></div>
+      </div>
+    </section>
+
+    <!-- 3.2 DENSITY -->
+    <section class="chapter" id="density" aria-labelledby="h-density">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.2</div>
+        <div>
+          <p class="ch-kicker">Space · tempo · cognitive load</p>
+          <h2 class="t-h2" id="h-density">Compact instruments. <em>Airy reading.</em></h2>
+          <p class="t-lede">Density is a property of the zone, not the screen. Controls tighten to 4–12; reading opens to 24–32; page composition holds 64–96. One scale, two tempos.</p>
+        </div>
+        <div class="folio">Density · 02 / 08</div>
+      </header>
+
+      <div class="density-board board">
+        <div class="density-head">
+          <div class="density-title">
+            <span class="board-label">Live specimen · turn card</span>
+            <p>Same component, two tempos. Only the lattice steps move.</p>
+          </div>
+          <div class="seg" role="group" aria-label="Density">
+            <button type="button" data-density-set="instrument" aria-pressed="true">Instrument</button>
+            <button type="button" data-density-set="reading" aria-pressed="false">Reading</button>
+          </div>
+        </div>
+        <div class="density-grid" data-density="instrument" id="density-demo">
+          <div class="density-stage">
+            <div class="dd-card">
+              <div class="dd-top"><span class="live-dot" aria-hidden="true"></span>Turn 04 · Stream<code>00:04:38</code></div>
+              <h3 class="dd-heading">Close September <em>in one pass.</em></h3>
+              <div class="dd-rows">
+                <div class="dd-row"><span>Ledger · main</span><span class="num">142.2k</span></div>
+                <div class="dd-row"><span>Receipts</span><span class="num">03 / 03</span></div>
+                <div class="dd-row"><span>Open items</span><span class="num">02</span></div>
+              </div>
+              <div class="dd-foot">
+                <span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span>
+                <span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span>
+                <span class="dd-link">Receipt →</span>
+              </div>
+            </div>
+          </div>
+          <div class="density-notes">
+            <div class="dn-row"><code>--sp-3 / --sp-5</code><span>card padding</span><b data-bind="pad">12</b></div>
+            <div class="dn-row"><code>--sp-2 / --sp-3</code><span>row gap</span><b data-bind="row">8</b></div>
+            <div class="dn-row"><code>--sp-4 / --sp-5</code><span>block gap</span><b data-bind="block">16</b></div>
+            <p class="dn-note">Line, radius and type never change with density. If the type moves, it is a different component.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="density-rules">
+        <div class="dr"><b>Instrument zones</b><span>Rail, inspector, tables, turn rows. Use <code>4–12</code>.</span></div>
+        <div class="dr"><b>Reading zones</b><span>Thread, lede, prose, empty states. Use <code>24–32</code>.</span></div>
+        <div class="dr"><b>Composition</b><span>Page sections and chapter breaks. Use <code>64–96</code>.</span></div>
+        <div class="dr"><b>Never mix</b><span>One group keeps one tempo. Density is not a responsive afterthought.</span></div>
+      </div>
+    </section>
+
+    <!-- 3.3 CORNER -->
+    <section class="chapter" id="corner" aria-labelledby="h-corner">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.3</div>
+        <div>
+          <p class="ch-kicker">Form · corner · superellipse</p>
+          <h2 class="t-h2" id="h-corner">Five surfaces. <em>One continuous curve.</em></h2>
+          <p class="t-lede">A corner is not a quarter-circle. Five rectangular surfaces share one continuous geometry — a superellipse. The shape travels through the border, the shadow and the focus halo; the 3px data mark and the capsule stay round on purpose.</p>
+        </div>
+        <div class="folio">Corner · 03 / 08</div>
+      </header>
+
+      <div class="corner-compare board">
+        <div class="corner-compare-head">
+          <div>
+            <span class="board-label">Corner character · magnified 44px</span>
+            <h3 class="corner-compare-title">Same radius. <em>Different curve.</em></h3>
+          </div>
+          <span class="corner-support" id="corner-support" aria-live="polite"><b>Native</b> squircle · Chromium</span>
+        </div>
+        <div class="corner-compare-body">
+          <div class="corner-study">
+            <div class="corner-vs">
+              <figure class="cv-side">
+                <div class="cv-tile cv-round" aria-hidden="true"><span>Round</span><span class="cv-tag is-muted">Baseline</span></div>
+                <figcaption class="cv-meta">
+                  <b>Circular arc</b>
+                  <code>corner-shape: round</code>
+                  <span>Curvature jumps where the arc meets the straight edge.</span>
+                </figcaption>
+              </figure>
+              <figure class="cv-side">
+                <div class="cv-tile cv-squircle" aria-hidden="true"><span id="cv-squircle-label">Squircle</span><span class="cv-tag" id="cv-squircle-tag">Recommended</span></div>
+                <figcaption class="cv-meta">
+                  <b id="cv-squircle-title">Continuous curve</b>
+                  <code id="cv-squircle-code">corner-shape: squircle</code>
+                  <span id="cv-squircle-copy">The change in curvature is spread across the corner, not concentrated at the join.</span>
+                </figcaption>
+              </figure>
+            </div>
+            <p class="corner-note">44px is a magnified study. In product the ladder runs 6–30; the difference is legible first on 22–30.</p>
+          </div>
+          <div class="why-strip">
+            <div class="why">
+              <span class="why-n">Math</span>
+              <b>A superellipse</b>
+              <p><code>squircle</code> is <code>superellipse(2)</code>; <code>round</code> is <code>superellipse(1)</code>. One curve replaces the arc and spreads the change in curvature across the corner.</p>
+            </div>
+            <div class="why">
+              <span class="why-n">Physics</span>
+              <b>Stress and light</b>
+              <p>A hard curvature change concentrates stress in a material and breaks the run of a specular highlight. A continuous fillet spreads both.</p>
+            </div>
+            <div class="why">
+              <span class="why-n">Psychology</span>
+              <b>Contour bias</b>
+              <p>The eye is a contour detector. Curved boundaries are processed faster and, on average, rated more pleasant; the rectangle keeps order, the curve removes threat.</p>
+            </div>
+            <div class="why">
+              <span class="why-n">Human nature</span>
+              <b>Calm authority</b>
+              <p>Sharp corners raise alertness. Capsules read as friendly, circles as human. The squircle sits between: precise, but never tense.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="corner-toolbar">
+        <div>
+          <span class="board-label">Live ladder</span>
+          <p class="corner-toolbar-note">Toggle the shape. Radius, spacing and light never move.</p>
+        </div>
+        <div class="seg" role="group" aria-label="Corner shape">
+          <button type="button" data-corner-set="round" aria-pressed="false">Round</button>
+          <button type="button" data-corner-set="squircle" aria-pressed="true">Squircle</button>
+        </div>
+      </div>
+
+      <div class="corner-demo" id="corner-demo" data-corner="squircle">
+        <div class="radius-board" aria-label="Radius ladder">
+          <div class="radius-cell">
+            <div class="rc-shape rc-mark" style="--rr:var(--r-mark)" aria-hidden="true"></div>
+            <div class="rc-meta"><code>--r-mark</code><b>3</b><span>Data marks · round</span></div>
+          </div>
+          <div class="radius-cell">
+            <div class="rc-shape" style="--rr:var(--r-xs)" aria-hidden="true"></div>
+            <div class="rc-meta"><code>--r-xs</code><b>6</b><span>Badges · swatches</span></div>
+          </div>
+          <div class="radius-cell">
+            <div class="rc-shape" style="--rr:var(--r-sm)" aria-hidden="true"></div>
+            <div class="rc-meta"><code>--r-sm</code><b>10</b><span>Inputs · menu rows</span></div>
+          </div>
+          <div class="radius-cell">
+            <div class="rc-shape" style="--rr:var(--r)" aria-hidden="true"></div>
+            <div class="rc-meta"><code>--r</code><b>14</b><span>Cards · popovers</span></div>
+          </div>
+          <div class="radius-cell">
+            <div class="rc-shape" style="--rr:var(--r-lg)" aria-hidden="true"></div>
+            <div class="rc-meta"><code>--r-lg</code><b>22</b><span>Panels · boards</span></div>
+          </div>
+          <div class="radius-cell">
+            <div class="rc-shape" style="--rr:var(--r-xl)" aria-hidden="true"></div>
+            <div class="rc-meta"><code>--r-xl</code><b>30</b><span>Stage · overlays</span></div>
+          </div>
+          <div class="radius-cell">
+            <div class="rc-shape rc-pill" style="--rr:var(--r-pill)" aria-hidden="true"></div>
+            <div class="rc-meta"><code>--r-pill</code><b>999</b><span>Capsules · round</span></div>
+          </div>
+        </div>
+
+        <div class="concentric-grid">
+          <div class="concentric-card board">
+            <div class="concentric-head"><span class="board-label">Concentric · correct</span><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Parallel</span></div>
+            <div class="concentric-demo" aria-hidden="true">
+              <div class="cc-outer">
+                <span class="cc-label">22</span>
+                <div class="cc-inner"><span class="cc-label">14</span><div class="cc-chip"></div></div>
+              </div>
+            </div>
+            <p class="cc-formula">outer 22 − inset 8 = inner 14 · same curve</p>
+          </div>
+          <div class="concentric-card board">
+            <div class="concentric-head"><span class="board-label">Shared corner · wrong</span><span class="chip chip-bad"><span class="g" aria-hidden="true">✕</span>Pinched</span></div>
+            <div class="concentric-demo" aria-hidden="true">
+              <div class="cc-outer cc-wrong">
+                <span class="cc-label">22</span>
+                <div class="cc-inner"><span class="cc-label">22</span><div class="cc-chip"></div></div>
+              </div>
+            </div>
+            <p class="cc-formula">same radius inside an inset pinches the gap</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="radius-notes">
+        <div class="rn-col">
+          <span class="board-label">Rules</span>
+          <ul class="checklist">
+            <li><span class="g" aria-hidden="true">✓</span><span><b>One radius per component.</b> Never mix a 22 shell with a 10 row and a 6 chip inside it.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span><b>Concentric when nested.</b> Subtract the inset; both surfaces share the same corner shape.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span><b>Top-only for anchored tabs.</b> A tab sits on the edge; its bottom corners belong to the panel.</span></li>
+          </ul>
+        </div>
+        <div class="rn-col">
+          <span class="board-label">Reserved shapes</span>
+          <ul class="checklist">
+            <li><span class="g" aria-hidden="true">✓</span><span><b>Circles stay circles.</b> People and live state are never squircled.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span><b>Capsules stay capsules.</b> Status, switches and segmented controls use the pill radius.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span><b>Data marks stay round.</b> Charts and ticks use <code>--r-mark</code> and <code>--corner-mark</code>.</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3.4 LIFT -->
+    <section class="chapter" id="lift" aria-labelledby="h-lift">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.4</div>
+        <div>
+          <p class="ch-kicker">Form · light · optics</p>
+          <h2 class="t-h2" id="h-lift">Three lifts. <em>One light.</em></h2>
+          <p class="t-lede">Shadow is a response to overlap. If a surface does not float, it does not cast. One light above and slightly front; hairline borders carry everything that stays in flow.</p>
+        </div>
+        <div class="folio">Lift · 04 / 08</div>
+      </header>
+
+      <div class="lift-board board">
+        <div class="lift-scene" aria-label="Elevation layers">
+          <div class="ls-floor" aria-hidden="true"><span>Tier 0 · page · hairline only</span><span>No shadow without overlap</span></div>
+          <div class="ls-card">
+            <div class="ls-card-head"><span class="ls-tag">T1 · sh-1</span><span class="live-dot" aria-hidden="true"></span></div>
+            <div class="ls-card-title">September close</div>
+            <div class="ls-row"><span>Receipts</span><b>03 / 03</b></div>
+            <div class="ls-row"><span>Open</span><b>02</b></div>
+          </div>
+          <div class="ls-pop">
+            <span class="ls-tag">T2 · sh-2</span>
+            <div class="ls-pop-head">Actions</div>
+            <div class="ls-pop-row">Review receipt</div>
+            <div class="ls-pop-row">Assign owner</div>
+            <div class="ls-pop-row">Export</div>
+          </div>
+          <div class="ls-dialog">
+            <div class="ls-dialog-head"><span class="ls-tag">T3 · sh-3</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span></span></div>
+            <div class="ls-dialog-head"><b>Confirm close</b></div>
+            <p>Two items remain open. Close the period anyway?</p>
+            <div class="ls-dialog-actions"><span class="ls-btn">Cancel</span><span class="ls-btn primary">Close</span></div>
+          </div>
+        </div>
+        <div class="lift-legend">
+          <div class="ll-row"><span class="ll-tier">T0</span><code>--line</code><span>Page, table, in-flow panel</span></div>
+          <div class="ll-row"><span class="ll-tier">T1</span><code>--sh-1</code><span>Resting card, topbar, chip</span></div>
+          <div class="ll-row"><span class="ll-tier">T2</span><code>--sh-2</code><span>Popover, menu, hover lift</span></div>
+          <div class="ll-row"><span class="ll-tier">T3</span><code>--sh-3</code><span>Dialog, sheet, command palette</span></div>
+          <div class="ll-row"><span class="ll-tier">Press</span><code>--key</code><span>Controls; one pixel of travel</span></div>
+          <div class="ll-row"><span class="ll-tier">Focus</span><code>--focus</code><span>One 4px signal halo, never stacked</span></div>
+          <div class="ll-live">
+            <button class="btn" type="button">Press me</button>
+            <input class="ll-input" type="text" value="Focus me" aria-label="Focus sample">
+          </div>
+        </div>
+      </div>
+
+      <div class="rules-grid">
+        <div class="rule"><span class="n">01</span><div><h3>If it doesn't overlap, it doesn't cast.</h3><p>In-flow panels use a hairline and a tonal surface. Shadow is reserved for layers that actually sit above the page.</p></div></div>
+        <div class="rule"><span class="n">02</span><div><h3>Border and shadow travel together.</h3><p>A shadow never replaces a border. The hairline holds the edge; the shadow describes the distance.</p></div></div>
+        <div class="rule"><span class="n">03</span><div><h3>Two raised levels, maximum.</h3><p>A card inside a panel inside a dialog is a box in a box. The third level becomes a well or a line.</p></div></div>
+        <div class="rule"><span class="n">04</span><div><h3>Only the signal may glow.</h3><p>No coloured shadows. Focus, live state and the primary action are the only elements allowed to cast in blue.</p></div></div>
+      </div>
+    </section>
+
+    <!-- 3.5 GRID -->
+    <section class="chapter" id="grid" aria-labelledby="h-grid">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.5</div>
+        <div>
+          <p class="ch-kicker">Layout · grid · divisibility</p>
+          <h2 class="t-h2" id="h-grid">Twelve columns. <em>Three states.</em></h2>
+          <p class="t-lede">Twelve divides by 2, 3, 4 and 6, so the grid can split without fractions. Wide uses twelve columns with 24px gaps; medium eight with 16; compact four with 12. The grid steps with the text size, and components must survive the spaces in between.</p>
+        </div>
+        <div class="folio">Grid · 05 / 08</div>
+      </header>
+
+      <div class="grid-board board">
+        <div class="grid-head">
+          <div>
+            <span class="board-label">Layout grid</span>
+            <p class="grid-title">Column states</p>
+          </div>
+          <div class="seg" role="group" aria-label="Grid state">
+            <button type="button" data-grid-set="wide" aria-pressed="true">Wide</button>
+            <button type="button" data-grid-set="medium" aria-pressed="false">Medium</button>
+            <button type="button" data-grid-set="compact" aria-pressed="false">Compact</button>
+          </div>
+        </div>
+        <div class="grid-stage" data-grid-state="wide" id="grid-demo">
+          <div class="grid-cols" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <div class="grid-skeleton" aria-hidden="true">
+            <div class="gs-head"></div>
+            <div class="gs-main"><span data-bind="main-label">8 col · main</span></div>
+            <div class="gs-rail"><span data-bind="rail-label">4 col · rail</span></div>
+          </div>
+          <div class="grid-readout" aria-live="polite">
+            <span><b data-bind="cols">12</b> columns</span>
+            <span><b data-bind="gap">24</b> gap</span>
+            <span><b>80</b> rem wrap</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="shell-board board">
+        <div class="shell-top">
+          <span class="board-label">Application shell</span>
+          <span class="shell-meta">topbar 56 · rail 232 · thread 740 · inspector 360</span>
+          <span class="shell-hint" aria-hidden="true">swipe →</span>
+        </div>
+        <div class="shell-scroll">
+          <div class="shell-frame" role="img" aria-label="Application shell diagram: topbar 56, rail 232, thread 740, inspector 360">
+            <div class="sf-topbar"><span>Topbar <b>56</b></span><span>Truex · main</span><span>⌘K</span></div>
+            <div class="sf-body">
+              <div class="sf-rail">
+                <div class="sf-nav is-live"><i></i>Threads</div>
+                <div class="sf-nav"><i></i>Agents</div>
+                <div class="sf-nav"><i></i>Ledgers</div>
+                <div class="sf-nav"><i></i>Receipts</div>
+                <div class="sf-nav"><i></i>Rail <b>232</b></div>
+              </div>
+              <div class="sf-thread">
+                <div class="sf-turn">User · turn 03</div>
+                <div class="sf-turn reply">Agent · turn 04
+                  <div class="sf-lines"><i></i><i></i><i></i></div>
+                </div>
+                <div class="sf-composer"><span>Message the agent…</span><span>⌘↵</span></div>
+              </div>
+              <div class="sf-pane">
+                <div class="sf-pane-head"><span>Inspector</span><b>360</b></div>
+                <div class="sf-meter"><div class="m hot"><i style="--v:72%"></i></div><div class="m"><i style="--v:46%"></i></div><div class="m"><i style="--v:88%"></i></div></div>
+                <p class="sf-pane-note">Receipts 03 / 03<br>Tokens 142.2k<br>Latency 1.8s</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="metric-table" role="table" aria-label="Layout metrics">
+        <div class="mt-row" role="row"><span role="columnheader">Token</span><span role="columnheader">Value</span><span role="columnheader">Use</span></div>
+        <div class="mt-row" role="row"><code>--wrap</code><b>80rem</b><span>Document and stage content width</span></div>
+        <div class="mt-row" role="row"><code>--gutter</code><b>20–48</b><span>Fluid page inset, clamp(1.25rem, 4vw, 3rem)</span></div>
+        <div class="mt-row" role="row"><code>--topbar</code><b>3.5rem</b><span>Application header and sticky offset</span></div>
+        <div class="mt-row" role="row"><code>--rail</code><b>14.5rem</b><span>Navigation rail · 232px</span></div>
+        <div class="mt-row" role="row"><code>--rail-collapsed</code><b>4rem</b><span>Icon rail · 64px</span></div>
+        <div class="mt-row" role="row"><code>--thread</code><b>46.25rem</b><span>Conversation measure · 740px</span></div>
+        <div class="mt-row" role="row"><code>--inspector</code><b>22.5rem</b><span>Activity panel · 360px</span></div>
+        <div class="mt-row" role="row"><code>--overlay</code><b>57.5rem</b><span>Work dialog · 920px</span></div>
+        <div class="mt-row" role="row"><code>--palette</code><b>33.75rem</b><span>Command palette · 540px</span></div>
+      </div>
+
+      <div class="break-strip">
+        <div class="bp"><b>40rem</b><span>Compact · 4 columns · 640px</span><i style="--w:33%" aria-hidden="true"></i></div>
+        <div class="bp"><b>56rem</b><span>Medium · 8 columns · 896px</span><i style="--w:66%" aria-hidden="true"></i></div>
+        <div class="bp"><b>72rem</b><span>Wide · 12 columns · 1152px</span><i style="--w:100%" aria-hidden="true"></i></div>
+      </div>
+      <p class="section-cap"><b>Fluid first.</b> Breakpoints change structure, never spacing values. A component that only works at a breakpoint is not responsive; it is conditional.</p>
+    </section>
+
+    <!-- 3.6 RHYTHM -->
+    <section class="chapter" id="rhythm" aria-labelledby="h-rhythm">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.6</div>
+        <div>
+          <p class="ch-kicker">Layout · score · chunking</p>
+          <h2 class="t-h2" id="h-rhythm">Space is the <em>score.</em></h2>
+          <p class="t-lede">A page reads as stanzas, not a list of cards. Sections breathe at 64–96, blocks at 32–64, groups at 24–32, items at 8–12. The eye chunks by proximity; the spacing should make the next thought wait.</p>
+        </div>
+        <div class="folio">Rhythm · 06 / 08</div>
+      </header>
+
+      <div class="score-board board">
+        <div class="score-copy">
+          <span class="t-micro">Chapter head</span>
+          <h3 class="t-h3">A page is a sequence of <em>stanzas.</em></h3>
+          <p class="t-body">Headings sit eight above their copy. Copy sits twenty-four above the next block. Blocks sit forty-eight apart; sections ninety-six. The spacing does the work a divider would otherwise pretend to do.</p>
+          <div class="score-actions"><span class="chip chip-signal">Signal</span><span class="chip">Neutral</span><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span></div>
+        </div>
+        <div class="score-ruler">
+          <div class="sr-row"><span>eyebrow → title</span><b>8</b></div>
+          <div class="sr-row"><span>title → copy</span><b>12</b></div>
+          <div class="sr-row"><span>copy → actions</span><b>24</b></div>
+          <div class="sr-row"><span>block → block</span><b>48</b></div>
+          <div class="sr-row"><span>section → section</span><b>96</b></div>
+        </div>
+      </div>
+
+      <div class="container-board board">
+        <div class="cb-row"><span class="cb-label">Full bleed</span><i class="cb-bar stage" aria-hidden="true"></i><b>∞</b></div>
+        <div class="cb-row"><span class="cb-label">Page wrap</span><i class="cb-bar wrap" aria-hidden="true"></i><b>80rem</b></div>
+        <div class="cb-row"><span class="cb-label">Chapter rail</span><i class="cb-bar rail" aria-hidden="true"></i><b>4.5rem</b></div>
+        <div class="cb-row"><span class="cb-label">Measure</span><i class="cb-bar measure" aria-hidden="true"></i><b>42rem</b></div>
+      </div>
+
+      <div class="rules-grid">
+        <div class="rule"><span class="n">01</span><div><h3>One idea per stanza.</h3><p>If a section needs two focal points, it is two sections. Split the thought before shrinking the air.</p></div></div>
+        <div class="rule"><span class="n">02</span><div><h3>Section gaps are not component gaps.</h3><p>Sixty-four to ninety-six between sections; twenty-four to thirty-two inside a group. Mixing the two flattens the page.</p></div></div>
+        <div class="rule"><span class="n">03</span><div><h3>Use gap, not margins.</h3><p>Gaps never collapse and never surprise. Margins are reserved for text defaults owned by type.css.</p></div></div>
+        <div class="rule"><span class="n">04</span><div><h3>Respect the fold as a stanza.</h3><p>The first viewport carries one complete thought: stage, claim and a reason to continue. Not three half-thoughts.</p></div></div>
+      </div>
+    </section>
+
+    <!-- 3.7 CONTRACT -->
+    <section class="chapter" id="contract" aria-labelledby="h-contract">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.7</div>
+        <div>
+          <p class="ch-kicker">Aesthetics · contract · fluency</p>
+          <h2 class="t-h2" id="h-contract">Eight rules. <em>A clean instrument.</em></h2>
+          <p class="t-lede">The aesthetic is not a finish applied at the end. It is the result of eight structural decisions made before the first component: what groups, what separates, what lifts and what stays quiet.</p>
+        </div>
+        <div class="folio">Contract · 07 / 08</div>
+      </header>
+
+      <div class="audit-board">
+        <div class="audit-col audit-bad">
+          <div class="audit-head"><span>Over-built</span><span>5 violations</span></div>
+          <div class="audit-demo">
+            <div class="audit-panel">
+              <div class="ap-head"><span class="t-micro">Turn 04</span><span class="live-dot" aria-hidden="true"></span></div>
+              <div class="ap-title">September close</div>
+              <div class="ap-inner">
+                <div class="ap-rows">
+                  <div class="ap-row"><span>Receipts</span><b>03 / 03</b></div>
+                  <div class="ap-row"><span>Open items</span><b>02</b></div>
+                </div>
+                <div class="ap-chart" aria-hidden="true">
+                  <i style="--h:38%"></i><i style="--h:58%"></i><i style="--h:44%"></i><i style="--h:76%"></i><i style="--h:52%"></i>
+                </div>
+              </div>
+              <div class="ap-chips">
+                <span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span>
+                <span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span>
+              </div>
+            </div>
+          </div>
+          <ul class="audit-list">
+            <li><span class="g" aria-hidden="true">✕</span>Three nested containers</li>
+            <li><span class="g" aria-hidden="true">✕</span>Five radii in one panel</li>
+            <li><span class="g" aria-hidden="true">✕</span>Coloured shadow on a static card</li>
+            <li><span class="g" aria-hidden="true">✕</span>7px ad-hoc gaps</li>
+            <li><span class="g" aria-hidden="true">✕</span>Fully rounded chart bars</li>
+          </ul>
+        </div>
+
+        <div class="audit-col audit-good">
+          <div class="audit-head"><span>Truex</span><span>0 violations</span></div>
+          <div class="audit-demo">
+            <div class="audit-panel">
+              <div class="ap-head"><span class="t-micro">Turn 04</span><span class="live-dot" aria-hidden="true"></span></div>
+              <div class="ap-title">September close</div>
+              <div class="ap-rows">
+                <div class="ap-row"><span>Receipts</span><b>03 / 03</b></div>
+                <div class="ap-row"><span>Open items</span><b>02</b></div>
+              </div>
+              <div class="ap-chart" aria-hidden="true">
+                <i style="--h:38%"></i><i style="--h:58%"></i><i style="--h:44%"></i><i style="--h:76%"></i><i style="--h:52%"></i>
+              </div>
+              <div class="ap-chips">
+                <span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span>
+                <span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span>
+              </div>
+            </div>
+          </div>
+          <ul class="audit-list">
+            <li><span class="g" aria-hidden="true">✓</span>One container, one hairline</li>
+            <li><span class="g" aria-hidden="true">✓</span>Radius and corner follow elevation</li>
+            <li><span class="g" aria-hidden="true">✓</span>One tier-1 lift, neutral ink</li>
+            <li><span class="g" aria-hidden="true">✓</span>8px lattice only</li>
+            <li><span class="g" aria-hidden="true">✓</span>3px round mark</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rules-grid">
+        <div class="rule"><span class="n">01</span><div><h3>Hairline first.</h3><p>Structure with one-pixel lines and tonal surfaces. Shadow only appears when a surface leaves the page.</p></div></div>
+        <div class="rule"><span class="n">02</span><div><h3>Space groups, lines separate.</h3><p>Proximity is the primary divider. A border is the fallback when space cannot do the job.</p></div></div>
+        <div class="rule"><span class="n">03</span><div><h3>One focal point per screen.</h3><p>One claim, one live object, one action. Everything else is chassis and should read as chassis.</p></div></div>
+        <div class="rule"><span class="n">04</span><div><h3>Shadow means overlap.</h3><p>If two surfaces are not layered, neither casts. Elevation is a fact about the interface, not a mood.</p></div></div>
+        <div class="rule"><span class="n">05</span><div><h3>No boxes inside boxes.</h3><p>Two levels of container, maximum. The third becomes a well, a line or nothing at all.</p></div></div>
+        <div class="rule"><span class="n">06</span><div><h3>Density follows function.</h3><p>Instruments tighten; reading opens. Density is decided by the work the zone does, not by the viewport.</p></div></div>
+        <div class="rule"><span class="n">07</span><div><h3>Optical beats mathematical.</h3><p>A four-pixel icon gap and a five-pixel pill inset can be correct. The lattice guides; the eye signs off.</p></div></div>
+        <div class="rule"><span class="n">08</span><div><h3>Nothing decorates without meaning.</h3><p>A dot is live. A hatch is estimated. A grid is a canvas. If a mark carries no state, it is noise.</p></div></div>
+      </div>
+    </section>
+
+    <!-- 3.8 BUILD -->
+    <section class="chapter" id="build" aria-labelledby="h-build">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">3.8</div>
+        <div>
+          <p class="ch-kicker">Build · the file</p>
+          <h2 class="t-h2" id="h-build">One file. <em>No raw pixels.</em></h2>
+          <p class="t-lede">The chapter ships as <code>space.css</code>: the lattice, the continuous corner, the three lifts and the shell metrics. Product code consumes tokens; it never authors a new gap, corner or shadow.</p>
+        </div>
+        <div class="folio">Build · 08 / 08</div>
+      </header>
+
+      <div class="impl-grid space-impl">
+        <div class="impl-copy">
+          <p><b>Spacing is a token, not a judgement.</b> If a layout needs a value between steps, the composition is wrong. Reach for a different step or a different structure.</p>
+          <p><b>Elevation lives with space.</b> Shadows moved out of <code>color.css</code> because they describe distance, not hue. The dark overrides sit in the same file; components only name the tier.</p>
+          <p><b>The shell is measured.</b> Rail, thread, inspector and overlay are tokens, not numbers repeated in three stylesheets. The page grid follows the text size.</p>
+          <p><b>Shape is a variable.</b> Radius sets size; <code>--corner-surface</code> sets character. Chromium renders <code>corner-shape</code> natively; Safari and Firefox keep the round fallback without changing layout.</p>
+
+          <div class="role-index" aria-label="Spatial token groups">
+            <div class="role-chip"><code>--sp-h … --sp-9</code><span>10</span></div>
+            <div class="role-chip"><code>--r-mark … --r-pill</code><span>07</span></div>
+            <div class="role-chip"><code>--corner-surface · --corner-mark</code><span>02</span></div>
+            <div class="role-chip"><code>--sh-1 … --sh-3</code><span>03</span></div>
+            <div class="role-chip"><code>--key · --focus</code><span>02</span></div>
+            <div class="role-chip"><code>--wrap · --gutter</code><span>02</span></div>
+            <div class="role-chip"><code>--rail … --palette</code><span>06</span></div>
+          </div>
+
+          <ul class="checklist">
+            <li><span class="g" aria-hidden="true">✓</span><span>Every gap uses a <code>--sp-*</code> step; no raw px in layout.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Rectangular surfaces set <code>corner-shape: var(--corner-surface)</code>.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Charts, circles and capsules keep <code>round</code>.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Every shadow uses <code>--sh-1/2/3</code>; no author-time box-shadow.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Nested corners subtract the inset and share the shape.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Overlays are tier 3; in-flow panels are flat or tier 1.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Layouts survive 150% and 200% text size.</span></li>
+          </ul>
+        </div>
+
+        <div class="impl-code">
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              system/space.css · tokens
+              <button class="copy" type="button" data-copy="#code-space-tokens" aria-label="Copy space tokens CSS">Copy</button>
+            </div>
+            <pre class="code" id="code-space-tokens"><code><span class="c">/* space · one lattice, two lanes */</span>
+<span class="p">--sp-h</span>: <span class="n">0.125rem</span>;   <span class="c">/*  2 · optical */</span>
+<span class="p">--sp-1</span>: <span class="n">0.25rem</span>;    <span class="c">/*  4 */</span>
+<span class="p">--sp-2</span>: <span class="n">0.5rem</span>;     <span class="c">/*  8 */</span>
+<span class="p">--sp-3</span>: <span class="n">0.75rem</span>;    <span class="c">/* 12 */</span>
+<span class="p">--sp-4</span>: <span class="n">1rem</span>;       <span class="c">/* 16 */</span>
+<span class="p">--sp-5</span>: <span class="n">1.5rem</span>;     <span class="c">/* 24 */</span>
+<span class="p">--sp-6</span>: <span class="n">2rem</span>;       <span class="c">/* 32 */</span>
+<span class="p">--sp-7</span>: <span class="n">3rem</span>;       <span class="c">/* 48 */</span>
+<span class="p">--sp-8</span>: <span class="n">4rem</span>;       <span class="c">/* 64 */</span>
+<span class="p">--sp-9</span>: <span class="n">6rem</span>;       <span class="c">/* 96 */</span>
+
+<span class="c">/* radius · six surfaces plus one mark */</span>
+<span class="p">--r-mark</span>: <span class="n">3px</span>;  <span class="p">--r-xs</span>: <span class="n">6px</span>;
+<span class="p">--r-sm</span>: <span class="n">10px</span>; <span class="p">--r</span>: <span class="n">14px</span>;
+<span class="p">--r-lg</span>: <span class="n">22px</span>; <span class="p">--r-xl</span>: <span class="n">30px</span>;
+<span class="p">--r-pill</span>: <span class="n">999px</span>;
+
+<span class="c">/* corner character · continuous, not circular */</span>
+<span class="p">--corner-surface</span>: <span class="n">squircle</span>;
+<span class="p">--corner-mark</span>: <span class="n">round</span>;
+
+<span class="c">/* layout · fixed metrics */</span>
+<span class="p">--wrap</span>: <span class="n">80rem</span>;      <span class="p">--gutter</span>: <span class="k">clamp</span>(<span class="n">1.25rem</span>, <span class="n">4vw</span>, <span class="n">3rem</span>);
+<span class="p">--topbar</span>: <span class="n">3.5rem</span>;    <span class="p">--rail</span>: <span class="n">14.5rem</span>;
+<span class="p">--thread</span>: <span class="n">46.25rem</span>;  <span class="p">--inspector</span>: <span class="n">22.5rem</span>;
+<span class="p">--overlay</span>: <span class="n">57.5rem</span>; <span class="p">--palette</span>: <span class="n">33.75rem</span>;
+
+<span class="c">/* elevation · light, theme override below */</span>
+<span class="p">--sh-1</span>: <span class="n">0 1px 0</span> <span class="n">rgb(255 255 255 / 70%)</span> <span class="k">inset</span>, <span class="n">0 1px 2px</span> <span class="n">rgb(31 42 48 / 5%)</span>;
+<span class="p">--sh-2</span>: <span class="n">0 1px 0</span> <span class="n">rgb(255 255 255 / 80%)</span> <span class="k">inset</span>, <span class="n">0 10px 24px -12px</span> <span class="n">rgb(31 42 48 / 14%)</span>;
+<span class="p">--sh-3</span>: <span class="n">0 1px 2px</span> <span class="n">rgb(31 42 48 / 6%)</span>, <span class="n">0 24px 48px -18px</span> <span class="n">rgb(31 42 48 / 22%)</span>;
+<span class="p">--key</span>: <span class="n">inset 0 -1.5px 0</span> <span class="n">rgb(31 42 48 / 10%)</span>, <span class="n">0 1px 2px</span> <span class="n">rgb(31 42 48 / 8%)</span>;</code></pre>
+          </div>
+
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              component contract
+              <button class="copy" type="button" data-copy="#code-space-use" aria-label="Copy component contract CSS">Copy</button>
+            </div>
+            <pre class="code" id="code-space-use"><code><span class="p">.card</span> {
+  <span class="p">padding</span>: <span class="k">var</span>(<span class="p">--sp-4</span>);
+  <span class="p">border-radius</span>: <span class="k">var</span>(<span class="p">--r</span>);
+  <span class="p">corner-shape</span>: <span class="k">var</span>(<span class="p">--corner-surface</span>);
+  <span class="p">box-shadow</span>: <span class="k">var</span>(<span class="p">--sh-1</span>);
+}
+<span class="p">.panel</span>  { <span class="p">padding</span>: <span class="k">var</span>(<span class="p">--sp-5</span>); <span class="p">border-radius</span>: <span class="k">var</span>(<span class="p">--r-lg</span>); <span class="p">corner-shape</span>: <span class="k">var</span>(<span class="p">--corner-surface</span>); }
+<span class="p">.popover</span> { <span class="p">border-radius</span>: <span class="k">var</span>(<span class="p">--r</span>);  <span class="p">corner-shape</span>: <span class="k">var</span>(<span class="p">--corner-surface</span>); <span class="p">box-shadow</span>: <span class="k">var</span>(<span class="p">--sh-2</span>); }
+<span class="p">.dialog</span>  { <span class="p">border-radius</span>: <span class="k">var</span>(<span class="p">--r-xl</span>); <span class="p">corner-shape</span>: <span class="k">var</span>(<span class="p">--corner-surface</span>); <span class="p">box-shadow</span>: <span class="k">var</span>(<span class="p">--sh-3</span>); }
+<span class="p">.capsule</span> { <span class="p">border-radius</span>: <span class="k">var</span>(<span class="p">--r-pill</span>); } <span class="c">/* stays round */</span>
+
+<span class="p">.shell</span> {
+  <span class="p">display</span>: <span class="k">grid</span>;
+  <span class="p">grid-template-columns</span>:
+    <span class="k">var</span>(<span class="p">--rail</span>) <span class="k">minmax</span>(<span class="n">0</span>, <span class="n">1fr</span>) <span class="k">var</span>(<span class="p">--inspector</span>);
+  <span class="p">gap</span>: <span class="k">var</span>(<span class="p">--sp-5</span>);
+}</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-note">
+        <div class="lock-left">
+          <span class="seal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+          <div><b>Chapter 03 · Space &amp; Form is locked.</b><small>Source · Design System v2.2 (Instrument) · 26 October 2026</small></div>
+        </div>
+        <div class="lock-right">Files · space.css / 03-space.html<br><a href="02-color.html">← Chapter 02 Colour</a><br><a href="04-corners.html">Next · 04 Corners →</a></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Chapter 03 — Space &amp; Form / Locked 26 Oct 2026</span>
+      </div>
+    </div>
+    <p class="foot-serif">Air is a material. <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<script src="space.js"></script>
+</body>
+</html>

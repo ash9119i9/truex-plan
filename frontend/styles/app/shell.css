@@ -1,0 +1,681 @@
+/* Application shell (DESIGN-SPEC 10.1, 11.1–11.3), ported from
+   system/screens/chat.css. Tokens only: no raw colour, spacing, type size,
+   radius or shadow (law 1); study literals are mapped per 19.3. */
+
+/* ── frame ──────────────────────────────────────────────────────────────── */
+html,
+body {
+  height: 100%;
+}
+/* The shell folds by its own room (11.11, law 10). body is the query
+   container, so `@container app` widths in rem follow the text size; it fills
+   the viewport and never scrolls, so fixed layers still cover the window. */
+body {
+  container: app / inline-size;
+  background: var(--page);
+  color: var(--ink);
+  overflow: hidden;
+}
+.cs-shell {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  padding: var(--sp-2);
+  gap: var(--sp-2);
+  background: var(--page);
+  /* side panels reveal like the dock: a long settle in, a quicker ease out */
+  --panel-in: 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  --panel-out: 0.32s cubic-bezier(0.65, 0, 0.35, 1);
+}
+/* In dark the frame is a step above the page, so the rail is not swallowed. */
+html[data-eff-theme="dark"] .cs-shell {
+  background: var(--well);
+}
+
+/* ── sidebar ────────────────────────────────────────────────────────────── */
+.cs-sidebar {
+  width: var(--rail);
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-4) var(--sp-3) var(--sp-3);
+  overflow: hidden;
+}
+/* Closing slides the rail off the left edge at full width, and its gap goes
+   with it, so the stage widens in step. */
+.cs-sidebar.is-open {
+  transition:
+    margin var(--panel-in),
+    opacity var(--panel-in),
+    visibility var(--panel-in);
+}
+.cs-sidebar:not(.is-open) {
+  margin-inline-start: calc((var(--rail) + var(--sp-2)) * -1);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    margin var(--panel-out),
+    opacity var(--panel-out),
+    visibility var(--panel-out);
+}
+.cs-sidebar > * {
+  flex: none;
+}
+.cs-sidebar > .cs-side-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+}
+/* wordmark only, aligned with the text of the rows below */
+.cs-brand {
+  display: flex;
+  align-items: center;
+  min-height: var(--av-md);
+  padding-inline: var(--sp-2);
+  color: var(--ink);
+  text-decoration: none;
+}
+.cs-brand .pt-brand-word {
+  font-size: var(--t-h3);
+}
+.cs-brand:focus-visible {
+  outline: none;
+  border-radius: var(--r-xs);
+  box-shadow: var(--focus);
+}
+.cs-new {
+  width: 100%;
+  height: var(--tx-h);
+  margin-block: var(--sp-4) var(--sp-3);
+  justify-content: flex-start;
+  gap: var(--sp-1);
+  font-size: var(--t-meta);
+}
+.cs-new .tx-kbd {
+  margin-inline-start: auto;
+  background: color-mix(in srgb, var(--on-inv) 12%, transparent);
+  border-color: color-mix(in srgb, var(--on-inv) 26%, transparent);
+  color: inherit;
+  box-shadow: none;
+}
+/* workspace sections · same row rhythm as the chats, with a glyph */
+.cs-side-nav {
+  display: grid;
+  gap: var(--sp-h);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+.cs-nav-item {
+  width: 100%;
+  height: var(--av-md);
+  padding-inline: var(--sp-2);
+  justify-content: flex-start;
+  gap: var(--sp-2);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  text-decoration: none;
+}
+.cs-nav-item .tx-ic {
+  color: var(--ink-3);
+  transition: color var(--tx-d-1) var(--tx-ease);
+}
+.cs-nav-item:hover .tx-ic {
+  color: var(--ink-2);
+}
+.cs-nav-item[aria-current="page"] {
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+.cs-nav-item[aria-current="page"] .tx-ic {
+  color: inherit;
+}
+/* not built yet: stays in place so the map is honest, reads as quiet, no hover */
+.cs-nav-item[aria-disabled="true"] {
+  opacity: 1;
+  color: var(--ink-3);
+  cursor: default;
+}
+.cs-nav-item[aria-disabled="true"]:hover {
+  background: transparent;
+}
+.cs-nav-item[aria-disabled="true"] .tx-ic {
+  color: var(--ink-3);
+  opacity: 0.7;
+}
+.cs-soon {
+  margin-inline-start: auto;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+.cs-side-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  align-content: start;
+  gap: var(--sp-4);
+  padding-top: var(--sp-4);
+  margin-inline: calc(var(--sp-1) * -1);
+  padding-inline: var(--sp-1);
+  scrollbar-width: thin;
+}
+.cs-side-label {
+  padding: 0 var(--sp-2) var(--sp-1);
+  font-size: var(--t-micro);
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.cs-side-note {
+  margin: 0;
+  padding-inline: var(--sp-2);
+  font-size: var(--t-meta);
+  line-height: var(--lh-meta);
+  color: var(--ink-3);
+}
+.cs-session {
+  min-height: var(--av-md);
+  padding-block: var(--sp-1);
+  font-weight: 500;
+}
+.cs-session .pt-session-time {
+  opacity: 0.85;
+}
+.cs-session[data-unread] {
+  font-weight: 700;
+  color: var(--ink);
+}
+.cs-session[aria-current="page"] {
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+.cs-session[aria-current="page"] .pt-session-time {
+  color: inherit;
+  opacity: 0.72;
+}
+.cs-session .pt-session-time .tx-pulse {
+  --tx-c: var(--signal);
+}
+.cs-view-all {
+  justify-self: start;
+  padding-inline: var(--sp-2);
+  color: var(--ink-3);
+}
+/* older groups open in place, under Previous, with the same rhythm */
+.cs-older {
+  display: grid;
+  gap: var(--sp-4);
+}
+.cs-older[hidden] {
+  display: none;
+}
+
+.cs-side-foot {
+  position: relative;
+  flex: none;
+  margin-top: auto;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+/* the whole row is the account control; one quiet chevron says it opens */
+.cs-account {
+  width: 100%;
+  height: auto;
+  min-height: var(--tx-h-lg);
+  padding: var(--sp-1) var(--sp-2);
+  justify-content: flex-start;
+  gap: var(--sp-2);
+  text-align: start;
+}
+.cs-account[aria-expanded="true"] {
+  background: var(--well);
+  color: var(--ink);
+}
+/* in dark the rail already sits on --well, so the open row steps up one */
+html[data-eff-theme="dark"] .cs-account[aria-expanded="true"],
+html[data-eff-theme="dark"] .cs-account:not(:disabled):hover {
+  background: var(--well-2);
+}
+.cs-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--av-md);
+  height: var(--av-md);
+  border-radius: 50%;
+  background: var(--well-2);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+html[data-eff-theme="dark"] .cs-avatar {
+  background: var(--surface-2);
+}
+.cs-user-text {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.cs-user-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-meta);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.cs-user-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-micro);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--ink-3);
+}
+.cs-account-chev {
+  flex: none;
+  color: var(--ink-3);
+  transition: color var(--tx-d-1) var(--tx-ease);
+}
+.cs-account:hover .cs-account-chev,
+.cs-account[aria-expanded="true"] .cs-account-chev {
+  color: var(--ink-2);
+}
+/* opens upward over the list, the same width as the row */
+.cs-account-menu {
+  position: absolute;
+  inset-inline: 0;
+  bottom: calc(100% + var(--sp-1));
+  z-index: 5;
+  min-width: 0;
+  box-shadow: var(--sh-2);
+}
+.cs-account-menu .tx-menu-item {
+  font-size: var(--t-meta);
+  padding-block: var(--sp-1);
+  min-height: var(--av-md);
+}
+
+/* ── stage and topbar ───────────────────────────────────────────────────── */
+.cs-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  /* clip, not hidden: a clipped box can't be scrolled by focus or scrollIntoView */
+  overflow: hidden;
+  overflow: clip;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+}
+.cs-topbar {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  height: var(--topbar);
+  padding: 0 var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  transition: height var(--tx-d-3) var(--tx-spring);
+}
+.cs-topbar.is-slim {
+  height: calc(var(--topbar) - var(--sp-3));
+}
+.cs-top-left {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.cs-top-left::after {
+  content: "";
+  width: 1px;
+  height: var(--sp-4);
+  background: var(--line-strong);
+}
+/* the agent for this conversation · fixed once the first message is sent */
+.cs-agent-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--t-meta);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.cs-agent-av {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--av-sm);
+  height: var(--av-sm);
+  border-radius: 50%;
+  background: var(--well-2);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+html[data-eff-theme="dark"] .cs-agent-av {
+  background: var(--well);
+}
+/* a robot avatar: the portrait fills its tinted circle */
+.cs-agent-av.has-robot {
+  overflow: hidden;
+}
+.cs-agent-av.has-robot > svg {
+  width: 115%;
+  height: 115%;
+  margin-top: 15%;
+}
+
+/* The agent menus (composer chip and dock Agent key): a robot avatar, the name,
+   one line of description; the chosen agent is tinted with the signal colour. */
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item {
+  gap: var(--sp-3);
+  padding: var(--sp-2);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  transition: background var(--tx-d-1) var(--tx-ease);
+}
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item:has(> .cs-agent-av) {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item small {
+  overflow: hidden;
+  margin-top: 1px;
+  font-size: var(--t-micro);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item .cs-agent-av {
+  width: var(--av-md);
+  height: var(--av-md);
+  border-radius: var(--r-sm);
+  /* a hairline keeps a tile whose tint matches the row from melting into it */
+  outline: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  outline-offset: -1px;
+}
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item[aria-checked="true"] .cs-agent-av {
+  outline-color: var(--signal-soft-2);
+}
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item[aria-checked="true"] {
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+:is(.cs-agent-menu, .cs-dock-menu)
+  .tx-menu-item[aria-checked="true"]
+  > .tx-ic:last-child {
+  color: var(--signal);
+}
+/* the actions under the list are quieter than the agents */
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item:not(:has(> .cs-agent-av)) {
+  padding-block: var(--sp-1);
+  color: var(--ink-2);
+  font-weight: 500;
+}
+:is(.cs-agent-menu, .cs-dock-menu) .tx-menu-item:not(:has(> .cs-agent-av)) .tx-ic {
+  justify-self: center;
+  width: var(--av-md);
+}
+
+/* state rides on the avatar: a still grey dot at rest, a slow breath while working */
+.cs-agent-tag .cs-agent-av::after {
+  content: "";
+  position: absolute;
+  inset-inline-end: calc(var(--sp-h) * -1);
+  bottom: calc(var(--sp-h) * -1);
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  background: var(--ink-3);
+  outline: 2px solid var(--surface);
+}
+.cs-agent-tag[data-state="working"] .cs-agent-av::after {
+  background: var(--ink);
+  animation: cs-breathe 2.4s ease-in-out infinite;
+}
+@keyframes cs-breathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+.cs-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-ui);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.cs-top-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+}
+
+.cs-rename {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.cs-rename .tx-input {
+  flex: 1;
+  min-width: 0;
+  height: var(--tx-h-sm);
+}
+.cs-top-note {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.cs-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: var(--thread);
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+}
+.cs-confirm-error {
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--bad-ink);
+}
+
+/* ── side panel (file viewer until the Activity Panel lands) ────────────── */
+.panel.activity {
+  flex: none;
+  min-height: 0;
+}
+.panel.activity:not(.is-open) {
+  display: none;
+}
+.panel.activity .panel-inner {
+  position: relative;
+  height: 100%;
+  width: var(--pw, var(--inspector));
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--sh-1);
+}
+.panel.activity.is-overlay.is-open {
+  position: fixed;
+  inset-block: var(--sp-2);
+  inset-inline-end: var(--sp-2);
+  z-index: 30;
+}
+.panel.activity.is-overlay .panel-inner {
+  box-shadow: var(--sh-3);
+}
+
+/* ── narrow: the sidebar becomes an overlay ─────────────────────────────── */
+.cs-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+  transition: opacity var(--panel-in);
+}
+@starting-style {
+  .cs-scrim {
+    opacity: 0;
+  }
+}
+/* ≤ 880: the sidebar becomes a drawer (11.11) */
+@container app (max-width: 55rem) {
+  /* pages without a drawer yet keep the sidebar to wide screens */
+  .cs-sidebar-wide {
+    display: none;
+  }
+  /* the drawer is a touch surface; its keycap would push the label out */
+  .cs-new .tx-kbd {
+    display: none;
+  }
+  .cs-new {
+    height: auto;
+    min-height: var(--tx-h);
+    padding-block: var(--sp-1);
+    white-space: normal;
+    text-align: start;
+  }
+  /* both states, so the drawer outranks the wide fold above */
+  .cs-sidebar,
+  .cs-sidebar:not(.is-open) {
+    /* never wider than the screen, even at 200% text */
+    width: min(var(--rail), calc(100cqw - var(--sp-5)));
+    margin-inline-start: 0;
+    opacity: 1;
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 30;
+    max-width: 100cqw;
+    background: var(--surface);
+    border-start-end-radius: var(--r-lg);
+    border-end-end-radius: var(--r-lg);
+    box-shadow: var(--sh-3);
+  }
+  /* the drawer slides in from the edge and back out past it */
+  .cs-sidebar.is-open {
+    transition:
+      transform var(--panel-in),
+      visibility var(--panel-in);
+  }
+  .cs-sidebar:not(.is-open) {
+    transform: translateX(calc(-100% - var(--sp-4)));
+    transition:
+      transform var(--panel-out),
+      visibility var(--panel-out);
+  }
+}
+/* ≤ 720: an open file takes the whole window */
+@container app (max-width: 45rem) {
+  .panel.activity.is-open,
+  .panel.activity.is-overlay.is-open {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+  }
+  .panel.activity .panel-inner {
+    width: 100cqw;
+    border-radius: 0;
+  }
+}
+/* ≤ 640: the frame goes flat */
+@container app (max-width: 40rem) {
+  .cs-shell {
+    padding: 0;
+    gap: 0;
+  }
+  .cs-stage {
+    border: 0;
+    border-radius: 0;
+  }
+}
+
+/* Long labels give way inside their row instead of pushing it past the rail
+   (200% text, or a narrow drawer). */
+.cs-new,
+.cs-nav-item {
+  min-width: 0;
+  overflow: hidden;
+}
+.cs-nav-item > span:not(.cs-soon) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* On a phone, and at 200% text (11.11), the topbar keeps the agent's avatar
+   and drops its name from view (still read out), so the title and actions
+   stay on screen. */
+html[data-textsize="200"] .cs-agent-tag .cs-agent-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+@container app (max-width: 32.5rem) {
+  .cs-agent-tag .cs-agent-name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-topbar,
+  .cs-sidebar.is-open,
+  .cs-sidebar:not(.is-open),
+  .cs-scrim {
+    transition: none;
+  }
+  .cs-agent-tag[data-state="working"] .cs-agent-av::after {
+    animation: none;
+  }
+}
+:root[data-eff-motion="reduce"] .cs-topbar,
+:root[data-eff-motion="reduce"] .cs-sidebar.is-open,
+:root[data-eff-motion="reduce"] .cs-sidebar:not(.is-open),
+:root[data-eff-motion="reduce"] .cs-scrim {
+  transition: none;
+}
+:root[data-eff-motion="reduce"]
+  .cs-agent-tag[data-state="working"]
+  .cs-agent-av::after {
+  animation: none;
+}

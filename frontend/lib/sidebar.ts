@@ -1,11 +1,5 @@
-export interface SidebarSession {
-  _id: string;
-  title?: string;
-  createdAt: string;
-}
-
-export const SIDEBAR_INITIAL_COUNT = 10;
-export const SIDEBAR_PAGE_COUNT = 25;
+// Sidebar history (DESIGN-SPEC 11.2): Today · Previous · Last 30 days · ‹Month›.
+// Today and Previous show; the older groups fold behind "View all conversations".
 
 const DAY = 86_400_000;
 
@@ -13,81 +7,73 @@ export function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-/** "Today" vs "Earlier" by the session's local createdAt date. */
-export function convoGroup(
-  createdAt: string,
+// Calendar days between two local dates (DST-safe: rounds the 23/25-hour days).
+const daysBetween = (earlier: Date, later: Date) =>
+  Math.round((startOfDay(later) - startOfDay(earlier)) / DAY);
+
+export interface HistoryGroup<T> {
+  label: string;
+  rows: T[];
+  /** Folded behind "View all conversations". */
+  older: boolean;
+}
+
+// Rows keep their incoming order inside a group; groups keep a fixed order.
+export function historyGroups<T>(
+  rows: readonly T[],
+  timeOf: (row: T) => string,
   now = new Date(),
-): "Today" | "Earlier" {
-  return startOfDay(new Date(createdAt)) === startOfDay(now)
-    ? "Today"
-    : "Earlier";
-}
-
-/** h:mm AM/PM today, short weekday within 7 days, else short date. */
-export function convoTime(createdAt: string, now = new Date()): string {
-  const d = new Date(createdAt);
-  if (Number.isNaN(d.getTime())) return "";
-  const days = Math.round((startOfDay(now) - startOfDay(d)) / DAY);
-  if (days <= 0)
-    return d.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  if (days < 7) return d.toLocaleDateString("en-US", { weekday: "short" });
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-export function groupSidebarSessions<S extends SidebarSession>(
-  sessions: readonly S[],
-  now: Date,
-) {
-  const today: S[] = [],
-    earlier: S[] = [];
-  for (const session of sessions)
-    (convoGroup(session.createdAt, now) === "Today" ? today : earlier).push(
-      session,
-    );
-  return { today, earlier };
-}
-
-// Limit mounted history rows, keeping the selected conversation reachable even
-// when it came from Search or the shelf is collapsed. The full source is untouched.
-export function sidebarWindow<S extends Pick<SidebarSession, "_id">>(
-  sessions: readonly S[],
-  {
-    count = SIDEBAR_INITIAL_COUNT,
-    activeId,
-    expanded = true,
-  }: {
-    count?: number;
-    activeId?: string | null;
-    expanded?: boolean;
-  } = {},
-) {
-  const limit = Number.isFinite(count)
-    ? Math.max(0, Math.floor(count))
-    : SIDEBAR_INITIAL_COUNT;
-  const items = expanded ? sessions.slice(0, limit) : [];
-  if (activeId && !items.some((session) => session._id === activeId)) {
-    const active = sessions.find((session) => session._id === activeId);
-    if (active) items.push(active);
+): HistoryGroup<T>[] {
+  const groups = new Map<string, HistoryGroup<T> & { rank: number }>();
+  for (const row of rows) {
+    const when = new Date(timeOf(row));
+    let label: string;
+    let rank: number;
+    if (Number.isNaN(when.getTime())) {
+      label = "Earlier";
+      rank = Number.MAX_SAFE_INTEGER;
+    } else {
+      const days = daysBetween(when, now);
+      if (days <= 0) [label, rank] = ["Today", 0];
+      else if (days < 7) [label, rank] = ["Previous", 1];
+      else if (days < 30) [label, rank] = ["Last 30 days", 2];
+      else {
+        const sameYear = when.getFullYear() === now.getFullYear();
+        label = when.toLocaleDateString("en-US", {
+          month: "long",
+          year: sameYear ? undefined : "numeric",
+        });
+        // Newer months first.
+        rank =
+          3 +
+          (now.getFullYear() - when.getFullYear()) * 12 +
+          (now.getMonth() - when.getMonth());
+      }
+    }
+    const group = groups.get(label);
+    if (group) group.rows.push(row);
+    else groups.set(label, { label, rows: [row], older: rank >= 2, rank });
   }
-  return { items, hiddenCount: sessions.length - items.length };
+  return [...groups.values()]
+    .sort((a, b) => a.rank - b.rank)
+    .map(({ label, rows, older }) => ({ label, rows, older }));
 }
 
-// Presentation preference only: no session IDs, titles or transcript data.
-const EARLIER_EXPANDED_KEY = "truex-sidebar-earlier-expanded";
-export function loadEarlierExpanded(): boolean {
-  try {
-    return localStorage.getItem(EARLIER_EXPANDED_KEY) !== "false";
-  } catch {
-    return true;
+/** "now", "12m", "1h" today; a weekday this week; "Oct 18" beyond. */
+export function sessionTime(iso: string, now = new Date()): string {
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return "";
+  const days = daysBetween(when, now);
+  if (days <= 0) {
+    const minutes = Math.floor((now.getTime() - when.getTime()) / 60_000);
+    if (minutes < 1) return "now";
+    if (minutes < 60) return `${minutes}m`;
+    return `${Math.floor(minutes / 60)}h`;
   }
-}
-export function saveEarlierExpanded(expanded: boolean): void {
-  try {
-    localStorage.setItem(EARLIER_EXPANDED_KEY, String(expanded));
-  } catch {
-    // Storage can be disabled/full; the current mounted shelf remains usable.
-  }
+  if (days < 7) return when.toLocaleDateString("en-US", { weekday: "short" });
+  return when.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: when.getFullYear() === now.getFullYear() ? undefined : "numeric",
+  });
 }

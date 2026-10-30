@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { beforeEach, test } from "node:test";
 import { ApiRequestError } from "../lib/api.ts";
 import {
-  approvalCardTitle,
   approvalOutcomeLabel,
   approvalRaceOutcome,
   callbackErrorMessage,
@@ -685,17 +684,6 @@ test("parseApprovalParams stringifies, caps the count and cuts long values", () 
 });
 
 // ---- Approval presentation ----
-
-test("approvalCardTitle reads as plain words", () => {
-  assert.equal(
-    approvalCardTitle("GitHub", "create_branch"),
-    "GitHub wants to create branch",
-  );
-  assert.equal(
-    approvalCardTitle("GitHub", "mergePullRequest"),
-    "GitHub wants to merge pull request",
-  );
-});
 
 test("approvalOutcomeLabel maps each decision, none for pending", () => {
   assert.equal(approvalOutcomeLabel("allow"), "Allowed");

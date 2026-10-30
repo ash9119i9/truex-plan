@@ -1,0 +1,1181 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · System 06 — Patterns</title>
+<meta name="description" content="truex design system, chapter 06: patterns. The turn, work log, request dock, shell, inspector and command palette — composed only from the primitives, folded by their own container.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="space.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="corner.css">
+<link rel="stylesheet" href="primitives.css">
+<link rel="stylesheet" href="patterns.css">
+<link rel="stylesheet" href="patterns-page.css">
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-run" viewBox="0 0 24 24"><path d="M8.5 6 L18.5 12 L8.5 18 V15 L11.5 12 L8.5 9 Z"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 24 24"><path d="M8.5 6.5 H15.5 A2 2 0 0 1 17.5 8.5 V14.5 L14.5 17.5 H8.5 A2 2 0 0 1 6.5 15.5 V8.5 A2 2 0 0 1 8.5 6.5 Z"/><circle cx="10.2" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="13.8" cy="12" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-trace" viewBox="0 0 24 24"><path d="M6.6 18 H9.5 V13.5 H14 L18 8.5"/><circle cx="5" cy="18" r="1.6"/><circle cx="18" cy="8.5" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M12 3.8 L19 7.8 V15.8 L12 19.8 L5 15.8 V7.8 Z"/><circle cx="12" cy="11.8" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M13.1 15.15 A5.6 5.6 0 1 1 15.15 13.1"/><path d="M14.1 14.1 L19.3 19.3"/></symbol>
+</svg>
+
+<a class="skip" href="#content">Skip to the chapter</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex system, back to top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><a href="index.html">01 Type</a><span class="bar-sep" aria-hidden="true">/</span><a href="02-color.html">02 Colour</a><span class="bar-sep" aria-hidden="true">/</span><a href="03-space.html">03 Space</a><span class="bar-sep" aria-hidden="true">/</span><a href="04-corners.html">04 Corners</a><span class="bar-sep" aria-hidden="true">/</span><a href="05-primitives.html">05 Primitives</a><span class="bar-sep" aria-hidden="true">/</span><b>06 Patterns</b></span>
+    <span class="pg-proposal"><i aria-hidden="true"></i>Proposal</span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="contrast-tool" data-mode="system" type="button" aria-label="Contrast: system. Activate to change.">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4h4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-4z" fill="currentColor"/></svg>
+      <span class="tool-k">Contrast</span><span class="tool-v" id="contrast-label">System</span>
+    </button>
+    <button class="tool" id="size-tool" type="button" aria-label="Text size: 100 percent. Activate to change.">
+      <span aria-hidden="true" style="font-family:var(--f-ui);font-weight:700;font-size:.8rem;letter-spacing:-.02em">Aa</span>
+      <span class="tool-k">Type</span><span class="tool-v" id="size-label">100%</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage stage-patterns" aria-label="Chapter 06: patterns">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Design system</span>
+        <span class="top-mid">Chapter 06 · composition</span>
+        <span><span class="dot-live">●</span> Proposal 26.10.2026</span>
+      </div>
+
+      <div class="hero-main">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">06</span>
+            <h1 class="hero-title">Patterns</h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>06</b>patterns</span>
+            <span class="stage-chip"><b>03</b>folds</span>
+            <span class="stage-chip"><b>00</b>new atoms</span>
+            <span class="stage-chip"><b>01</b>primary</span>
+            <span class="stage-chip"><b>⌘K</b>always</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <p class="hero-serif">The room knows where you are.</p>
+          <p class="hero-copy">Six recurring surfaces carry the work: the shell, the turn, the log, the dock, the inspector and the palette. Each is only primitives in order — <b>no new control, no new colour, no new type</b>. The same markup folds from a full room to a single thread.</p>
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="hero-note"><span class="pulse" aria-hidden="true"></span>One primary · one dock · focus always returns</div>
+        </div>
+      </div>
+
+      <div class="pg-hero">
+        <div class="pg-hero-head">
+          <span class="board-label">Plate 06 · the room</span>
+          <span class="pg-hero-live"><span class="tx-pulse" aria-hidden="true"></span>Live specimen · answer the request</span>
+          <span class="pg-hero-clock"><span class="tx-kbd">⌘K</span> command</span>
+        </div>
+
+        <div class="pt-shell-wrap pg-hero-shell-wrap">
+          <div class="pt-shell pg-hero-shell" id="hero-shell">
+            <aside class="pt-rail" aria-label="Workspace navigation">
+              <a class="pt-brand" href="#top" aria-label="truex studio, back to top">
+                <span class="pt-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+                <span class="pt-brand-text"><span class="pt-brand-word">truex</span><span class="pt-brand-sub">Studio</span></span>
+              </a>
+              <button class="tx-btn tx-sm pt-rail-new" type="button"><span aria-hidden="true">+</span><span class="pt-new-label">New session</span></button>
+
+              <nav class="pt-nav" aria-label="Workspace sections">
+                <button class="tx-btn tx-ghost pt-nav-item" type="button" aria-current="page"><span class="pt-nav-k">01</span><span class="pt-nav-word">Sessions</span><span class="tx-kbd">S</span></button>
+                <button class="tx-btn tx-ghost pt-nav-item" type="button"><span class="pt-nav-k">02</span><span class="pt-nav-word">Agents</span><span class="tx-kbd">A</span></button>
+                <button class="tx-btn tx-ghost pt-nav-item" type="button"><span class="pt-nav-k">03</span><span class="pt-nav-word">Files</span><span class="tx-kbd">F</span></button>
+                <button class="tx-btn tx-ghost pt-nav-item" type="button"><span class="pt-nav-k">04</span><span class="pt-nav-word">Insights</span><span class="tx-kbd">I</span></button>
+              </nav>
+
+              <div class="pt-rail-scroll">
+                <div class="pt-rail-group">
+                  <div class="pt-rail-label">Recent</div>
+                  <button class="tx-btn tx-ghost pt-session" type="button" aria-current="page"><span class="pt-session-title">September close</span><span class="pt-session-time">now</span></button>
+                  <button class="tx-btn tx-ghost pt-session" type="button"><span class="pt-session-title">Onboarding plan</span><span class="pt-session-time">10:12</span></button>
+                  <button class="tx-btn tx-ghost pt-session" type="button"><span class="pt-session-title">Q3 pipeline review</span><span class="pt-session-time">Mon</span></button>
+                </div>
+                <div class="pt-rail-group">
+                  <div class="pt-rail-label">Crew</div>
+                  <div class="pt-crew-row"><span class="tx-tile tx-tile-sm tx-tile-signal" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-agent"/></svg></span><span class="pt-crew-name">Qlik Analyst</span><span class="pt-crew-role">Main</span></div>
+                  <div class="pt-crew-row"><span class="tx-dot" style="--tx-c:var(--id-1)" aria-hidden="true"></span><span class="pt-crew-name">Vera</span><span class="pt-crew-role">Research</span></div>
+                  <div class="pt-crew-row"><span class="tx-dot" style="--tx-c:var(--id-3)" aria-hidden="true"></span><span class="pt-crew-name">Miles</span><span class="pt-crew-role">Review</span></div>
+                </div>
+              </div>
+
+              <div class="pt-rail-foot">
+                <span class="pt-user" aria-hidden="true">AS</span>
+                <span class="pt-user-text"><span class="pt-user-name">A. Shah</span><span class="pt-user-meta">Analyst</span></span>
+              </div>
+            </aside>
+
+            <div class="pt-main">
+              <header class="pt-topbar">
+                <div class="pt-crumb"><span class="pt-project">Studio</span><span class="pt-sep pt-crumb-sep">/</span><span class="pt-title">September close</span></div>
+                <div class="pt-top-actions">
+                  <span class="tx-pill tx-pill-warn pt-status" id="hero-status"><span class="tx-pulse" id="hero-pulse" style="--tx-c:var(--warn)" aria-hidden="true"></span><span id="hero-status-text">Waiting on you</span></span>
+                  <span class="tx-pill tx-pill-line pt-turn-chip">T4</span>
+                  <button class="tx-btn tx-sm tx-ghost pt-optional pt-narrow-action" id="hero-palette-open" type="button" aria-label="Open command palette"><span class="pt-cmd-label">Command </span><span class="tx-kbd">⌘K</span></button>
+                  <button class="tx-btn tx-sm tx-ghost pt-optional pt-narrow-action" id="hero-inspector-open" type="button" aria-label="Open inspector">Inspector</button>
+                </div>
+              </header>
+
+              <div class="pt-goal">
+                <span class="pt-goal-k">Goal</span>
+                <span class="pt-goal-text">Close September with a clean audit trail.</span>
+                <span class="tx-pill tx-pill-live"><span class="tx-pulse" aria-hidden="true"></span>Active</span>
+                <div class="tx-meter tx-meter-signal pt-goal-meter" style="--tx-p:28" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="28" aria-label="Goal budget used"><i></i></div>
+                <span class="pt-goal-num">142k / 500k</span>
+              </div>
+
+              <div class="pt-thread" id="hero-thread">
+                <div class="pt-thread-in" id="hero-turn">
+                  <div class="pt-turn">
+                    <div class="pt-user-row">
+                      <div class="pt-bubble">Close September and flag anything that moved more than five percent.</div>
+                      <span class="pt-meta pt-meta-ok">You · 10:31 <span aria-hidden="true">✓</span> Delivered</span>
+                    </div>
+
+                    <article class="pt-agent">
+                      <div class="pt-agent-head">
+                        <span class="tx-tile tx-tile-sm tx-tile-signal" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-agent"/></svg></span>
+                        <b class="pt-agent-name">Qlik Analyst</b>
+                        <span class="tx-pill tx-pill-line">Main</span>
+                        <span class="pt-agent-meta">T4 <span class="pt-sep">·</span> 1m 22s</span>
+                      </div>
+                      <h3 class="pt-answer-h">September is ready to close — <em>with two items open.</em></h3>
+                      <p class="pt-answer-body">Recognition landed <span class="num">3.1%</span> under plan on a softer EMEA close. Two accruals still need a decision: hold them until Monday and <span class="num">$182,400</span> moves into October; post tonight and September closes clean. <a href="#turn">Review the accruals</a> or hold the ledger.</p>
+
+                      <div class="pt-metrics">
+                        <div class="pt-metric"><span class="pt-metric-k">Recognised</span><b class="pt-metric-v">$4,281,920</b><span class="pt-metric-s">SEP · FY26</span></div>
+                        <div class="pt-metric"><span class="pt-metric-k">Vs plan</span><b class="pt-metric-v" style="color:var(--warn-ink)">−3.1%</b><span class="pt-metric-s">NET OF FX</span></div>
+                        <div class="pt-metric"><span class="pt-metric-k">Open items</span><b class="pt-metric-v">02</b><span class="pt-metric-s">BEFORE POSTING</span></div>
+                      </div>
+
+                      <details class="pt-work" id="hero-work">
+                        <summary>
+                          <span class="pt-work-sq is-warn" id="hero-work-sq" aria-hidden="true">!</span>
+                          <span class="pt-work-sum"><b id="hero-work-title">Worked · 7 steps</b><small id="hero-work-sub">Paused before the ledger write</small></span>
+                          <span class="pt-chev" aria-hidden="true">⌄</span>
+                        </summary>
+                        <ol class="pt-log">
+                          <li class="pt-step"><span class="pt-step-node is-ok" aria-hidden="true">✓</span><div class="pt-step-body"><b>Reconciled the ledger</b><span class="pt-step-sub">412 lines · 2 exceptions isolated</span></div><span class="pt-step-t">4.1s</span></li>
+                          <li class="pt-step"><span class="pt-step-node is-ok" aria-hidden="true">✓</span><div class="pt-step-body"><b>Matched 38 invoices</b><span class="pt-step-sub">Vera returned the FX check</span></div><span class="pt-step-t">0.8s</span></li>
+                          <li class="pt-step" id="hero-approval-row"><span class="pt-step-node is-warn" id="hero-approval-node" aria-hidden="true">!</span><div class="pt-step-body"><b id="hero-approval-title">Waiting for approval to post</b><span class="pt-step-sub" id="hero-approval-sub">Two accruals · $182,400</span></div><span class="pt-step-t" id="hero-approval-time">now</span></li>
+                        </ol>
+                      </details>
+
+                      <div class="pt-receipt">
+                        14 tools <span class="pt-sep">·</span> 38.2k tokens <span class="pt-sep">·</span> 1m 22s
+                        <button class="tx-btn tx-ghost tx-xs pt-receipt-link" id="hero-receipt-link" type="button">Receipt</button>
+                      </div>
+                      <div class="pt-followups">
+                        <span class="pt-follow-k">Next</span>
+                        <button class="tx-chip" type="button" data-fill="Turn the close into a one-page checklist.">Turn into a checklist</button>
+                        <button class="tx-chip" type="button" data-fill="Show the two open items and their evidence.">Show the two open items</button>
+                        <button class="tx-chip" type="button" data-fill="Draft the board note for September.">Draft the board note</button>
+                      </div>
+                    </article>
+                  </div>
+                </div>
+              </div>
+
+              <div class="pt-dock">
+                <div class="pt-dock-in">
+                  <article class="tx-card pt-req" id="hero-request" aria-label="Tool approval request">
+                    <div class="pt-req-head">
+                      <span class="tx-tile tx-tile-lg tx-tile-warn" aria-hidden="true"><svg class="tx-ic tx-ic-lg"><use href="#i-tool"/></svg></span>
+                      <div class="pt-req-titlewrap">
+                        <span class="pt-req-kind is-warn">Tool approval</span>
+                        <strong class="pt-req-title">Post the two accruals to the September ledger.</strong>
+                        <span class="pt-req-copy">Writes <b>$182,400</b> into October and closes the period. Reversible for 24 hours.</span>
+                      </div>
+                      <span class="pt-req-step num">1 of 4</span>
+                      <span class="pt-req-time is-warn" id="hero-time" role="timer" aria-label="Approval expires in 42 seconds"><span class="num" id="hero-time-num">0:42</span> · then declines</span>
+                    </div>
+                    <div class="pt-command">
+                      <div class="pt-command-bar"><span>~/true-ui</span><span class="pt-sep">·</span><span>ledger</span></div>
+                      <pre><span class="pt-prompt">$</span> ledger post --period 2026-09 --file accruals.json</pre>
+                    </div>
+                    <div class="pt-risks">
+                      <span class="tx-pill tx-pill-line">Reads 412 lines</span>
+                      <span class="tx-pill tx-pill-warn">Writes 2 entries</span>
+                      <span class="tx-pill tx-pill-ok">No network</span>
+                      <span class="tx-pill tx-pill-ok">Reversible 24h</span>
+                    </div>
+                    <div class="pt-req-actions">
+                      <button class="tx-btn tx-primary" id="hero-allow-once" type="button">Allow once <span class="tx-kbd">1</span></button>
+                      <button class="tx-btn" id="hero-allow-session" type="button">Allow this session <span class="tx-kbd">2</span></button>
+                      <span class="pt-spacer"></span>
+                      <button class="tx-btn tx-ghost" id="hero-decline" type="button">Decline <span class="tx-kbd">Esc</span></button>
+                    </div>
+                  </article>
+                  <div class="tx-card pt-composer is-held" id="hero-composer">
+                    <label class="tx-sr" for="hero-composer-input">Message Qlik Analyst</label>
+                    <textarea class="tx-input pt-composer-input" id="hero-composer-input" rows="1" placeholder="Answer the request above to keep going" disabled></textarea>
+                    <div class="pt-held-note"><span class="tx-pill tx-pill-warn">Waiting</span>Held until the request is answered.</div>
+                    <div class="pt-composer-bar">
+                      <span class="tx-pill tx-pill-line">Ask</span>
+                      <span class="pt-spacer"></span>
+                      <button class="tx-btn tx-primary tx-sm pt-send" id="hero-send" type="button">Send <span class="tx-kbd">↵</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <aside class="pt-irail" aria-label="Inspector">
+              <button class="tx-btn tx-ghost pt-irail-btn" type="button" data-inspector="insp-receipt"><span class="tx-tile tx-tile-sm" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-trace"/></svg></span><span class="pt-irail-lbl">Receipt</span></button>
+              <button class="tx-btn tx-ghost pt-irail-btn" type="button" data-inspector="insp-crew"><span class="tx-tile tx-tile-sm" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-agent"/></svg></span><span class="pt-irail-lbl">Crew</span></button>
+              <button class="tx-btn tx-ghost pt-irail-btn" type="button" data-inspector="insp-checks"><span class="tx-tile tx-tile-sm" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-tool"/></svg></span><span class="pt-irail-lbl">Checks</span></button>
+            </aside>
+
+            <div class="pt-inspector-scrim" id="hero-inspector-scrim" aria-hidden="true"></div>
+            <aside class="pt-inspector" id="hero-inspector" role="dialog" aria-modal="true" aria-label="Session inspector" aria-hidden="true">
+              <div class="pt-inspector-head">
+                <b class="pt-inspector-title">Inspector</b>
+                <button class="tx-btn tx-icon tx-ghost" id="hero-inspector-close" type="button" aria-label="Close inspector"><span aria-hidden="true">×</span></button>
+              </div>
+              <div class="pt-inspector-scroll">
+                <section class="pt-insp-card" id="insp-receipt">
+                  <div class="pt-insp-head"><span class="pt-insp-label">Turn receipt</span><span class="tx-pill tx-pill-line">T4</span></div>
+                  <div class="pt-insp-row"><span class="pt-insp-k">Route</span><span class="pt-insp-v">frontier</span></div>
+                  <div class="pt-insp-row"><span class="pt-insp-k">Tools</span><span class="pt-insp-v">14</span></div>
+                  <div class="pt-insp-row"><span class="pt-insp-k">Tokens</span><span class="pt-insp-v">38,206</span></div>
+                  <div class="pt-insp-row"><span class="pt-insp-k">Wall</span><span class="pt-insp-v">01:22</span></div>
+                  <div class="pt-insp-row"><span class="pt-insp-k">Reference</span><span class="pt-insp-v">req_7f3a21</span></div>
+                </section>
+                <section class="pt-insp-card" id="insp-crew">
+                  <div class="pt-insp-head"><span class="pt-insp-label">Crew</span><span class="pt-insp-label">03</span></div>
+                  <div class="pt-insp-crew">
+                    <div class="pt-insp-check"><span class="tx-dot" style="--tx-c:var(--id-2)" aria-hidden="true"></span><b>Qlik Analyst</b><span class="pt-spacer"></span><span class="pt-insp-k">Main</span></div>
+                    <div class="pt-insp-check"><span class="tx-dot" style="--tx-c:var(--id-1)" aria-hidden="true"></span><span>Vera</span><span class="pt-spacer"></span><span class="pt-insp-k">Research</span></div>
+                    <div class="pt-insp-check"><span class="tx-dot" style="--tx-c:var(--id-3)" aria-hidden="true"></span><span>Miles</span><span class="pt-spacer"></span><span class="pt-insp-k">Review</span></div>
+                  </div>
+                </section>
+                <section class="pt-insp-card" id="insp-checks">
+                  <div class="pt-insp-head"><span class="pt-insp-label">Checks</span><span class="pt-insp-label">3 / 4</span></div>
+                  <div class="pt-insp-check"><span class="tx-dot tx-dot-ok" aria-hidden="true"></span><span>Ledger balanced</span><span class="pt-spacer"></span><span class="pt-insp-k">ok</span></div>
+                  <div class="pt-insp-check"><span class="tx-dot tx-dot-ok" aria-hidden="true"></span><span>FX revalued</span><span class="pt-spacer"></span><span class="pt-insp-k">ok</span></div>
+                  <div class="pt-insp-check"><span class="tx-dot tx-dot-warn" aria-hidden="true"></span><span>Approvals</span><span class="pt-spacer"></span><span class="pt-insp-k">1 open</span></div>
+                </section>
+                <a class="tx-btn tx-sm" href="#worklog">Open the work log</a>
+              </div>
+            </aside>
+
+            <div class="pt-palette-overlay" id="hero-palette" hidden>
+              <div class="pt-palette" role="dialog" aria-modal="true" aria-label="Command palette">
+                <div class="pt-palette-input-row">
+                  <span class="pt-palette-prompt" aria-hidden="true">›</span>
+                  <label class="tx-sr" for="hero-palette-input">Search commands</label>
+                  <input class="tx-input pt-palette-input" id="hero-palette-input" type="search" placeholder="Search or jump to…" role="combobox" aria-expanded="true" aria-controls="hero-palette-list" aria-autocomplete="list" autocomplete="off">
+                  <button class="tx-btn tx-icon tx-ghost" id="hero-palette-close" type="button" aria-label="Close command palette"><span aria-hidden="true">×</span></button>
+                </div>
+                <div class="pt-palette-list" id="hero-palette-list" role="listbox" aria-label="Commands">
+                  <div class="pt-palette-group-wrap" role="group" aria-labelledby="hero-g-go">
+                    <div class="pt-palette-group" id="hero-g-go">Go to</div>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="true" id="hero-opt-1" data-action="session" data-keywords="september close session current"><span>September close<small>Current session</small></span><span class="tx-kbd">↵</span></button>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="hero-opt-2" data-action="session" data-keywords="onboarding plan session"><span>Onboarding plan<small>Last opened 10:12</small></span><span class="tx-kbd">↵</span></button>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="hero-opt-3" data-action="session" data-keywords="q3 pipeline review session"><span>Q3 pipeline review<small>Monday</small></span><span class="tx-kbd">↵</span></button>
+                  </div>
+                  <div class="pt-palette-group-wrap" role="group" aria-labelledby="hero-g-actions">
+                    <div class="pt-palette-group" id="hero-g-actions">Actions</div>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="hero-opt-4" data-action="receipt" data-keywords="open receipt inspector turn"><span>Open turn receipt<small>Tools, tokens and the wall clock</small></span><span class="tx-kbd">R</span></button>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="hero-opt-5" data-action="reasoning" data-keywords="show reasoning work log evidence"><span>Show reasoning<small>Open the work log</small></span><span class="tx-kbd">W</span></button>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="hero-opt-6" data-action="new" data-keywords="new session create"><span>New session<small>Start with a clean thread</small></span><span class="tx-kbd">N</span></button>
+                  </div>
+                  <div class="pt-palette-group-wrap" role="group" aria-labelledby="hero-g-agents">
+                    <div class="pt-palette-group" id="hero-g-agents">Agents</div>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="hero-opt-7" data-action="agent" data-keywords="qlik analyst agent"><span>Qlik Analyst<small>Main · running</small></span><span class="tx-kbd">Q</span></button>
+                    <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="hero-opt-8" data-action="agent" data-keywords="vera research agent"><span>Vera<small>Research</small></span><span class="tx-kbd">V</span></button>
+                  </div>
+                </div>
+                <div class="pt-palette-empty" id="hero-palette-empty" aria-live="polite" hidden>No command matches. Try “receipt” or “session”.</div>
+                <div class="pt-palette-foot"><span><span class="tx-kbd">↑↓</span> navigate</span><span><span class="tx-kbd">↵</span> run</span><span><span class="tx-kbd">Esc</span> close</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pg-hero-foot">
+          <div class="pg-hero-measure" aria-label="Measured shell regions">
+            <span>Shell <b id="hero-shell-w">—</b></span>
+            <span>Rail <b id="hero-rail-w">—</b></span>
+            <span>Thread <b id="hero-thread-w">—</b></span>
+            <span>Inspector <b id="hero-irail-w">—</b></span>
+            <span class="pg-hero-fold" id="hero-fold-state">Full</span>
+          </div>
+          <div class="pg-hero-actions">
+            <button class="tx-btn tx-sm tx-ghost" id="hero-inspector-open-2" type="button">Inspector</button>
+            <button class="tx-btn tx-sm tx-ghost" id="hero-palette-open-2" type="button">Command <span class="tx-kbd">⌘K</span></button>
+            <button class="tx-btn tx-sm tx-ghost" id="hero-replay-2" type="button">Replay request</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-spec">
+        <span>Patterns <b>06</b></span>
+        <span>Folds <b>03</b></span>
+        <span>New atoms <b>00</b></span>
+        <span>Primary <b>01</b></span>
+        <span>Focus return <b>100%</b></span>
+        <span>Container query <b>Yes</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Chapter contents">
+    <div class="ruler-in">
+      <a href="#composition" class="active" aria-current="true"><span class="n">6.1</span>Composition</a>
+      <a href="#turn"><span class="n">6.2</span>Turn</a>
+      <a href="#worklog"><span class="n">6.3</span>Work log</a>
+      <a href="#dock"><span class="n">6.4</span>Request dock</a>
+      <a href="#shell"><span class="n">6.5</span>Shell</a>
+      <a href="#palette"><span class="n">6.6</span>Palette</a>
+      <a href="#states"><span class="n">6.7</span>States</a>
+      <a href="#contract"><span class="n">6.8</span>Contract</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+
+    <!-- 6.1 COMPOSITION -->
+    <section class="chapter" id="composition" aria-labelledby="h-composition">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.1</div>
+        <div>
+          <p class="ch-kicker">Composition · grammar</p>
+          <h2 class="t-h2" id="h-composition">A pattern is <em>a sentence.</em></h2>
+          <p class="t-lede">The primitives are words. A pattern puts them in an order that repeats: the answer before the work, the request above the composer, the shell around both. Six patterns carry the product — and none of them invents a new part.</p>
+        </div>
+        <div class="folio">Composition · 01 / 08</div>
+      </header>
+
+      <div class="pg-compose">
+        <div class="pg-compose-board board dots">
+          <div class="pg-compose-head">
+            <span class="board-label">The composition stack</span>
+            <span class="pg-note">arrangement, not addition</span>
+          </div>
+          <div class="pg-compose-stack">
+            <div class="pg-compose-cell">
+              <span class="pg-compose-k">01 · Atoms</span>
+              <b>16 primitives</b>
+              <p>Buttons, fields, pills, chips, meters, rings, overlays. Every control in the product.</p>
+              <div class="pg-atoms" aria-hidden="true">
+                <span class="tx-btn tx-primary tx-xs">Allow</span>
+                <span class="tx-chip">Reads</span>
+                <span class="tx-pill tx-pill-ok">✓ Ready</span>
+                <span class="tx-kbd">⌘K</span>
+                <span class="tx-input" style="height:1.5rem;font-size:.6875rem;padding:0 6px">ONB-412</span>
+              </div>
+              <code>tx- · 05</code>
+            </div>
+            <div class="pg-compose-arrow" aria-hidden="true"><span></span></div>
+            <div class="pg-compose-cell">
+              <span class="pg-compose-k">02 · Patterns</span>
+              <b>6 arrangements</b>
+              <p>The turn, the log, the dock, the shell, the inspector, the palette. Repeated decisions, in order.</p>
+              <div class="pg-atoms pg-atoms-words" aria-hidden="true">
+                <span>answer → evidence → work</span>
+                <span>request → one primary</span>
+                <span>rail → thread → inspector</span>
+              </div>
+              <code>pt- · 06</code>
+            </div>
+            <div class="pg-compose-arrow" aria-hidden="true"><span></span></div>
+            <div class="pg-compose-cell">
+              <span class="pg-compose-k">03 · Screen</span>
+              <b>One room</b>
+              <p>Composition at product scale. The same six decisions, every session.</p>
+              <div class="pg-screen" aria-hidden="true"><i></i><i></i><i></i></div>
+              <code>this page · the hero</code>
+            </div>
+          </div>
+        </div>
+
+        <aside class="pg-rules-board board dots">
+          <span class="board-label">Four rules</span>
+          <div class="pg-rule"><span>01</span><div><b>Arrange, never restyle.</b><p>A pattern may place, size and group primitives. It may not invent a colour, a type size or a corner.</p></div></div>
+          <div class="pg-rule"><span>02</span><div><b>Every control is a tx part.</b><p>If a pattern needs a new button, field or option row, the atom is missing from 05 — not added here.</p></div></div>
+          <div class="pg-rule"><span>03</span><div><b>The narrow twin is part of the pattern.</b><p>A pattern ships with its 390 px, 200% and keyboard form. The room folds; the meaning stays.</p></div></div>
+          <div class="pg-rule"><span>04</span><div><b>One recurring decision per pattern.</b><p>Answer first. Work folded. Request docked. Shell stable. Overlay one deep. If a pattern makes two decisions, it is two patterns.</p></div></div>
+        </aside>
+      </div>
+
+      <div class="pg-index" aria-label="The six patterns">
+        <a class="pg-pattern-card" href="#turn">
+          <span class="pg-pattern-no">01</span>
+          <h3>The turn</h3>
+          <p>One question, one answer, one evidence trail — read in that order.</p>
+          <span class="pg-pattern-uses"><code>tx-btn</code><code>tx-pill</code><code>tx-chip</code></span>
+        </a>
+        <a class="pg-pattern-card" href="#worklog">
+          <span class="pg-pattern-no">02</span>
+          <h3>The work log</h3>
+          <p>One fold under the answer. A typed row per event, durations in mono.</p>
+          <span class="pg-pattern-uses"><code>tx-tile</code><code>tx-spin</code><code>tx-pulse</code></span>
+        </a>
+        <a class="pg-pattern-card" href="#dock">
+          <span class="pg-pattern-no">03</span>
+          <h3>The request dock</h3>
+          <p>A blocking decision that cannot scroll away. One primary, one expiry.</p>
+          <span class="pg-pattern-uses"><code>tx-card</code><code>tx-pill</code><code>tx-kbd</code></span>
+        </a>
+        <a class="pg-pattern-card" href="#shell">
+          <span class="pg-pattern-no">04</span>
+          <h3>The shell</h3>
+          <p>Rail, thread and inspector. It folds by its own width, not the page.</p>
+          <span class="pg-pattern-uses"><code>tx-meter</code><code>tx-btn</code><code>tx-kbd</code></span>
+        </a>
+        <a class="pg-pattern-card" href="#shell">
+          <span class="pg-pattern-no">05</span>
+          <h3>The inspector</h3>
+          <p>Receipt, crew and checks one layer deep. Focus returns where it left.</p>
+          <span class="pg-pattern-uses"><code>tx-dot</code><code>tx-pill</code><code>tx-btn</code></span>
+        </a>
+        <a class="pg-pattern-card" href="#palette">
+          <span class="pg-pattern-no">06</span>
+          <h3>The palette</h3>
+          <p>One input, grouped results, visible shortcuts. Recognition over recall.</p>
+          <span class="pg-pattern-uses"><code>tx-input</code><code>tx-menu-item</code><code>tx-kbd</code></span>
+        </a>
+      </div>
+
+      <div class="pg-why">
+        <div class="pg-why-item"><span class="pg-why-n">Chunking</span><b>Six, not sixty.</b><p>A room is remembered as a handful of regions, not a list of controls. Patterns are the chunks.</p></div>
+        <div class="pg-why-item"><span class="pg-why-n">Disclosure</span><b>Answer first.</b><p>The eye gets the claim before the evidence. The log opens only when verification is the job.</p></div>
+        <div class="pg-why-item"><span class="pg-why-n">Constancy</span><b>Nothing blocking moves.</b><p>A request that can scroll away is a request that will be missed. The dock keeps it in place.</p></div>
+        <div class="pg-why-item"><span class="pg-why-n">Recognition</span><b>Search, then act.</b><p>The palette shows what exists. It removes the memory tax of hidden commands and deep menus.</p></div>
+      </div>
+      <p class="section-cap"><b>Composition is subtraction.</b> Each pattern removes a decision from the next screen. The primitives supply the parts; the pattern supplies the order.</p>
+    </section>
+
+    <!-- 6.2 TURN -->
+    <section class="chapter" id="turn" aria-labelledby="h-turn">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.2</div>
+        <div>
+          <p class="ch-kicker">Pattern 01 · the turn</p>
+          <h2 class="t-h2" id="h-turn">Answer first, <em>evidence under it.</em></h2>
+          <p class="t-lede">A turn is the unit of work: what you asked, what the agent answered, what it did and what it cost. The answer is read; the evidence is inspected. The work never pushes the answer down.</p>
+        </div>
+        <div class="folio">Turn · 02 / 08</div>
+      </header>
+
+      <div class="pg-turn-toolbar">
+        <div class="pg-turn-title"><span class="board-label">Turn specimen · T4</span><span class="pg-note">live and complete, same position</span></div>
+        <div class="tx-seg" role="group" aria-label="Turn state" data-turn-state>
+          <button type="button" aria-pressed="true" data-state="live">Live</button>
+          <button type="button" aria-pressed="false" data-state="done">Complete</button>
+        </div>
+      </div>
+
+      <div class="pg-turn-grid">
+        <div class="pg-turn-frame board dots is-live" id="turn-demo">
+          <div class="pg-turn-top">
+            <span class="tx-pill tx-pill-live" id="turn-status"><span class="tx-pulse" aria-hidden="true"></span>Working</span>
+            <span class="pg-mono">RUN 04 · T4 · 10:31</span>
+          </div>
+          <div class="pt-turn">
+            <div class="pt-user-row">
+              <div class="pt-bubble">Close September and flag anything that moved more than five percent.</div>
+              <span class="pt-meta pt-meta-ok">You · 10:31 <span aria-hidden="true">✓</span> Delivered</span>
+            </div>
+            <article class="pt-agent">
+              <div class="pt-agent-head">
+                <span class="tx-tile tx-tile-sm tx-tile-signal" aria-hidden="true"><svg class="tx-ic tx-ic-sm"><use href="#i-agent"/></svg></span>
+                <b class="pt-agent-name">Qlik Analyst</b>
+                <span class="tx-pill tx-pill-line">Main</span>
+                <span class="pt-agent-meta">T4 <span class="pt-sep">·</span> <span id="turn-elapsed">0:42</span></span>
+              </div>
+              <h3 class="pt-answer-h">September is ready to close — <em>with two items open.</em></h3>
+              <p class="pt-answer-body">Recognition landed <span class="num">3.1%</span> under plan on a softer EMEA close. Two accruals still need a decision: hold them until Monday and <span class="num">$182,400</span> moves into October; post tonight and September closes clean. <a href="#dock">Review the accruals</a> or hold the ledger.<span class="tx-caret pt-live-only" aria-hidden="true"></span></p>
+              <div class="pt-metrics">
+                <div class="pt-metric"><span class="pt-metric-k">Recognised</span><b class="pt-metric-v">$4,281,920</b><span class="pt-metric-s">SEP · FY26</span></div>
+                <div class="pt-metric"><span class="pt-metric-k">Vs plan</span><b class="pt-metric-v" style="color:var(--warn-ink)">−3.1%</b><span class="pt-metric-s">NET OF FX</span></div>
+                <div class="pt-metric"><span class="pt-metric-k">Open items</span><b class="pt-metric-v">02</b><span class="pt-metric-s">BEFORE POSTING</span></div>
+              </div>
+              <div class="pt-evidence">
+                <div class="pt-evidence-head"><span class="board-label">Open accruals</span><span class="tx-pill tx-pill-warn">Review first</span></div>
+                <div class="pt-evidence-table" role="table" aria-label="Open accruals">
+                  <div class="pt-evidence-row head" role="row"><span role="columnheader">Line</span><span class="pt-num" role="columnheader">Amount</span><span class="pt-num" role="columnheader">Δ M/M</span><span role="columnheader">State</span></div>
+                  <div class="pt-evidence-row" role="row"><span class="pt-line" role="cell">Cloud infrastructure<small>AWS · 42 seats</small></span><span class="pt-num" role="cell">$182,400</span><span class="pt-num is-warn" role="cell">↑ 12.4%</span><span class="tx-pill tx-pill-warn" role="cell">Review</span></div>
+                  <div class="pt-evidence-row" role="row"><span class="pt-line" role="cell">Professional services<small>Meridian · advisory</small></span><span class="pt-num" role="cell">$64,900</span><span class="pt-num is-warn" role="cell">↓ 8.2%</span><span class="tx-pill tx-pill-warn" role="cell">Flagged</span></div>
+                </div>
+              </div>
+              <details class="pt-work" id="turn-work">
+                <summary>
+                  <span class="pt-work-sq is-run" id="turn-work-sq" aria-hidden="true"><span class="tx-spin"></span></span>
+                  <span class="pt-work-sum"><b id="turn-work-title">Working · 6 done, 1 running</b><small id="turn-work-sub">Vera checking the FX close · 3 helpers</small></span>
+                  <span class="pt-chev" aria-hidden="true">⌄</span>
+                </summary>
+                <ol class="pt-log">
+                  <li class="pt-step"><span class="pt-step-node is-ok" aria-hidden="true">✓</span><div class="pt-step-body"><b>Reconciled the ledger</b><span class="pt-step-sub">412 lines · 2 exceptions</span></div><span class="pt-step-t">4.1s</span></li>
+                  <li class="pt-step"><span class="pt-step-node is-sig" aria-hidden="true">!</span><div class="pt-step-body"><b>Approval raised</b><span class="pt-step-sub">Post two accruals · parked in the dock</span></div><span class="pt-step-t">now</span></li>
+                </ol>
+              </details>
+              <div class="pt-receipt pt-done-only" id="turn-receipt">
+                14 tools <span class="pt-sep">·</span> 38.2k tokens <span class="pt-sep">·</span> 1m 22s
+                <button class="tx-btn tx-ghost tx-xs pt-receipt-link" type="button" data-toast="Receipt pattern|The inspector drawer opens over the same shell.">Receipt</button>
+              </div>
+              <div class="pt-followups pt-done-only">
+                <span class="pt-follow-k">Next</span>
+                <button class="tx-chip" type="button" data-toast="Follow-up queued|Draft the board note for September.">Draft the board note</button>
+                <button class="tx-chip" type="button" data-toast="Follow-up queued|Show the two open items and their evidence.">Show the open items</button>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <aside class="pg-order board dots" aria-labelledby="h-order">
+          <span class="board-label" id="h-order">Reading order</span>
+          <ol class="pg-order-list">
+            <li class="is-on"><span>1</span><div><b>Answer</b><p>The claim, at headline size.</p></div></li>
+            <li><span>2</span><div><b>Evidence</b><p>Two rows, the numbers and their state.</p></div></li>
+            <li><span>3</span><div><b>Work</b><p>Folded. One line until you ask.</p></div></li>
+            <li><span>4</span><div><b>Receipt</b><p>Tools, tokens and the wall clock.</p></div></li>
+          </ol>
+          <div class="pg-order-note">
+            <span class="board-label">Measure</span>
+            <p>740 px thread <span class="pt-sep">·</span> 42 rem measure <span class="pt-sep">·</span> 3 metrics <span class="pt-sep">·</span> 1 fold.</p>
+            <p>The log never sits between the question and the answer. If it opens, it stays under the evidence.</p>
+          </div>
+        </aside>
+      </div>
+      <p class="section-cap"><b>Live and complete share one layout.</b> The only differences are the caret, the running row and the receipt. Nothing jumps when the turn settles.</p>
+    </section>
+
+    <!-- 6.3 WORK LOG -->
+    <section class="chapter" id="worklog" aria-labelledby="h-worklog">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.3</div>
+        <div>
+          <p class="ch-kicker">Pattern 02 · the work log</p>
+          <h2 class="t-h2" id="h-worklog">Evidence, <em>folded.</em></h2>
+          <p class="t-lede">Every turn keeps one log, folded under the answer. It is not a second narrative: one summary, one row per event, typed nodes and durations in mono. The log is opened to verify, not to read.</p>
+        </div>
+        <div class="folio">Work log · 03 / 08</div>
+      </header>
+
+      <div class="pg-worklog-grid">
+        <div class="pg-worklog-board board dots">
+          <div class="pg-worklog-top">
+            <span class="board-label">One turn · one log</span>
+            <span class="tx-pill tx-pill-live"><span class="tx-spin" aria-hidden="true"></span>Working · 6 done, 1 running</span>
+          </div>
+          <details class="pt-work pg-work-open" open>
+            <summary>
+              <span class="pt-work-sq is-run" aria-hidden="true"><span class="tx-spin"></span></span>
+              <span class="pt-work-sum"><b>Working · 6 done, 1 running</b><small>Started 10:31 · 3 helpers · 1 approval resolved</small></span>
+              <span class="pt-chev" aria-hidden="true">⌄</span>
+            </summary>
+            <ol class="pt-log">
+              <li class="pt-step">
+                <span class="pt-step-node is-sig" aria-hidden="true">t</span>
+                <div class="pt-step-body">
+                  <details class="pt-think" open>
+                    <summary>Thought for 6s <span class="pt-chev" aria-hidden="true">⌄</span></summary>
+                    <p>The two accruals are the only lines that move the close date. Reconcile first; ask before the write; keep the audit row with the request.</p>
+                  </details>
+                </div>
+                <span class="pt-step-t">6.0s</span>
+              </li>
+              <li class="pt-step">
+                <span class="pt-step-node" aria-hidden="true">$</span>
+                <div class="pt-step-body">
+                  <b>Reconciled the ledger</b>
+                  <div class="pt-command">
+                    <div class="pt-command-bar"><span>~/true-ui</span><span class="pt-sep">·</span><span>ledger</span></div>
+                    <pre><span class="pt-prompt">$</span> ledger reconcile --period 2026-09 --dry-run
+412 lines reconciled · 2 exceptions</pre>
+                  </div>
+                </div>
+                <span class="pt-step-t">4.1s</span>
+              </li>
+              <li class="pt-step">
+                <span class="pt-step-node is-ok" aria-hidden="true">✓</span>
+                <div class="pt-step-body">
+                  <b>Edited close/2026-09.md</b>
+                  <span class="pt-step-sub">+2 −1 · the close checklist</span>
+                  <div class="pt-diff">
+                    <div class="pt-diff-head">close/2026-09.md</div>
+                    <div class="pt-diff-del">- Cloud infrastructure: open accrual</div>
+                    <div class="pt-diff-add">+ Cloud infrastructure: posted · $182,400</div>
+                    <div class="pt-diff-add">+ Professional services: flagged for review</div>
+                  </div>
+                </div>
+                <span class="pt-step-t">0.3s</span>
+              </li>
+              <li class="pt-step">
+                <span class="pt-step-node" aria-hidden="true">q</span>
+                <div class="pt-step-body"><b>warehouse.query</b><span class="pt-step-sub">12 rows · read-only · 0.4s</span></div>
+                <span class="pt-step-t">0.4s</span>
+              </li>
+              <li class="pt-step">
+                <span class="pt-step-node is-ok" aria-hidden="true">✓</span>
+                <div class="pt-step-body">
+                  <b>Approval resolved</b>
+                  <span class="pt-step-sub"><span class="pt-audit"><b>Allowed once</b> · by you · 10:24 · <code>req_7f3a21</code></span></span>
+                </div>
+                <span class="pt-step-t">1m 12s</span>
+              </li>
+              <li class="pt-step">
+                <span class="pt-step-node is-warn" aria-hidden="true">!</span>
+                <div class="pt-step-body"><b>FX revaluation is 43% below August</b><span class="pt-step-sub">Flagged, not blocking. The close stays in September.</span></div>
+                <span class="pt-step-t">0.1s</span>
+              </li>
+              <li class="pt-step">
+                <span class="pt-step-node is-sig" aria-hidden="true"><span class="tx-spin"></span></span>
+                <div class="pt-step-body"><b>Writing the board note<span class="tx-caret"></span></b><span class="pt-step-sub">Miles is reviewing the wording</span></div>
+                <span class="pt-step-t">now</span>
+              </li>
+            </ol>
+          </details>
+        </div>
+
+        <aside class="pg-log-side">
+          <div class="board dots pg-log-grammar">
+            <span class="board-label">Log grammar</span>
+            <div class="pg-grammar-row"><span>01</span><div><b>One fold.</b><p>The summary is the only always-visible line.</p></div></div>
+            <div class="pg-grammar-row"><span>02</span><div><b>One row per event.</b><p>Thought, command, write, tool, approval, warning.</p></div></div>
+            <div class="pg-grammar-row"><span>03</span><div><b>Type does the naming.</b><p>The node tone and the verb carry the meaning; no prose.</p></div></div>
+            <div class="pg-grammar-row"><span>04</span><div><b>Time on the right.</b><p>Mono, tabular, the same column for every step.</p></div></div>
+          </div>
+          <div class="board dots pg-log-legend">
+            <span class="board-label">Node tones</span>
+            <div class="pg-legend-row"><span class="pt-step-node is-sig" aria-hidden="true">t</span><span>Thought · signal</span></div>
+            <div class="pg-legend-row"><span class="pt-step-node" aria-hidden="true">$</span><span>Command · neutral</span></div>
+            <div class="pg-legend-row"><span class="pt-step-node is-ok" aria-hidden="true">✓</span><span>Done · ok</span></div>
+            <div class="pg-legend-row"><span class="pt-step-node is-warn" aria-hidden="true">!</span><span>Attention · warn</span></div>
+            <div class="pg-legend-row"><span class="pt-step-node is-bad" aria-hidden="true">×</span><span>Failure · bad</span></div>
+            <div class="pg-legend-row"><span class="pt-step-node is-sig" aria-hidden="true"><span class="tx-spin"></span></span><span>Live · signal</span></div>
+          </div>
+          <p class="section-cap"><b>The fold is the pattern.</b> Closed, the log is one line of memory. Open, it is the verification trail. The answer is never repeated here.</p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 6.4 REQUEST DOCK -->
+    <section class="chapter" id="dock" aria-labelledby="h-dock">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.4</div>
+        <div>
+          <p class="ch-kicker">Pattern 03 · the request dock</p>
+          <h2 class="t-h2" id="h-dock">It cannot <em>scroll away.</em></h2>
+          <p class="t-lede">A blocking request stops the turn, so it docks above the composer and keeps a placeholder in the stream. Four methods use one card: tool approval, question, secret and plan. One primary decision, one expiry, one audit row afterwards.</p>
+        </div>
+        <div class="folio">Request dock · 04 / 08</div>
+      </header>
+
+      <div class="pg-method-board board dots">
+        <div class="pg-method-head">
+          <div><span class="board-label">Method sheet · the same card</span><p class="pg-note">Three specimens; in product only one request is mounted at a time.</p></div>
+          <span class="tx-pill tx-pill-line">1 primary per request</span>
+        </div>
+        <div class="pt-methods">
+          <article class="tx-card pt-req" aria-label="Clarifying question">
+            <div class="pt-req-head">
+              <span class="tx-tile tx-tile-lg tx-tile-signal" aria-hidden="true"><span style="font:600 .875rem/1 var(--f-mono)">?</span></span>
+              <div class="pt-req-titlewrap">
+                <span class="pt-req-kind is-signal">Question</span>
+                <strong class="pt-req-title">Which period should the adjustment land in?</strong>
+                <span class="pt-req-copy">September keeps the close date. October moves <b>$182,400</b> and reopens the month.</span>
+              </div>
+            </div>
+            <div class="pg-choice-body">
+              <div class="pg-choice" role="group" aria-label="Period">
+                <button class="tx-chip" type="button" aria-pressed="true" data-choice="september">September</button>
+                <button class="tx-chip" type="button" aria-pressed="false" data-choice="october">October</button>
+                <button class="tx-chip" type="button" aria-pressed="false" data-choice="controller">Ask the controller</button>
+              </div>
+              <p class="pg-choice-note"><span class="tx-dot tx-dot-ok" aria-hidden="true"></span>Recommended · September keeps the audit trail in one period.</p>
+            </div>
+            <div class="pt-req-actions">
+              <button class="tx-btn tx-primary" type="button" data-toast="Answer sent|September · the close stays in one period.">Send answer <span class="tx-kbd">↵</span></button>
+              <button class="tx-btn tx-ghost" type="button" data-toast="Question skipped|The agent will pick the recommended period.">Skip <span class="tx-kbd">Esc</span></button>
+            </div>
+          </article>
+
+          <article class="tx-card pt-req" aria-label="Secret question">
+            <div class="pt-req-head">
+              <span class="tx-tile tx-tile-lg tx-tile-inv" aria-hidden="true"><span style="font:600 .875rem/1 var(--f-mono)">•••</span></span>
+              <div class="pt-req-titlewrap">
+                <span class="pt-req-kind">Question · Secret</span>
+                <strong class="pt-req-title">Paste the ledger signing key.</strong>
+                <span class="pt-req-copy">Used once for this post. The stream only says <b>Key provided</b>.</span>
+              </div>
+              <span class="tx-pill tx-pill-line">Always asks</span>
+            </div>
+            <div class="tx-field">
+              <label for="req-secret">Signing key <span class="tx-req" aria-hidden="true">*</span></label>
+              <div class="tx-secret">
+                <input class="tx-input" id="req-secret" type="password" value="ledger-7f3a21-close" autocomplete="off" readonly>
+                <button class="tx-reveal" id="req-reveal" type="button" aria-pressed="false" aria-controls="req-secret" aria-label="Show signing key"><span class="pg-reveal" id="req-reveal-label">Show</span></button>
+              </div>
+              <span class="tx-hint">Stored in the OS keychain; never in the transcript.</span>
+            </div>
+            <div class="pt-req-actions">
+              <button class="tx-btn tx-primary" type="button" data-toast="Key submitted|The ledger tool received the signing key.">Submit key</button>
+              <button class="tx-btn tx-ghost" type="button" data-toast="Secret declined|The agent cannot post without the key.">Decline</button>
+            </div>
+          </article>
+
+          <article class="tx-card pt-req" aria-label="Plan approval">
+            <div class="pt-req-head">
+              <span class="tx-tile tx-tile-lg tx-tile-ok" aria-hidden="true"><span style="font:600 .875rem/1 var(--f-mono)">4</span></span>
+              <div class="pt-req-titlewrap">
+                <span class="pt-req-kind is-ok">Plan approval</span>
+                <strong class="pt-req-title">Close plan v2 · four steps.</strong>
+                <span class="pt-req-copy">Three steps are new since v1. The close date stays in September.</span>
+              </div>
+              <span class="tx-pill tx-pill-line">Always asks</span>
+            </div>
+            <ol class="pt-plan">
+              <li><span class="pt-plan-n">1</span><span>Reconcile the ledger</span><span></span></li>
+              <li class="is-new"><span class="pt-plan-n">2</span><span>Post the two accruals</span><small>New</small></li>
+              <li class="is-new"><span class="pt-plan-n">3</span><span>Publish the close checklist</span><small>New</small></li>
+              <li class="is-new"><span class="pt-plan-n">4</span><span>Write the board note</span><small>New</small></li>
+            </ol>
+            <div class="pt-req-actions">
+              <button class="tx-btn tx-primary" type="button" data-toast="Plan approved|Four steps will run in order.">Approve plan</button>
+              <button class="tx-btn" type="button" data-toast="Changes requested|The composer opens with the plan quoted.">Request changes</button>
+              <button class="tx-btn tx-ghost" type="button" data-toast="Plan rejected|The turn will stop after the current step.">Reject</button>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="pg-req-rules">
+        <div><span>01</span><b>Spatial constancy</b><p>The dock sits above the composer at every width. A blocking request cannot be scrolled away.</p></div>
+        <div><span>02</span><b>One primary</b><p>Allow once, Send answer, Submit key, Approve plan. The widening grants and the exits are secondary or ghost.</p></div>
+        <div><span>03</span><b>Always asks</b><p>Secrets and plans ignore the approval mode. A silent yes is never inferred for either.</p></div>
+        <div><span>04</span><b>An audit, not a memory</b><p>After resolution the stream keeps one row with the decision, the actor and the reference.</p></div>
+      </div>
+      <p class="section-cap"><b>A missed request costs the whole turn.</b> The dock, the one primary and the countdown are cheaper than a re-run. The expiry is part of the decision, not a decoration.</p>
+    </section>
+
+    <!-- 6.5 SHELL -->
+    <section class="chapter" id="shell" aria-labelledby="h-shell">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.5</div>
+        <div>
+          <p class="ch-kicker">Pattern 04 · the shell</p>
+          <h2 class="t-h2" id="h-shell">A room that <em>folds.</em></h2>
+          <p class="t-lede">The shell is a rail, a main thread and an inspector, held by a topbar. It folds by its own width, not the page: 232 → 64 → 0 for the rail, 64 → 0 for the inspector. The thread, the composer and the primary request never leave.</p>
+        </div>
+        <div class="folio">Shell · 05 / 08</div>
+      </header>
+
+      <div class="pg-fold-board board dots">
+        <div class="pg-fold-head">
+          <div><span class="board-label">Live fold · drag the frame</span><p class="pg-note">The same markup, four states. Container queries, not page breakpoints.</p></div>
+          <div class="pg-fold-readout" aria-live="polite">
+            <span>Shell <b id="fold-shell-w">1184</b></span>
+            <span>Rail <b id="fold-rail-w">232</b></span>
+            <span>Thread <b id="fold-thread-w">740</b></span>
+            <span>Inspector <b id="fold-irail-w">64</b></span>
+            <span class="pg-fold-state" id="fold-state">Full</span>
+          </div>
+        </div>
+
+        <div class="pg-fold-stage">
+          <div class="pt-shell-wrap pg-fold-shell-wrap" id="fold-shell-wrap" style="--pg-fold-w:1184px">
+            <div class="pt-shell pg-fold-shell" id="fold-shell">
+              <aside class="pt-rail" aria-hidden="true">
+                <div class="pt-brand"><span class="pt-brand-mark"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span><span class="pt-brand-text"><span class="pt-brand-word">truex</span><span class="pt-brand-sub">Studio</span></span></div>
+                <div class="pt-nav">
+                  <span class="pt-nav-item"><span class="pt-nav-k">01</span><span class="pt-nav-word">Sessions</span></span>
+                  <span class="pt-nav-item"><span class="pt-nav-k">02</span><span class="pt-nav-word">Agents</span></span>
+                  <span class="pt-nav-item"><span class="pt-nav-k">03</span><span class="pt-nav-word">Files</span></span>
+                  <span class="pt-nav-item"><span class="pt-nav-k">04</span><span class="pt-nav-word">Insights</span></span>
+                </div>
+                <div class="pt-rail-label">Recent</div>
+                <div class="pt-session"><span class="pt-session-title">September close</span><span class="pt-session-time">now</span></div>
+                <div class="pt-session"><span class="pt-session-title">Onboarding plan</span><span class="pt-session-time">10:12</span></div>
+              </aside>
+              <div class="pt-main">
+                <div class="pt-topbar"><div class="pt-crumb"><span class="pt-project">Studio</span><span class="pt-sep pt-crumb-sep">/</span><span class="pt-title">September close</span></div><div class="pt-top-actions"><span class="tx-pill tx-pill-warn pt-status"><span class="tx-pulse" style="--tx-c:var(--warn)"></span>Waiting</span></div></div>
+                <div class="pt-goal"><span class="pt-goal-k">Goal</span><span class="pt-goal-text">Close September with a clean audit trail.</span><div class="tx-meter tx-meter-signal pt-goal-meter" style="--tx-p:28"><i></i></div></div>
+                <div class="pt-thread pg-fold-thread">
+                  <div class="pt-thread-in">
+                    <div class="pt-user-row"><div class="pt-bubble" style="font-size:var(--t-meta)">Close September and flag anything above five percent.</div></div>
+                    <div class="pg-fold-skel">
+                      <span class="tx-skel" style="width:72%;height:.6rem"></span>
+                      <span class="tx-skel" style="width:92%;height:.6rem"></span>
+                      <span class="tx-skel" style="width:58%;height:.6rem"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="pt-dock">
+                  <div class="pt-dock-in">
+                    <div class="tx-card pt-req" style="animation:none"><div class="pt-req-head"><span class="tx-tile tx-tile-sm tx-tile-warn">!</span><div class="pt-req-titlewrap"><span class="pt-req-kind is-warn">Tool approval</span><span class="pt-req-title" style="font-size:var(--t-ui)">Post two accruals</span></div></div></div>
+                    <div class="tx-card pt-composer" style="padding-block:var(--sp-1)"><div class="pt-composer-bar"><span class="tx-pill tx-pill-line">Ask</span><span class="pt-spacer"></span><span class="tx-btn tx-primary tx-xs">Send</span></div></div>
+                  </div>
+                </div>
+              </div>
+              <aside class="pt-irail" aria-hidden="true">
+                <span class="pt-irail-btn"><span class="tx-tile tx-tile-sm"><svg class="tx-ic tx-ic-sm"><use href="#i-trace"/></svg></span><span class="pt-irail-lbl">Receipt</span></span>
+                <span class="pt-irail-btn"><span class="tx-tile tx-tile-sm"><svg class="tx-ic tx-ic-sm"><use href="#i-agent"/></svg></span><span class="pt-irail-lbl">Crew</span></span>
+                <span class="pt-irail-btn"><span class="tx-tile tx-tile-sm"><svg class="tx-ic tx-ic-sm"><use href="#i-tool"/></svg></span><span class="pt-irail-lbl">Checks</span></span>
+              </aside>
+            </div>
+          </div>
+        </div>
+
+        <div class="pg-fold-controls">
+          <label class="pg-range" for="fold-range">
+            <span>Frame width <b id="fold-w-label">1184</b> px</span>
+            <input id="fold-range" type="range" min="360" max="1184" step="8" value="1184">
+            <span class="pg-range-scale" aria-hidden="true"><i>360</i><i>640</i><i>832</i><i>1088</i><i>1184</i></span>
+          </label>
+          <p class="pg-fold-note">The thread stays fluid below 740 px. The primary request stays above the composer.</p>
+        </div>
+      </div>
+
+      <div class="pg-fold-map" aria-label="The four shell states">
+        <div class="pg-fold-map-item" data-fold="full"><span>Full</span><b>&gt; 1088</b><p>Rail 232 · thread 740 · inspector 64. The full room.</p></div>
+        <div class="pg-fold-map-item" data-fold="docked"><span>Docked</span><b>832–1088</b><p>Rail 64 with labels folded. The thread takes the room.</p></div>
+        <div class="pg-fold-map-item" data-fold="compact"><span>Compact</span><b>640–832</b><p>Inspector rail folds away. The drawer stays one gesture deep.</p></div>
+        <div class="pg-fold-map-item" data-fold="focus"><span>Focus</span><b>&lt; 640</b><p>Rail folds away. Thread, dock and composer remain.</p></div>
+      </div>
+
+      <div class="pg-shell-bottom">
+        <div class="board dots pg-invariants">
+          <span class="board-label">The invariants</span>
+          <ul>
+            <li><span>01</span><b>The composer never leaves the viewport.</b><p>At every fold, the send or the held state stays at the bottom edge of the room.</p></li>
+            <li><span>02</span><b>The dock never scrolls.</b><p>The request is in the same place at 390 and 1440; only its width and action wrapping change.</p></li>
+            <li><span>03</span><b>The thread stops at 740.</b><p>Below that it is fluid. The answer keeps its measure; the reading order never reverses.</p></li>
+            <li><span>04</span><b>Focus returns.</b><p>Inspector and palette are one layer deep; Esc closes and returns focus to the trigger.</p></li>
+          </ul>
+        </div>
+        <div class="board dots pg-inspector-spec">
+          <div class="pg-inspector-spec-head"><span class="board-label">The inspector · 22.5rem</span><span class="tx-pill tx-pill-line">Drawer</span></div>
+          <div class="pt-insp-card">
+            <div class="pt-insp-head"><span class="pt-insp-label">Turn receipt</span><span class="tx-pill tx-pill-line">T4</span></div>
+            <div class="pt-insp-row"><span class="pt-insp-k">Tools</span><span class="pt-insp-v">14</span></div>
+            <div class="pt-insp-row"><span class="pt-insp-k">Tokens</span><span class="pt-insp-v">38,206</span></div>
+            <div class="pt-insp-row"><span class="pt-insp-k">Wall</span><span class="pt-insp-v">01:22</span></div>
+          </div>
+          <div class="pt-insp-card">
+            <div class="pt-insp-head"><span class="pt-insp-label">Checks</span><span class="pt-insp-label">3 / 4</span></div>
+            <div class="pt-insp-check"><span class="tx-dot tx-dot-ok"></span><span>Ledger balanced</span><span class="pt-spacer"></span><span class="pt-insp-k">ok</span></div>
+            <div class="pt-insp-check"><span class="tx-dot tx-dot-warn"></span><span>Approvals</span><span class="pt-spacer"></span><span class="pt-insp-k">1 open</span></div>
+          </div>
+          <p class="pg-note">At focus it is 100% wide, with the same close and return.</p>
+        </div>
+      </div>
+      <p class="section-cap"><b>232 + 740 + 360 = 1332.</b> The full three-column room needs more than the 80rem page frame can give, so the inspector docks as a drawer. The shell decides by its own width; the page never decides for it.</p>
+    </section>
+
+    <!-- 6.6 PALETTE -->
+    <section class="chapter" id="palette" aria-labelledby="h-palette">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.6</div>
+        <div>
+          <p class="ch-kicker">Pattern 06 · the palette</p>
+          <h2 class="t-h2" id="h-palette">Recognition over <em>recall.</em></h2>
+          <p class="t-lede">One input, grouped results, shortcuts you can see. The palette is how the product is driven without learning every surface. It floats over the room, one layer deep, and returns focus exactly where it left.</p>
+        </div>
+        <div class="folio">Palette · 06 / 08</div>
+      </header>
+
+      <div class="pg-palette-grid">
+        <div class="pg-palette-board board dots">
+          <div class="pg-palette-head">
+            <span class="board-label">Inline specimen · the same component</span>
+            <span class="tx-pill tx-pill-line">540 px</span>
+          </div>
+          <div class="pt-palette pg-inline-palette" id="inline-palette">
+            <div class="pt-palette-input-row">
+              <span class="pt-palette-prompt" aria-hidden="true">›</span>
+              <label class="tx-sr" for="inline-palette-input">Search commands</label>
+              <input class="tx-input pt-palette-input" id="inline-palette-input" type="search" placeholder="Search or jump to…" role="combobox" aria-expanded="true" aria-controls="inline-palette-list" aria-autocomplete="list" autocomplete="off">
+              <span class="tx-kbd">⌘K</span>
+            </div>
+            <div class="pt-palette-list" id="inline-palette-list" role="listbox" aria-label="Commands">
+              <div class="pt-palette-group-wrap" role="group" aria-labelledby="inline-g-go">
+                <div class="pt-palette-group" id="inline-g-go">Go to</div>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="true" id="inline-opt-1" data-action="session" data-keywords="september close session current"><span>September close<small>Current session</small></span><span class="tx-kbd">↵</span></button>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="inline-opt-2" data-action="session" data-keywords="onboarding plan session"><span>Onboarding plan<small>Last opened 10:12</small></span><span class="tx-kbd">↵</span></button>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="inline-opt-3" data-action="session" data-keywords="q3 pipeline review session"><span>Q3 pipeline review<small>Monday</small></span><span class="tx-kbd">↵</span></button>
+              </div>
+              <div class="pt-palette-group-wrap" role="group" aria-labelledby="inline-g-actions">
+                <div class="pt-palette-group" id="inline-g-actions">Actions</div>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="inline-opt-4" data-action="receipt" data-keywords="open receipt inspector turn"><span>Open turn receipt<small>Tools, tokens and the wall clock</small></span><span class="tx-kbd">R</span></button>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="inline-opt-5" data-action="reasoning" data-keywords="show reasoning work log evidence"><span>Show reasoning<small>Open the work log</small></span><span class="tx-kbd">W</span></button>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="inline-opt-6" data-action="new" data-keywords="new session create"><span>New session<small>Start with a clean thread</small></span><span class="tx-kbd">N</span></button>
+              </div>
+              <div class="pt-palette-group-wrap" role="group" aria-labelledby="inline-g-agents">
+                <div class="pt-palette-group" id="inline-g-agents">Agents</div>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="inline-opt-7" data-action="agent" data-keywords="qlik analyst agent"><span>Qlik Analyst<small>Main · running</small></span><span class="tx-kbd">Q</span></button>
+                <button class="tx-menu-item" role="option" tabindex="-1" aria-selected="false" id="inline-opt-8" data-action="agent" data-keywords="vera research agent"><span>Vera<small>Research</small></span><span class="tx-kbd">V</span></button>
+              </div>
+            </div>
+            <div class="pt-palette-empty" id="inline-palette-empty" aria-live="polite" hidden>No command matches. Try “receipt” or “session”.</div>
+            <div class="pt-palette-foot"><span><span class="tx-kbd">↑↓</span> navigate</span><span><span class="tx-kbd">↵</span> run</span><span><span class="tx-kbd">Esc</span> clear</span></div>
+          </div>
+          <p class="pg-note pg-palette-note">Inline for inspection. In product the same component floats over the room; try <span class="tx-kbd">⌘K</span> in the hero.</p>
+        </div>
+
+        <aside class="pg-palette-notes">
+          <div class="board dots">
+            <span class="board-label">The keyboard contract</span>
+            <div class="pg-grammar-row"><span>01</span><div><b>One input.</b><p>Typing filters label and keywords; no separate search mode.</p></div></div>
+            <div class="pg-grammar-row"><span>02</span><div><b>Groups, not a list.</b><p>Go to, Actions, Agents. Three chunks beat one long column.</p></div></div>
+            <div class="pg-grammar-row"><span>03</span><div><b>Destructive is never default.</b><p>Stop and delete live in a danger group and never take the first selection.</p></div></div>
+            <div class="pg-grammar-row"><span>04</span><div><b>Focus returns.</b><p>Esc, scrim and Enter all return focus to the trigger.</p></div></div>
+          </div>
+          <div class="board dots pg-palette-math">
+            <span class="board-label">Why it works</span>
+            <p><b>Recognition</b> replaces recall: the command is visible before it is remembered.</p>
+            <p><b>Search</b> beats a memorised path: one input instead of six clicks.</p>
+            <p><b>One layer</b> of overlay: no palette inside a palette, no hidden state.</p>
+            <div class="pg-palette-keys"><span class="tx-kbd">⌘K</span><span class="tx-kbd">↑</span><span class="tx-kbd">↓</span><span class="tx-kbd">↵</span><span class="tx-kbd">Esc</span></div>
+          </div>
+        </aside>
+      </div>
+      <p class="section-cap"><b>The palette is the shortest path to everything the screen already knows.</b> If an action matters, it is findable here; if it is destructive, it is never the first answer.</p>
+    </section>
+
+    <!-- 6.7 STATES -->
+    <section class="chapter" id="states" aria-labelledby="h-states">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.7</div>
+        <div>
+          <p class="ch-kicker">Patterns · states &amp; adaptation</p>
+          <h2 class="t-h2" id="h-states">The narrow twin <em>keeps the meaning.</em></h2>
+          <p class="t-lede">A pattern is finished only when it has a narrow twin: the same work at 390 px, at 200% text, on a keyboard and under reduced motion. The room folds; the answer, the dock, the composer and the primary decision stay.</p>
+        </div>
+        <div class="folio">States · 07 / 08</div>
+      </header>
+
+      <div class="pg-states">
+        <div class="tx-card tx-card-pad tx-state">
+          <span class="tx-tile tx-tile-lg"><svg class="tx-ic tx-ic-lg" aria-hidden="true"><use href="#i-search"/></svg></span>
+          <h4>A quiet room</h4>
+          <p>No turn yet. Ask one question; the answer will land above the work.</p>
+          <button class="tx-btn tx-primary tx-sm" type="button" data-toast="New session|A clean thread is ready.">Start a session</button>
+        </div>
+        <div class="tx-card tx-card-pad tx-state" aria-busy="true">
+          <span class="tx-tile tx-tile-lg tx-tile-signal"><span class="tx-spin" aria-hidden="true"></span></span>
+          <h4><span class="tx-shimmer">Opening the thread…</span></h4>
+          <div class="pg-skels" aria-hidden="true">
+            <span class="tx-skel" style="height:.75rem;width:82%"></span>
+            <span class="tx-skel" style="height:.75rem;width:96%"></span>
+            <span class="tx-skel" style="height:.75rem;width:58%"></span>
+          </div>
+        </div>
+        <div class="tx-card tx-card-pad tx-state tx-state-error">
+          <span class="tx-tile tx-tile-lg tx-tile-bad"><span aria-hidden="true">×</span></span>
+          <h4>The run lost its connection</h4>
+          <p>The transcript is safe. Reconnect to continue. <span class="tx-chip tx-chip-ref">err_7f3a21</span></p>
+          <div class="tx-row"><button class="tx-btn tx-sm" type="button" data-toast="Reconnecting|The session will resume from the last event.">Reconnect</button><button class="tx-btn tx-ghost tx-sm" type="button" data-toast="Retrying|Turn 04 will retry the last tool call.">Retry</button></div>
+        </div>
+      </div>
+
+      <div class="pg-adapt">
+        <div class="board dots pg-survive">
+          <span class="board-label">What survives</span>
+          <ul>
+            <li><span class="tx-dot tx-dot-ok" aria-hidden="true"></span>The answer and its reading order.</li>
+            <li><span class="tx-dot tx-dot-ok" aria-hidden="true"></span>The request dock and its one primary.</li>
+            <li><span class="tx-dot tx-dot-ok" aria-hidden="true"></span>The composer, held or free.</li>
+            <li><span class="tx-dot tx-dot-ok" aria-hidden="true"></span>The audit reference and the approval record in the log.</li>
+            <li><span class="tx-dot tx-dot-ok" aria-hidden="true"></span>Focus return from every overlay.</li>
+            <li><span class="tx-dot tx-dot-ok" aria-hidden="true"></span>The static twin under reduced motion.</li>
+          </ul>
+        </div>
+        <div class="board dots pg-folds">
+          <span class="board-label">What folds</span>
+          <ul>
+            <li><span class="tx-dot tx-dot-warn" aria-hidden="true"></span>Rail labels → numeric marks → nothing.</li>
+            <li><span class="tx-dot tx-dot-warn" aria-hidden="true"></span>Session list and crew list.</li>
+            <li><span class="tx-dot tx-dot-warn" aria-hidden="true"></span>Inspector rail → drawer → full-width drawer.</li>
+            <li><span class="tx-dot tx-dot-warn" aria-hidden="true"></span>Palette width; request actions wrap.</li>
+            <li><span class="tx-dot tx-dot-warn" aria-hidden="true"></span>Measures and secondary metadata.</li>
+            <li><span class="tx-dot tx-dot-warn" aria-hidden="true"></span>Never the primary decision.</li>
+          </ul>
+        </div>
+        <div class="board dots pg-a11y">
+          <span class="board-label">The contract at 200%</span>
+          <p><b>Container, not page.</b> The shell uses its own width; text zoom folds it earlier instead of breaking it.</p>
+          <p><b>One primary.</b> Request actions wrap; the allowed decision never loses rank.</p>
+          <p><b>Focus returns.</b> Esc closes the inspector and palette; the trigger keeps the ring.</p>
+          <p><b>Motion yields.</b> The countdown keeps its value; the spinner, shimmer, caret and drawer have static twins.</p>
+        </div>
+      </div>
+      <p class="section-cap"><b>No separate mobile design.</b> The narrow twin is the same contract at a smaller width: the same answer, the same dock, the same primary, the same return.</p>
+    </section>
+
+    <!-- 6.8 CONTRACT -->
+    <section class="chapter" id="contract" aria-labelledby="h-contract">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">6.8</div>
+        <div>
+          <p class="ch-kicker">Contract · file</p>
+          <h2 class="t-h2" id="h-contract">A library of <em>arrangements.</em></h2>
+          <p class="t-lede">patterns.css holds six compositions, one prefix and no new atoms. It depends on the primitives and the four foundations; it adds only structure, container geometry and pattern states. Every control remains a tx part.</p>
+        </div>
+        <div class="folio">Contract · 08 / 08</div>
+      </header>
+
+      <div class="pg-contract">
+        <div class="pg-contract-side">
+          <span class="board-label">The index · six patterns</span>
+          <div class="pg-contract-index">
+            <div class="pg-index-item"><code>.pt-turn</code><span>turn</span></div>
+            <div class="pg-index-item"><code>.pt-work</code><span>log</span></div>
+            <div class="pg-index-item"><code>.pt-req</code><span>dock</span></div>
+            <div class="pg-index-item"><code>.pt-shell</code><span>shell</span></div>
+            <div class="pg-index-item"><code>.pt-inspector</code><span>inspector</span></div>
+            <div class="pg-index-item"><code>.pt-palette</code><span>palette</span></div>
+          </div>
+
+          <ul class="pg-checks">
+            <li><span class="g" aria-hidden="true">✓</span><span>All controls are tx primitives; patterns add no new button, field or chip.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>No new colour, font or radius; no raw hex in patterns.css.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>One primary per surface and per request.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>The answer precedes the evidence; the work log is a fold, not a second answer.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>The request dock never scrolls; the composer stays in the viewport.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Focus returns from the inspector and palette; the narrow twin keeps every invariant.</span></li>
+          </ul>
+
+          <div class="pg-perf">
+            <div><b id="pg-css-size">34.2 KB</b><span>css raw</span></div>
+            <div><b id="pg-css-gzip">5.6 KB</b><span>css gzip</span></div>
+            <div><b id="pg-css-classes">145</b><span>pt classes</span></div>
+            <div><b>06</b><span>patterns</span></div>
+            <div><b>00</b><span>new atoms</span></div>
+            <div><b>4</b><span>fold states</span></div>
+          </div>
+          <p class="pg-perf-note">The layer is layout and container geometry. The demos on this page ship optional JS; the CSS layer itself needs none.</p>
+        </div>
+
+        <div class="pg-code-stack">
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              patterns.css · shell + fold
+              <button class="copy" type="button" data-copy="#pg-code-shell" aria-label="Copy shell pattern CSS">Copy</button>
+            </div>
+            <pre class="code" id="pg-code-shell"><code><span class="p">.pt-shell-wrap</span> {
+  <span class="p">container-type</span>: <span class="n">inline-size</span>;
+  <span class="p">container-name</span>: <span class="n">ptshell</span>;
+}
+
+<span class="p">.pt-shell</span> {
+  <span class="p">display</span>: <span class="n">grid</span>;
+  <span class="p">grid-template-columns</span>:
+    <span class="k">var</span>(--pt-rail-w) <span class="n">minmax(0, 1fr)</span> <span class="k">var</span>(--pt-irail-w);
+  <span class="p">grid-template-rows</span>: <span class="n">minmax(0, 1fr)</span>;
+  <span class="p">overflow</span>: <span class="n">hidden</span>;
+}
+
+<span class="c">/* the frame, not the page, decides */</span>
+<span class="k">@container</span> ptshell (<span class="p">max-width</span>: <span class="n">68rem</span>) {
+  <span class="p">.pt-shell</span> { <span class="p">--pt-rail-w</span>: <span class="k">var</span>(--rail-collapsed); }
+  <span class="p">.pt-nav-word</span> { <span class="p">display</span>: <span class="n">none</span>; }
+}</code></pre>
+          </div>
+
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              markup · a request card
+              <button class="copy" type="button" data-copy="#pg-code-request" aria-label="Copy request pattern markup">Copy</button>
+            </div>
+            <pre class="code" id="pg-code-request"><code><span class="p">&lt;article</span> <span class="k">class</span>=<span class="s">"tx-card pt-req"</span><span class="p">&gt;</span>
+  <span class="p">&lt;span</span> <span class="k">class</span>=<span class="s">"tx-tile tx-tile-lg tx-tile-warn"</span><span class="p">&gt;</span>…<span class="p">&lt;/span&gt;</span>
+  <span class="p">&lt;span</span> <span class="k">class</span>=<span class="s">"pt-req-kind is-warn"</span><span class="p">&gt;</span>Tool approval<span class="p">&lt;/span&gt;</span>
+  <span class="p">&lt;strong</span> <span class="k">class</span>=<span class="s">"pt-req-title"</span><span class="p">&gt;</span>Post two accruals<span class="p">&lt;/strong&gt;</span>
+  <span class="p">&lt;div</span> <span class="k">class</span>=<span class="s">"pt-req-actions"</span><span class="p">&gt;</span>
+    <span class="p">&lt;button</span> <span class="k">class</span>=<span class="s">"tx-btn tx-primary"</span><span class="p">&gt;</span>
+      Allow once <span class="p">&lt;span</span> <span class="k">class</span>=<span class="s">"tx-kbd"</span><span class="p">&gt;</span>1<span class="p">&lt;/span&gt;</span>
+    <span class="p">&lt;/button&gt;</span>
+    <span class="p">&lt;button</span> <span class="k">class</span>=<span class="s">"tx-btn tx-ghost"</span><span class="p">&gt;</span>Decline<span class="p">&lt;/button&gt;</span>
+  <span class="p">&lt;/div&gt;</span>
+<span class="p">&lt;/article&gt;</span></code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-note pg-lock">
+        <div class="lock-left">
+          <span class="seal pg-seal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+          <div><b>Proposal · Patterns</b><small>Ready for sign-off. On approval, patterns.css becomes the composition layer for the product.</small></div>
+        </div>
+        <div class="lock-right">Files · patterns.css / 06-patterns.html<br><a href="05-primitives.html">← Chapter 05 Primitives</a><br><span>Next · 07 Screens</span></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Chapter 06 — Patterns / Proposal 26 Oct 2026</span>
+      </div>
+    </div>
+    <p class="foot-serif">The room knows where you are. <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<div class="tx-toast-host" id="page-toast-host" aria-live="polite" aria-atomic="false"></div>
+
+<script src="space.js"></script>
+<script src="patterns.js"></script>
+</body>
+</html>

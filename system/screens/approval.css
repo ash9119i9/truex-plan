@@ -1,0 +1,294 @@
+/* approval — the PlanApprovalCard pinned above the composer, and the
+   ApprovalRecord it leaves in the stream. */
+.cs-pinned { margin-bottom: var(--sp-2); }
+.cs-pinned[hidden],
+.cs-stop[hidden] { display: none; }
+
+.ap {
+  max-height: min(48vh, 26rem);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-3);
+  border: 1px solid color-mix(in srgb, var(--signal) 32%, var(--line));
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-2);
+  scrollbar-width: thin;
+  animation: ap-in .28s var(--tx-ease) both;
+}
+@keyframes ap-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.ap[data-state="error"] { border-color: color-mix(in srgb, var(--bad) 32%, var(--line)); }
+.ap[data-state="expired"] { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+
+.ap-head { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.ap-ic {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--signal-soft);
+  color: var(--signal-ink);
+}
+.ap-title { min-width: 0; color: var(--ink); font: 650 var(--t-ui)/1.3 var(--f-ui); letter-spacing: -.005em; }
+.ap-time {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+  padding: 2px 8px;
+  border-radius: var(--r-pill); corner-shape: round;
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+}
+.ap-time.is-warn { background: var(--warn-soft); color: var(--warn-ink); }
+.ap-q { margin: var(--sp-2) 0 0; color: var(--ink); font-size: var(--t-meta); line-height: 1.5; text-wrap: pretty; }
+.ap-above { margin: var(--sp-1) 0 0; color: var(--ink-3); font-size: .75rem; line-height: 1.45; }
+.ap-steps .pl-steps { margin-top: var(--sp-2); }
+
+.ap-btns { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); margin-top: var(--sp-3); }
+/* btn-soft · a tinted secondary next to the solid primary */
+.ap-soft { border-color: transparent; background: var(--signal-soft); color: var(--signal-ink); box-shadow: none; }
+.ap-soft:not(:disabled):not([aria-disabled="true"]):hover { border-color: transparent; background: color-mix(in srgb, var(--signal) 18%, var(--surface)); }
+.ap .tx-btn:disabled { cursor: default; opacity: .6; }
+.ap-spin { --tx-spin-c: currentColor; width: .75rem; height: .75rem; border-width: 1.5px; }
+
+/* revise mode */
+.ap-box { margin-top: var(--sp-3); }
+.ap-label { display: block; margin-bottom: 4px; color: var(--ink); font: 600 .75rem/1.3 var(--f-ui); }
+.ap-note {
+  display: block;
+  width: 100%;
+  min-height: 4.5rem;
+  max-height: 10rem;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 var(--t-meta)/1.5 var(--f-ui);
+  resize: vertical;
+}
+.ap-note:focus { outline: none; border-color: var(--signal); box-shadow: var(--focus); }
+.ap-note[readonly] { background: var(--surface-2); color: var(--ink-2); }
+.ap-hint { margin-inline-start: auto; color: var(--ink-3); font-size: .6875rem; }
+
+.ap-msg,
+.ap-err { display: flex; align-items: flex-start; gap: 6px; margin: var(--sp-3) 0 0; font-size: var(--t-meta); line-height: 1.45; }
+.ap-msg { color: var(--ink-2); }
+.ap-msg .tx-ic { flex: none; margin-top: 3px; color: var(--warn-ink); }
+.ap-err { color: var(--bad-ink); }
+.ap-err .tx-ic { flex: none; margin-top: 3px; }
+.ap-ref { margin-inline-start: auto; }
+
+/* request card · clarifications and tool approvals, one question at a time */
+.aq-step {
+  flex: none;
+  margin-inline-start: auto;
+  padding: 2px 8px;
+  border-radius: var(--r-pill); corner-shape: round;
+  background: var(--well);
+  color: var(--ink-2);
+  font-size: var(--t-micro);
+}
+.aq-step + .ap-time { margin-inline-start: 0; }
+.aq.is-tool { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+.aq.is-tool .ap-ic { background: var(--warn-soft); color: var(--warn-ink); }
+.aq-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px var(--sp-2);
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--well);
+}
+.aq-k { font: 600 .625rem/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.aq-action code { min-width: 0; color: var(--ink); font: .75rem/1.5 var(--f-mono); overflow-wrap: anywhere; }
+/* option toggles · pressed shows a filled tick; one-click options end in a chevron */
+.aq-opts { display: grid; gap: 4px; margin-top: var(--sp-3); }
+.aq-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color var(--tx-d-1) var(--tx-ease), background-color var(--tx-d-1) var(--tx-ease);
+}
+.aq-opt:hover:not(:disabled) { border-color: var(--line-strong); background: var(--surface-2); }
+.aq-opt:focus-visible { outline: none; box-shadow: var(--focus); }
+.aq-opt:disabled { cursor: default; opacity: .7; }
+.aq-opt[aria-pressed="true"] { border-color: var(--signal); background: color-mix(in srgb, var(--signal-soft) 60%, var(--surface)); }
+.aq-tick {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  flex: none;
+  margin-top: 2px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%; corner-shape: round;
+  color: transparent;
+}
+.aq-tick .tx-ic { width: .625rem; height: .625rem; stroke-width: 2.5; }
+.aq-opt[aria-pressed="true"] .aq-tick { border-color: var(--signal-fill); background: var(--signal-fill); color: var(--on-signal); }
+.aq-opt-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.aq-opt-text b { color: var(--ink); font: 600 var(--t-meta)/1.35 var(--f-ui); }
+.aq-opt-text small { color: var(--ink-3); font-size: .75rem; line-height: 1.4; }
+.aq-go { flex: none; align-self: center; color: var(--ink-3); transition: transform var(--tx-d-1) var(--tx-ease), color var(--tx-d-1) var(--tx-ease); }
+.aq-opt.is-go:hover:not(:disabled) .aq-go { color: var(--signal-ink); transform: translateX(2px); }
+.aq-opts.is-miss .aq-opt { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+
+.aq-text {
+  display: block;
+  width: 100%;
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: 400 var(--t-meta)/1.5 var(--f-ui);
+}
+.aq-opts + .aq-text { margin-top: 6px; }
+.ap-q + .aq-text { margin-top: var(--sp-3); }
+.aq-text[type="password"] { font-family: var(--f-mono); letter-spacing: .08em; }
+.aq-text:focus { outline: none; border-color: var(--signal); box-shadow: var(--focus); }
+.aq-text[aria-invalid="true"] { border-color: var(--bad); }
+.aq-text[readonly] { background: var(--surface-2); color: var(--ink-2); }
+.aq-note { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--ink-3); font-size: .6875rem; }
+.aq-miss { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; color: var(--bad-ink); font-size: .75rem; font-weight: 550; }
+.aq-sending { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); font-size: var(--t-meta); }
+
+/* 6.3 ToolApprovalCard · connector, badge, action, arguments, four decisions */
+.at { border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+.at .ap-ic { background: var(--warn-soft); color: var(--warn-ink); }
+.at-tool { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; margin-top: var(--sp-3); }
+.at-logo {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink);
+}
+.at-logo svg { width: 1.125rem; height: 1.125rem; }
+.at-logo.is-letter { color: var(--ink-2); font: 700 .8125rem/1 var(--f-ui); }
+.at-id { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.at-id b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font: 650 var(--t-meta)/1.3 var(--f-ui); }
+.at-id small { color: var(--ink-3); font-size: .75rem; }
+.at-badge { flex: none; padding: 2px 8px; border-radius: var(--r-pill); corner-shape: round; font: 650 .6875rem/1.3 var(--f-ui); }
+.at-badge.is-read { background: var(--ok-soft); color: var(--ok-ink); }
+.at-badge.is-write { background: var(--warn-soft); color: var(--warn-ink); }
+.at-args { margin-top: var(--sp-2); }
+.at-args summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border-radius: var(--r-xs);
+  color: var(--ink-2);
+  font: 600 .75rem/1.3 var(--f-ui);
+  list-style: none;
+  cursor: pointer;
+}
+.at-args summary::-webkit-details-marker { display: none; }
+.at-args summary:hover { color: var(--ink); }
+.at-args summary:focus-visible { outline: none; box-shadow: var(--focus); }
+.at-args summary .tx-ic { transition: transform var(--tx-d-2) var(--tx-ease); }
+.at-args[open] summary .tx-ic { transform: rotate(90deg); }
+.at-pre {
+  margin: 6px 0 0;
+  max-height: 10rem;
+  overflow: auto;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  color: var(--ink-2);
+  font: .6875rem/1.5 var(--f-mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+.ar-what { color: var(--ink-2); }
+
+/* records for requests sit in their own slot in the reply */
+.cs-msg-asks { min-width: 0; padding-inline-start: calc(var(--av-sm) + var(--sp-2)); }
+.cs-msg-asks:empty { display: none; }
+.cs-msg-asks > .ar:first-child { margin-top: 0; }
+
+/* 6.5 ApprovalRecord · "Your decision": dot + title + badge, or question +
+   answer, then "{summary} at {h:mm}" */
+.ar {
+  display: grid;
+  gap: 6px;
+  max-width: 36rem;
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: .75rem;
+  line-height: 1.45;
+  animation: cs-msg-in .28s var(--tx-ease) both;
+}
+.ar-k { font: 600 .625rem/1 var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.ar-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ar-item { min-width: 0; }
+.ar-tool { display: flex; align-items: center; gap: var(--sp-2); }
+.ar-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; corner-shape: round; background: var(--line-strong); }
+.ar-tool[data-tone="allowed"] .ar-dot { background: var(--ok); }
+.ar-tool[data-tone="declined"] .ar-dot { background: var(--bad); }
+.ar-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 600; }
+.ar-badge {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--r-pill); corner-shape: round;
+  background: var(--well);
+  color: var(--ink-2);
+  font: 650 .6875rem/1.4 var(--f-ui);
+  white-space: nowrap;
+}
+.ar-tool[data-tone="allowed"] .ar-badge { background: var(--ok-soft); color: var(--ok-ink); }
+.ar-tool[data-tone="declined"] .ar-badge { background: var(--bad-soft); color: var(--bad-ink); }
+.ar-qa { display: grid; gap: 1px; }
+.ar-q { color: var(--ink-2); overflow-wrap: anywhere; }
+.ar-a { color: var(--ink); font-weight: 600; overflow-wrap: anywhere; }
+.ar-a.is-dim { color: var(--ink-3); font-weight: 500; font-style: italic; }
+.ar-foot { margin: 0; color: var(--ink-3); font-size: .6875rem; }
+.ar-foot time { font-variant-numeric: tabular-nums; }
+
+/* a send the paused turn can't take points back at the card */
+.ap.is-nudge { animation: ap-nudge .9s var(--tx-ease); }
+@keyframes ap-nudge {
+  0%, 45% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--signal) 35%, transparent), var(--sh-2); }
+  100% { box-shadow: var(--sh-2); }
+}
+:root[data-eff-motion="reduce"] .ap.is-nudge { animation: none; }
+
+@media (max-width: 640px) {
+  .ap { max-height: 55vh; }
+  .at-btns { display: grid; grid-template-columns: 1fr 1fr; }
+  .at-btns .tx-btn { width: 100%; }
+  .cs-msg-asks { padding-inline-start: 0; }
+  .ar { max-width: none; }
+}
+@media (hover: none) { .ap-hint { display: none; } }
+@media (prefers-reduced-motion: reduce) { .ap, .ap.is-nudge, .ar { animation: none; } .aq-opt, .aq-go { transition: none; } }
+:root[data-eff-motion="reduce"] .ap,
+:root[data-eff-motion="reduce"] .ar { animation: none; }

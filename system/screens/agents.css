@@ -1,0 +1,160 @@
+/* agent team — the roster as a pinned board of ID photos. Same pinned-board
+   graphics as the earlier study (polaroid robots, push-pins, grid-paper board,
+   counter-tilted captions, doodles), rebuilt on the locked foundations.
+
+   Everything chromatic and typographic is read from the linked foundation
+   (color.css / type.css / space.css / corner.css / primitives.css): signal,
+   ink, surfaces, identities, radius, elevation and the three families. No raw
+   signal or ink hex lives here.
+
+   The robots, their pastel tints and the metal push-pin are printed artwork —
+   one fixed material in every theme — so, exactly like the ID card in
+   agent-id, their colours are named once in the --pb-* block and nowhere else.
+   Signal is spent only on live work and interaction. */
+
+.page {
+  /* printed material: the pinned-board artwork, theme-independent ----------- */
+  --pb-metal-hi: #E7E2D6; --pb-metal: #B3AB99; --pb-metal-lo: #6E685C;
+  --pb-pin-stem: #8A867A; --pb-pin-cast: rgb(16 20 24 / 22%);
+  /* the live pin and its glass highlight are the system signal, lightened ---- */
+  --pb-live-hi: color-mix(in srgb, var(--signal) 45%, #fff);
+  --pb-live: var(--signal);
+  --pb-live-lo: var(--signal-hover);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--page);
+  color: var(--ink);
+  /* the dotted bench, from the foundation dot token */
+  background-image: radial-gradient(var(--page-dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.page { max-width: var(--wrap); margin: 0 auto; padding: var(--sp-5) var(--gutter) var(--sp-8); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- header ---------------------------------------------------------- */
+.top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.brand { font-size: var(--t-meta); color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; }
+.top-actions { display: flex; gap: var(--sp-2); }
+
+.hero { margin: var(--sp-6) 0 var(--sp-5); }
+.hero h1 { margin: 0; }
+.hero p { margin: var(--sp-3) 0 0; color: var(--ink-2); }
+
+/* ---------- tools ----------------------------------------------------------- */
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.search { position: relative; flex: 1 1 260px; max-width: 24rem; }
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--ink-3); pointer-events: none; }
+.search .tx-input { width: 100%; padding-left: 36px; }
+
+/* ---------- board: grid paper, polaroids, pins ------------------------------ */
+.board {
+  position: relative; border-radius: var(--r-lg); border: 1px solid var(--line);
+  padding: var(--sp-7) var(--sp-6) var(--sp-6); overflow: hidden;
+  background-color: var(--surface); box-shadow: var(--sh-1);
+  /* a neutral grid wash — a ruled bench, not a coloured one */
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--ink) 11%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 11%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in srgb, var(--ink) 5%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 5%, transparent) 1px, transparent 1px);
+  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px; background-position: -1px -1px;
+}
+.team {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-8) var(--sp-6);
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); position: relative; z-index: 1;
+}
+
+.card {
+  position: relative; transform: rotate(var(--tilt)); transform-origin: 50% 0;
+  animation: pin-in .5s cubic-bezier(.2,.9,.3,1.2) both; animation-delay: calc(var(--i) * 60ms);
+}
+@keyframes pin-in { from { opacity: 0; transform: translateY(-14px) rotate(calc(var(--tilt) * 2)); } }
+.pin-anchor { position: absolute; left: 50%; top: 4px; width: 1px; height: 1px; }
+
+/* the polaroid frame is the agent's identity tint; photo is the paler tint wash */
+.frame { background: var(--frame); border-radius: var(--r); padding: 10px 10px 0; box-shadow: var(--sh-2); transition: box-shadow .2s ease; }
+.card:hover .frame { box-shadow: var(--sh-3); }
+.photo {
+  position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 5 / 4; border: 0; padding: 0; border-radius: var(--r-sm);
+  background: radial-gradient(120% 90% at 30% 20%, rgb(255 255 255 / 70%), transparent 60%), var(--tint); cursor: pointer; overflow: hidden;
+}
+.photo::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 8%, transparent); pointer-events: none; }
+.photo svg.robot { width: 62%; height: auto; transition: transform .3s cubic-bezier(.2,.9,.3,1.2); }
+.card:hover .photo svg.robot { transform: translateY(-4px) scale(1.04); }
+
+.edit-hint { position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface) 92%, transparent); color: var(--ink); font-size: var(--t-meta); font-weight: 600; opacity: 0; transform: translateY(4px); transition: .15s ease; }
+.photo:hover .edit-hint, .photo:focus-visible .edit-hint { opacity: 1; transform: none; }
+.lock { position: absolute; left: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface) 82%, transparent); color: var(--ink-2); font-family: var(--f-mono); font-size: var(--t-micro); font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* caption: the system's editorial serif italic, counter-tilted against the card */
+.caption { padding: var(--sp-2) 4px var(--sp-3); text-align: center; color: var(--cap);
+  font-family: var(--f-serif); font-style: italic; font-weight: 400; font-size: 1.6rem; line-height: 1.05;
+  transform: rotate(-2deg); overflow-wrap: anywhere; font-synthesis: none; }
+
+.info { padding: var(--sp-3) 4px 0; transform: rotate(calc(var(--tilt) * -1)); transform-origin: 50% 0; }
+.handle { display: flex; align-items: center; gap: var(--sp-2); font-family: var(--f-mono); font-size: var(--t-meta); color: var(--ink-3); }
+/* the one live affordance uses the system's live pill */
+.handle .tx-pill { font-family: var(--f-ui); }
+.pulse { width: var(--dot); height: var(--dot); border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+.desc { margin: 4px 0 var(--sp-3); color: var(--ink-2); font-size: var(--t-body); }
+
+/* reach: MCP server chips, each carrying its catalogue accent dot */
+.reach { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 var(--sp-3); min-height: 22px; }
+.srv { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--r-pill);
+  background: var(--surface); border: 1px solid var(--line-strong); font: 500 var(--t-micro)/1 var(--f-mono); color: var(--ink-2); text-transform: none; letter-spacing: 0; }
+.srv .sd { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--c, var(--ink-3)); flex: none; }
+.reach .none { display: inline-flex; align-items: center; height: 22px; font: 500 var(--t-micro)/1 var(--f-mono); color: var(--ink-3); }
+
+.foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.meta { font-family: var(--f-mono); font-size: var(--t-micro); color: var(--ink-3); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+/* new-agent slot: dashed empty frame + hand-drawn note */
+.card.is-new .frame { background: transparent; box-shadow: none; border: 2px dashed var(--line-strong); padding: 10px; cursor: pointer; width: 100%; display: block; text-align: center; }
+.card.is-new .frame:hover { border-color: var(--signal); }
+.card.is-new .photo-empty { display: grid; place-items: center; aspect-ratio: 5 / 4; border-radius: var(--r-sm); background: var(--well); }
+.plus { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: var(--signal-fill); color: var(--on-signal); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--ink) 20%, transparent); }
+.card.is-new .caption { color: var(--ink-2); padding-bottom: 4px; }
+.note { display: flex; align-items: flex-start; gap: 4px; margin: var(--sp-2) 0 0 var(--sp-3); font-family: var(--f-serif); font-style: italic; font-size: 1.25rem; color: var(--ink-3); transform: rotate(-3deg); white-space: nowrap; }
+
+/* pins sit above the cards; doodles are pencil marks behind them */
+.pins { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; z-index: 3; }
+.doodle { position: absolute; color: var(--ink-3); pointer-events: none; z-index: 0; opacity: .55; }
+.doodle.bolt { right: 18px; top: 12px; }
+.doodle.squig { left: 14px; bottom: 10px; }
+
+.empty { display: grid; justify-items: center; gap: var(--sp-3); padding: var(--sp-7) var(--sp-4); color: var(--ink-2); position: relative; z-index: 1; }
+.empty strong { color: var(--ink); }
+
+.board-foot { display: flex; justify-content: space-between; align-items: center; margin-top: var(--sp-3); font-size: var(--t-meta); color: var(--ink-3); }
+.tag { padding: 3px 10px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--surface); letter-spacing: 0.02em; }
+
+/* ---------- spec ------------------------------------------------------------ */
+.spec { margin-top: var(--sp-7); padding-top: var(--sp-5); border-top: 1px solid var(--line); color: var(--ink-2); max-width: 78ch; }
+.spec h2 { margin: 0 0 var(--sp-2); color: var(--ink); }
+.spec ul { margin: 0; padding-left: 1.1rem; }
+.spec li { margin: 4px 0; font-size: var(--t-body); }
+.spec code { font-family: var(--f-mono); font-size: var(--t-meta); background: var(--well); padding: 1px 5px; border-radius: var(--r-xs); border: 1px solid var(--line); }
+
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 20px); opacity: 0; padding: 10px 14px; border-radius: var(--r-sm);
+  background: var(--inv); color: var(--on-inv); font-weight: 500; box-shadow: var(--sh-3); transition: .2s ease; z-index: 10; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 560px) {
+  .board { padding: var(--sp-6) var(--sp-3) var(--sp-5); }
+  .team { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-7) var(--sp-3); }
+  .caption { font-size: 1.2rem; }
+  .foot { flex-direction: column; align-items: stretch; }
+  .meta { display: none; }
+  .doodle { display: none; }
+}
+:root[data-eff-motion="reduce"] .card,
+:root[data-eff-motion="reduce"] .pulse { animation: none; }
+:root[data-eff-motion="reduce"] .photo svg.robot { transition: none; }

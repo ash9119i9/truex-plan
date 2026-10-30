@@ -29,14 +29,36 @@ test("helper cards show status, a live preview and an expandable result", () => 
     ],
     true,
   );
-  assert.match(html, /Checking with 3 helpers · 2 done/);
-  assert.match(html, /role="status"/);
-  assert.match(html, />crm deals</);
-  assert.match(html, />Reading deals</);
-  assert.match(html, /<details class="helper-card">/);
-  assert.match(html, />Two threads\.</);
-  assert.match(html, /tool-card is-failed/);
-  assert.match(html, /· Failed/);
+  // DESIGN-SPEC 12.6: one lane per helper, state as a glyph and a word.
+  assert.match(html, /<section class="hg is-live" aria-label="Helpers">/);
+  assert.match(html, /class="hg-title" role="status">Running 3 helpers</);
+  assert.match(html, /class="hg-flag">1 failed</);
+  const lanes = html.match(/<li class="hg-lane[^"]*"/g) ?? [];
+  assert.deepEqual(lanes, [
+    '<li class="hg-lane is-running"',
+    '<li class="hg-lane is-done"',
+    '<li class="hg-lane is-failed"',
+  ]);
+  // identity colours by first appearance
+  assert.match(
+    html,
+    /class="hg-tile" style="--hg-soft:var\(--id-1-soft\);--hg-ink:var\(--id-1-ink\)"/,
+  );
+  assert.match(html, /--id-3-soft/);
+  assert.match(html, /class="hg-name">Crm deals</);
+  assert.match(
+    html,
+    /class="hg-badge is-running"><span class="tx-spin"[^>]*><\/span>Running</,
+  );
+  assert.match(html, /class="hg-preview">Reading deals</);
+  assert.match(
+    html,
+    /<details class="hg-result"><summary>Result<\/summary><p>Two threads\.<\/p>/,
+  );
+  assert.match(html, /class="hg-badge is-failed">.*#i-x.*Failed/);
+  assert.match(html, /The helper stopped before finishing\./);
+  // a sentence per lane for assistive technology
+  assert.match(html, /class="tx-sr">Email: done\.</);
 });
 
 test("helper results are plain text and nothing renders without helpers", () => {
@@ -61,6 +83,8 @@ const dialog = (props: Record<string, unknown>) =>
       models: [],
       onClose: () => {},
       onSaved: () => {},
+      // The helpers choice lives on the desk's Access step (spec 15.3).
+      initialStep: "access",
       ...props,
     }),
   );

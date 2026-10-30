@@ -1,16 +1,30 @@
 "use client";
 import {
   createContext,
+  Fragment,
   memo,
   useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { tintOf } from "@/lib/agent-look";
+import {
+  duration,
+  orderTurn,
+  turnErrorOf,
+  workFlag,
+  workingLabel,
+  workLabel,
+  type Slot,
+} from "@/lib/turn";
+import Link from "next/link";
+import { initials } from "@/components/auth/workspace-frame";
+import { Button } from "@/components/tx/button";
+import { RefChip } from "@/components/tx/chip";
 import { stripSuggestions, type FollowUpItem } from "@/lib/suggestions";
 import { FollowUpRows } from "./follow-up-rows";
 import {
@@ -18,7 +32,6 @@ import {
   exchangesOf,
   helperApprovalNote,
   helperLabel,
-  helpersSummary,
   isSettled,
   messageStateNote,
   outcomeNote,
@@ -30,25 +43,28 @@ import {
   approvalForItem,
   sentSteerId,
   steerText,
-  titleProblem,
-  usageLine,
   type ApprovalView,
   type ChatMessage,
   type ChatRun,
-  type ChatSummary,
   type ChatThread,
   type HelperAgent,
+  type HelperStatus,
+  type RunError,
   type LiveReply,
 } from "@/lib/tenant-chat";
-import { Icon } from "@/components/v2/icon";
+import { Spin } from "@/components/tx/live";
+import { Icon, type IconName } from "@/components/tx/icon";
+import { mask } from "@/lib/mask";
 import {
-  approvalCardTitle,
   approvalOutcomeLabel,
   connectorBanner,
   connectorName,
   savedApprovalLabel,
-  toolCardLabel,
+  humanizeToolName,
+  sentence,
+  toolStepName,
   type ApprovalAnswer,
+  type ApprovalDecision,
   type ConnectorFailureReason,
   type ConnectorRef,
   type SavedTool,
@@ -61,19 +77,13 @@ import {
 // Connect card, tool rows, connector banner and picker styles.
 import {
   activityLabel,
+  codingRequestName,
   writingNote,
   allowForChatHint,
-  codingCardTitle,
   fileLabel,
   type Activity,
 } from "@/lib/tenant-coding";
-import {
-  fileTag,
-  filesOfRun,
-  formatBytes,
-  isImage,
-  type ChatFile,
-} from "@/lib/tenant-files";
+import { filesByRun, isImage, type ChatFile } from "@/lib/tenant-files";
 import type { MessageAttachment } from "@/lib/tenant-uploads";
 import {
   networkDetail,
@@ -89,7 +99,10 @@ import {
   useObjectUrl,
   type WritingFile,
 } from "./file-card";
-import "@/styles/v2/connectors.css";
+import { DocumentCard } from "./document-card";
+import { recordOf } from "@/lib/request-dock";
+import { Receipt } from "./receipt";
+import "@/styles/app/tools.css";
 
 // How the browser's own connection to a live reply is doing; the platform's
 // phases (retrying, stopping, …) come in the reply itself.
@@ -113,163 +126,9 @@ const LIVE_INTERRUPTED_NOTE =
     state: "interrupted",
   } as ChatMessage) ?? "";
 
-export function ChatHeader({
-  chat,
-  busy,
-  creating = false,
-  onRename,
-  onArchive,
-}: {
-  chat: ChatSummary;
-  /** A reply is running: archiving waits for it. */
-  busy: boolean;
-  /** The chat is being created by its first message: nothing to act on. */
-  creating?: boolean;
-  onRename: (title: string) => Promise<string | null>;
-  onArchive: () => Promise<string | null>;
-}) {
-  const [mode, setMode] = useState<"view" | "rename" | "archive">("view");
-  const [title, setTitle] = useState(chat.title);
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState("");
-  // Another chat, or a rename from elsewhere, resets the form.
-  useEffect(() => {
-    setMode("view");
-    setError("");
-  }, [chat.id]);
-  const problem = mode === "rename" ? titleProblem(title) : null;
-
-  const run = async (action: () => Promise<string | null>) => {
-    if (working) return;
-    setWorking(true);
-    setError("");
-    const failed = await action();
-    setWorking(false);
-    if (failed) setError(failed);
-    else setMode("view");
-  };
-
-  return (
-    <div className="tchat-head">
-      {mode === "rename" ? (
-        <form
-          className="tchat-rename"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!problem) void run(() => onRename(title.trim()));
-          }}
-        >
-          <label className="sr-only" htmlFor="tchat-title">
-            Chat title
-          </label>
-          <input
-            id="tchat-title"
-            className="input"
-            value={title}
-            autoFocus
-            maxLength={200}
-            onChange={(e) => setTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setMode("view");
-            }}
-            aria-invalid={problem ? true : undefined}
-            aria-describedby={problem || error ? "tchat-title-hint" : undefined}
-          />
-          <button
-            type="submit"
-            className="btn-solid"
-            disabled={!!problem || working}
-          >
-            {working ? "Saving…" : "Save"}
-          </button>
-          <button
-            type="button"
-            className="btn-soft"
-            onClick={() => setMode("view")}
-            disabled={working}
-          >
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <>
-          <div className="tchat-head-text">
-            <h1 className="tchat-title">{chat.title || "New chat"}</h1>
-            <p className="muted sm">
-              {[chat.agent?.name, chat.model?.displayName]
-                .filter(Boolean)
-                .join(" · ") || "Agent unavailable"}
-            </p>
-          </div>
-          {creating ? null : mode === "archive" ? (
-            <div
-              className="tchat-head-actions"
-              role="group"
-              aria-labelledby="tchat-archive-q"
-            >
-              <span className="sm" id="tchat-archive-q">
-                Archive this chat? It leaves your list and can&apos;t be
-                continued.
-              </span>
-              <button
-                type="button"
-                className="btn-danger"
-                autoFocus
-                disabled={working}
-                onClick={() => void run(onArchive)}
-              >
-                {working ? "Archiving…" : "Archive"}
-              </button>
-              <button
-                type="button"
-                className="btn-soft"
-                disabled={working}
-                onClick={() => setMode("view")}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <div className="tchat-head-actions">
-              <button
-                type="button"
-                className="text-btn"
-                onClick={() => {
-                  setTitle(chat.title);
-                  setError("");
-                  setMode("rename");
-                }}
-              >
-                Rename
-              </button>
-              {chat.status === "active" && (
-                <button
-                  type="button"
-                  className="text-btn"
-                  disabled={busy}
-                  title={
-                    busy ? "Wait for the reply, or stop it, first." : undefined
-                  }
-                  onClick={() => {
-                    setError("");
-                    setMode("archive");
-                  }}
-                >
-                  Archive
-                </button>
-              )}
-            </div>
-          )}
-        </>
-      )}
-      {(problem || error) && (
-        <p id="tchat-title-hint" className="field-hint is-bad" role="alert">
-          {error || problem}
-        </p>
-      )}
-    </div>
-  );
-}
+// One empty list for every reply without files, so its row keeps its props.
+const NO_FILES: ChatFile[] = [];
+const noop = () => undefined;
 
 export const Transcript = memo(function Transcript({
   thread,
@@ -281,10 +140,9 @@ export const Transcript = memo(function Transcript({
   onReconnect,
   onResend,
   onFollowUp,
-  onApprove,
-  approvalBusy,
   tenantId,
   files,
+  onNewChat,
 }: {
   thread: ChatThread;
   live: LiveReply | null;
@@ -297,20 +155,21 @@ export const Transcript = memo(function Transcript({
   onResend: (text: string) => void;
   // Sends a Follow Up row as the next message, recording where it came from.
   onFollowUp: (runId: string, item: FollowUpItem) => Promise<boolean>;
-  // Answers a pending write-tool approval card.
-  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
-  // The approvalId whose answer is in flight (its card's buttons disabled),
-  // or null.
-  approvalBusy: string | null;
   // This tab's tenant, for the Connected tools reconnect link.
   tenantId: string;
   // Every stored file version of the chat; each reply shows its own.
   files: readonly ChatFile[];
+  // Leaves for a new chat (a failed reply that can't be retried).
+  onNewChat?: () => void;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const anchor = useRef<{ height: number; top: number } | null>(null);
-  const exchanges = exchangesOf(thread);
+  // Memoized with the files and recover below so each saved exchange gets
+  // the same props on every stream frame and `Exchange` skips it.
+  const exchanges = useMemo(() => exchangesOf(thread), [thread]);
+  const runFiles = useMemo(() => filesByRun(files), [files]);
+  const recover = useMemo(() => ({ newChat: onNewChat ?? noop }), [onNewChat]);
   // A live reply with nothing saved yet gets its own row, keyed like the
   // exchange it becomes, so it is not remounted when its messages arrive.
   const shown =
@@ -319,7 +178,6 @@ export const Transcript = memo(function Transcript({
       : exchanges;
   const agent = thread.chat.agent;
   const agentName = agent?.name ?? "Assistant";
-  const hue = tintOf(agent?.tint).bg;
   const connectors = thread.chat.connectors;
   const liveText =
     live?.items.reduce(
@@ -396,7 +254,7 @@ export const Transcript = memo(function Transcript({
   return (
     <div
       ref={scroller}
-      className="scroll"
+      className="cs-scroll"
       role="log"
       aria-label="Conversation"
       aria-live="off"
@@ -407,82 +265,88 @@ export const Transcript = memo(function Transcript({
           el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
       }}
     >
-      <div className="thread">
-        {thread.hasMore && (
-          <div className="tchat-older">
-            <button
-              type="button"
-              className="btn-soft"
-              onClick={loadOlder}
-              disabled={loadingOlder}
-            >
-              {loadingOlder ? "Loading…" : "Load earlier messages"}
-            </button>
-            {olderError && (
-              <p className="field-hint is-bad" role="alert">
-                {olderError}
-              </p>
-            )}
-          </div>
-        )}
-        {shown.map((exchange, index) => (
-          <Exchange
-            key={exchangeKey(exchange)}
-            messages={exchange.messages}
-            run={exchange.run}
-            live={live?.runId === exchange.runId ? live : null}
-            connection={connection}
-            agentName={agentName}
-            hue={hue}
-            connectors={connectors}
-            tenantId={tenantId}
-            onReconnect={onReconnect}
-            onResend={onResend}
-            followUps={index === shown.length - 1 ? followUps : null}
-            onFollowUp={onFollowUp}
-            onApprove={onApprove}
-            approvalBusy={approvalBusy}
-            files={filesOfRun(files, exchange.runId)}
-          />
-        ))}
+      <div className="cs-thread-in">
+        <div className="cs-thread">
+          {thread.hasMore && (
+            <div className="cs-load-older">
+              <Button
+                size="sm"
+                onClick={loadOlder}
+                working={loadingOlder ? "Loading…" : undefined}
+              >
+                Load earlier messages
+              </Button>
+              {olderError && (
+                <p className="cs-msg-note is-bad" role="alert">
+                  {olderError}
+                </p>
+              )}
+            </div>
+          )}
+          {shown.map((exchange, index) => (
+            <Exchange
+              key={exchangeKey(exchange)}
+              messages={exchange.messages}
+              run={exchange.run}
+              live={live?.runId === exchange.runId ? live : null}
+              connection={connection}
+              agentName={agentName}
+              connectors={connectors}
+              tenantId={tenantId}
+              onReconnect={onReconnect}
+              onResend={onResend}
+              followUps={index === shown.length - 1 ? followUps : null}
+              model={thread.chat.model?.displayName ?? null}
+              recover={
+                index === shown.length - 1 &&
+                !live &&
+                !thread.chat.activeRunId &&
+                !thread.chat.readOnly
+                  ? recover
+                  : null
+              }
+              onFollowUp={onFollowUp}
+              files={runFiles.get(exchange.runId) ?? NO_FILES}
+            />
+          ))}
+        </div>
       </div>
     </div>
   );
 });
 
-function Exchange({
+// Memoized: while a reply streams, only its own row re-renders.
+const Exchange = memo(function Exchange({
   messages,
   run,
   live,
   connection,
   agentName,
-  hue,
   connectors,
   tenantId,
   onReconnect,
   onResend,
   followUps,
   onFollowUp,
-  onApprove,
-  approvalBusy,
   files,
+  recover,
+  model,
 }: {
   messages: ChatMessage[];
   run: ChatRun | null;
   live: LiveReply | null;
   connection: Connection;
   agentName: string;
-  hue: string;
   connectors: ConnectorRef[];
   tenantId: string;
   onReconnect: () => void;
   onResend: (text: string) => void;
   followUps: { runId: string; items: readonly FollowUpItem[] } | null;
   onFollowUp: (runId: string, item: FollowUpItem) => Promise<boolean>;
-  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
-  approvalBusy: string | null;
   // The files this reply stored (newest version of each path).
   files: ChatFile[];
+  recover: Recover | null;
+  model: string | null;
 }) {
   // A live run shows its saved user message(s) and the reply as it streams;
   // the replies Codex has written are in the live items, so the run's own
@@ -496,7 +360,12 @@ function Exchange({
           ))
         : null}
       {live ? (
-        <AgentReply agentName={agentName} hue={hue} live={live}>
+        <AgentReply
+          agentName={agentName}
+          live={live}
+          runId={live.runId}
+          time={clock(messages[0]?.createdAt)}
+        >
           <LiveBody
             live={live}
             run={run}
@@ -504,8 +373,6 @@ function Exchange({
             connectors={connectors}
             tenantId={tenantId}
             onReconnect={onReconnect}
-            onApprove={onApprove}
-            approvalBusy={approvalBusy}
             files={files}
           />
         </AgentReply>
@@ -514,20 +381,22 @@ function Exchange({
           messages={messages}
           run={run}
           agentName={agentName}
-          hue={hue}
           connectors={connectors}
           onResend={onResend}
           followUps={followUps}
           onFollowUp={onFollowUp}
           files={files}
+          recover={recover}
+          model={model}
         />
       )}
     </>
   );
-}
+});
 
-// A member's message bubble. A `not_sent` steer — one the assistant never
-// read — is labelled and offers to send the same text again.
+// A member's message (DESIGN-SPEC 11.7): files, the bubble, then "You · HH:MM".
+// A `not_sent` steer — one the assistant never read — is labelled and offers
+// to send the same text again.
 function UserBubble({
   message,
   onResend,
@@ -536,32 +405,37 @@ function UserBubble({
   onResend: (text: string) => void;
 }) {
   const note = messageStateNote(message);
+  const time = clock(message.createdAt);
   return (
-    <article className="msg user" aria-label="Your message">
-      <div className="bubble-wrap">
-        {message.attachments && (
-          <SentFiles runId={message.runId} files={message.attachments} />
-        )}
-        {message.text && <div className="bubble">{message.text}</div>}
-        {message.state === "not_sent" && (
-          <p className="msg-foot tchat-notsent">
-            {note}
-            <button
-              type="button"
-              className="text-btn"
-              onClick={() => onResend(message.text)}
-            >
-              Resend
-            </button>
-          </p>
-        )}
-      </div>
+    <article className="cs-msg cs-msg-user" aria-label="Your message">
+      {message.attachments && (
+        <SentFiles runId={message.runId} files={message.attachments} />
+      )}
+      {message.text && <div className="pt-bubble">{message.text}</div>}
+      <span className="pt-meta">You{time && ` · ${time}`}</span>
+      {message.state === "not_sent" && (
+        <p className="cs-msg-note cs-notsent">
+          {note}
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => onResend(message.text)}
+          >
+            Resend
+          </Button>
+        </p>
+      )}
     </article>
   );
 }
 
-// The files a member attached to a message, above its text: an image as
-// itself, any other file as its tile and name. A saved one opens in the file
+// "HH:MM" in the reader's clock, or "" for a missing or bad date.
+function clock(iso: string | undefined): string {
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 // viewer; one still being sent can't be opened yet.
 function SentFiles({
   runId,
@@ -589,47 +463,18 @@ function SentFiles({
         </ul>
       )}
       {others.length > 0 && (
-        <ul className="sent-files" aria-label="Attached files">
-          {others.map((file, i) => {
-            const onOpen = open(file);
-            const body = <FileChipBody name={file.name} size={file.size} />;
-            return (
-              <li
-                key={file.fileId || `${i}:${file.name}`}
-                className="draft-file"
-              >
-                {onOpen ? (
-                  <button
-                    type="button"
-                    className="sent-file-open"
-                    onClick={onOpen}
-                    aria-label={`Open ${file.name}`}
-                  >
-                    {body}
-                  </button>
-                ) : (
-                  body
-                )}
-              </li>
-            );
-          })}
-        </ul>
+        <div className="dc-stack is-sent" aria-label="Attached files">
+          {others.map((file, i) => (
+            <DocumentCard
+              key={file.fileId || `${i}:${file.name}`}
+              name={file.name}
+              size={file.size}
+              state="ready"
+              onOpen={open(file)}
+            />
+          ))}
+        </div>
       )}
-    </>
-  );
-}
-
-function FileChipBody({ name, size }: { name: string; size: number }) {
-  const tag = fileTag(name);
-  return (
-    <>
-      <span className={`file-tile ft-${tag.tone}`} aria-hidden="true">
-        {tag.label}
-      </span>
-      <span className="draft-file-text">
-        <span className="draft-file-name">{name}</span>
-        <span className="draft-file-meta">{formatBytes(size)}</span>
-      </span>
     </>
   );
 }
@@ -650,9 +495,12 @@ function SentImage({
   useEffect(() => setBroken(false), [url]);
   if (broken || blob === "failed")
     return (
-      <span className="draft-file">
-        <FileChipBody name={file.name} size={file.size} />
-      </span>
+      <DocumentCard
+        name={file.name}
+        size={file.size}
+        state="ready"
+        onOpen={onOpen}
+      />
     );
   const image = url ? (
     <img
@@ -681,15 +529,14 @@ function SentImage({
   );
 }
 
-// A steer shown inside the running reply before it is saved: the same bubble
-// as a sent message, placed where Codex read it.
+// A steer shown inside the running reply before it is saved (DESIGN-SPEC
+// 11.8): the member's bubble, in the reply's asks slot, marked as joining it.
 function SteerBubble({ text }: { text: string }) {
   return (
-    <article className="msg user" aria-label="Your message">
-      <div className="bubble-wrap">
-        <div className="bubble">{text}</div>
-      </div>
-    </article>
+    <div className="cs-msg-user is-steer">
+      <div className="pt-bubble">{text}</div>
+      <span className="pt-meta">You · added to this turn</span>
+    </div>
   );
 }
 
@@ -708,42 +555,154 @@ function savedToolToCall(
   };
 }
 
-// A compact inline row for one connector tool call, live or saved. The label
-// carries the meaning for a screen reader; the spinner is decorative. Only a
-// live in-progress row is a status region (it announces when it settles); a
-// saved row is static and is not announced. `approvalLabel` is the decision
-// a write-tool call settled with ("Allowed", "Not run", …), shown after the
-// call label.
-function ToolRow({
+// One step in a reply's work (DESIGN-SPEC 12.2, ToolActivityRow): a glyph and
+// a word for its state, "‹Connector› · ‹Tool›", one extra line, and its time.
+// Business-safe: never the raw call. The visible time and glyph are hidden from
+// assistive technology; a sentence carries the state instead. Only a live
+// running row is a status region (it announces when it settles).
+// "waiting": still in progress, held on its approval card (warn, not live).
+type StepState =
+  "running" | "waiting" | "done" | "failed" | "declined" | "stopped";
+
+const STEP_GLYPH: Record<StepState, IconName | null> = {
+  running: null,
+  waiting: "hand",
+  done: "check",
+  failed: "alert",
+  declined: "ban",
+  stopped: "stop",
+};
+
+function StepRow({
+  state,
+  name,
+  sub,
+  time,
+  spoken,
+  live,
+  children,
+}: {
+  state: StepState;
+  name: string;
+  sub?: string | null;
+  time?: string;
+  spoken: string;
+  live: boolean;
+  children?: ReactNode;
+}) {
+  const glyph = STEP_GLYPH[state];
+  return (
+    <div
+      className={`ta is-${state}`}
+      role={
+        live && (state === "running" || state === "waiting")
+          ? "status"
+          : undefined
+      }
+    >
+      <span className="ta-ic" aria-hidden="true">
+        {glyph ? <Icon name={glyph} size="sm" /> : <Spin />}
+      </span>
+      <span className="ta-main">
+        <span className="ta-name">{name}</span>
+        {sub && <span className="ta-sub">{sub}</span>}
+      </span>
+      {time && (
+        <span className="ta-time num" aria-hidden="true">
+          {time}
+        </span>
+      )}
+      {/* the visible sub-line already says it: don't announce it twice */}
+      {spoken !== sub && <span className="tx-sr">{spoken}</span>}
+      {children}
+    </div>
+  );
+}
+
+// How a settled step ended, for the work fold's flag; `ended` marks a reply
+// that is over, so a step still running there was stopped.
+function toolOutcome(
+  status: ToolCall["status"],
+  errorCode: ToolCall["errorCode"],
+  ended: boolean,
+): Part["outcome"] {
+  if (status === "inProgress") return ended ? "stopped" : undefined;
+  if (status === "failed")
+    return errorCode === "REFUSED" ? "declined" : "failed";
+  return undefined;
+}
+function activityOutcome(
+  status: Activity["status"],
+  ended: boolean,
+): Part["outcome"] {
+  if (status === "inProgress") return ended ? "stopped" : undefined;
+  if (status === "failed" || status === "declined") return status;
+  return undefined;
+}
+
+export function ToolRow({
   call,
   live,
   approvalLabel,
+  asking = false,
+  stopped = false,
 }: {
   call: ToolCall;
   live: boolean;
   approvalLabel?: string | null;
+  /** Its approval card is open in the dock. */
+  asking?: boolean;
+  /** The reply ended while this call still ran. */
+  stopped?: boolean;
 }) {
-  const running = call.status === "inProgress";
-  const label = toolCardLabel(call);
+  const state: StepState =
+    call.status === "inProgress"
+      ? stopped
+        ? "stopped"
+        : asking
+          ? "waiting"
+          : "running"
+      : call.status === "completed"
+        ? "done"
+        : call.errorCode === "REFUSED"
+          ? "declined"
+          : "failed";
+  const time = duration(call.durationMs);
+  const sub =
+    state === "stopped"
+      ? "Stopped by you before it finished"
+      : state === "declined"
+        ? "Not allowed"
+        : state === "failed"
+          ? call.errorCode === "TIMEOUT"
+            ? "It took too long"
+            : "The tool call failed."
+          : state === "waiting"
+            ? "Waiting for your approval"
+            : approvalLabel;
+  const spoken =
+    state === "waiting"
+      ? "Waiting for your approval"
+      : state === "running"
+        ? "Running"
+        : state === "done"
+          ? time
+            ? `Done in ${time}`
+            : "Done"
+          : state === "failed"
+            ? `Failed: ${sub}`
+            : state === "declined"
+              ? "Not allowed"
+              : "Stopped";
   return (
-    <div
-      className={call.status === "failed" ? "tool-card is-failed" : "tool-card"}
-      role={live && running ? "status" : undefined}
-    >
-      {running ? (
-        <span className="spinner" aria-hidden="true" />
-      ) : (
-        <Icon
-          name={call.status === "failed" ? "x" : "check"}
-          size={13}
-          className="tool-card-icon"
-        />
-      )}
-      <span>{label}</span>
-      {approvalLabel && (
-        <span className="tool-card-approval">· {approvalLabel}</span>
-      )}
-    </div>
+    <StepRow
+      state={state}
+      name={toolStepName(call.connector, call.tool)}
+      sub={sub}
+      time={state === "running" || state === "waiting" ? undefined : time}
+      spoken={spoken}
+      live={live}
+    />
   );
 }
 
@@ -784,7 +743,7 @@ function NetworkCard({
   return (
     <div className="approval-card network-card" role="group" aria-label={title}>
       <p className="approval-title network-title">
-        <Icon name="lock" size={13} className="tool-card-icon" />
+        <Icon name="lock" size="sm" className="tool-card-icon" />
         <span>{title}</span>
       </p>
       <p className="approval-hint network-detail">{networkDetail(block)}</p>
@@ -798,7 +757,7 @@ function NetworkCard({
             actions.latestRunId === runId && (
               <button
                 type="button"
-                className="btn-soft"
+                className="tx-btn"
                 onClick={actions.tryAgain}
               >
                 Try again
@@ -815,7 +774,7 @@ function NetworkCard({
         <div className="approval-actions">
           <button
             type="button"
-            className="btn-solid"
+            className="tx-btn tx-primary"
             disabled={busy}
             onClick={() => actions!.answer(messageId, "allow_once")}
           >
@@ -824,7 +783,7 @@ function NetworkCard({
           {block.grant === "chat" && (
             <button
               type="button"
-              className="btn-soft"
+              className="tx-btn"
               disabled={busy}
               onClick={() => actions!.answer(messageId, "allow_for_chat")}
             >
@@ -833,7 +792,7 @@ function NetworkCard({
           )}
           <button
             type="button"
-            className="btn-danger"
+            className="tx-btn tx-danger"
             disabled={busy}
             onClick={() => actions!.answer(messageId, "keep_blocked")}
           >
@@ -846,20 +805,13 @@ function NetworkCard({
         )
       )}
       {error && (
-        <p className="field-hint is-bad" role="alert">
+        <p className="tx-hint tx-errmsg" role="alert">
           {error}
         </p>
       )}
     </div>
   );
 }
-
-const HELPER_STATUS: Record<HelperAgent["status"], string> = {
-  running: "Working",
-  completed: "Done",
-  failed: "Failed",
-  stopped: "Stopped",
-};
 
 // The helper agents the lead started, as one group placed before its final
 // answer (live and saved alike). Results are model-written: plain text only.
@@ -871,298 +823,199 @@ export function HelperGroup({
   live: boolean;
 }) {
   if (!helpers.length) return null;
+  const running = helpers.filter((h) => h.status === "running").length;
+  const noun = (n: number) => (n === 1 ? "helper" : "helpers");
+  const count = (status: HelperStatus) =>
+    helpers.filter((h) => h.status === status).length;
+  const flag = [
+    count("failed") && `${count("failed")} failed`,
+    count("stopped") && `${count("stopped")} stopped`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <div className="helper-group">
-      <p className="helper-summary" role={live ? "status" : undefined}>
-        {helpersSummary(helpers)}
+    <section className={live ? "hg is-live" : "hg"} aria-label="Helpers">
+      <p className="hg-head">
+        {running ? <Spin /> : <Icon name="agent" size="sm" />}
+        <span className="hg-title" role={live ? "status" : undefined}>
+          {running
+            ? `Running ${helpers.length} ${noun(helpers.length)}`
+            : `Used ${helpers.length} ${noun(helpers.length)}`}
+        </span>
+        {flag && <span className="hg-flag">{flag}</span>}
       </p>
-      {helpers.map((helper) => (
-        <HelperCard key={helper.key} helper={helper} />
-      ))}
-    </div>
+      <ul className="hg-lanes">
+        {helpers.map((helper, index) => (
+          <HelperLane key={helper.key} helper={helper} slot={index} />
+        ))}
+      </ul>
+    </section>
   );
 }
 
-function HelperCard({ helper }: { helper: HelperAgent }) {
-  const label = helperLabel(helper.path);
-  const status = HELPER_STATUS[helper.status];
-  const head = (
-    <>
-      {helper.status === "running" ? (
-        <span className="spinner" aria-hidden="true" />
-      ) : (
-        <Icon
-          name={
-            helper.status === "completed"
-              ? "check"
-              : helper.status === "failed"
-                ? "x"
-                : "stop"
-          }
-          size={13}
-          className="tool-card-icon"
-        />
-      )}
-      <span className="helper-name">{label}</span>
-      <span className="tool-card-approval">· {status}</span>
-    </>
-  );
-  const failed = helper.status === "failed";
-  if (!helper.result)
-    return (
-      <div className={failed ? "tool-card is-failed" : "tool-card"}>
-        {head}
-        {helper.preview && (
-          <span className="helper-preview">{helper.preview}</span>
-        )}
-      </div>
-    );
+const LANE: Record<
+  HelperStatus,
+  { css: string; word: string; glyph: IconName | null }
+> = {
+  running: { css: "is-running", word: "Running", glyph: null },
+  completed: { css: "is-done", word: "Done", glyph: "check" },
+  failed: { css: "is-failed", word: "Failed", glyph: "x" },
+  stopped: { css: "is-stopped", word: "Stopped", glyph: "stop" },
+};
+
+// One helper's lane: its identity tile (slots 1–5 by first appearance, then
+// neutral), name and state, what it is doing now, and its result.
+function HelperLane({ helper, slot }: { helper: HelperAgent; slot: number }) {
+  const name = sentence(helperLabel(helper.path));
+  const lane = LANE[helper.status];
+  const id = slot < 5 ? `--id-${slot + 1}` : "--id-main";
   return (
-    <details className={failed ? "helper-card is-failed" : "helper-card"}>
-      <summary className="tool-card">
-        {head}
-        <span className="helper-toggle">Result</span>
-      </summary>
-      <p className="helper-result">{helper.result}</p>
-    </details>
+    <li className={`hg-lane ${lane.css}`}>
+      <span
+        className="hg-tile"
+        style={
+          {
+            "--hg-soft": `var(${id}-soft)`,
+            "--hg-ink": `var(${id}-ink)`,
+          } as CSSProperties
+        }
+        aria-hidden="true"
+      >
+        <Icon name="bot" size="sm" />
+      </span>
+      <span className="hg-who" aria-hidden="true">
+        <span className="hg-name">{name}</span>
+        <span className={`hg-badge ${lane.css}`}>
+          {lane.glyph ? <Icon name={lane.glyph} size="sm" /> : <Spin />}
+          {lane.word}
+        </span>
+      </span>
+      <span className="tx-sr">
+        {name}: {lane.word.toLowerCase()}.
+      </span>
+      {helper.status === "running" && helper.preview && (
+        <span className="hg-preview">{mask(helper.preview)}</span>
+      )}
+      {helper.status === "failed" && !helper.result && (
+        <span className="hg-error">The helper stopped before finishing.</span>
+      )}
+      {helper.result && (
+        <details className="hg-result">
+          <summary>Result</summary>
+          <p>{helper.result}</p>
+        </details>
+      )}
+    </li>
   );
 }
 
 // A skill the reply used. Only its name: what the model read stays private.
 function SkillRow({ name }: { name: string }) {
   return (
-    <div className="tool-card">
-      <Icon name="book" size={13} className="tool-card-icon" />
-      <span>Used skill {name}</span>
-    </div>
-  );
-}
-
-// The inline approval card shown at a write tool's row while it waits for the
-// member. Params are model-written and untrusted, so they are rendered as
-// plain text, wrapped, never HTML. The card takes focus when it appears
-// (without scrolling the reader away), the three answers are real buttons,
-// and Escape is deliberately NOT bound to Deny (too easy to hit). While an
-// answer is in flight the buttons are disabled; a lost first-answer race
-// (409/404) shows "Already answered"/"Expired" instead.
-function ApprovalCard({
-  approval,
-  connectorLabel,
-  busy,
-  onApprove,
-  helperNote,
-}: {
-  approval: ApprovalView;
-  connectorLabel: string;
-  busy: boolean;
-  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
-  // Set when the reply used helpers: the request followed their results.
-  helperNote: string | null;
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  // Focus the card when it appears so a keyboard user reaches the buttons
-  // without hunting; preventScroll keeps a reader who scrolled up in place.
-  useEffect(() => {
-    ref.current?.focus({ preventScroll: true });
-  }, []);
-  const coding = approval.kind !== "mcp";
-  const title = coding
-    ? codingCardTitle(approval.tool)
-    : approvalCardTitle(connectorLabel, approval.tool);
-  const race =
-    approval.race === "resolved"
-      ? "Already answered"
-      : approval.race === "not_found"
-        ? "Expired"
-        : null;
-  const command =
-    approval.kind === "command"
-      ? approval.params.find((p) => p.name === "command")?.value
-      : undefined;
-  const hint =
-    coding && approval.allowForChat ? allowForChatHint(approval.tool) : null;
-  return (
-    <div
-      ref={ref}
-      className="approval-card"
-      role="group"
-      aria-label={title}
-      tabIndex={-1}
-    >
-      <p className="approval-title">{title}</p>
-      {helperNote && <p className="approval-hint">{helperNote}</p>}
-      {command !== undefined ? (
-        // Plain text only: model-written, shown exactly as it will run.
-        <pre className="approval-command">{command}</pre>
-      ) : (
-        approval.params.length > 0 && (
-          <dl className="approval-params">
-            {approval.params.map((p, i) => (
-              <div key={`${p.name}:${i}`} className="approval-param">
-                <dt>{p.name}</dt>
-                {/* Plain text only: model-written, never rendered as HTML. */}
-                <dd>{p.value}</dd>
-              </div>
-            ))}
-          </dl>
-        )
-      )}
-      {race ? (
-        <p className="approval-outcome" role="status">
-          {race}
-        </p>
-      ) : (
-        <div className="approval-actions">
-          <button
-            type="button"
-            className="btn-solid"
-            disabled={busy}
-            onClick={() => onApprove(approval.approvalId, "allow")}
-          >
-            Allow once
-          </button>
-          {approval.allowForChat && (
-            <button
-              type="button"
-              className="btn-soft"
-              disabled={busy}
-              onClick={() => onApprove(approval.approvalId, "allow_for_chat")}
-            >
-              Allow for this chat
-            </button>
-          )}
-          <button
-            type="button"
-            className="btn-danger"
-            disabled={busy}
-            onClick={() => onApprove(approval.approvalId, "deny")}
-          >
-            Deny
-          </button>
-        </div>
-      )}
-      {hint && !race && <p className="approval-hint">{hint}</p>}
-    </div>
+    <StepRow
+      state="done"
+      name={`Used skill ${name}`}
+      spoken="Done"
+      live={false}
+    />
   );
 }
 
 // One command or file change in the chat's workspace, live or saved. The
-// command and its output are model-written: plain text, never HTML. Output
-// is collapsed by default so a long test run does not push the answer away.
-function ActivityRow({
+// command and its output are model-written: plain text, never HTML. Both sit
+// behind Details so a long test run does not push the answer away.
+export function ActivityRow({
   activity,
   live,
   approvalLabel,
   asking = false,
+  stopped = false,
 }: {
   activity: Activity;
   live: boolean;
   approvalLabel?: string | null;
   // Its approval card is open and already shows the command.
   asking?: boolean;
+  /** The reply ended while this step still ran. */
+  stopped?: boolean;
 }) {
-  const running = activity.status === "inProgress";
-  const failed = activity.status === "failed" || activity.status === "declined";
+  const state: StepState =
+    activity.status === "inProgress"
+      ? stopped
+        ? "stopped"
+        : asking
+          ? "waiting"
+          : "running"
+      : activity.status === "completed"
+        ? "done"
+        : activity.status === "declined"
+          ? "declined"
+          : "failed";
   const note = writingNote(activity);
+  const time =
+    activity.type === "command" && state !== "running" && state !== "waiting"
+      ? duration(activity.durationMs)
+      : "";
+  const sub =
+    state === "stopped"
+      ? "Stopped by you before it finished"
+      : state === "waiting"
+        ? "Waiting for your approval"
+        : state === "declined"
+          ? "Not allowed"
+          : [approvalLabel, note].filter(Boolean).join(" · ") || null;
   return (
-    <div
-      className={
-        failed ? "tool-card activity-card is-failed" : "tool-card activity-card"
+    <StepRow
+      state={state}
+      name={mask(activityLabel(activity))}
+      sub={sub}
+      time={time}
+      spoken={
+        state === "waiting"
+          ? "Waiting for your approval"
+          : state === "running"
+            ? "Running"
+            : state === "done"
+              ? time
+                ? `Done in ${time}`
+                : "Done"
+              : state === "declined"
+                ? "Not allowed"
+                : state === "stopped"
+                  ? "Stopped"
+                  : "Failed"
       }
-      role={live && running ? "status" : undefined}
+      live={live}
     >
-      <div className="activity-head">
-        {running ? (
-          <span className="spinner" aria-hidden="true" />
-        ) : (
-          <Icon
-            name={
-              failed ? "x" : activity.type === "command" ? "check" : "pencil"
-            }
-            size={13}
-            className="tool-card-icon"
-          />
-        )}
-        <span>
-          {asking && running
-            ? "Waiting for your approval"
-            : activityLabel(activity)}
-        </span>
-        {approvalLabel && (
-          <span className="tool-card-approval">· {approvalLabel}</span>
-        )}
-        {/* Updates twice a second; kept out of the status announcement. */}
-        {note && (
-          <span className="tool-card-approval" aria-hidden="true">
-            · {note}
-          </span>
-        )}
-      </div>
-      {activity.type === "command" ? (
-        <>
-          {!asking && (
-            <pre className="activity-command">{activity.command}</pre>
-          )}
-          {activity.output && (
-            <details className="activity-output">
-              <summary>
-                Output{activity.outputTruncated ? " (cut short)" : ""}
+      {activity.type === "command"
+        ? // The row names the step; the command and its output are details
+          // (12.2). While its approval card is open, the card shows them.
+          !asking && (
+            <details className="ta-details">
+              <summary className="ta-toggle">
+                Details
+                <Icon name="chev-down" size="sm" className="ta-chev" />
               </summary>
-              <pre>{activity.output}</pre>
+              <span className="ta-label">Command</span>
+              <pre>{mask(activity.command)}</pre>
+              {activity.output && (
+                <>
+                  <span className="ta-label">
+                    Output{activity.outputTruncated ? " (cut short)" : ""}
+                  </span>
+                  <pre>{mask(activity.output)}</pre>
+                </>
+              )}
             </details>
+          )
+        : activity.files.length > 1 && (
+            <ul className="ta-files">
+              {activity.files.map((file, i) => (
+                <li key={`${file.path}:${i}`}>{mask(fileLabel(file))}</li>
+              ))}
+            </ul>
           )}
-        </>
-      ) : (
-        activity.files.length > 1 && (
-          <ul className="activity-files">
-            {activity.files.map((file, i) => (
-              <li key={`${file.path}:${i}`}>{fileLabel(file)}</li>
-            ))}
-          </ul>
-        )
-      )}
-    </div>
-  );
-}
-
-// A live command or file change with its approval card, like a tool row.
-function ActivityApprovalRow({
-  activity,
-  pending,
-  settled,
-  onApprove,
-  approvalBusy,
-  helperNote,
-}: {
-  activity: Activity;
-  pending: ApprovalView | null;
-  settled: ApprovalView | null;
-  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
-  approvalBusy: string | null;
-  helperNote: string | null;
-}) {
-  const label =
-    settled && settled.status !== "pending"
-      ? approvalOutcomeLabel(settled.status)
-      : null;
-  return (
-    <>
-      <ActivityRow
-        activity={activity}
-        live
-        approvalLabel={label}
-        asking={!!pending}
-      />
-      {pending && (
-        <ApprovalCard
-          approval={pending}
-          connectorLabel="Workspace"
-          busy={approvalBusy === pending.approvalId}
-          onApprove={onApprove}
-          helperNote={helperNote}
-        />
-      )}
-    </>
+    </StepRow>
   );
 }
 
@@ -1195,12 +1048,12 @@ function ConnectorBanners({
           role="status"
           aria-live="polite"
         >
-          <Icon name="plug" size={14} aria-hidden="true" />
+          <Icon name="plug" size="sm" />
           <span className="grow">{banner.message}</span>
           {banner.reconnect && (
-            <a className="link" href={`/t/${tenantId}/connected-tools`}>
+            <Link className="link" href={`/t/${tenantId}/connected-tools`}>
               Reconnect
-            </a>
+            </Link>
           )}
         </div>
       ))}
@@ -1208,30 +1061,48 @@ function ConnectorBanners({
   );
 }
 
+// How the latest failed reply can be recovered from (TurnError's action).
+type Recover = { newChat: () => void };
+
 // A settled run's saved messages in seq order: member bubbles and assistant
 // replies, interleaved, with the run's note and usage after the last reply.
 function SavedExchange({
   messages,
   run,
   agentName,
-  hue,
   connectors,
   onResend,
   followUps,
   onFollowUp,
   files,
+  recover,
+  model,
 }: {
   messages: ChatMessage[];
   run: ChatRun | null;
   agentName: string;
-  hue: string;
   connectors: ConnectorRef[];
   onResend: (text: string) => void;
   followUps: { runId: string; items: readonly FollowUpItem[] } | null;
   onFollowUp: (runId: string, item: FollowUpItem) => Promise<boolean>;
   files: ChatFile[];
+  /** The latest reply's way out of a failure; null on older replies. */
+  recover: Recover | null;
+  /** The chat's model, for the receipt. */
+  model: string | null;
 }) {
-  const note = run ? outcomeNote(run.status, run.error) : null;
+  const failed = run?.status === "failed";
+  const note = run && !failed ? outcomeNote(run.status, run.error) : null;
+  const lastAsk = messages.findLast((m) => m.role === "user")?.text;
+  const error =
+    run && failed ? (
+      <TurnError
+        runId={run.id}
+        error={run.error}
+        onRetry={recover && lastAsk ? () => onResend(lastAsk) : undefined}
+        onNewChat={recover?.newChat}
+      />
+    ) : null;
   const card =
     run && (files.length > 0 || run.unsavedFiles?.length) ? (
       <FileCard
@@ -1241,7 +1112,16 @@ function SavedExchange({
         unsaved={run.unsavedFiles}
       />
     ) : null;
-  const usage = run && isSettled(run.status) ? usageLine(run) : "";
+  // The settled run's receipt: its time, tokens and model, opening the trace.
+  const usage =
+    run && isSettled(run.status) ? (
+      <Receipt
+        run={run}
+        model={model}
+        steps={messages.filter((m) => m.role === "tool" && !m.agent).length}
+        helpers={messages.filter((m) => m.agent).length}
+      />
+    ) : null;
   // Everything between two user messages (progress replies, tool rows and
   // the answer) shares one reply frame, in saved order, as it did while
   // live. The run footer rides the last frame so it sits at the end of the
@@ -1259,7 +1139,7 @@ function SavedExchange({
     }
   }
   const lastAgentIndex = blocks.map((b) => b.kind).lastIndexOf("agent");
-  const hasFooter = !!(note || usage || card);
+  const hasFooter = !!(note || usage || card || error);
   // An empty settled run (no replies saved) still shows its footer.
   const showLooseFooter = hasFooter && lastAgentIndex < 0;
   return (
@@ -1275,15 +1155,16 @@ function SavedExchange({
           <AgentReply
             key={block.messages[0].id}
             agentName={agentName}
-            hue={hue}
             live={null}
+            runId={block.messages[0].runId}
+            time={clock(block.messages[0].createdAt)}
           >
             <SavedBody
               entries={block.messages}
               connectors={connectors}
               note={index === lastAgentIndex ? note : null}
-              usage={index === lastAgentIndex ? usage : ""}
-              failed={run?.status === "failed"}
+              usage={index === lastAgentIndex ? usage : null}
+              error={index === lastAgentIndex ? error : null}
               card={index === lastAgentIndex ? card : null}
               followUps={
                 index === lastAgentIndex && followUps ? (
@@ -1298,13 +1179,13 @@ function SavedExchange({
         ),
       )}
       {showLooseFooter && (
-        <AgentReply agentName={agentName} hue={hue} live={null}>
+        <AgentReply agentName={agentName} live={null} runId={run?.id}>
           <SavedBody
             entries={[]}
             connectors={connectors}
             note={note}
             usage={usage}
-            failed={run?.status === "failed"}
+            error={error}
             card={card}
           />
         </AgentReply>
@@ -1313,63 +1194,184 @@ function SavedExchange({
   );
 }
 
-// One reply's frame. A live reply and its saved copy share it, so the reply
-// is not remounted (and its entrance animation not replayed) when it settles.
-function AgentReply({
+// One reply's frame (DESIGN-SPEC 11.7): the agent's head, then the slots under
+// it. A live reply and its saved copy share it, so the reply is not remounted
+// (and its entrance animation not replayed) when it settles.
+export function AgentReply({
   agentName,
-  hue,
   live,
+  time,
+  runId,
   children,
 }: {
   agentName: string;
-  hue: string;
   live: LiveReply | null;
+  /** The run this reply belongs to (the Activity Panel's "Show in chat"). */
+  runId?: string;
+  /** When the reply started, "HH:MM". */
+  time?: string;
   children: ReactNode;
 }) {
   const streaming = !!live && live.phase !== "settled";
   return (
     <article
-      className="msg agent"
+      className={
+        streaming ? "cs-msg cs-msg-agent is-streaming" : "cs-msg cs-msg-agent"
+      }
       aria-label={`${agentName} reply`}
       aria-busy={streaming || undefined}
+      data-run={runId}
+      tabIndex={-1}
     >
-      <span
-        className="agent-avatar"
-        style={{ background: hue } as CSSProperties}
-        aria-hidden="true"
-      >
-        <Icon name="spark" size={13} stroke={2} />
-      </span>
-      <div className="grow">
-        <div className="msg-meta">
-          <span className="strong">{agentName}</span>
-          {streaming && !live.items.length && (
-            <span className="muted sm">thinking…</span>
-          )}
-        </div>
-        {children}
-      </div>
+      <header className="pt-agent-head">
+        <span className="cs-agent-av" aria-hidden="true">
+          {initials(agentName)}
+        </span>
+        <span className="pt-agent-name">{agentName}</span>
+        {time && <span className="pt-agent-meta num">{time}</span>}
+      </header>
+      <div className="cs-msg-body">{children}</div>
     </article>
   );
+}
+
+// The work a reply did (tool rows and the narration between them), folded
+// under one summary (DESIGN-SPEC 10.3, 12): open while anything runs, closed
+// once it is done, until the reader opens or closes it themselves.
+function WorkFold({
+  steps,
+  running,
+  waiting,
+  flag,
+  children,
+}: {
+  steps: number;
+  running: number;
+  /** A step is held on its approval card: open, with the warn hand. */
+  waiting: boolean;
+  flag: string;
+  children: ReactNode;
+}) {
+  const active = running > 0 || waiting;
+  const [open, setOpen] = useState(active);
+  const touched = useRef(false);
+  useEffect(() => {
+    if (!touched.current) setOpen(active);
+  }, [active]);
+  return (
+    <details
+      className="cs-work"
+      open={open}
+      onToggle={(e) => {
+        const now = e.currentTarget.open;
+        if (now === open) return;
+        touched.current = true;
+        setOpen(now);
+      }}
+    >
+      <summary className="cs-work-sum">
+        {waiting ? (
+          <Icon name="hand" size="sm" className="cs-work-ic is-warn" />
+        ) : running > 0 ? (
+          <Spin />
+        ) : (
+          <Icon
+            name={flag ? "alert" : "check"}
+            size="sm"
+            className={flag ? "cs-work-ic is-warn" : "cs-work-ic"}
+          />
+        )}
+        {/* the working line below already says "Waiting for you" */}
+        <span>{workLabel(steps, running + (waiting ? 1 : 0))}</span>
+        {flag && <span className="cs-work-flag">{flag}</span>}
+        <Icon name="chev-down" size="sm" className="cs-work-chev" />
+      </summary>
+      <div className="cs-work-log">{children}</div>
+    </details>
+  );
+}
+
+// A reply's parts in slot order, with the work folded. `parts` are in stream
+// order; each says its slot and whether it is a work step that is running.
+type Part = {
+  key: string;
+  slot: Slot;
+  node: ReactNode;
+  /** A tool, command or other step (narration is work but not a step). */
+  step?: boolean;
+  running?: boolean;
+  /** Still in progress, held on its approval card. */
+  waiting?: boolean;
+  /** How a settled step ended, for the fold's flag. */
+  outcome?: "failed" | "declined" | "stopped";
+};
+
+function Slots({ parts }: { parts: Part[] }) {
+  const ordered = orderTurn(parts, (part) => part.slot);
+  const work = ordered.filter((part) => part.slot === "tools");
+  const steps = work.filter((part) => part.step);
+  const running = steps.filter((part) => part.running).length;
+  const waiting = steps.some((part) => part.waiting);
+  const count = (outcome: Part["outcome"]) =>
+    steps.filter((part) => part.outcome === outcome).length;
+  const flag = workFlag({
+    failed: count("failed"),
+    declined: count("declined"),
+    stopped: count("stopped"),
+  });
+  const out: ReactNode[] = [];
+  let workShown = false;
+  for (const part of ordered) {
+    if (part.slot !== "tools")
+      out.push(<Fragment key={part.key}>{part.node}</Fragment>);
+    else if (!workShown) {
+      workShown = true;
+      // One call and nothing else: no fold head, the row shows directly.
+      if (work.length === 1 && steps.length === 1) {
+        out.push(
+          <div key="work" className="cs-work is-solo">
+            {work[0].node}
+          </div>,
+        );
+        continue;
+      }
+      out.push(
+        <WorkFold
+          key="work"
+          steps={steps.length}
+          running={running}
+          waiting={waiting}
+          flag={flag}
+        >
+          {work.map((w) => (
+            <Fragment key={w.key}>{w.node}</Fragment>
+          ))}
+        </WorkFold>,
+      );
+    }
+  }
+  return <>{out}</>;
 }
 
 // StreamingMarkdown is memoized on its text, so saved replies are not parsed
 // again while another reply streams. The run's footer (note and usage) is
 // passed in so it sits after the last reply of the exchange.
-function SavedBody({
+export function SavedBody({
   entries,
   connectors,
   note,
   usage,
-  failed,
+  error,
   card,
   followUps,
 }: {
   entries: ChatMessage[];
   connectors: ConnectorRef[];
   note: string | null;
-  usage: string;
-  failed: boolean;
+  /** The run's receipt line, under its last reply. */
+  usage: ReactNode;
+  /** A failed run's TurnError, where the answer would be (11.7 slot 9). */
+  error?: ReactNode;
   // The reply's file card, after its last paragraph.
   card: ReactNode;
   // Follow Up rows, under the latest completed answer only.
@@ -1378,59 +1380,110 @@ function SavedBody({
   const progress = progressFlags(
     entries.map((m) => (m.role === "tool" ? "tool" : "reply")),
   );
-  // Helper rows are saved together; they render as one group at the first.
+  // Helper rows are saved together; they render as one group.
   const helpers = entries.flatMap((m) =>
     m.agent ? [{ ...m.agent, key: m.id }] : [],
   );
-  const firstHelper = entries.findIndex((m) => m.agent);
-  return (
-    <>
-      {entries.map((entry, index) =>
-        entry.agent ? (
-          index === firstHelper ? (
-            <HelperGroup key={entry.id} helpers={helpers} live={false} />
-          ) : null
-        ) : entry.role === "tool" && entry.skill ? (
-          <SkillRow key={entry.id} name={entry.skill.name} />
-        ) : entry.role === "tool" && entry.network ? (
+  const parts: Part[] = [];
+  if (helpers.length)
+    parts.push({
+      key: "helpers",
+      slot: "helpers",
+      node: <HelperGroup helpers={helpers} live={false} />,
+    });
+  entries.forEach((entry, index) => {
+    if (entry.agent) return;
+    if (entry.role === "tool" && entry.network)
+      parts.push({
+        key: entry.id,
+        slot: "asks",
+        node: (
           <NetworkCard
-            key={entry.id}
             block={entry.network}
             messageId={entry.id}
             runId={entry.runId}
           />
-        ) : entry.role === "tool" && entry.activity ? (
+        ),
+      });
+    else if (entry.role === "tool")
+      parts.push({
+        key: entry.id,
+        slot: "tools",
+        step: true,
+        outcome: entry.activity
+          ? activityOutcome(entry.activity.status, true)
+          : entry.tool
+            ? toolOutcome(entry.tool.status, entry.tool.errorCode, true)
+            : undefined,
+        node: entry.skill ? (
+          <SkillRow name={entry.skill.name} />
+        ) : entry.activity ? (
           <ActivityRow
-            key={entry.id}
             activity={entry.activity}
             live={false}
+            stopped
             approvalLabel={
               entry.activity.approval
                 ? savedApprovalLabel(entry.activity.approval)
                 : null
             }
           />
-        ) : entry.role === "tool" ? (
+        ) : (
           <ToolRow
-            key={entry.id}
             call={savedToolToCall(entry.tool!, connectors)}
             live={false}
+            stopped
             approvalLabel={
               entry.tool!.approval
                 ? savedApprovalLabel(entry.tool!.approval)
                 : null
             }
           />
-        ) : progress[index] ? (
-          <ProgressNote key={entry.id} text={entry.text} streaming={false} />
-        ) : (
-          <div key={entry.id} className="answer markdown">
+        ),
+      });
+    if (entry.role === "tool") {
+      const decision = entry.network
+        ? null
+        : (entry.tool?.approval ?? entry.activity?.approval);
+      if (decision)
+        parts.push({
+          key: `record:${entry.id}`,
+          slot: "asks",
+          node: (
+            <ApprovalRecord
+              id={entry.id}
+              decision={decision}
+              title={
+                entry.tool
+                  ? toolStepName(
+                      connectorName(entry.tool.connector, connectors),
+                      entry.tool.name,
+                    )
+                  : codingRequestName(entry.activity!.type)
+              }
+            />
+          ),
+        });
+      return;
+    }
+    if (progress[index])
+      parts.push({
+        key: entry.id,
+        slot: "tools",
+        node: <ProgressNote text={entry.text} streaming={false} />,
+      });
+    else
+      parts.push({
+        key: entry.id,
+        slot: "body",
+        node: (
+          <div className="pt-answer-body markdown">
             <StreamingMarkdown
               text={stripSuggestions(entry.text)}
               streaming={false}
             />
             {messageStateNote(entry) && (
-              <p className="msg-foot">{messageStateNote(entry)}</p>
+              <p className="cs-msg-note">{messageStateNote(entry)}</p>
             )}
             <CopyTextButton
               text={stripSuggestions(entry.text)}
@@ -1438,12 +1491,21 @@ function SavedBody({
             />
           </div>
         ),
-      )}
+      });
+  });
+  // The turn's outcome (Stopped) is an ask-slot notice, above the answer.
+  if (note)
+    parts.push({
+      key: "outcome",
+      slot: "asks",
+      node: <p className="cs-msg-note">{note}</p>,
+    });
+  return (
+    <>
+      <Slots parts={parts} />
+      {error}
       {card}
-      {note && (
-        <p className={failed ? "msg-foot tchat-failed" : "msg-foot"}>{note}</p>
-      )}
-      {usage && <p className="msg-foot">{usage}</p>}
+      {usage}
       {followUps}
     </>
   );
@@ -1469,53 +1531,13 @@ function ProgressNote({
   );
 }
 
-// A live tool row with its write-tool approval, if any. A pending approval
-// (not auto-answered) shows the card below the row; a settled one shows its
-// outcome label on the row. An auto allow-for-chat shows the label, no card.
-function ToolApprovalRow({
-  call,
-  pending,
-  settled,
-  onApprove,
-  approvalBusy,
-  helperNote,
-}: {
-  call: ToolCall;
-  pending: ApprovalView | null;
-  settled: ApprovalView | null;
-  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
-  approvalBusy: string | null;
-  helperNote: string | null;
-}) {
-  const label =
-    settled && settled.status !== "pending"
-      ? approvalOutcomeLabel(settled.status)
-      : null;
-  return (
-    <>
-      <ToolRow call={call} live approvalLabel={label} />
-      {pending && (
-        <ApprovalCard
-          approval={pending}
-          connectorLabel={call.connector}
-          busy={approvalBusy === pending.approvalId}
-          onApprove={onApprove}
-          helperNote={helperNote}
-        />
-      )}
-    </>
-  );
-}
-
-function LiveBody({
+export function LiveBody({
   live,
   run,
   connection,
   connectors,
   tenantId,
   onReconnect,
-  onApprove,
-  approvalBusy,
   files,
 }: {
   live: LiveReply;
@@ -1524,13 +1546,9 @@ function LiveBody({
   connectors: ConnectorRef[];
   tenantId: string;
   onReconnect: () => void;
-  onApprove: (approvalId: string, decision: ApprovalAnswer) => void;
-  approvalBusy: string | null;
   files: ChatFile[];
 }) {
-  const replies = replyItems(live);
   const writing = writingFiles(live);
-  const slow = useSlow(live.since, replies.length === 0);
   const streaming = live.phase !== "settled";
   const note =
     connection === "reconnecting"
@@ -1541,19 +1559,6 @@ function LiveBody({
   const outcome = live.outcome
     ? outcomeNote(live.outcome.status, live.outcome.error)
     : null;
-  const lastReplyId = replies.at(-1)?.itemId;
-  const helperNote = helperApprovalNote(live.helpers);
-  // Before the lead's last reply, where the saved rows go; last otherwise.
-  const helperAt = live.helpers.length
-    ? live.items.findLastIndex((i) => i.type === "reply")
-    : -1;
-  const helperGroup = (
-    <HelperGroup
-      key="helpers"
-      helpers={live.helpers.map((h) => ({ ...h, key: h.agentId }))}
-      live={streaming}
-    />
-  );
   const progress = progressFlags(
     live.items.map((item) =>
       item.type === "command" ||
@@ -1564,37 +1569,86 @@ function LiveBody({
         : item.type,
     ),
   );
-  return (
-    <>
-      {!live.items.length && streaming && (
-        <ul className="steps" role="status">
-          <li>
-            <span className="spinner" aria-hidden="true" />
-            {slow ? "Still working…" : "Working"}
-          </li>
-        </ul>
-      )}
-      {live.items.map((item, index) => [
-        index === helperAt ? helperGroup : null,
-        item.type === "reply" && progress[index] ? (
-          <ProgressNote key={item.itemId} text={item.text} streaming={false} />
-        ) : item.type === "reply" ? (
-          <div key={item.itemId} className="answer markdown">
+  // The answer's replies (not narration before a tool): the caret trails the
+  // last one (.is-live), and the working indicator shows until one has text.
+  const answers = live.items.flatMap((item, index) =>
+    item.type === "reply" && !progress[index] ? [item] : [],
+  );
+  const lastAnswerId = answers.at(-1)?.itemId ?? null;
+  const answered = answers.some((item) => item.text.length > 0);
+  const slow = useSlow(live.since, !answered);
+  const runningTool = live.items.findLast(
+    (item) => item.type === "tool" && item.status === "inProgress",
+  );
+  const waiting = Object.values(live.approvals).some(
+    (approval) => approval.status === "pending",
+  );
+  const working = workingLabel({
+    waiting,
+    helpers: live.helpers.filter((h) => h.status === "running").length,
+    tool:
+      runningTool?.type === "tool"
+        ? toolStepName(
+            connectorName(runningTool.connector, connectors),
+            runningTool.tool,
+          )
+        : null,
+    slow,
+  });
+  const parts: Part[] = [];
+  if (live.helpers.length)
+    parts.push({
+      key: "helpers",
+      slot: "helpers",
+      node: (
+        <HelperGroup
+          helpers={live.helpers.map((h) => ({ ...h, key: h.agentId }))}
+          live={streaming}
+        />
+      ),
+    });
+  live.items.forEach((item, index) => {
+    if (item.type === "reply" && progress[index])
+      parts.push({
+        key: item.itemId,
+        slot: "tools",
+        node: <ProgressNote text={item.text} streaming={false} />,
+      });
+    else if (item.type === "reply")
+      parts.push({
+        key: item.itemId,
+        slot: "body",
+        node: (
+          <div
+            className={
+              streaming && item.itemId === lastAnswerId
+                ? "pt-answer-body markdown is-live"
+                : "pt-answer-body markdown"
+            }
+          >
             <StreamingMarkdown
               text={stripSuggestions(item.text, streaming)}
               streaming={streaming}
             />
-            {streaming && item.itemId === lastReplyId && (
-              <span className="caret" aria-hidden="true" />
-            )}
             {/* Cut short by a steer Codex read; the model never saw it. */}
             {isCutShort(live, index) && (
-              <p className="msg-foot">{LIVE_INTERRUPTED_NOTE}</p>
+              <p className="cs-msg-note">{LIVE_INTERRUPTED_NOTE}</p>
             )}
           </div>
-        ) : item.type === "tool" ? (
-          <ToolApprovalRow
-            key={`tool:${item.itemId}`}
+        ),
+      });
+    else if (item.type === "tool") {
+      const settled = approvalForItem(live, item.itemId);
+      const pending = pendingApprovalForItem(live, item.itemId);
+      parts.push({
+        key: `tool:${item.itemId}`,
+        slot: "tools",
+        step: true,
+        running: streaming && item.status === "inProgress" && !pending,
+        waiting: streaming && item.status === "inProgress" && !!pending,
+        outcome: toolOutcome(item.status, item.errorCode, !streaming),
+        node: (
+          <ToolRow
             call={{
               connector: connectorName(item.connector, connectors),
               tool: item.tool,
@@ -1602,39 +1656,114 @@ function LiveBody({
               durationMs: item.durationMs,
               errorCode: item.errorCode,
             }}
-            pending={pendingApprovalForItem(live, item.itemId)}
-            settled={approvalForItem(live, item.itemId)}
-            onApprove={onApprove}
-            approvalBusy={approvalBusy}
-            helperNote={helperNote}
+            live
+            stopped={!streaming}
+            approvalLabel={
+              settled && settled.status !== "pending"
+                ? approvalOutcomeLabel(settled.status)
+                : null
+            }
+            asking={!!pending}
           />
-        ) : item.type === "command" || item.type === "file_change" ? (
-          <ActivityApprovalRow
-            key={`activity:${item.itemId}`}
+        ),
+      });
+      if (settled && settled.status !== "pending")
+        parts.push({
+          key: `record:${item.itemId}`,
+          slot: "asks",
+          node: (
+            <ApprovalRecord
+              id={item.itemId}
+              decision={settled.status}
+              title={toolStepName(
+                connectorName(item.connector, connectors),
+                item.tool,
+              )}
+            />
+          ),
+        });
+    } else if (item.type === "command" || item.type === "file_change") {
+      const settled = approvalForItem(live, item.itemId);
+      const pending = pendingApprovalForItem(live, item.itemId);
+      parts.push({
+        key: `activity:${item.itemId}`,
+        slot: "tools",
+        step: true,
+        running: streaming && item.status === "inProgress" && !pending,
+        waiting: streaming && item.status === "inProgress" && !!pending,
+        outcome: activityOutcome(item.status, !streaming),
+        node: (
+          <ActivityRow
             activity={item}
-            pending={pendingApprovalForItem(live, item.itemId)}
-            settled={approvalForItem(live, item.itemId)}
-            onApprove={onApprove}
-            approvalBusy={approvalBusy}
-            helperNote={helperNote}
+            live
+            stopped={!streaming}
+            approvalLabel={
+              settled && settled.status !== "pending"
+                ? approvalOutcomeLabel(settled.status)
+                : null
+            }
+            asking={!!pending}
           />
-        ) : item.type === "skill" ? (
-          <SkillRow key={`skill:${item.slug}`} name={item.name} />
-        ) : item.type === "network" ? (
-          <NetworkCard
-            key={`network:${item.kind}:${item.host}:${item.method}`}
-            block={item}
-            messageId={null}
-            runId={live.runId}
-          />
-        ) : (
+        ),
+      });
+      if (settled && settled.status !== "pending")
+        parts.push({
+          key: `record:${item.itemId}`,
+          slot: "asks",
+          node: (
+            <ApprovalRecord
+              id={item.itemId}
+              decision={settled.status}
+              title={codingRequestName(item.type)}
+            />
+          ),
+        });
+    } else if (item.type === "skill")
+      parts.push({
+        key: `skill:${item.slug}`,
+        slot: "tools",
+        step: true,
+        node: <SkillRow name={item.name} />,
+      });
+    else if (item.type === "network")
+      parts.push({
+        key: `network:${item.kind}:${item.host}:${item.method}`,
+        slot: "asks",
+        node: <NetworkCard block={item} messageId={null} runId={live.runId} />,
+      });
+    else
+      parts.push({
+        key: `input:${item.clientMessageId}`,
+        slot: "asks",
+        node: (
           <SteerBubble
-            key={`input:${item.clientMessageId}`}
             text={item.text ?? steerText(run, item.clientMessageId) ?? ""}
           />
         ),
-      ])}
-      {helperAt < 0 && helperGroup}
+      });
+  });
+  if (live.outcome?.status !== "failed" && outcome)
+    parts.push({
+      key: "outcome",
+      slot: "asks",
+      node: <p className="cs-msg-note">{outcome}</p>,
+    });
+  return (
+    <>
+      <Slots parts={parts} />
+      {streaming && !answered && (
+        // Held on a request, nothing is working: the warn hand, no motion.
+        <p
+          className={waiting ? "cs-working is-waiting" : "cs-working"}
+          role="status"
+        >
+          {waiting ? <Icon name="hand" size="sm" /> : <Spin />}
+          <span className={waiting ? undefined : "tx-shimmer"}>{working}</span>
+        </p>
+      )}
+      {live.outcome?.status === "failed" && (
+        <TurnError runId={live.runId} error={live.outcome.error} />
+      )}
       <FileCard
         runId={live.runId}
         files={files}
@@ -1646,27 +1775,16 @@ function LiveBody({
         connectors={connectors}
         tenantId={tenantId}
       />
-      {outcome && (
-        <p
-          className={
-            live.outcome?.status === "failed"
-              ? "msg-foot tchat-failed"
-              : "msg-foot"
-          }
-        >
-          {outcome}
-        </p>
-      )}
       {connection === "lost" ? (
-        <p className="msg-foot tchat-failed" role="alert">
+        <p className="cs-msg-note is-bad" role="alert">
           The connection to this reply was lost.{" "}
-          <button type="button" className="text-btn" onClick={onReconnect}>
+          <Button size="xs" variant="ghost" onClick={onReconnect}>
             Reconnect
-          </button>
+          </Button>
         </p>
       ) : (
         note && (
-          <p className="msg-foot" role="status">
+          <p className="cs-msg-note" role="status">
             {note}
           </p>
         )
@@ -1700,4 +1818,81 @@ function useSlow(since: number, empty: boolean): boolean {
     return () => clearTimeout(timer);
   }, [since, empty]);
   return slow;
+}
+
+// A failed reply, inline where the answer would be (DESIGN-SPEC 12.5): what
+// failed, the platform's message through the shared masker, the one action
+// (only on the latest reply), and a reference that copies itself.
+export function TurnError({
+  runId,
+  error,
+  onRetry,
+  onNewChat,
+}: {
+  runId: string;
+  error: RunError | null;
+  onRetry?: () => void;
+  onNewChat?: () => void;
+}) {
+  const view = turnErrorOf(error);
+  return (
+    <div className="te" role="alert">
+      <p className="te-head">
+        <Icon name="alert" size="sm" />
+        <span className="te-title">{view.title}</span>
+      </p>
+      <p className="te-body">
+        {mask(error?.message ?? "This reply failed. Try again.")}
+      </p>
+      <div className="te-foot">
+        {view.action === "retry" && onRetry && (
+          <Button size="sm" icon="retry" onClick={onRetry}>
+            Try again
+          </Button>
+        )}
+        {view.action === "new" && onNewChat && (
+          <Button size="sm" onClick={onNewChat}>
+            Start a new chat
+          </Button>
+        )}
+        <RefChip value={`${runId} · ${view.code} · failed`} label="reference" />
+      </div>
+    </div>
+  );
+}
+
+// A settled request's audit row in the reply's asks slot (DESIGN-SPEC 13.6).
+// The platform records the decision but not who answered or when, so the
+// foot says only "You answered" or "Closed".
+export function ApprovalRecord({
+  id,
+  title,
+  decision,
+}: {
+  id: string;
+  title: string;
+  decision: ApprovalDecision;
+}) {
+  const view = recordOf(decision);
+  const glyph: IconName =
+    view.tone === "ok" ? "check" : decision === "deny" ? "ban" : "clock";
+  return (
+    <div
+      className="ar"
+      role="group"
+      aria-label="Your decision"
+      id={`approval-${id}`}
+    >
+      <span className="ar-k">Your decision</span>
+      <span className="ar-row">
+        <span className={`ar-dot is-${view.tone}`} aria-hidden="true" />
+        <span className="ar-title">{title}</span>
+        <span className={`ar-badge is-${view.tone}`}>
+          <Icon name={glyph} size="sm" />
+          {view.badge}
+        </span>
+      </span>
+      <span className="ar-foot">{view.summary}</span>
+    </div>
+  );
 }

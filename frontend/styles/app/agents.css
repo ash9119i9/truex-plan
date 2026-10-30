@@ -1,0 +1,455 @@
+/* The team board (DESIGN-SPEC 15.2), ported from system/screens/agents.css.
+   Frame colours, tints and the robots are printed artwork set inline from the
+   agent's look (19.1); everything else is tokens. */
+
+.tb {
+  width: 100%;
+  max-width: var(--wrap);
+  margin-inline: auto;
+  padding: var(--sp-5) var(--gutter) var(--sp-7);
+}
+.tb-top {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.tb-brand {
+  font-size: var(--t-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.tb-hero {
+  margin-top: var(--sp-6);
+}
+.tb-hero h1 {
+  margin: 0;
+}
+.tb-hero em {
+  color: var(--signal-ink);
+}
+.tb-hero .t-lede {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-2);
+}
+.tb-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+}
+.tb-search {
+  position: relative;
+  flex: 1 1 18rem;
+  max-width: 24rem;
+  display: flex;
+  align-items: center;
+}
+.tb-search .tx-ic {
+  position: absolute;
+  inset-inline-start: var(--sp-3);
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.tb-search .tx-input {
+  width: 100%;
+  /* icon inset + icon + gap, as in the study (agents.css .search) */
+  padding-inline-start: calc(var(--sp-3) + var(--sp-4) + var(--sp-2));
+}
+.tb-board {
+  /* printed material: the push-pin, theme-independent (19.1) */
+  --pb-metal-hi: #e7e2d6;
+  --pb-metal: #b3ab99;
+  --pb-metal-lo: #6e685c;
+  --pb-pin-stem: #8a867a;
+  --pb-pin-cast: rgb(16 20 24 / 22%);
+  --pb-pin-rim: rgb(16 20 24 / 25%);
+  --pb-live-hi: color-mix(in srgb, var(--signal) 45%, white);
+  --pb-live: var(--signal);
+  --pb-live-lo: var(--signal-hover);
+  position: relative;
+  margin-top: var(--sp-4);
+  padding: var(--sp-7) var(--sp-6) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background-color: var(--surface);
+  /* a ruled bench: major lines every four minor ones */
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--ink) 11%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--ink) 11%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      color-mix(in srgb, var(--ink) 5%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--ink) 5%, transparent) 1px,
+      transparent 1px
+    );
+  background-size:
+    calc(var(--sp-5) * 4) calc(var(--sp-5) * 4),
+    calc(var(--sp-5) * 4) calc(var(--sp-5) * 4),
+    var(--sp-5) var(--sp-5),
+    var(--sp-5) var(--sp-5);
+  background-position: -1px -1px;
+  box-shadow: var(--sh-1);
+}
+.tb-team {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13.75rem, 1fr));
+  gap: var(--sp-8) var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tb-card,
+.tb-new {
+  position: relative;
+  transform: rotate(var(--tilt, 0deg));
+  transform-origin: 50% 0;
+  animation: tb-drop 0.5s var(--tx-spring) both;
+}
+@keyframes tb-drop {
+  from {
+    opacity: 0;
+    transform: translateY(calc(var(--sp-3) * -1))
+      rotate(calc(var(--tilt, 0deg) * 2));
+  }
+}
+.tb-pin {
+  position: absolute;
+  top: calc(var(--sp-2) * -1);
+  left: 50%;
+  z-index: 2;
+  overflow: visible;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.tb-pin-cast {
+  fill: var(--pb-pin-cast);
+}
+.tb-pin-stem {
+  stroke: var(--pb-pin-stem);
+}
+.tb-pin-rim {
+  stroke: var(--pb-pin-rim);
+}
+.tb-pin-gloss {
+  fill: white;
+  fill-opacity: 0.7;
+}
+/* the polaroid: the frame is the agent's tint, the photo its paler wash */
+.tb-frame {
+  padding: var(--sp-2) var(--sp-2) 0;
+  border-radius: var(--r);
+  background: var(--frame, var(--surface-2));
+  box-shadow: var(--sh-2);
+  transition: box-shadow var(--tx-d-2) var(--tx-ease);
+}
+.tb-card:hover .tb-frame {
+  box-shadow: var(--sh-3);
+}
+.tb-photo {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 5 / 4;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+  background:
+    radial-gradient(
+      120% 90% at 30% 20%,
+      rgb(255 255 255 / 70%),
+      transparent 60%
+    ),
+    var(--tint, var(--well));
+  cursor: pointer;
+}
+.tb-photo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--ink) 8%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+}
+span.tb-photo {
+  cursor: default;
+}
+.tb-photo:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.tb-photo > svg {
+  width: 62%;
+  height: auto;
+  transition: transform var(--tx-d-3) var(--tx-spring);
+}
+.tb-card:hover .tb-photo > svg {
+  transform: translateY(calc(var(--sp-1) * -1)) scale(1.04);
+}
+/* the built-in pill is printed on the photo */
+.tb-lock {
+  position: absolute;
+  left: var(--sp-2);
+  bottom: var(--sp-2);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-h) var(--sp-2);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--ink-2);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+/* the name: the editorial serif, counter-tilted on the frame */
+.tb-caption {
+  display: block;
+  padding: var(--sp-2) var(--sp-1) var(--sp-3);
+  color: var(--cap, var(--ink));
+  font-family: var(--f-serif);
+  font-size: var(--t-h3);
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.05;
+  text-align: center;
+  overflow-wrap: anywhere;
+  font-synthesis: none;
+  transform: rotate(-2deg);
+}
+/* the details sit upright under the tilted polaroid */
+.tb-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3) var(--sp-1) 0;
+  transform: rotate(calc(var(--tilt, 0deg) * -1));
+  transform-origin: 50% 0;
+}
+.tb-handle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.tb-handle-row .tx-pill {
+  font-family: var(--f-ui);
+}
+.tb-handle {
+  font-family: var(--f-mono);
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.tb-meta {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  margin-inline-end: auto;
+}
+.tb-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: var(--sp-1);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.tb-purpose {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  color: var(--ink-2);
+}
+.tb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+.tb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 1.375rem;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.tb-chip::before {
+  content: "";
+  width: var(--dot);
+  height: var(--dot);
+  flex: none;
+  border-radius: 50%;
+  background: var(--ink-3);
+}
+.tb-none {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.375rem;
+  margin-bottom: var(--sp-2);
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.tb-foot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.tb-menu {
+  position: relative;
+}
+.tb-menu-panel {
+  position: absolute;
+  bottom: calc(100% + var(--sp-1));
+  left: 0;
+  z-index: 10;
+  min-width: 12rem;
+  box-shadow: var(--sh-2);
+}
+.tb-ask {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--t-meta);
+  color: var(--ink);
+}
+.tb-ask-btns {
+  display: flex;
+  gap: var(--sp-1);
+}
+.tb-error {
+  color: var(--bad-ink);
+}
+/* the new-agent slot: an empty polaroid, dashed, with a pencilled note */
+.tb-new-frame {
+  display: block;
+  width: 100%;
+  padding: var(--sp-2);
+  border: 2px dashed var(--line-strong);
+  border-radius: var(--r);
+  background: transparent;
+  color: var(--ink-2);
+  text-align: center;
+  cursor: pointer;
+}
+.tb-new-frame:hover {
+  border-color: var(--signal);
+}
+.tb-new-frame:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.tb-new-photo {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 5 / 4;
+  border-radius: var(--r-sm);
+  background: var(--well);
+}
+.tb-new-plus {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  background: var(--signal-fill);
+  color: var(--on-signal);
+  box-shadow: var(--key);
+}
+.tb-new-frame .tb-caption {
+  padding-bottom: var(--sp-1);
+  color: var(--ink-2);
+}
+.tb-note {
+  display: block;
+  margin: var(--sp-2) 0 0 var(--sp-3);
+  font-family: var(--f-serif);
+  font-size: var(--t-lede);
+  font-style: italic;
+  color: var(--ink-3);
+  white-space: nowrap;
+  transform: rotate(-3deg);
+}
+.tb-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6);
+  color: var(--ink-2);
+}
+.tb-empty p {
+  margin: 0;
+}
+.tb-foot {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--sp-3);
+}
+.tb-tag {
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+@media (max-width: 560px) {
+  .tb-team {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-6) var(--sp-3);
+  }
+  .tb-board {
+    padding: var(--sp-5) var(--sp-3);
+  }
+  .tb-meta {
+    display: none;
+  }
+  .tb-caption {
+    font-size: var(--t-h4);
+  }
+  .tb-foot-row {
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tb-card,
+  .tb-new {
+    animation: none;
+  }
+  .tb-photo > svg,
+  .tb-frame {
+    transition: none;
+  }
+}
+:root[data-eff-motion="reduce"] .tb-card,
+:root[data-eff-motion="reduce"] .tb-new {
+  animation: none;
+}
+:root[data-eff-motion="reduce"] .tb-photo > svg,
+:root[data-eff-motion="reduce"] .tb-frame {
+  transition: none;
+}

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · Activity panel · one turn</title>
+<meta name="description" content="truex screen study: tab 1 of the activity panel for one turn. What the agent did, what it read, what it changed, where the answer came from, and the trace behind each step.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+/* Foundation theme bootstrap — identical to the other screens, so this page
+   honours the four contexts (light/dark × normal/more) and remembers choice. */
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../type.css">
+<link rel="stylesheet" href="../color.css">
+<link rel="stylesheet" href="../space.css">
+<link rel="stylesheet" href="../corner.css">
+<link rel="stylesheet" href="../primitives.css">
+<link rel="stylesheet" href="business-activity.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="i-chev-down" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.4 3.5 5.2 3.5 8.5s-1.2 6.1-3.5 8.5c-2.3-2.4-3.5-5.2-3.5-8.5s1.2-6.1 3.5-8.5Z"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/></symbol>
+    <symbol id="i-pen" viewBox="0 0 24 24"><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.5 3 8.5 7 10 4-1.5 7-5.5 7-10V6Z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10v10H9zM5 15V5h10"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 4 3 19.5h18Z"/><path d="M12 10v4M12 17h.01"/></symbol>
+    <symbol id="i-ban" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 6h14M5 10h14M5 14h9M5 18h6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6M5 12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 16v-5M12 16V7M17 16v-8"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M12 3.5v8M8.5 6v6.5M15.5 6v7M5 10v4.5a6.5 6.5 0 0 0 13 0V9"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4.5h9.5A3.5 3.5 0 0 1 18 8v11.5H8.5A3.5 3.5 0 0 1 5 16Z"/><path d="M5 16a3.5 3.5 0 0 1 3.5-3.5H18"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3.5v4M15 3.5v4M6.5 7.5h11v3a5.5 5.5 0 0 1-11 0ZM12 16v4.5"/></symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4.5 5.5h15v10h-8l-4.5 3.5v-3.5h-2.5Z"/></symbol>
+    <symbol id="i-out" viewBox="0 0 24 24"><path d="M5 5v6a4 4 0 0 0 4 4h10"/><path d="m15 11 4 4-4 4"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 5v6a4 4 0 0 1-4 4H5"/><path d="m9 11-4 4 4 4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+  </defs>
+</svg>
+
+<main class="stage">
+  <header class="bar">
+    <div class="bar-id">
+      <span class="t-micro bar-crumb">truex / activity panel</span>
+      <h1 class="bar-title" id="bar-title">Business activity &amp; traces <span>· one turn</span></h1>
+    </div>
+    <div class="bar-ctl">
+      <span class="t-micro bar-lbl" id="state-lbl">State</span>
+      <div class="tx-seg tx-seg-sm" role="group" aria-labelledby="state-lbl" id="state">
+        <button type="button" data-s="live">Working</button>
+        <button type="button" data-s="needs">Needs you</button>
+        <button type="button" data-s="done">Done</button>
+        <button type="button" data-s="declined">Declined</button>
+        <button type="button" data-s="issue">Step failed</button>
+        <button type="button" data-s="stopped">Stopped</button>
+      </div>
+      <span class="t-micro bar-lbl" id="steer-lbl">Note</span>
+      <div class="tx-seg tx-seg-sm" role="group" aria-labelledby="steer-lbl" id="steer">
+        <button type="button" data-n="0">None</button>
+        <button type="button" data-n="1">Steered</button>
+      </div>
+      <span class="t-micro bar-lbl" id="crew-lbl">Crew</span>
+      <div class="tx-seg tx-seg-sm" role="group" aria-labelledby="crew-lbl" id="crew">
+        <button type="button" data-c="solo">One agent</button>
+        <button type="button" data-c="team">With helpers</button>
+      </div>
+      <button class="tx-btn tx-ghost tx-icon tx-sm" id="theme" type="button" aria-label="Toggle theme">
+        <svg class="tx-ic" aria-hidden="true"><use href="#i-moon"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- what each block of the tab answers; reads as the design rationale -->
+    <section class="notes" aria-label="What this tab answers">
+      <p class="t-micro notes-h">What this tab answers</p>
+      <ol class="notes-list" id="notes"></ol>
+    </section>
+
+    <aside class="ap" aria-label="Activity panel">
+      <header class="ap-head">
+        <nav class="ap-crumb" aria-label="Scope">
+          <button type="button" class="ap-crumb-home" id="home">Session</button>
+          <svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-chev"/></svg>
+          <span class="ap-crumb-here" aria-current="page">Turn <span class="num">4</span><span class="ap-crumb-of"> of <span class="num">4</span></span></span>
+        </nav>
+        <div class="ap-head-act">
+          <button class="tx-btn tx-ghost tx-icon tx-xs" type="button" id="prev" aria-label="Previous turn"><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-chev-l"/></svg></button>
+          <button class="tx-btn tx-ghost tx-icon tx-xs" type="button" aria-label="Next turn" disabled><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-chev"/></svg></button>
+          <button class="tx-btn tx-ghost tx-icon tx-xs" type="button" id="close" aria-label="Close panel"><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-x"/></svg></button>
+        </div>
+      </header>
+
+      <div class="tx-tabs ap-tabs" role="tablist" aria-label="Activity panel sections">
+        <button type="button" role="tab" id="tab-activity" aria-selected="true" aria-controls="body">Activity</button>
+        <button type="button" role="tab" id="tab-agent" aria-selected="false" aria-controls="body">Agent</button>
+        <button type="button" role="tab" id="tab-files" aria-selected="false" aria-controls="body">Files</button>
+        <button type="button" role="tab" id="tab-insights" aria-selected="false" aria-controls="body">Insights</button>
+      </div>
+
+      <div class="ap-body" id="body" role="tabpanel" aria-labelledby="tab-activity" tabindex="0"></div>
+
+      <footer class="ap-foot" id="foot">
+        <span class="ap-foot-l">
+          <span class="t-micro">Trace</span>
+          <button type="button" class="tx-chip tx-chip-ref" id="trace-id" aria-label="Copy trace ID">tr_7f3a91c2<svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-copy"/></svg></button>
+        </span>
+        <button type="button" class="tx-btn tx-ghost tx-xs" id="export"><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-download"/></svg>Export log</button>
+      </footer>
+    </aside>
+  </div>
+</main>
+<div class="tx-toast-host" id="toasts" aria-live="polite"></div>
+<script src="business-activity.js"></script>
+</body>
+</html>

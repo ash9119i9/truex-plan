@@ -1,0 +1,114 @@
+/* attach — the paperclip, file chips above the message box, the drop target,
+   and the files on a sent message. */
+.cs-composer { position: relative; }
+.ac-btn { color: var(--ink-2); }
+.ac-btn:hover { color: var(--ink); }
+
+.ac-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 8.75rem;
+  overflow-y: auto;
+  padding: 2px 2px var(--sp-2);
+  scrollbar-width: thin;
+}
+.ac-tray[hidden],
+.ac-note[hidden] { display: none; }
+
+.ac-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: 0 1 14rem;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 4px 6px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  overflow: hidden;
+  animation: cs-msg-in .22s var(--tx-ease) both;
+}
+.ac-ic {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--ink-2);
+  overflow: hidden;
+}
+.ac-ic img { width: 100%; height: 100%; object-fit: cover; }
+.ac-main { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.ac-name { display: flex; min-width: 0; color: var(--ink); font: 600 .75rem/1.3 var(--f-ui); }
+.ac-base { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ac-ext { flex: none; white-space: nowrap; }
+.ac-meta { overflow: hidden; color: var(--ink-3); font-size: .6875rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.ac-acts { display: flex; flex: none; }
+.ac-x,
+.ac-retry {
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%; corner-shape: round;
+  background: none;
+  color: var(--ink-3);
+  cursor: pointer;
+  transition: background-color var(--tx-d-1) var(--tx-ease), color var(--tx-d-1) var(--tx-ease);
+}
+.ac-x:hover,
+.ac-retry:hover { background: var(--well); color: var(--ink); }
+.ac-x:focus-visible,
+.ac-retry:focus-visible { outline: none; box-shadow: var(--focus); }
+
+/* progress · a thin line along the chip's bottom edge */
+.ac-bar { position: absolute; inset: auto 0 0; height: 2px; }
+.ac-bar i { display: block; width: 0; height: 100%; background: var(--signal); transition: width .2s linear; }
+.ac-chip[data-state="uploading"] .ac-ic { color: var(--signal-ink); }
+.ac-chip[data-state="failed"] {
+  border-color: color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad-soft) 55%, var(--surface));
+}
+.ac-chip[data-state="failed"] .ac-meta,
+.ac-chip[data-state="failed"] .ac-retry { color: var(--bad-ink); }
+
+.ac-note { display: flex; align-items: flex-start; gap: 6px; margin: 0 0 var(--sp-2); color: var(--bad-ink); font-size: .75rem; line-height: 1.4; }
+.ac-note .tx-ic { flex: none; margin-top: 2px; }
+
+/* drop target · the active composer while files are dragged over the page */
+.cs-composer.is-drop::after {
+  content: "Drop files to attach";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--signal);
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--signal-soft) 90%, transparent);
+  color: var(--signal-ink);
+  font: 650 var(--t-meta)/1 var(--f-ui);
+  pointer-events: none;
+}
+
+/* sent · the files sit above the bubble, right-aligned */
+.cs-user-files { justify-content: end; justify-items: stretch; width: 100%; margin: 0; padding-inline-start: 0; }
+.cs-msg-user .pt-bubble[hidden] { display: none; }
+
+@media (max-width: 640px) {
+  .ac-chip { flex-basis: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ac-chip { animation: none; }
+  .ac-bar i, .ac-x, .ac-retry { transition: none; }
+}
+:root[data-eff-motion="reduce"] .ac-chip { animation: none; }
+:root[data-eff-motion="reduce"] .ac-bar i { transition: none; }

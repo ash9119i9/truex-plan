@@ -1053,7 +1053,7 @@ export function approvalForItem(
 }
 
 // True while any approval on this reply is still waiting for the member, so
-// the composer can show "Waiting for your approval".
+// the composer's placeholder points to the card.
 export function hasPendingApproval(reply: LiveReply | null): boolean {
   return (
     !!reply &&
@@ -1132,18 +1132,23 @@ export function withLiveSteer(
 // progress; the reply after the last call is the answer. Codex can mark this
 // itself (an agentMessage `phase` of "commentary"), but only when the provider
 // sends a phase, and the gateway's providers do not, so the rule is
-// structural. A user message or steer ends the stretch a later tool call can
-// reach back over.
+// structural. A reply followed by another reply is progress too: Codex only
+// samples again after a tool call, and some calls (update_plan) have no row
+// in the transcript. A user message or steer ends the stretch a later tool
+// call or reply can reach back over.
 export type ExchangeEntry = "reply" | "tool" | "input";
 
 export function progressFlags(entries: readonly ExchangeEntry[]): boolean[] {
   const flags = new Array<boolean>(entries.length).fill(false);
-  let toolLater = false;
+  let later = false;
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
-    if (entry === "tool") toolLater = true;
-    else if (entry === "input") toolLater = false;
-    else flags[i] = toolLater;
+    if (entry === "input") later = false;
+    else if (entry === "tool") later = true;
+    else {
+      flags[i] = later;
+      later = true;
+    }
   }
   return flags;
 }

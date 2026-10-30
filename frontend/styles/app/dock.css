@@ -1,0 +1,267 @@
+/* The floating dock (DESIGN-SPEC 11.9), ported from system/screens/chat.css.
+   It is the one sanctioned raw-pixel component (19.1): its magnification is
+   measured in CSS px, so its keys keep that geometry at every text size. Sizes
+   are sprung frame by frame in components/tenant/floating-dock.tsx. */
+
+/* room for the raised dock: its 76px footprint plus a 16px gap to the composer */
+.cs-bottom {
+  transition: padding-bottom 0.6s cubic-bezier(0.45, 0, 0.35, 1);
+}
+.cs-bottom.is-dock-up {
+  padding-bottom: 92px;
+  transition: padding-bottom 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.cs-dock {
+  --dock-glass: color-mix(in srgb, var(--surface) 72%, transparent);
+  --dock-ring: color-mix(in srgb, var(--line-strong) 80%, transparent);
+  --dock-key: color-mix(in srgb, var(--ink) 5%, transparent);
+  --dock-key-hi: var(--surface);
+  /* flat: a hairline ring, no blurred halo, so nothing fades onto the page */
+  --dock-key-lift: 0 0 0 1px var(--line);
+  --dock-lift: 0 0 0 1px var(--dock-ring);
+  --dock-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
+  /* circle keys · a soft top highlight and a hairline rim */
+  --dock-shine: color-mix(in srgb, #fff 70%, transparent);
+  --dock-rim: color-mix(in srgb, var(--ink) 7%, transparent);
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+  max-width: 100%;
+  height: var(--sp-8);
+  padding: 0 var(--sp-3) 10px; /* 2px of headroom over a fully swollen key */
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--dock-glass);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  backdrop-filter: blur(20px) saturate(1.6);
+  color: var(--ink-2);
+  box-shadow: var(--dock-lift);
+  transform: translateX(-50%);
+  transition:
+    transform 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.6s var(--dock-soft);
+  will-change: transform, opacity;
+}
+:root[data-eff-theme="dark"] .cs-dock {
+  --dock-glass: color-mix(in srgb, var(--surface-2) 74%, transparent);
+  --dock-ring: color-mix(in srgb, var(--line-strong) 90%, transparent);
+  --dock-key: color-mix(in srgb, var(--ink) 6%, transparent);
+  --dock-key-hi: color-mix(in srgb, var(--ink) 14%, transparent);
+  --dock-shine: color-mix(in srgb, #fff 9%, transparent);
+  --dock-rim: color-mix(in srgb, #fff 6%, transparent);
+}
+.cs-dock.is-stowed {
+  transform: translateX(-50%) translateY(calc(100% + 24px)) scale(0.97);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 0.7s cubic-bezier(0.65, 0, 0.35, 1),
+    opacity 0.5s var(--dock-soft);
+}
+/* keyboard focus only: a clicked key must not pin the dock up */
+.cs-dock.is-stowed:has(:focus-visible) {
+  transform: translateX(-50%);
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    transform 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.6s var(--dock-soft);
+}
+.cs-dock-btn {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  /* a true circle: corner.css would otherwise square it into a squircle */
+  border-radius: 50%;
+  corner-shape: round;
+  background: var(--dock-key);
+  color: var(--ink-2);
+  box-shadow:
+    inset 0 1px 0 var(--dock-shine),
+    inset 0 0 0 1px var(--dock-rim);
+  /* width/height are sprung frame by frame in chat.js, not by a transition;
+     colour leaves slowly so the pointer trails a soft wake */
+  transition:
+    background-color 0.6s var(--dock-soft),
+    color 0.6s var(--dock-soft),
+    box-shadow 0.6s var(--dock-soft);
+}
+.cs-dock-btn:hover {
+  background: var(--dock-key-hi);
+  color: var(--ink);
+  box-shadow:
+    inset 0 1px 0 var(--dock-shine),
+    var(--dock-key-lift);
+  transition-duration: 0.28s;
+}
+.cs-dock-btn:active {
+  transition-duration: 0.1s;
+  filter: brightness(0.97);
+}
+.cs-dock-btn:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 var(--dock-shine),
+    var(--focus);
+}
+.cs-dock-ic {
+  display: grid;
+  place-items: center;
+}
+.cs-dock-glyph {
+  width: 20px;
+  height: 20px;
+}
+.cs-dock-tip {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 50%;
+  transform: translate(-50%, 4px) scale(0.96);
+  transform-origin: 50% 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 0.25s var(--dock-soft),
+    transform 0.35s var(--dock-soft);
+}
+:root[data-eff-theme="dark"] .cs-dock-tip {
+  background: var(--well);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+.cs-dock-btn:hover .cs-dock-tip,
+.cs-dock-btn:focus-visible .cs-dock-tip {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  transition:
+    opacity 0.35s var(--dock-soft) 0.15s,
+    transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s;
+}
+/* the Agent key's menu (11.6 rows) opens above the dock, centred on its key */
+.cs-dock .cs-dock-menu-key {
+  position: relative;
+  display: flex;
+}
+.cs-dock .cs-dock-menu {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  z-index: 3;
+  width: 19rem;
+  max-width: calc(100vw - 24px);
+  border: 1px solid var(--line);
+  box-shadow: var(--sh-2);
+  text-align: start;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  animation: cs-dock-menu-in 0.22s var(--tx-ease) both;
+}
+@keyframes cs-dock-menu-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(4px) scale(0.98);
+  }
+}
+/* an open menu is the answer; its key's tooltip would sit on top of it */
+.cs-dock .cs-dock-btn[aria-expanded="true"] .cs-dock-tip {
+  opacity: 0;
+}
+.cs-dock-tip .tx-kbd {
+  min-width: 18px;
+  height: 18px;
+  border-color: var(--line-strong);
+  background: transparent;
+  color: var(--ink-3);
+  box-shadow: none;
+}
+
+@container app (max-width: 32.5rem) {
+  .cs-dock-tip {
+    display: none;
+  }
+}
+@container app (max-width: 25rem) {
+  .cs-dock {
+    gap: var(--sp-2);
+    padding-inline: var(--sp-2);
+  }
+}
+@media (hover: none) {
+  .cs-bottom {
+    transition: none;
+  }
+  .cs-dock {
+    position: static;
+    transform: none;
+    will-change: auto;
+    transition: none;
+  }
+  .cs-dock.is-stowed {
+    transform: none;
+    opacity: 1;
+    pointer-events: auto;
+    transition: none;
+  }
+  .cs-dock-tip {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-bottom,
+  .cs-bottom.is-dock-up {
+    transition: none;
+  }
+  .cs-dock {
+    transition: opacity 0.25s ease;
+  }
+  .cs-dock-btn,
+  .cs-dock-ic,
+  .cs-dock-tip {
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) and (hover: hover) {
+  .cs-dock.is-stowed {
+    transform: translateX(-50%);
+  }
+}
+:root[data-eff-motion="reduce"] .cs-bottom,
+:root[data-eff-motion="reduce"] .cs-bottom.is-dock-up {
+  transition: none;
+}
+:root[data-eff-motion="reduce"] .cs-dock {
+  transition: opacity 0.25s ease;
+}
+:root[data-eff-motion="reduce"] .cs-dock-btn,
+:root[data-eff-motion="reduce"] .cs-dock-ic,
+:root[data-eff-motion="reduce"] .cs-dock-tip {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-dock .cs-dock-menu {
+    animation: none;
+  }
+}
+:root[data-eff-motion="reduce"] .cs-dock .cs-dock-menu {
+  animation: none;
+}

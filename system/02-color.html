@@ -1,0 +1,1072 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · System 02 — Colour &amp; Themes</title>
+<meta name="description" content="truex design system, chapter 02: colour and themes. Four authored contexts, one signal, three glyphed statuses and six reserved identities — locked from Design System v2.2.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="space.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="color-page.css">
+<link rel="stylesheet" href="corner.css">
+</head>
+<body>
+<a class="skip" href="#content">Skip to the chapter</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex system, back to top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><a href="index.html">01 Type</a><span class="bar-sep" aria-hidden="true">/</span><b>02 Colour</b><span class="bar-sep" aria-hidden="true">/</span><a href="03-space.html">03 Space</a><span class="bar-sep" aria-hidden="true">/</span><a href="04-corners.html">04 Corners</a><span class="bar-sep" aria-hidden="true">/</span><a href="05-primitives.html">05 Primitives</a><span class="bar-sep" aria-hidden="true">/</span><a href="06-patterns.html">06 Patterns</a></span>
+    <span class="lock-chip">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+      Locked
+    </span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="contrast-tool" data-mode="system" type="button" aria-label="Contrast: system. Activate to change.">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4h4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-4z" fill="currentColor"/></svg>
+      <span class="tool-k">Contrast</span><span class="tool-v" id="contrast-label">System</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage stage-color" aria-label="Chapter 02: Colour and themes">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Design system</span>
+        <span class="top-mid">Source v2.2 · Colour &amp; themes</span>
+        <span><span class="dot-live">●</span> Locked 26.10.2026</span>
+      </div>
+
+      <div class="hero-main">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">02</span>
+            <h1 class="hero-title">Colour</h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>04</b>contexts</span>
+            <span class="stage-chip"><b>01</b>signal</span>
+            <span class="stage-chip"><b>03</b>status</span>
+            <span class="stage-chip"><b>06</b>identities</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <p class="hero-serif">One meaning, four contexts.</p>
+          <p class="hero-copy">A single signal hue for everything live and interactive. Three glyphed statuses. Six reserved identities. Everything else is quiet chassis — <b>authored and measured</b> in light, dark and an increased-contrast variant of each.</p>
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="hero-note"><span class="pulse" aria-hidden="true"></span>The palette is a contract — not a mood</div>
+        </div>
+      </div>
+
+      <div class="ctx-deck" role="group" aria-label="The same surface in four colour contexts">
+        <article class="ctx-card" data-ctx="light" aria-label="Light theme, standard contrast">
+          <div class="ctx-head"><span>Light</span><span>Standard</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review</span><span class="ctx-link">Receipt</span></div>
+          </div>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)" title="page"></span>
+            <span class="ctx-sw" style="background:var(--surface)" title="surface"></span>
+            <span class="ctx-sw" style="background:var(--ink)" title="ink"></span>
+            <span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)" title="signal"></span>
+            <span class="ctx-sw" style="background:var(--ok)" title="ok"></span>
+            <span class="ctx-sw" style="background:var(--warn)" title="warn"></span>
+            <span class="ctx-sw" style="background:var(--bad)" title="bad"></span>
+            <span class="ctx-sw" style="background:var(--id-2)" title="identity"></span>
+          </div>
+        </article>
+
+        <article class="ctx-card" data-ctx="dark" aria-label="Dark theme, standard contrast">
+          <div class="ctx-head"><span>Dark</span><span>Standard</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review</span><span class="ctx-link">Receipt</span></div>
+          </div>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)" title="page"></span>
+            <span class="ctx-sw" style="background:var(--surface)" title="surface"></span>
+            <span class="ctx-sw" style="background:var(--ink)" title="ink"></span>
+            <span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)" title="signal"></span>
+            <span class="ctx-sw" style="background:var(--ok)" title="ok"></span>
+            <span class="ctx-sw" style="background:var(--warn)" title="warn"></span>
+            <span class="ctx-sw" style="background:var(--bad)" title="bad"></span>
+            <span class="ctx-sw" style="background:var(--id-2)" title="identity"></span>
+          </div>
+        </article>
+
+        <article class="ctx-card" data-ctx="light+" aria-label="Light theme, increased contrast">
+          <div class="ctx-head"><span>Light</span><span>Increased</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review</span><span class="ctx-link">Receipt</span></div>
+          </div>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)" title="page"></span>
+            <span class="ctx-sw" style="background:var(--surface)" title="surface"></span>
+            <span class="ctx-sw" style="background:var(--ink)" title="ink"></span>
+            <span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)" title="signal"></span>
+            <span class="ctx-sw" style="background:var(--ok)" title="ok"></span>
+            <span class="ctx-sw" style="background:var(--warn)" title="warn"></span>
+            <span class="ctx-sw" style="background:var(--bad)" title="bad"></span>
+            <span class="ctx-sw" style="background:var(--id-2)" title="identity"></span>
+          </div>
+        </article>
+
+        <article class="ctx-card" data-ctx="dark+" aria-label="Dark theme, increased contrast">
+          <div class="ctx-head"><span>Dark</span><span>Increased</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review</span><span class="ctx-link">Receipt</span></div>
+          </div>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)" title="page"></span>
+            <span class="ctx-sw" style="background:var(--surface)" title="surface"></span>
+            <span class="ctx-sw" style="background:var(--ink)" title="ink"></span>
+            <span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)" title="signal"></span>
+            <span class="ctx-sw" style="background:var(--ok)" title="ok"></span>
+            <span class="ctx-sw" style="background:var(--warn)" title="warn"></span>
+            <span class="ctx-sw" style="background:var(--bad)" title="bad"></span>
+            <span class="ctx-sw" style="background:var(--id-2)" title="identity"></span>
+          </div>
+        </article>
+      </div>
+
+      <div class="stage-spec">
+        <span>Contexts <b>04</b></span>
+        <span>Signal <b>01</b></span>
+        <span>Status <b>03</b></span>
+        <span>Identities <b>06</b></span>
+        <span>Text <b>AA</b></span>
+        <span>Source <b>v2.2</b></span>
+        <span class="current-readout"><span class="live-dot" aria-hidden="true"></span>Current <b id="current-ctx">Light / Standard</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Chapter contents">
+    <div class="ruler-in">
+      <a href="#model" class="active" aria-current="true"><span class="n">2.1</span>Model</a>
+      <a href="#chassis"><span class="n">2.2</span>Chassis</a>
+      <a href="#signal"><span class="n">2.3</span>Signal</a>
+      <a href="#status"><span class="n">2.4</span>Status</a>
+      <a href="#identity"><span class="n">2.5</span>Identity</a>
+      <a href="#data"><span class="n">2.6</span>Data</a>
+      <a href="#themes"><span class="n">2.7</span>Themes</a>
+      <a href="#rules"><span class="n">2.8</span>Rules</a>
+      <a href="#build"><span class="n">2.9</span>Build</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+    <!-- 2.1 MODEL -->
+    <section class="chapter" id="model" aria-labelledby="h-model">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.1</div>
+        <div>
+          <p class="ch-kicker">The model</p>
+          <h2 class="t-h2" id="h-model">One loud colour, <em>and a lot of quiet.</em></h2>
+          <p class="t-lede">Colour has three jobs and one exception. Signal means interaction and live work. Status carries state. Identity is reserved for agents. Everything else — surfaces, ink, lines — is quiet chassis, and it is most of the interface.</p>
+        </div>
+        <div class="folio">Model · 01 / 09</div>
+      </header>
+
+      <div class="model-grid">
+        <article class="board model-card">
+          <div class="model-head"><span class="board-label">01 · Signal</span><span class="chip chip-signal">One hue</span></div>
+          <h3>Signal blue</h3>
+          <p class="model-copy"><b>The only hue allowed to be loud.</b> It marks what can be touched, what is selected and what is running now.</p>
+          <div class="signal-block">
+            <span class="big">Aa</span>
+            <span class="tok">--signal-fill · carries white at AA</span>
+          </div>
+          <div class="signal-trio">
+            <div><span class="sw" style="--c:var(--signal)"></span><code>--signal</code></div>
+            <div><span class="sw" style="--c:var(--signal-fill)"></span><code>--signal-fill</code></div>
+            <div><span class="sw" style="--c:var(--signal-ink)"></span><code>--signal-ink</code></div>
+          </div>
+          <div class="model-use"><div><b>Use</b> primary actions, links, focus, live work</div><div><b>Never</b> data series, decoration, status</div></div>
+        </article>
+
+        <article class="board model-card">
+          <div class="model-head"><span class="board-label">02 · Status</span><span class="chip">Glyph + word</span></div>
+          <h3>Three states</h3>
+          <p class="model-copy"><b>State wears a glyph and a word first.</b> The tint is the background, the ink is the message, and the base hue is only the mark.</p>
+          <div class="status-mini">
+            <div class="status-mini-row s-ok"><span class="g" aria-hidden="true">✓</span><b>Good · balanced</b><code>ok</code></div>
+            <div class="status-mini-row s-warn"><span class="g" aria-hidden="true">!</span><b>Warn · needs a look</b><code>warn</code></div>
+            <div class="status-mini-row s-bad"><span class="g" aria-hidden="true">✕</span><b>Bad · failed</b><code>bad</code></div>
+          </div>
+          <p class="model-note"><b>Base</b> is the mark. <b>Ink</b> is the words. <b>Soft</b> is the tint behind them.</p>
+          <div class="model-use"><div><b>Use</b> outcomes, checks, failures</div><div><b>Never</b> identity, selection, data series</div></div>
+        </article>
+
+        <article class="board model-card">
+          <div class="model-head"><span class="board-label">03 · Identity</span><span class="chip">Agents only</span></div>
+          <h3>Six reserved hues</h3>
+          <p class="model-copy"><b>One hue per agent, for the whole session.</b> If a surface is not about who did the work, it does not wear these.</p>
+          <div class="id-mini">
+            <div class="id-mini-row t-main"><span class="dot" aria-hidden="true"></span><b>Main agent<span class="role">Lead</span></b><code>main</code></div>
+            <div class="id-mini-row t-1"><span class="dot" aria-hidden="true"></span><b>Atlas<span class="role">Docs</span></b><code>id-1</code></div>
+            <div class="id-mini-row t-2"><span class="dot" aria-hidden="true"></span><b>Birch<span class="role">Access</span></b><code>id-2</code></div>
+            <div class="id-mini-row t-3"><span class="dot" aria-hidden="true"></span><b>Cedar<span class="role">Shadowing</span></b><code>id-3</code></div>
+            <div class="id-mini-row t-4"><span class="dot" aria-hidden="true"></span><b>Dune<span class="role">Certification</span></b><code>id-4</code></div>
+            <div class="id-mini-row t-5"><span class="dot" aria-hidden="true"></span><b>Ember<span class="role">Review</span></b><code>id-5</code></div>
+          </div>
+          <p class="model-note">Assigned in order of first appearance, never reused. The silhouette carries the same identity when hue cannot.</p>
+          <div class="model-use"><div><b>Use</b> agent marks, lanes, receipts</div><div><b>Never</b> buttons, status, charts, links</div></div>
+        </article>
+      </div>
+
+      <div class="model-strip">
+        <div><span class="num">01</span><span><b>Signal</b> means interaction</span></div>
+        <div><span class="num">02</span><span><b>Status</b> needs a glyph and a word</span></div>
+        <div><span class="num">03</span><span><b>Identity</b> belongs to an agent</span></div>
+      </div>
+      <p class="section-cap"><b>If it is not one of these three jobs, it does not get a hue.</b> Chassis and ink carry everything else, and that is what gives the loud colour its meaning.</p>
+    </section>
+
+    <!-- 2.2 CHASSIS -->
+    <section class="chapter" id="chassis" aria-labelledby="h-chassis">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.2</div>
+        <div>
+          <p class="ch-kicker">Chassis &amp; ink</p>
+          <h2 class="t-h2" id="h-chassis">The quiet <em>majority.</em></h2>
+          <p class="t-lede">Surfaces and ink do almost all of the reading. They are deliberately close in value so that signal and status can be the only things that raise their voice. Dark is authored again — never inverted.</p>
+        </div>
+        <div class="folio">Chassis · 02 / 09</div>
+      </header>
+
+      <div class="chassis-grid">
+        <div class="board layer-board">
+          <div class="model-head"><span class="board-label">Surface stack · live</span><span class="chip">Page → surface → well</span></div>
+          <div class="layer-stack">
+            <div class="layer layer-page">
+              <span class="layer-tag">--page</span>
+              <div class="layer layer-surface">
+                <span class="layer-tag">--surface</span>
+                <div class="layer layer-s2">
+                  <span class="layer-tag">--surface-2</span>
+                  <div class="layer layer-well">
+                    <span class="layer-tag">--well</span>
+                    <div class="layer-aa">Aa</div>
+                    <div class="layer-caption"><span>Ink on well</span><span>--ink</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="chassis-foot">
+            <div class="inverse-sample">
+              <span class="t-micro">Inverse · flips</span>
+              <span class="aa">Aa</span>
+              <span class="on">--on-inv · never for long reading</span>
+            </div>
+            <div class="texture-samples">
+              <div class="texture dots">PAGE DOT</div>
+              <div class="texture hatch">HATCH</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="board ink-board">
+          <div class="model-head"><span class="board-label">Ink &amp; line ladder</span><span class="chip">Text first</span></div>
+          <ul class="ink-list">
+            <li class="ink-row"><span class="ink-sw" style="--c:var(--ink)"></span><span><code class="tok">--ink</code><span class="use">Headings, values, primary copy</span></span><span class="tag">Text</span></li>
+            <li class="ink-row"><span class="ink-sw" style="--c:var(--ink-2)"></span><span><code class="tok">--ink-2</code><span class="use">Body, secondary copy</span></span><span class="tag">Text</span></li>
+            <li class="ink-row"><span class="ink-sw" style="--c:var(--ink-3)"></span><span><code class="tok">--ink-3</code><span class="use">Micro labels, hints, captions</span></span><span class="tag">Text</span></li>
+            <li class="ink-row"><span class="ink-sw" style="--c:var(--ctl)"></span><span><code class="tok">--ctl</code><span class="use">Control stems and chevrons</span></span><span class="tag">UI</span></li>
+            <li class="ink-row"><span class="ink-sw" style="--c:var(--line-strong)"></span><span><code class="tok">--line-strong</code><span class="use">Structural borders, screws</span></span><span class="tag">Line</span></li>
+            <li class="ink-row"><span class="ink-sw" style="--c:var(--line)"></span><span><code class="tok">--line</code><span class="use">Hairlines and dividers</span></span><span class="tag">Decor</span></li>
+          </ul>
+          <div class="ink-measure">
+            <div class="im-head"><span class="board-label">Measured · vs surface</span><span class="chip" id="ink-context">Light</span></div>
+            <div class="im-row"><code>--ink</code><b data-contrast="ink">—</b><span class="pass">✓ AA</span></div>
+            <div class="im-row"><code>--ink-2</code><b data-contrast="ink-2">—</b><span class="pass">✓ AA</span></div>
+            <div class="im-row"><code>--ink-3</code><b data-contrast="ink-3">—</b><span class="pass">✓ AA</span></div>
+            <div class="im-row"><code>--signal-ink</code><b data-contrast="signal-ink">—</b><span class="pass">✓ AA</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="board elevation-board">
+        <div class="model-head"><span class="board-label">Elevation · theme-authored</span><span class="chip">Light edge · soft drop</span></div>
+        <div class="elevation-grid">
+          <div class="elev-cell"><div class="elev-sample" style="box-shadow:var(--sh-1)">Aa</div><code>--sh-1</code><span>Resting card</span></div>
+          <div class="elev-cell"><div class="elev-sample" style="box-shadow:var(--sh-2)">Aa</div><code>--sh-2</code><span>Raised card</span></div>
+          <div class="elev-cell"><div class="elev-sample" style="box-shadow:var(--sh-3)">Aa</div><code>--sh-3</code><span>Overlay</span></div>
+          <div class="elev-cell"><div class="elev-sample" style="box-shadow:var(--key)">Aa</div><code>--key</code><span>Keycap edge</span></div>
+        </div>
+      </div>
+      <p class="section-cap"><b>The quiet is the system.</b> Surfaces step by a few values, ink steps by three, and the only saturated fill marks an action or an outcome.</p>
+    </section>
+
+    <!-- 2.3 SIGNAL -->
+    <section class="chapter" id="signal" aria-labelledby="h-signal">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.3</div>
+        <div>
+          <p class="ch-kicker">Signal</p>
+          <h2 class="t-h2" id="h-signal">One hue, <em>one job.</em></h2>
+          <p class="t-lede">Brand blue is interaction, selection, focus and live work. It never becomes a data series and never decorates a surface. One primary action per surface is the ceiling, not a target.</p>
+        </div>
+        <div class="folio">Signal · 03 / 09</div>
+      </header>
+
+      <div class="board ramp-board">
+        <div class="model-head"><span class="board-label">Signal ramp · fixed contexts</span><span class="chip chip-signal">01 hue · 06 values</span></div>
+        <div class="ramp-contexts">
+          <div class="ramp-context" data-ctx="light">
+            <div class="rc-head"><span>Light</span><span>Standard</span></div>
+            <div class="ramp-strip">
+              <div class="ramp-sw" style="--c:var(--signal)"><span class="ramp-tok">signal</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-fill)"><span class="ramp-tok">fill</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-hover)"><span class="ramp-tok">hover</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-ink)"><span class="ramp-tok">ink</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-soft-2)"><span class="ramp-tok">soft-2</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-soft)"><span class="ramp-tok">soft</span></div>
+            </div>
+            <div class="glow-sample"><span class="glow-dot" aria-hidden="true"></span>signal-glow · one soft halo for focus and live</div>
+          </div>
+          <div class="ramp-context" data-ctx="dark">
+            <div class="rc-head"><span>Dark</span><span>Standard</span></div>
+            <div class="ramp-strip">
+              <div class="ramp-sw" style="--c:var(--signal)"><span class="ramp-tok">signal</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-fill)"><span class="ramp-tok">fill</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-hover)"><span class="ramp-tok">hover</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-ink)"><span class="ramp-tok">ink</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-soft-2)"><span class="ramp-tok">soft-2</span></div>
+              <div class="ramp-sw" style="--c:var(--signal-soft)"><span class="ramp-tok">soft</span></div>
+            </div>
+            <div class="glow-sample"><span class="glow-dot" aria-hidden="true"></span>signal-glow · one soft halo for focus and live</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="board signal-use">
+        <div class="model-head"><span class="board-label">Signal in use</span><span class="chip chip-signal"><span class="g" aria-hidden="true">●</span>Live</span></div>
+        <div class="sig-shell">
+          <div class="sig-bar">
+            <span class="sig-brand">Ledger</span>
+            <span class="sig-tabs"><span class="sig-tab is-on">Overview<span class="pin" aria-hidden="true">2</span></span><span class="sig-tab">Receipt</span><span class="sig-tab">Trace</span></span>
+            <span class="sig-live"><span class="live-dot" aria-hidden="true"></span>Live<span class="pin" aria-hidden="true">5</span></span>
+          </div>
+          <div class="sig-body">
+            <div>
+              <h3 class="t-h3">September is ready to close <em>with two exceptions.</em></h3>
+              <p class="t-body">Recognition landed <span class="num">3.1%</span> under plan. Two accruals still need a decision before the ledger can post.</p>
+              <div class="sig-actions">
+                <span class="sig-action"><button class="btn btn-primary" type="button">Review accruals</button><span class="pin" aria-hidden="true">1</span></span>
+                <button class="btn" type="button">Hold the ledger</button>
+                <span class="sig-action"><a href="#signal" class="sig-link">Open receipt</a><span class="pin" aria-hidden="true">3</span></span>
+              </div>
+            </div>
+            <aside class="sig-aside">
+              <div class="sig-meter">
+                <div class="sig-meter-top"><span class="t-micro">Budget used</span><span class="num">62%</span><span class="pin" aria-hidden="true">6</span></div>
+                <div class="sig-track"><span style="width:62%"></span></div>
+              </div>
+              <div class="sig-focus">
+                <span class="sig-action"><button class="btn is-focus" type="button">Focus</button><span class="pin" aria-hidden="true">4</span></span>
+                <span>one soft halo</span>
+              </div>
+            </aside>
+          </div>
+        </div>
+        <div class="pin-legend">
+          <div class="legend-item"><span class="pin" aria-hidden="true">1</span><b>Primary action</b><span>The only signal-filled control on this surface.</span></div>
+          <div class="legend-item"><span class="pin" aria-hidden="true">2</span><b>Selected tab</b><span>Signal-ink and a signal underline; never a filled block.</span></div>
+          <div class="legend-item"><span class="pin" aria-hidden="true">3</span><b>Link</b><span>Signal-ink for an action that reads as text.</span></div>
+          <div class="legend-item"><span class="pin" aria-hidden="true">4</span><b>Focus</b><span>One soft halo and a signal border. No stacked rings.</span></div>
+          <div class="legend-item"><span class="pin" aria-hidden="true">5</span><b>Live</b><span>Signal dot with a halo; motion has a static twin.</span></div>
+          <div class="legend-item"><span class="pin" aria-hidden="true">6</span><b>Progress</b><span>Signal fill on a neutral track, always labelled.</span></div>
+        </div>
+      </div>
+
+      <div class="serif-rules">
+        <span class="rule-chip"><b>One primary</b> · per surface</span>
+        <span class="rule-chip"><b>Never data</b> · never decoration</span>
+        <span class="rule-chip"><b>Selection</b> · soft tint</span>
+        <span class="rule-chip"><b>Focus</b> · one halo</span>
+      </div>
+      <p class="section-cap"><b>Signal is a budget, not a palette.</b> The moment it marks more than one action, one selected state or one live thing, it stops meaning any of them.</p>
+    </section>
+    <!-- 2.4 STATUS -->
+    <section class="chapter" id="status" aria-labelledby="h-status">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.4</div>
+        <div>
+          <p class="ch-kicker">Status</p>
+          <h2 class="t-h2" id="h-status">A glyph first, <em>a hue second.</em></h2>
+          <p class="t-lede">Status is never a colour alone. Every state is a glyph, a word and a soft/ink pair; the hue only reinforces. Greyscale, sunlight and colour-blindness all leave the meaning intact.</p>
+        </div>
+        <div class="folio">Status · 04 / 09</div>
+      </header>
+
+      <div class="status-grid">
+        <article class="board status-card s-ok">
+          <div class="status-top">
+            <span class="status-glyph" aria-hidden="true">✓</span>
+            <div><h3>Good</h3><span class="status-role">Healthy state</span></div>
+            <span class="status-base" aria-hidden="true"></span>
+          </div>
+          <div class="status-body">
+            <div class="status-pill"><span class="g" aria-hidden="true">✓</span>Ledger balanced</div>
+            <div class="status-tokens">
+              <div><span class="sw" style="background:var(--c)"></span><code>--ok</code></div>
+              <div><span class="sw" style="background:var(--tint)"></span><code>--ok-ink</code></div>
+              <div><span class="sw" style="background:var(--soft)"></span><code>--ok-soft</code></div>
+            </div>
+            <div class="status-contract"><span>Ink on tint · ✓ AA</span><span>Mark · ✓ 3:1</span></div>
+          </div>
+        </article>
+        <article class="board status-card s-warn">
+          <div class="status-top">
+            <span class="status-glyph" aria-hidden="true">!</span>
+            <div><h3>Warn</h3><span class="status-role">Needs a decision</span></div>
+            <span class="status-base" aria-hidden="true"></span>
+          </div>
+          <div class="status-body">
+            <div class="status-pill"><span class="g" aria-hidden="true">!</span>2 accruals flagged</div>
+            <div class="status-tokens">
+              <div><span class="sw" style="background:var(--c)"></span><code>--warn</code></div>
+              <div><span class="sw" style="background:var(--tint)"></span><code>--warn-ink</code></div>
+              <div><span class="sw" style="background:var(--soft)"></span><code>--warn-soft</code></div>
+            </div>
+            <div class="status-contract"><span>Ink on tint · ✓ AA</span><span>Mark · ✓ 3:1</span></div>
+          </div>
+        </article>
+        <article class="board status-card s-bad">
+          <div class="status-top">
+            <span class="status-glyph" aria-hidden="true">✕</span>
+            <div><h3>Bad</h3><span class="status-role">Failed state</span></div>
+            <span class="status-base" aria-hidden="true"></span>
+          </div>
+          <div class="status-body">
+            <div class="status-pill"><span class="g" aria-hidden="true">✕</span>Export failed</div>
+            <div class="status-tokens">
+              <div><span class="sw" style="background:var(--c)"></span><code>--bad</code></div>
+              <div><span class="sw" style="background:var(--tint)"></span><code>--bad-ink</code></div>
+              <div><span class="sw" style="background:var(--soft)"></span><code>--bad-soft</code></div>
+            </div>
+            <div class="status-contract"><span>Ink on tint · ✓ AA</span><span>Mark · ✓ 3:1</span></div>
+          </div>
+        </article>
+      </div>
+
+      <div class="board proof-board">
+        <div class="proof-head">
+          <div><span class="board-label">Non-colour proof</span><p class="proof-copy">Turn the colour off. The glyph and the word still carry every state.</p></div>
+          <button class="btn btn-sm" type="button" data-grey-toggle="status-proof" aria-pressed="false">Check in greyscale</button>
+        </div>
+        <div class="proof" id="status-proof">
+          <div class="proof-row"><span class="status-pill s-ok"><span class="g" aria-hidden="true">✓</span>Ledger balanced</span><span class="proof-state">OK</span><span class="proof-detail">All 412 lines reconciled</span></div>
+          <div class="proof-row"><span class="status-pill s-warn"><span class="g" aria-hidden="true">!</span>2 accruals flagged</span><span class="proof-state">WARN</span><span class="proof-detail">Review before posting</span></div>
+          <div class="proof-row"><span class="status-pill s-bad"><span class="g" aria-hidden="true">✕</span>Export failed</span><span class="proof-state">BAD</span><span class="proof-detail">Retry or open the trace</span></div>
+        </div>
+      </div>
+
+      <div class="serif-rules">
+        <span class="rule-chip"><b>Glyph + word</b> · always</span>
+        <span class="rule-chip"><b>Ink on soft</b> · ≥ 4.5:1</span>
+        <span class="rule-chip"><b>Never identity</b> · never data</span>
+        <span class="rule-chip"><b>Never hue alone</b> · ever</span>
+      </div>
+      <p class="section-cap"><b>The hue is reinforcement.</b> A status that cannot be read in greyscale is not a status; it is a colour with a hope.</p>
+    </section>
+
+    <!-- 2.5 IDENTITY -->
+    <section class="chapter" id="identity" aria-labelledby="h-identity">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.5</div>
+        <div>
+          <p class="ch-kicker">Identity</p>
+          <h2 class="t-h2" id="h-identity">Six hues, <em>reserved for agents.</em></h2>
+          <p class="t-lede">Each agent gets one hue, assigned in order of first appearance and paired with a silhouette. The hue never appears in status, data or a control, and the shape carries identity when the colour cannot.</p>
+        </div>
+        <div class="folio">Identity · 05 / 09</div>
+      </header>
+
+      <div class="id-grid">
+        <article class="board id-card">
+          <div class="id-top">
+            <div class="id-half t-main" data-ctx="light"><span class="lbl">Light</span><span class="id-mono">M</span><span class="id-base-dot" aria-hidden="true"></span></div>
+            <div class="id-half t-main" data-ctx="dark"><span class="lbl">Dark</span><span class="id-mono">M</span><span class="id-base-dot" aria-hidden="true"></span></div>
+          </div>
+          <div class="id-body">
+            <div class="id-name">Main agent <span>Lead · identity main</span></div>
+            <div class="id-tokens"><code>--id-main</code><code>--id-main-ink</code><code>--id-main-soft</code></div>
+            <div class="id-values"><span><b>Light</b> #1F2A30</span><span><b>Dark</b> #D5DEE2</span></div>
+          </div>
+        </article>
+        <article class="board id-card">
+          <div class="id-top">
+            <div class="id-half t-1" data-ctx="light"><span class="lbl">Light</span><span class="id-mono">A</span><span class="id-base-dot" aria-hidden="true"></span></div>
+            <div class="id-half t-1" data-ctx="dark"><span class="lbl">Dark</span><span class="id-mono">A</span><span class="id-base-dot" aria-hidden="true"></span></div>
+          </div>
+          <div class="id-body">
+            <div class="id-name">Atlas <span>Docs · identity 1</span></div>
+            <div class="id-tokens"><code>--id-1</code><code>--id-1-ink</code><code>--id-1-soft</code></div>
+            <div class="id-values"><span><b>Light</b> #6A5E9B</span><span><b>Dark</b> #B2A8E0</span></div>
+          </div>
+        </article>
+        <article class="board id-card">
+          <div class="id-top">
+            <div class="id-half t-2" data-ctx="light"><span class="lbl">Light</span><span class="id-mono">B</span><span class="id-base-dot" aria-hidden="true"></span></div>
+            <div class="id-half t-2" data-ctx="dark"><span class="lbl">Dark</span><span class="id-mono">B</span><span class="id-base-dot" aria-hidden="true"></span></div>
+          </div>
+          <div class="id-body">
+            <div class="id-name">Birch <span>Access · identity 2</span></div>
+            <div class="id-tokens"><code>--id-2</code><code>--id-2-ink</code><code>--id-2-soft</code></div>
+            <div class="id-values"><span><b>Light</b> #1E7A5E</span><span><b>Dark</b> #7DC2A7</span></div>
+          </div>
+        </article>
+        <article class="board id-card">
+          <div class="id-top">
+            <div class="id-half t-3" data-ctx="light"><span class="lbl">Light</span><span class="id-mono">C</span><span class="id-base-dot" aria-hidden="true"></span></div>
+            <div class="id-half t-3" data-ctx="dark"><span class="lbl">Dark</span><span class="id-mono">C</span><span class="id-base-dot" aria-hidden="true"></span></div>
+          </div>
+          <div class="id-body">
+            <div class="id-name">Cedar <span>Shadowing · identity 3</span></div>
+            <div class="id-tokens"><code>--id-3</code><code>--id-3-ink</code><code>--id-3-soft</code></div>
+            <div class="id-values"><span><b>Light</b> #945069</span><span><b>Dark</b> #DC9CB1</span></div>
+          </div>
+        </article>
+        <article class="board id-card">
+          <div class="id-top">
+            <div class="id-half t-4" data-ctx="light"><span class="lbl">Light</span><span class="id-mono">D</span><span class="id-base-dot" aria-hidden="true"></span></div>
+            <div class="id-half t-4" data-ctx="dark"><span class="lbl">Dark</span><span class="id-mono">D</span><span class="id-base-dot" aria-hidden="true"></span></div>
+          </div>
+          <div class="id-body">
+            <div class="id-name">Dune <span>Certification · identity 4</span></div>
+            <div class="id-tokens"><code>--id-4</code><code>--id-4-ink</code><code>--id-4-soft</code></div>
+            <div class="id-values"><span><b>Light</b> #64702A</span><span><b>Dark</b> #ACB87E</span></div>
+          </div>
+        </article>
+        <article class="board id-card">
+          <div class="id-top">
+            <div class="id-half t-5" data-ctx="light"><span class="lbl">Light</span><span class="id-mono">E</span><span class="id-base-dot" aria-hidden="true"></span></div>
+            <div class="id-half t-5" data-ctx="dark"><span class="lbl">Dark</span><span class="id-mono">E</span><span class="id-base-dot" aria-hidden="true"></span></div>
+          </div>
+          <div class="id-body">
+            <div class="id-name">Ember <span>Review · identity 5</span></div>
+            <div class="id-tokens"><code>--id-5</code><code>--id-5-ink</code><code>--id-5-soft</code></div>
+            <div class="id-values"><span><b>Light</b> #955735</span><span><b>Dark</b> #DCA285</span></div>
+          </div>
+        </article>
+      </div>
+
+      <div class="model-strip">
+        <div><span class="num">01</span><span><b>First appearance</b> assigns the next hue</span></div>
+        <div><span class="num">02</span><span><b>Never reused</b> for another agent</span></div>
+        <div><span class="num">03</span><span><b>Shape + hue</b> carry the identity</span></div>
+      </div>
+      <p class="section-cap"><b>No seventh hue.</b> Ad-hoc helpers take the neutral shape. Identity is a reservation, not a decoration: nothing outside an agent may wear these six.</p>
+    </section>
+
+    <!-- 2.6 DATA -->
+    <section class="chapter" id="data" aria-labelledby="h-data">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.6</div>
+        <div>
+          <p class="ch-kicker">Data colour</p>
+          <h2 class="t-h2" id="h-data">Data stays neutral. <em>Signal stays live.</em></h2>
+          <p class="t-lede">Charts are read by position, length and label, so their ink is neutral. Signal appears only on live marks; status appears only as an annotated exception with a glyph. Identity never enters a series.</p>
+        </div>
+        <div class="folio">Data · 06 / 09</div>
+      </header>
+
+      <div class="data-grid">
+        <div class="board chart-board">
+          <div class="chart-head">
+            <span class="board-label">Turn wall time · stage</span>
+            <span class="chip chip-signal"><span class="g" aria-hidden="true">●</span>Live</span>
+            <span class="chip">Q3 · T4</span>
+          </div>
+          <h3 class="chart-title">Where the close spent its hours</h3>
+          <div class="chart-sub">Median wall time · 12 turns · hours</div>
+          <div class="chart-plot" role="img" aria-label="Horizontal bar chart of median wall time by stage: reconcile 4.2 hours, draft 6.8, review 2.1, post 1.4.">
+            <div class="chart-row"><span class="chart-stage">Reconcile</span><div class="chart-track"><span class="chart-bar" style="--w:62%;--c:var(--cx-r1)"></span></div><span class="val">4.2h</span></div>
+            <div class="chart-row"><span class="chart-stage">Draft</span><div class="chart-track"><span class="chart-bar" style="--w:100%;--c:var(--cx-r2)"></span></div><span class="val">6.8h</span></div>
+            <div class="chart-row"><span class="chart-stage">Review</span><div class="chart-track"><span class="chart-bar" style="--w:31%;--c:var(--cx-r3)"></span></div><span class="val">2.1h</span></div>
+            <div class="chart-row"><span class="chart-stage">Post</span><div class="chart-track"><span class="chart-bar" style="--w:21%;--c:var(--cx-r4)"></span></div><span class="val">1.4h</span></div>
+            <div class="chart-axis"><span>0h</span><span>2h</span><span>4h</span><span>6h</span><span>8h</span></div>
+          </div>
+          <p class="chart-note">Bars are the neutral ramp. Labels and values carry the reading; the live dot is the only signal on the surface.</p>
+        </div>
+
+        <div class="board chart-roles">
+          <div class="model-head"><span class="board-label">Chart roles · neutral</span><span class="chip">No signal</span></div>
+          <ul class="chart-role-list">
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-grid)"></span><code>--cx-grid</code><span>gridlines</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-axis)"></span><code>--cx-axis</code><span>axis</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-track)"></span><code>--cx-track</code><span>empty track</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-track-edge)"></span><code>--cx-track-edge</code><span>track edge</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-data)"></span><code>--cx-data</code><span>single series</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-data-hi)"></span><code>--cx-data-hi</code><span>selected series</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-data-mute)"></span><code>--cx-data-mute</code><span>muted series</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-r1)"></span><code>--cx-r1</code><span>ramp 1</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-r2)"></span><code>--cx-r2</code><span>ramp 2</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-r3)"></span><code>--cx-r3</code><span>ramp 3</span></li>
+            <li class="chart-role"><span class="sw" style="--c:var(--cx-r4)"></span><code>--cx-r4</code><span>ramp 4</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="data-rules">
+        <div class="data-never"><span class="g" aria-hidden="true">✕</span><b>Signal as a series</b><span>A blue bar outranks the labels.</span></div>
+        <div class="data-yes"><span class="g" aria-hidden="true">✓</span><b>Neutral ramp + labels</b><span>Position and words do the reading.</span></div>
+        <div class="data-note"><span class="g" aria-hidden="true">!</span><b>Status in charts</b><span>Only as an annotated exception with a glyph.</span></div>
+      </div>
+      <p class="section-cap"><b>The chart's colour is a reading aid, not a headline.</b> If a series needs an identity, it is not a chart; it is an agent surface.</p>
+      <p class="study-link"><span class="chip chip-signal">Applied</span><a href="chart-studies.html">Charts — see the palette on real chart forms →</a></p>
+    </section>
+    <!-- 2.7 THEMES -->
+    <section class="chapter" id="themes" aria-labelledby="h-themes">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.7</div>
+        <div>
+          <p class="ch-kicker">Themes</p>
+          <h2 class="t-h2" id="h-themes">Four contexts, <em>all authored.</em></h2>
+          <p class="t-lede">Light and dark are not inversions; increased contrast is not a filter. Every surface, ink, signal and status value is chosen for its context. The resolver picks one context from the user choice and the OS — before paint.</p>
+        </div>
+        <div class="folio">Themes · 07 / 09</div>
+      </header>
+
+      <div class="resolver-grid">
+        <div class="board resolver-board">
+          <div class="state-console" aria-live="polite">
+            <div class="sc-head"><span>Context resolver</span><span class="sc-live"><span class="live-dot" aria-hidden="true"></span>Live</span></div>
+            <div class="state-row">
+              <span class="k">Theme</span>
+              <div class="state-values"><span>user <b data-bind="theme-choice">Auto</b></span><span>os <b data-bind="theme-os">Light</b></span><span>→ effective <b data-bind="theme-eff">Light</b></span></div>
+            </div>
+            <div class="state-row">
+              <span class="k">Contrast</span>
+              <div class="state-values"><span>user <b data-bind="contrast-choice">System</b></span><span>os <b data-bind="contrast-os">Standard</b></span><span>→ effective <b data-bind="contrast-eff">Standard</b></span></div>
+            </div>
+            <div class="state-row">
+              <span class="k">Render</span>
+              <div class="state-values"><span>color-scheme <b data-bind="scheme">light</b></span><span data-bind="context">Light / Standard</span></div>
+            </div>
+          </div>
+
+          <div class="resolver-controls">
+            <div class="rc-control">
+              <span class="rc-label">Theme</span>
+              <div class="seg" role="group" aria-label="Theme preview">
+                <button type="button" data-set-theme="auto" aria-pressed="true">Auto</button>
+                <button type="button" data-set-theme="light" aria-pressed="false">Light</button>
+                <button type="button" data-set-theme="dark" aria-pressed="false">Dark</button>
+              </div>
+            </div>
+            <div class="rc-control">
+              <span class="rc-label">Contrast</span>
+              <div class="seg" role="group" aria-label="Contrast preview">
+                <button type="button" data-set-contrast="system" aria-pressed="true">System</button>
+                <button type="button" data-set-contrast="normal" aria-pressed="false">Standard</button>
+                <button type="button" data-set-contrast="more" aria-pressed="false">More</button>
+              </div>
+            </div>
+          </div>
+          <p class="resolver-note">These are review controls. The product follows the OS by default; a choice made here is stored for this device and shared with the typography chapter.</p>
+        </div>
+
+        <div class="board flow-board">
+          <div>
+            <span class="board-label">Resolution path</span>
+            <div class="flow">
+              <div class="flow-node"><span class="k">User</span><b data-bind="theme-choice">Auto</b><small>theme</small></div>
+              <span class="flow-arrow" aria-hidden="true">+</span>
+              <div class="flow-node"><span class="k">OS</span><b data-bind="theme-os">Light</b><small>scheme</small></div>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <div class="flow-node is-eff"><span class="k">Effective</span><b data-bind="theme-eff">Light</b><small data-bind="scheme">light</small></div>
+            </div>
+          </div>
+          <div class="flow-sep" aria-hidden="true"></div>
+          <div>
+            <span class="board-label">Contrast path</span>
+            <div class="flow">
+              <div class="flow-node"><span class="k">User</span><b data-bind="contrast-choice">System</b><small>contrast</small></div>
+              <span class="flow-arrow" aria-hidden="true">+</span>
+              <div class="flow-node"><span class="k">OS</span><b data-bind="contrast-os">Standard</b><small>contrast</small></div>
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <div class="flow-node is-eff"><span class="k">Effective</span><b data-bind="contrast-eff">Standard</b><small>4 contexts</small></div>
+            </div>
+          </div>
+          <p class="resolver-note">The head script resolves both attributes before first paint; the change listener only recomputes when the user follows the system.</p>
+        </div>
+      </div>
+
+      <div class="themes-grid">
+        <article class="ctx-card ctx-card--lg" data-ctx="light" aria-label="Light theme, standard contrast">
+          <div class="ctx-head"><span>Light</span><span>Standard</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-field"><span>Accrual note</span><b>Holding until Monday</b></div>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review accruals</span><span class="ctx-link">Open receipt</span></div>
+          </div>
+          <p class="ctx-desc">Quiet surfaces, full-strength ink, signal <code>#3691CD</code>.</p>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)"></span><span class="ctx-sw" style="background:var(--surface)"></span><span class="ctx-sw" style="background:var(--ink)"></span><span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)"></span><span class="ctx-sw" style="background:var(--ok)"></span><span class="ctx-sw" style="background:var(--warn)"></span><span class="ctx-sw" style="background:var(--bad)"></span><span class="ctx-sw" style="background:var(--id-2)"></span>
+          </div>
+        </article>
+
+        <article class="ctx-card ctx-card--lg" data-ctx="dark" aria-label="Dark theme, standard contrast">
+          <div class="ctx-head"><span>Dark</span><span>Standard</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-field"><span>Accrual note</span><b>Holding until Monday</b></div>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review accruals</span><span class="ctx-link">Open receipt</span></div>
+          </div>
+          <p class="ctx-desc">Authored near-black; signal brightens to <code>#5AA8DC</code>.</p>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)"></span><span class="ctx-sw" style="background:var(--surface)"></span><span class="ctx-sw" style="background:var(--ink)"></span><span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)"></span><span class="ctx-sw" style="background:var(--ok)"></span><span class="ctx-sw" style="background:var(--warn)"></span><span class="ctx-sw" style="background:var(--bad)"></span><span class="ctx-sw" style="background:var(--id-2)"></span>
+          </div>
+        </article>
+
+        <article class="ctx-card ctx-card--lg" data-ctx="light+" aria-label="Light theme, increased contrast">
+          <div class="ctx-head"><span>Light</span><span>Increased</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-field"><span>Accrual note</span><b>Holding until Monday</b></div>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review accruals</span><span class="ctx-link">Open receipt</span></div>
+          </div>
+          <p class="ctx-desc">Ink and lines gain weight; signal deepens to <code>#226A9B</code>.</p>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)"></span><span class="ctx-sw" style="background:var(--surface)"></span><span class="ctx-sw" style="background:var(--ink)"></span><span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)"></span><span class="ctx-sw" style="background:var(--ok)"></span><span class="ctx-sw" style="background:var(--warn)"></span><span class="ctx-sw" style="background:var(--bad)"></span><span class="ctx-sw" style="background:var(--id-2)"></span>
+          </div>
+        </article>
+
+        <article class="ctx-card ctx-card--lg" data-ctx="dark+" aria-label="Dark theme, increased contrast">
+          <div class="ctx-head"><span>Dark</span><span>Increased</span><span class="ctx-now">Current</span></div>
+          <div class="ctx-mini">
+            <div class="ctx-mini-head"><span class="live-dot" aria-hidden="true"></span>Ledger<span class="ctx-meta">T4 · 00:04:38</span></div>
+            <p class="ctx-title">September close</p>
+            <div class="ctx-field"><span>Accrual note</span><b>Holding until Monday</b></div>
+            <div class="ctx-chips"><span class="chip chip-ok"><span class="g" aria-hidden="true">✓</span>Ready</span><span class="chip chip-warn"><span class="g" aria-hidden="true">!</span>2 open</span></div>
+            <div class="ctx-actions"><span class="ctx-btn">Review accruals</span><span class="ctx-link">Open receipt</span></div>
+          </div>
+          <p class="ctx-desc">Page drops to black; borders and statuses brighten.</p>
+          <div class="ctx-foot" aria-hidden="true">
+            <span class="ctx-sw" style="background:var(--page)"></span><span class="ctx-sw" style="background:var(--surface)"></span><span class="ctx-sw" style="background:var(--ink)"></span><span class="ctx-sw" style="background:var(--signal);border-color:var(--signal)"></span><span class="ctx-sw" style="background:var(--ok)"></span><span class="ctx-sw" style="background:var(--warn)"></span><span class="ctx-sw" style="background:var(--bad)"></span><span class="ctx-sw" style="background:var(--id-2)"></span>
+          </div>
+        </article>
+      </div>
+
+      <div class="board matrix-board">
+        <div class="model-head"><span class="board-label">Token matrix · locked</span><span class="chip">18 rows · 4 contexts</span></div>
+        <div class="matrix-scroll">
+          <table class="mx">
+            <thead>
+              <tr><th scope="col">Token</th><th scope="col"><span class="mx-head">Light</span><small>standard</small></th><th scope="col"><span class="mx-head">Dark</span><small>standard</small></th><th scope="col"><span class="mx-head">Light +</span><small>increased</small></th><th scope="col"><span class="mx-head">Dark +</span><small>increased</small></th></tr>
+            </thead>
+            <tbody>
+              <tr><th scope="row"><code>--page</code></th><td><span class="mx-sw" style="background:#F6F9FA"></span><span class="mx-hex">#F6F9FA</span></td><td><span class="mx-sw" style="background:#111111"></span><span class="mx-hex">#111111</span></td><td><span class="mx-sw" style="background:#F6F9FA"></span><span class="mx-hex">#F6F9FA</span></td><td><span class="mx-sw" style="background:#000000"></span><span class="mx-hex">#000000</span></td></tr>
+              <tr><th scope="row"><code>--surface</code></th><td><span class="mx-sw" style="background:#FFFFFF"></span><span class="mx-hex">#FFFFFF</span></td><td><span class="mx-sw" style="background:#171717"></span><span class="mx-hex">#171717</span></td><td><span class="mx-sw" style="background:#FFFFFF"></span><span class="mx-hex">#FFFFFF</span></td><td><span class="mx-sw" style="background:#111111"></span><span class="mx-hex">#111111</span></td></tr>
+              <tr><th scope="row"><code>--surface-2</code></th><td><span class="mx-sw" style="background:#FAFCFD"></span><span class="mx-hex">#FAFCFD</span></td><td><span class="mx-sw" style="background:#1C1C1C"></span><span class="mx-hex">#1C1C1C</span></td><td><span class="mx-sw" style="background:#FAFCFD"></span><span class="mx-hex">#FAFCFD</span></td><td><span class="mx-sw" style="background:#181818"></span><span class="mx-hex">#181818</span></td></tr>
+              <tr><th scope="row"><code>--well</code></th><td><span class="mx-sw" style="background:#EEF3F5"></span><span class="mx-hex">#EEF3F5</span></td><td><span class="mx-sw" style="background:#242424"></span><span class="mx-hex">#242424</span></td><td><span class="mx-sw" style="background:#EEF3F5"></span><span class="mx-hex">#EEF3F5</span></td><td><span class="mx-sw" style="background:#222222"></span><span class="mx-hex">#222222</span></td></tr>
+              <tr><th scope="row"><code>--inv</code></th><td><span class="mx-sw" style="background:#1F2A30"></span><span class="mx-hex">#1F2A30</span></td><td><span class="mx-sw" style="background:#EEF4F6"></span><span class="mx-hex">#EEF4F6</span></td><td><span class="mx-sw" style="background:#1F2A30"></span><span class="mx-hex">#1F2A30</span></td><td><span class="mx-sw" style="background:#EEF4F6"></span><span class="mx-hex">#EEF4F6</span></td></tr>
+              <tr><th scope="row"><code>--line-strong</code></th><td><span class="mx-sw" style="background:#D0DADF"></span><span class="mx-hex">#D0DADF</span></td><td><span class="mx-sw" style="background:#363636"></span><span class="mx-hex">#363636</span></td><td><span class="mx-sw" style="background:#84939A"></span><span class="mx-hex">#84939A</span></td><td><span class="mx-sw" style="background:#6E6E6E"></span><span class="mx-hex">#6E6E6E</span></td></tr>
+              <tr><th scope="row"><code>--ink</code></th><td><span class="mx-sw" style="background:#1F2A30"></span><span class="mx-hex">#1F2A30</span></td><td><span class="mx-sw" style="background:#EEF4F6"></span><span class="mx-hex">#EEF4F6</span></td><td><span class="mx-sw" style="background:#1F2A30"></span><span class="mx-hex">#1F2A30</span></td><td><span class="mx-sw" style="background:#EEF4F6"></span><span class="mx-hex">#EEF4F6</span></td></tr>
+              <tr><th scope="row"><code>--ink-2</code></th><td><span class="mx-sw" style="background:#5F6D73"></span><span class="mx-hex">#5F6D73</span></td><td><span class="mx-sw" style="background:#B7C3C8"></span><span class="mx-hex">#B7C3C8</span></td><td><span class="mx-sw" style="background:#3E4A50"></span><span class="mx-hex">#3E4A50</span></td><td><span class="mx-sw" style="background:#D3DDE1"></span><span class="mx-hex">#D3DDE1</span></td></tr>
+              <tr><th scope="row"><code>--ink-3</code></th><td><span class="mx-sw" style="background:#637077"></span><span class="mx-hex">#637077</span></td><td><span class="mx-sw" style="background:#8B999F"></span><span class="mx-hex">#8B999F</span></td><td><span class="mx-sw" style="background:#4E5C62"></span><span class="mx-hex">#4E5C62</span></td><td><span class="mx-sw" style="background:#B7C3C8"></span><span class="mx-hex">#B7C3C8</span></td></tr>
+              <tr><th scope="row"><code>--signal</code></th><td><span class="mx-sw" style="background:#3691CD"></span><span class="mx-hex">#3691CD</span></td><td><span class="mx-sw" style="background:#5AA8DC"></span><span class="mx-hex">#5AA8DC</span></td><td><span class="mx-sw" style="background:#226A9B"></span><span class="mx-hex">#226A9B</span></td><td><span class="mx-sw" style="background:#7DBDE8"></span><span class="mx-hex">#7DBDE8</span></td></tr>
+              <tr><th scope="row"><code>--signal-fill</code></th><td><span class="mx-sw" style="background:#2A7AB1"></span><span class="mx-hex">#2A7AB1</span></td><td><span class="mx-sw" style="background:#5AA8DC"></span><span class="mx-hex">#5AA8DC</span></td><td><span class="mx-sw" style="background:#1F5F8C"></span><span class="mx-hex">#1F5F8C</span></td><td><span class="mx-sw" style="background:#7DBDE8"></span><span class="mx-hex">#7DBDE8</span></td></tr>
+              <tr><th scope="row"><code>--on-signal</code></th><td><span class="mx-sw" style="background:#FFFFFF"></span><span class="mx-hex">#FFFFFF</span></td><td><span class="mx-sw" style="background:#0B1A24"></span><span class="mx-hex">#0B1A24</span></td><td><span class="mx-sw" style="background:#FFFFFF"></span><span class="mx-hex">#FFFFFF</span></td><td><span class="mx-sw" style="background:#0B1A24"></span><span class="mx-hex">#0B1A24</span></td></tr>
+              <tr><th scope="row"><code>--signal-soft</code></th><td><span class="mx-sw" style="background:#EAF5F8"></span><span class="mx-hex">#EAF5F8</span></td><td><span class="mx-sw" style="background:#14283A"></span><span class="mx-hex">#14283A</span></td><td><span class="mx-sw" style="background:#EAF5F8"></span><span class="mx-hex">#EAF5F8</span></td><td><span class="mx-sw" style="background:#14283A"></span><span class="mx-hex">#14283A</span></td></tr>
+              <tr><th scope="row"><code>--ok</code></th><td><span class="mx-sw" style="background:#0A7344"></span><span class="mx-hex">#0A7344</span></td><td><span class="mx-sw" style="background:#3FD18A"></span><span class="mx-hex">#3FD18A</span></td><td><span class="mx-sw" style="background:#075C36"></span><span class="mx-hex">#075C36</span></td><td><span class="mx-sw" style="background:#6BE0A6"></span><span class="mx-hex">#6BE0A6</span></td></tr>
+              <tr><th scope="row"><code>--warn</code></th><td><span class="mx-sw" style="background:#B87300"></span><span class="mx-hex">#B87300</span></td><td><span class="mx-sw" style="background:#F2B64A"></span><span class="mx-hex">#F2B64A</span></td><td><span class="mx-sw" style="background:#9A5F00"></span><span class="mx-hex">#9A5F00</span></td><td><span class="mx-sw" style="background:#FFCB6B"></span><span class="mx-hex">#FFCB6B</span></td></tr>
+              <tr><th scope="row"><code>--bad</code></th><td><span class="mx-sw" style="background:#C4122F"></span><span class="mx-hex">#C4122F</span></td><td><span class="mx-sw" style="background:#FF6B7F"></span><span class="mx-hex">#FF6B7F</span></td><td><span class="mx-sw" style="background:#9E0B24"></span><span class="mx-hex">#9E0B24</span></td><td><span class="mx-sw" style="background:#FF95A3"></span><span class="mx-hex">#FF95A3</span></td></tr>
+              <tr><th scope="row"><code>--id-1</code></th><td><span class="mx-sw" style="background:#6A5E9B"></span><span class="mx-hex">#6A5E9B</span></td><td><span class="mx-sw" style="background:#B2A8E0"></span><span class="mx-hex">#B2A8E0</span></td><td><span class="mx-sw" style="background:#544880"></span><span class="mx-hex">#544880</span></td><td><span class="mx-sw" style="background:#CBC4F2"></span><span class="mx-hex">#CBC4F2</span></td></tr>
+              <tr><th scope="row"><code>--cx-data</code></th><td><span class="mx-sw" style="background:#5F6D73"></span><span class="mx-hex">#5F6D73</span></td><td><span class="mx-sw" style="background:#A9B6BC"></span><span class="mx-hex">#A9B6BC</span></td><td><span class="mx-sw" style="background:#3E4A50"></span><span class="mx-hex">#3E4A50</span></td><td><span class="mx-sw" style="background:#D3DDE1"></span><span class="mx-hex">#D3DDE1</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mx-caption">The complete set lives in <code>color.css</code>. Values not restated by an increased context inherit the base of their theme.</p>
+      </div>
+
+      <div class="serif-rules">
+        <span class="rule-chip"><b>Authored</b> · never inverted</span>
+        <span class="rule-chip"><b>No filters</b> · no opacity recipes</span>
+        <span class="rule-chip"><b>One glow</b> · focus and live</span>
+        <span class="rule-chip"><b>AA</b> · in all four contexts</span>
+      </div>
+      <p class="section-cap"><b>Dark is a second authoring, not a switch.</b> The increased contexts are a third and fourth; each one is measured and reviewed on its own.</p>
+    </section>
+    <!-- 2.8 RULES -->
+    <section class="chapter" id="rules" aria-labelledby="h-rules">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.8</div>
+        <div>
+          <p class="ch-kicker">Rules &amp; accessibility</p>
+          <h2 class="t-h2" id="h-rules">The colour <em>contract.</em></h2>
+          <p class="t-lede">Ten rules, then the measured proof. Text needs 4.5:1, marks need 3:1, and no meaning may depend on hue alone — in any of the four contexts.</p>
+        </div>
+        <div class="folio">Rules · 08 / 09</div>
+      </header>
+
+      <div class="rules-grid">
+        <div class="rule"><span class="n">01</span><div><h3>One signal, one job.</h3><p>Brand blue means interaction, selection, focus and live work. It is never a data series and never decoration.</p></div></div>
+        <div class="rule"><span class="n">02</span><div><h3>One primary per surface.</h3><p>A second signal-filled control makes the first one meaningless. Everything else is default, ghost or quiet.</p></div></div>
+        <div class="rule"><span class="n">03</span><div><h3>Status keeps its glyph.</h3><p>Hue + ink + soft, always with a glyph and a word. A colour-only state is not a state; it is a guess.</p></div></div>
+        <div class="rule"><span class="n">04</span><div><h3>Identity is reserved.</h3><p>Agents only, assigned in order of first appearance, never reused. There is no seventh hue.</p></div></div>
+        <div class="rule"><span class="n">05</span><div><h3>Data is neutral.</h3><p>Use the chart roles; r1–r4 is an ordered ramp, not a palette. Signal and status stay out of series.</p></div></div>
+        <div class="rule"><span class="n">06</span><div><h3>Text 4.5, marks 3.</h3><p>Measure every pair. Increased contrast is a fourth authored set, never a gamma or a CSS filter.</p></div></div>
+        <div class="rule"><span class="n">07</span><div><h3>Dark is authored.</h3><p>Never derive it with inversion, opacity or a blend. Every dark value is chosen and reviewed against its own surface.</p></div></div>
+        <div class="rule"><span class="n">08</span><div><h3>No decorative colour.</h3><p>Soft colours are state surfaces, not mood. The only textures are the page dot and hatch.</p></div></div>
+        <div class="rule"><span class="n">09</span><div><h3>One glow, one halo.</h3><p><code>signal-glow</code> is the only translucent tone, for focus and live. No gradients, no glows as ornament.</p></div></div>
+        <div class="rule"><span class="n">10</span><div><h3>No raw hex in components.</h3><p>Components consume semantic tokens. Hex lives in <code>color.css</code>; if a value is missing, the system is missing a role.</p></div></div>
+      </div>
+
+      <div class="board contrast-board">
+        <div class="model-head"><span class="board-label">Contrast ledger · measured</span><span class="chip">15 pairs · 4 contexts</span></div>
+        <div class="cr-wrap">
+          <table class="cr" aria-label="Contrast ratios for text and mark pairs across four colour contexts">
+            <thead>
+              <tr><th scope="col">Pair</th><th scope="col">Light</th><th scope="col">Dark</th><th scope="col">Light +</th><th scope="col">Dark +</th></tr>
+            </thead>
+            <tbody>
+              <tr class="grp"><th colspan="5">Text · ≥ 4.5:1</th></tr>
+              <tr><th scope="row"><code>--ink</code> / <code>--page</code></th><td><span class="cr-v">13.86</span><span class="cr-ok">✓</span></td><td><span class="cr-v">17.00</span><span class="cr-ok">✓</span></td><td><span class="cr-v">13.86</span><span class="cr-ok">✓</span></td><td><span class="cr-v">18.91</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--ink-2</code> / <code>--surface</code></th><td><span class="cr-v">5.35</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.95</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.13</span><span class="cr-ok">✓</span></td><td><span class="cr-v">13.67</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--ink-3</code> / <code>--surface</code></th><td><span class="cr-v">5.10</span><span class="cr-ok">✓</span></td><td><span class="cr-v">6.11</span><span class="cr-ok">✓</span></td><td><span class="cr-v">6.93</span><span class="cr-ok">✓</span></td><td><span class="cr-v">10.48</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--signal-ink</code> / <code>--page</code></th><td><span class="cr-v">4.92</span><span class="cr-ok">✓</span></td><td><span class="cr-v">10.55</span><span class="cr-ok">✓</span></td><td><span class="cr-v">7.14</span><span class="cr-ok">✓</span></td><td><span class="cr-v">14.24</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--on-signal</code> / <code>--signal-fill</code></th><td><span class="cr-v">4.65</span><span class="cr-ok">✓</span></td><td><span class="cr-v">6.80</span><span class="cr-ok">✓</span></td><td><span class="cr-v">6.83</span><span class="cr-ok">✓</span></td><td><span class="cr-v">8.69</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--on-inv</code> / <code>--inv</code></th><td><span class="cr-v">13.86</span><span class="cr-ok">✓</span></td><td><span class="cr-v">16.14</span><span class="cr-ok">✓</span></td><td><span class="cr-v">13.86</span><span class="cr-ok">✓</span></td><td><span class="cr-v">16.14</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--ok-ink</code> / <code>--ok-soft</code></th><td><span class="cr-v">5.85</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.38</span><span class="cr-ok">✓</span></td><td><span class="cr-v">7.09</span><span class="cr-ok">✓</span></td><td><span class="cr-v">10.73</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--warn-ink</code> / <code>--warn-soft</code></th><td><span class="cr-v">5.59</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.75</span><span class="cr-ok">✓</span></td><td><span class="cr-v">8.03</span><span class="cr-ok">✓</span></td><td><span class="cr-v">11.32</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--bad-ink</code> / <code>--bad-soft</code></th><td><span class="cr-v">6.18</span><span class="cr-ok">✓</span></td><td><span class="cr-v">7.65</span><span class="cr-ok">✓</span></td><td><span class="cr-v">7.22</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.69</span><span class="cr-ok">✓</span></td></tr>
+              <tr class="grp"><th colspan="5">Marks · ≥ 3:1</th></tr>
+              <tr><th scope="row"><code>--signal</code> / <code>--surface</code></th><td><span class="cr-v">3.45</span><span class="cr-ok">✓</span></td><td><span class="cr-v">6.89</span><span class="cr-ok">✓</span></td><td><span class="cr-v">5.83</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.28</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--ok</code> / <code>--surface</code></th><td><span class="cr-v">5.92</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.13</span><span class="cr-ok">✓</span></td><td><span class="cr-v">8.10</span><span class="cr-ok">✓</span></td><td><span class="cr-v">11.54</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--warn</code> / <code>--surface</code></th><td><span class="cr-v">3.82</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.87</span><span class="cr-ok">✓</span></td><td><span class="cr-v">5.24</span><span class="cr-ok">✓</span></td><td><span class="cr-v">12.59</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--bad</code> / <code>--surface</code></th><td><span class="cr-v">6.04</span><span class="cr-ok">✓</span></td><td><span class="cr-v">6.54</span><span class="cr-ok">✓</span></td><td><span class="cr-v">8.31</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.06</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row">Identity (worst of five) / <code>--surface</code></th><td><span class="cr-v">5.25</span><span class="cr-ok">✓</span></td><td><span class="cr-v">8.05</span><span class="cr-ok">✓</span></td><td><span class="cr-v">7.39</span><span class="cr-ok">✓</span></td><td><span class="cr-v">11.28</span><span class="cr-ok">✓</span></td></tr>
+              <tr><th scope="row"><code>--cx-data</code> / <code>--surface</code></th><td><span class="cr-v">5.35</span><span class="cr-ok">✓</span></td><td><span class="cr-v">8.63</span><span class="cr-ok">✓</span></td><td><span class="cr-v">9.13</span><span class="cr-ok">✓</span></td><td><span class="cr-v">13.67</span><span class="cr-ok">✓</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="mx-caption">Ratios against the stated surface. Text pairs use the surface they sit on; decorative tokens are excluded. All pairs pass in all four contexts.</p>
+      </div>
+
+      <div class="board acc-board">
+        <div class="acc-cell">
+          <p class="t-micro dim">01 · Focus &amp; selection</p>
+          <h3>One halo, one highlight.</h3>
+          <div class="focus-row">
+            <button class="btn is-focus" type="button">Focus</button>
+            <span class="selection-sample">two accruals still need a decision</span>
+          </div>
+          <p>Focus is a signal border plus one soft <code>signal-glow</code> halo. Selection is <code>signal-soft-2</code> behind ink; it never replaces the signal.</p>
+        </div>
+        <div class="acc-cell">
+          <p class="t-micro dim">02 · Non-colour cues</p>
+          <h3>Hue is always redundant.</h3>
+          <div class="cue-row">
+            <span class="status-pill s-ok"><span class="g" aria-hidden="true">✓</span>Good</span>
+            <span class="status-pill s-warn"><span class="g" aria-hidden="true">!</span>Warn</span>
+            <span class="status-pill s-bad"><span class="g" aria-hidden="true">✕</span>Bad</span>
+          </div>
+          <p>Status keeps its glyph and word. Identity adds a silhouette (chapter 05). Charts keep labels, values and position. Nothing relies on hue alone.</p>
+        </div>
+        <div class="acc-cell">
+          <p class="t-micro dim">03 · System preferences</p>
+          <h3>Follow the OS, allow the override.</h3>
+          <ul class="acc-limits">
+            <li><span class="g" aria-hidden="true">✓</span><span><code>prefers-color-scheme</code> chooses light or dark.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span><code>prefers-contrast</code> adds the increased contexts.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>The user choice is stored; the resolver listens for OS changes.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>200% text and 320px reflow are reviewed in chapter 01.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Forced-colors remains a manual review; glyphs and borders carry.</span></li>
+          </ul>
+        </div>
+        <div class="acc-cell">
+          <p class="t-micro dim">04 · The proof</p>
+          <h3>Measured, not assumed.</h3>
+          <ul class="acc-limits">
+            <li><span class="g" aria-hidden="true">✓</span><span>15 contrast pairs, 4 contexts, all pass.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Signal never enters a data series.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Identity is never reused or borrowed.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>No meaning depends on hue alone.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>No raw hex outside <code>color.css</code>.</span></li>
+          </ul>
+        </div>
+      </div>
+      <p class="section-cap"><b>Accessible colour is not quieter colour.</b> It is colour with a second channel: a glyph, a word, a shape, a position — something that survives when the hue does not.</p>
+    </section>
+
+    <!-- 2.9 BUILD -->
+    <section class="chapter" id="build" aria-labelledby="h-build">
+      <header class="chapter-head">
+        <div class="ch-no" aria-hidden="true">2.9</div>
+        <div>
+          <p class="ch-kicker">Implementation</p>
+          <h2 class="t-h2" id="h-build">One file, <em>one resolver.</em></h2>
+          <p class="t-lede">Colour ships as <code>color.css</code>: four context blocks, semantic tokens, elevation and one focus halo. A pre-paint resolver chooses the effective context; components consume tokens and nothing else.</p>
+        </div>
+        <div class="folio">Build · 09 / 09</div>
+      </header>
+
+      <div class="impl-grid">
+        <div class="impl-copy">
+          <p><b>Two preferences, two effective attributes.</b> The user's theme and contrast choices are resolved against the OS before first paint, then stored as <code>data-eff-theme</code> and <code>data-eff-contrast</code> on the root.</p>
+          <p><b>Fixed contexts are scoped.</b> Any subtree with <code>data-ctx</code> receives a complete palette, which is how this page shows all four themes at once without iframes.</p>
+          <ul class="contract-list">
+            <li><code>data-theme</code><span>auto · light · dark — the choice.</span></li>
+            <li><code>data-eff-theme</code><span>light · dark — the resolved surface.</span></li>
+            <li><code>data-contrast</code><span>system · normal · more — the contrast choice.</span></li>
+            <li><code>data-eff-contrast</code><span>normal · more — the resolved contrast.</span></li>
+            <li><code>data-ctx</code><span>light · dark · light+ · dark+ — a pinned preview.</span></li>
+          </ul>
+          <ul class="checklist">
+            <li><span class="g" aria-hidden="true">✓</span><span><code>color.css</code> linked before page styles.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>The resolver runs before first paint; OS changes are listened for.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Every component consumes tokens; no raw hex outside the palette.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>All four contexts reviewed; the ledger passes.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Status glyphed, identity reserved, signal kept out of data.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Focus uses one soft halo; selection uses one tint.</span></li>
+          </ul>
+        </div>
+
+        <div class="impl-code">
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              color.css · four contexts
+              <button class="copy" type="button" data-copy="#code-color-tokens" aria-label="Copy colour context CSS">Copy</button>
+            </div>
+            <pre class="code" id="code-color-tokens"><code><span class="c">/* one palette, resolved four ways */</span>
+<span class="p">:root</span>,
+<span class="p">[data-ctx="light"]</span>,
+<span class="p">[data-ctx="light+"]</span> {
+  <span class="p">color-scheme</span>: <span class="k">light</span>;
+  <span class="p">--page</span>: <span class="s">#F6F9FA</span>;
+  <span class="p">--surface</span>: <span class="s">#FFFFFF</span>;
+  <span class="p">--ink</span>: <span class="s">#1F2A30</span>;
+  <span class="p">--signal</span>: <span class="s">#3691CD</span>;
+  <span class="p">--signal-fill</span>: <span class="s">#2A7AB1</span>;
+}
+
+<span class="p">:root[data-eff-theme="dark"]</span>,
+<span class="p">[data-ctx="dark"]</span>,
+<span class="p">[data-ctx="dark+"]</span> {
+  <span class="p">color-scheme</span>: <span class="k">dark</span>;
+  <span class="p">--page</span>: <span class="s">#111111</span>;
+  <span class="p">--surface</span>: <span class="s">#171717</span>;
+  <span class="p">--ink</span>: <span class="s">#EEF4F6</span>;
+  <span class="p">--signal</span>: <span class="s">#5AA8DC</span>;
+}
+
+<span class="p">:root[data-eff-contrast="more"]</span>,
+<span class="p">[data-ctx="light+"]</span> { <span class="c">/* stronger ink, lines and status */</span> }
+
+<span class="p">:root[data-eff-theme="dark"][data-eff-contrast="more"]</span>,
+<span class="p">[data-ctx="dark+"]</span> { <span class="c">/* darkest page, brightest marks */</span> }</code></pre>
+          </div>
+
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              resolver · before first paint
+              <button class="copy" type="button" data-copy="#code-color-resolver" aria-label="Copy colour resolver JavaScript">Copy</button>
+            </div>
+            <pre class="code" id="code-color-resolver"><code><span class="k">const</span> scheme = matchMedia(<span class="s">"(prefers-color-scheme: dark)"</span>);
+<span class="k">const</span> contrast = matchMedia(<span class="s">"(prefers-contrast: more)"</span>);
+
+<span class="k">const</span> dark = theme === <span class="s">"dark"</span>
+  || (theme === <span class="s">"auto"</span> &amp;&amp; scheme.matches);
+<span class="k">const</span> more = contrastPref === <span class="s">"more"</span>
+  || (contrastPref === <span class="s">"system"</span> &amp;&amp; contrast.matches);
+
+root.dataset.effTheme = dark ? <span class="s">"dark"</span> : <span class="s">"light"</span>;
+root.dataset.effContrast = more ? <span class="s">"more"</span> : <span class="s">"normal"</span>;</code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-note">
+        <div class="lock-left">
+          <span class="seal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+          <div><b>Chapter 02 · Colour &amp; themes is locked.</b><small>Source · Design System v2.2 (Instrument) · 26 October 2026</small></div>
+        </div>
+        <div class="lock-right">Files · color.css / 02-color.html<br><a href="index.html">← Chapter 01 Type</a><br><a href="03-space.html">Next · 03 Space →</a></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Chapter 02 — Colour &amp; Themes / Locked 26 Oct 2026</span>
+      </div>
+    </div>
+    <p class="foot-serif">One meaning, four contexts. <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<script src="color.js"></script>
+</body>
+</html>

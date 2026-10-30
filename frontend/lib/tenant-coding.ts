@@ -327,11 +327,9 @@ export function fileLabel(file: ActivityFile): string {
     : `${FILE_VERB[file.kind]} ${file.path}`;
 }
 
-// The title of a coding approval card. File changes inside the chat never
-// ask, so only commands (and push) have cards.
-export function codingCardTitle(tool: string): string {
-  if (tool === "push") return "The assistant wants to push code";
-  return "The assistant wants to run a command";
+// What a coding request asks for, as its card and its record name it.
+export function codingRequestName(type: "command" | "file_change"): string {
+  return type === "command" ? "Run a command" : "Change files";
 }
 
 // What "Allow for this chat" means on this card, shown under the buttons.

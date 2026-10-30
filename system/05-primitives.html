@@ -1,0 +1,1334 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-contrast="system" data-eff-theme="light" data-eff-contrast="normal" data-eff-motion="full">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>truex · System 05 — Primitives</title>
+<meta name="description" content="truex design system, chapter 05: the primitive layer. Keycaps, pills, chips, pickers, fields, transient surfaces and live affordances — built on the four locked foundations, measured against the hand.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='3' y='7' width='34' height='30' rx='11' fill='%233691CD'/%3E%3Cellipse cx='14.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3Cellipse cx='25.5' cy='21' rx='3' ry='4' fill='%23fff'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var r = document.documentElement, pref = "auto", size = "100", contrast = "system";
+  try {
+    pref = localStorage.getItem("tx-sys-theme") || "auto";
+    size = localStorage.getItem("tx-sys-size") || "100";
+    contrast = localStorage.getItem("tx-sys-contrast") || "system";
+  } catch (e) {}
+  var q = new URLSearchParams(location.search);
+  if (["auto", "light", "dark"].indexOf(q.get("theme")) > -1) pref = q.get("theme");
+  if (["100", "150", "200"].indexOf(q.get("textsize")) > -1) size = q.get("textsize");
+  if (["system", "normal", "more"].indexOf(q.get("contrast")) > -1) contrast = q.get("contrast");
+  r.dataset.theme = pref;
+  r.dataset.contrast = contrast;
+  if (size !== "100") r.dataset.textsize = size;
+  var dark = pref === "dark" || (pref === "auto" && matchMedia("(prefers-color-scheme: dark)").matches);
+  var more = contrast === "more" || (contrast === "system" && matchMedia("(prefers-contrast: more)").matches);
+  r.dataset.effTheme = dark ? "dark" : "light";
+  r.dataset.effContrast = more ? "more" : "normal";
+  r.dataset.effMotion = matchMedia("(prefers-reduced-motion: reduce)").matches ? "reduce" : "full";
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=Instrument+Serif:ital@0;1&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="type.css">
+<link rel="stylesheet" href="color.css">
+<link rel="stylesheet" href="space.css">
+<link rel="stylesheet" href="spec.css">
+<link rel="stylesheet" href="corner.css">
+<link rel="stylesheet" href="primitives.css">
+<link rel="stylesheet" href="primitives-page.css">
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-run" viewBox="0 0 24 24"><path d="M8.5 6 L18.5 12 L8.5 18 V15 L11.5 12 L8.5 9 Z"/></symbol>
+  <symbol id="i-agent" viewBox="0 0 24 24"><path d="M8.5 6.5 H15.5 A2 2 0 0 1 17.5 8.5 V14.5 L14.5 17.5 H8.5 A2 2 0 0 1 6.5 15.5 V8.5 A2 2 0 0 1 8.5 6.5 Z"/><circle cx="10.2" cy="12" r="1.35" fill="currentColor" stroke="none"/><circle cx="13.8" cy="12" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-trace" viewBox="0 0 24 24"><path d="M6.6 18 H9.5 V13.5 H14 L18 8.5"/><circle cx="5" cy="18" r="1.6"/><circle cx="18" cy="8.5" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-tool" viewBox="0 0 24 24"><path d="M12 3.8 L19 7.8 V15.8 L12 19.8 L5 15.8 V7.8 Z"/><circle cx="12" cy="11.8" r="1.35" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><path d="M13.1 15.15 A5.6 5.6 0 1 1 15.15 13.1"/><path d="M14.1 14.1 L19.3 19.3"/></symbol>
+</svg>
+
+<a class="skip" href="#content">Skip to the chapter</a>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="bar-left">
+    <a class="brand" href="#top" aria-label="truex system, back to top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg>
+      </span>
+      <span class="brand-word">truex</span>
+    </a>
+    <span class="bar-div" aria-hidden="true"></span>
+    <span class="bar-doc"><a href="index.html">01 Type</a><span class="bar-sep" aria-hidden="true">/</span><a href="02-color.html">02 Colour</a><span class="bar-sep" aria-hidden="true">/</span><a href="03-space.html">03 Space</a><span class="bar-sep" aria-hidden="true">/</span><a href="04-corners.html">04 Corners</a><span class="bar-sep" aria-hidden="true">/</span><b>05 Primitives</b><span class="bar-sep" aria-hidden="true">/</span><a href="06-patterns.html">06 Patterns</a></span>
+    <span class="pv-proposal"><i aria-hidden="true"></i>Proposal</span>
+  </div>
+  <div class="bar-right">
+    <button class="tool" id="theme-tool" data-pref="auto" type="button" aria-label="Theme: auto. Activate to change.">
+      <svg class="theme-i i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/></svg>
+      <svg class="theme-i i-light" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 2v2.2M12 19.8V22M2 12h2.2M19.8 12H22M4.9 4.9l1.6 1.6M17.5 17.5l1.6 1.6M19.1 4.9l-1.6 1.6M6.5 17.5l-1.6 1.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <svg class="theme-i i-dark" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.2A8.2 8.2 0 0 1 9.8 4a8.2 8.2 0 1 0 10.2 10.2Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+      <span class="tool-k">Theme</span><span class="tool-v" id="theme-label">Auto</span>
+    </button>
+    <button class="tool" id="contrast-tool" data-mode="system" type="button" aria-label="Contrast: system. Activate to change.">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M12 4h4a4 4 0 0 1 4 4v8a4 4 0 0 1-4 4h-4z" fill="currentColor"/></svg>
+      <span class="tool-k">Contrast</span><span class="tool-v" id="contrast-label">System</span>
+    </button>
+    <button class="tool" id="size-tool" type="button" aria-label="Text size: 100 percent. Activate to change.">
+      <span aria-hidden="true" style="font-family:var(--f-ui);font-weight:700;font-size:.8rem;letter-spacing:-.02em">Aa</span>
+      <span class="tool-k">Type</span><span class="tool-v" id="size-label">100%</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+  <section class="stage stage-primitives" aria-label="Chapter 05: primitives">
+    <div class="stage-wrap">
+      <div class="stage-top">
+        <span><b>Truex</b> · Design system</span>
+        <span class="top-mid">Chapter 05 · the application layer</span>
+        <span><span class="dot-live">●</span> Proposal 26.10.2026</span>
+      </div>
+
+      <div class="hero-main pv-hero">
+        <div>
+          <div class="hero-title-row">
+            <span class="chapter-no" aria-hidden="true">05</span>
+            <h1 class="hero-title">Primitives</h1>
+          </div>
+          <div class="hero-meta-row">
+            <span class="stage-chip"><b>16</b>primitives</span>
+            <span class="stage-chip"><b>4</b>laws</span>
+            <span class="stage-chip"><b>24–44</b>target</span>
+            <span class="stage-chip"><b>0</b>dependencies</span>
+            <span class="stage-chip"><b>AA</b>measured</span>
+          </div>
+        </div>
+        <div class="hero-side">
+          <p class="hero-serif">The hand knows before the eye.</p>
+          <p class="hero-copy">Sixteen controls carry every action in truex. Each one answers to a law you can measure — <b>Fitts</b> for the hand, <b>Hick</b> for the choice, a <b>damped spring</b> for motion, <b>isolation</b> for the eye — and is built only from the four locked foundations.</p>
+          <div class="hero-rule" aria-hidden="true"></div>
+          <div class="hero-note"><span class="pulse" aria-hidden="true"></span>Move your pointer across the bench · the numbers are yours</div>
+        </div>
+      </div>
+
+      <div class="pv-bench" id="bench">
+        <div class="pv-bench-head">
+          <span class="board-label">Bench 05 · control surface</span>
+          <span class="pv-bench-live"><span class="tx-pulse" aria-hidden="true"></span>Live instrument</span>
+          <span class="pv-bench-clock num" id="bench-clock">00:00</span>
+        </div>
+
+        <div class="pv-bench-body" id="bench-body">
+          <svg class="pv-vector" id="bench-vector" aria-hidden="true" focusable="false">
+            <line id="bench-vector-line" x1="0" y1="0" x2="0" y2="0"/>
+            <circle id="bench-vector-dot" cx="0" cy="0" r="3.5"/>
+            <text id="bench-vector-label" x="0" y="0">D</text>
+          </svg>
+
+          <div class="pv-plate-wrap">
+            <div class="pv-plate" id="bench-plate">
+              <div class="pv-plate-bar">
+                <span class="pv-plate-brand"><span class="pv-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>truex</span>
+                <span class="pv-plate-crumb">Sessions / September close</span>
+                <span class="pv-plate-state"><span class="tx-dot tx-dot-live" aria-hidden="true"></span>Live</span>
+              </div>
+              <div class="pv-run">
+                <div class="pv-run-top">
+                  <span class="tx-pill tx-pill-live"><span class="tx-pulse" aria-hidden="true"></span>Running</span>
+                  <span class="pv-run-id">RUN 04 · T4</span>
+                </div>
+                <h2 class="pv-run-title">Approve the September close.</h2>
+                <p class="pv-run-copy">Post two accruals, reconcile 412 ledger lines and write the audit trail. The agent pauses after every write.</p>
+                <div class="pv-run-chips" role="group" aria-label="Allowed tools">
+                  <button class="tx-chip" type="button" aria-pressed="true">Reads</button>
+                  <button class="tx-chip" type="button" aria-pressed="false">Writes</button>
+                  <button class="tx-chip" type="button" aria-pressed="false">Secrets</button>
+                </div>
+                <div class="pv-run-grid">
+                  <div class="tx-field">
+                    <label for="bench-ticket">Change ticket</label>
+                    <input class="tx-input" id="bench-ticket" value="ONB-412">
+                  </div>
+                  <label class="pv-run-switch" for="bench-auto">
+                    <input class="tx-switch" id="bench-auto" type="checkbox" role="switch" checked>
+                    <span>Auto-approve reads</span>
+                  </label>
+                </div>
+                <div class="pv-run-meter">
+                  <span>Context</span>
+                  <div class="tx-meter tx-meter-signal" style="--tx-p:24" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="24" aria-label="Context used"><i></i></div>
+                  <b class="num">61.4k / 258k</b>
+                </div>
+                <div class="pv-run-actions">
+                  <button class="tx-btn tx-ghost tx-sm" type="button">Cancel</button>
+                  <span class="pv-target-wrap" id="bench-target-wrap" data-w="36">
+                    <button class="tx-btn tx-primary" type="button" id="bench-target">Approve &amp; run <span class="tx-kbd">⌘↵</span></button>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="pv-plate-meta">
+              <span class="pv-plate-k">Target <b id="bench-w-meta">36</b> px · <span id="bench-id-meta">ID 4.32</span></span>
+              <span class="pv-plate-k pv-muted">The only primary on this surface · isolation</span>
+            </div>
+          </div>
+
+          <aside class="pv-readout" aria-label="Live control measurements">
+            <div class="pv-read">
+              <span class="pv-r-label">Width · W</span>
+              <span class="pv-r-big"><b id="bench-w-big">36</b><small>px</small></span>
+              <span class="pv-r-sub">the cap's height</span>
+            </div>
+            <div class="pv-read">
+              <span class="pv-r-label">Distance · D</span>
+              <span class="pv-r-big"><b id="bench-d-big">360</b><small>px</small></span>
+              <span class="pv-r-sub" id="bench-d-sub">resting · move your pointer</span>
+            </div>
+            <div class="pv-read">
+              <span class="pv-r-label">Fitts index</span>
+              <span class="pv-r-big"><b id="bench-id-big">4.32</b><small>bits</small></span>
+              <span class="pv-r-sub">log₂(2D / W)</span>
+            </div>
+            <div class="pv-read">
+              <span class="pv-r-label">Movement time</span>
+              <span class="pv-r-big"><b id="bench-mt-big">0.84</b><small>s</small></span>
+              <span class="pv-r-sub">a .20 + b .15 / bit</span>
+            </div>
+            <figure class="pv-read pv-read-wide pv-fitts">
+              <figcaption class="pv-r-label">Index of difficulty · by width, at your D</figcaption>
+              <svg viewBox="0 0 240 96" role="img" aria-labelledby="bench-fitts-t" id="bench-fitts">
+                <title id="bench-fitts-t">Fitts index falls as target width grows; the dot marks the current width.</title>
+                <line class="pv-fx-grid" x1="10" y1="84" x2="230" y2="84"/>
+                <line class="pv-fx-grid" x1="10" y1="51.4" x2="230" y2="51.4"/>
+                <line class="pv-fx-grid" x1="10" y1="19" x2="230" y2="19"/>
+                <line class="pv-fx-floor" x1="46.7" y1="10" x2="46.7" y2="84"/>
+                <line class="pv-fx-comfort" x1="138.3" y1="10" x2="138.3" y2="84"/>
+                <text class="pv-fx-t" x="49.7" y="16">24 floor</text>
+                <text class="pv-fx-t" x="141.3" y="16">44 comfort</text>
+                <text class="pv-fx-t" x="12" y="48.4">3 bits</text>
+                <text class="pv-fx-t" x="12" y="16">6 bits</text>
+                <path class="pv-fx-curve" id="bench-fitts-path" d="M10.0 24.4 L19.2 26.2 L28.3 27.9 L37.5 29.4 L46.7 30.7 L55.8 32.0 L65.0 33.1 L74.2 34.2 L83.3 35.2 L92.5 36.2 L101.7 37.1 L110.8 37.9 L120.0 38.7 L129.2 39.5 L138.3 40.2 L147.5 40.9 L156.7 41.6 L165.8 42.2 L175.0 42.8 L184.2 43.4 L193.3 44.0 L202.5 44.5 L211.7 45.1 L220.8 45.6 L230.0 46.1"/>
+                <line class="pv-fx-drop" id="bench-fitts-drop" x1="101.7" y1="37.1" x2="101.7" y2="84"/>
+                <circle class="pv-fx-dot" id="bench-fitts-dot" cx="101.7" cy="37.1" r="4"/>
+              </svg>
+            </figure>
+            <div class="pv-read pv-read-wide pv-read-quote">
+              <p>The eye reads the label. The hand reads the height.</p>
+              <span>Measured, not styled.</span>
+            </div>
+          </aside>
+        </div>
+
+        <div class="pv-bench-foot">
+          <label class="pv-range" for="bench-range">
+            <span class="pv-range-k">Target height <b id="bench-w-label">36</b> px</span>
+            <input id="bench-range" type="range" min="24" max="56" step="4" value="36">
+            <span class="pv-range-scale" aria-hidden="true"><i>24</i><i>36</i><i>44</i><i>56</i></span>
+          </label>
+          <label class="pv-bench-toggle" for="bench-measure">
+            <input type="checkbox" class="tx-switch" id="bench-measure" role="switch">
+            <span>Show hit area</span>
+          </label>
+          <p class="pv-bench-note">24 is the WCAG floor · 44 is the comfort target<br>the halo brightens as you approach</p>
+        </div>
+      </div>
+
+      <div class="stage-spec">
+        <span>Primitives <b>16</b></span>
+        <span>Prefix <b>tx-</b></span>
+        <span>Foundations <b>04</b></span>
+        <span>Target <b>24–56</b></span>
+        <span>Response <b>120</b><span class="pv-unit">ms</span></span>
+        <span>Grid <b>1 : φ</b></span>
+      </div>
+    </div>
+  </section>
+
+  <nav class="ruler" aria-label="Chapter contents">
+    <div class="ruler-in">
+      <a href="#grammar" class="active" aria-current="true"><span class="n">5.1</span>Grammar</a>
+      <a href="#keycaps"><span class="n">5.2</span>Keycaps</a>
+      <a href="#tokens"><span class="n">5.3</span>Tokens</a>
+      <a href="#pickers"><span class="n">5.4</span>Pickers</a>
+      <a href="#fields"><span class="n">5.5</span>Fields</a>
+      <a href="#transient"><span class="n">5.6</span>Transient</a>
+      <a href="#live"><span class="n">5.7</span>Live</a>
+      <a href="#states"><span class="n">5.8</span>States</a>
+      <a href="#contract"><span class="n">5.9</span>Contract</a>
+    </div>
+  </nav>
+
+  <div class="doc" id="content" tabindex="-1">
+
+    <!-- THE FOUR LAWS -->
+    <section class="pv-laws" aria-labelledby="h-laws">
+      <div class="pv-laws-head">
+        <p class="ch-kicker">Before the first control</p>
+        <h2 class="t-h2 pv-laws-title" id="h-laws">Four laws, <em>one hand.</em></h2>
+        <p class="pv-laws-lede">Nothing on this page is a matter of taste. Every size, gap, curve and colour is a consequence of how people point, choose, perceive motion and remember. Each law below is applied — and measured — further down.</p>
+      </div>
+      <ol class="pv-laws-row">
+        <li class="pv-law-card">
+          <span class="pv-law-disc">Math · the hand</span>
+          <h3>Fitts <small>1954</small></h3>
+          <code class="pv-law-f">MT = a + b · log₂(2D / W)</code>
+          <svg class="pv-law-plot" viewBox="0 0 160 64" aria-hidden="true" focusable="false">
+            <line class="pv-lp-axis" x1="8" y1="56" x2="152" y2="56"/>
+            <path class="pv-lp-curve" d="M8.0 13.8 L14.0 16.7 L20.0 19.3 L26.0 21.6 L32.0 23.7 L38.0 25.7 L44.0 27.5 L50.0 29.2 L56.0 30.8 L62.0 32.2 L68.0 33.6 L74.0 34.9 L80.0 36.2 L86.0 37.4 L92.0 38.5 L98.0 39.6 L104.0 40.7 L110.0 41.6 L116.0 42.6 L122.0 43.5 L128.0 44.4 L134.0 45.3 L140.0 46.1 L146.0 46.9 L152.0 47.7"/>
+            <line class="pv-lp-drop" x1="32" y1="23.7" x2="32" y2="56"/>
+            <line class="pv-lp-drop" x1="92" y1="38.5" x2="92" y2="56"/>
+            <circle class="pv-lp-dot" cx="32" cy="23.7" r="2.6"/>
+            <circle class="pv-lp-dot is-on" cx="92" cy="38.5" r="3.2"/>
+            <text class="pv-lp-t" x="35" y="20">24 · 4.91</text>
+            <text class="pv-lp-t" x="95" y="34">44 · 4.03 bits</text>
+          </svg>
+          <p>Bigger, nearer targets are faster to hit. <b>Height is latency</b> — so the default cap is 36, the confirm cap is 44 and nothing drops under 24.</p>
+          <a class="pv-law-link" href="#keycaps">Applied in 5.2 Keycaps</a>
+        </li>
+        <li class="pv-law-card">
+          <span class="pv-law-disc">Psychology · the choice</span>
+          <h3>Hick–Hyman <small>1952</small></h3>
+          <code class="pv-law-f">RT = a + b · log₂(n + 1)</code>
+          <svg class="pv-law-plot" viewBox="0 0 160 64" aria-hidden="true" focusable="false">
+            <line class="pv-lp-axis" x1="8" y1="56" x2="152" y2="56"/>
+            <rect class="pv-lp-zone" x="24" y="8" width="56" height="48"/>
+            <path class="pv-lp-curve" d="M8.0 43.4 L18.3 39.4 L28.6 36.1 L38.9 33.3 L49.1 30.9 L59.4 28.7 L69.7 26.8 L80.0 25.1 L90.3 23.5 L100.6 22.1 L110.9 20.7 L121.1 19.5 L131.4 18.3 L141.7 17.2 L152.0 16.1"/>
+            <circle class="pv-lp-dot" cx="8" cy="43.4" r="2.2"/>
+            <circle class="pv-lp-dot" cx="28.6" cy="36.1" r="2.2"/>
+            <circle class="pv-lp-dot is-on" cx="49.1" cy="30.9" r="3.2"/>
+            <circle class="pv-lp-dot" cx="69.7" cy="26.8" r="2.2"/>
+            <circle class="pv-lp-dot" cx="90.3" cy="23.5" r="2.2"/>
+            <circle class="pv-lp-dot" cx="110.9" cy="20.7" r="2.2"/>
+            <circle class="pv-lp-dot" cx="131.4" cy="18.3" r="2.2"/>
+            <circle class="pv-lp-dot" cx="152" cy="16.1" r="2.2"/>
+            <text class="pv-lp-t" x="27" y="17">2–4 · glance</text>
+          </svg>
+          <p>Each extra option costs time, but less than the last. <b>Spend options like money</b>: show two to four, hide the long tail in a menu.</p>
+          <a class="pv-law-link" href="#pickers">Applied in 5.4 Pickers</a>
+        </li>
+        <li class="pv-law-card">
+          <span class="pv-law-disc">Physics · the motion</span>
+          <h3>Damped spring <small>Hooke</small></h3>
+          <code class="pv-law-f">x″ + 2ζω x′ + ω² x = 0</code>
+          <svg class="pv-law-plot" viewBox="0 0 160 64" aria-hidden="true" focusable="false">
+            <line class="pv-lp-axis" x1="8" y1="56" x2="152" y2="56"/>
+            <line class="pv-lp-target" x1="8" y1="16" x2="152" y2="16"/>
+            <path class="pv-lp-curve pv-lp-mute" d="M8.0 52.0 L15.2 50.7 L22.4 47.8 L29.6 44.2 L36.8 40.4 L44.0 36.7 L51.2 33.3 L58.4 30.3 L65.6 27.7 L72.8 25.6 L80.0 23.7 L87.2 22.2 L94.4 21.0 L101.6 20.0 L108.8 19.1 L116.0 18.5 L123.2 18.0 L130.4 17.5 L137.6 17.2 L144.8 16.9 L152.0 16.0"/>
+            <path class="pv-lp-curve" d="M8.0 52.0 L15.2 50.4 L22.4 46.4 L29.6 41.1 L36.8 35.4 L44.0 30.0 L51.2 25.1 L58.4 21.1 L65.6 18.0 L72.8 15.7 L80.0 14.2 L87.2 13.4 L94.4 13.0 L101.6 13.0 L108.8 13.3 L116.0 13.7 L123.2 14.2 L130.4 14.7 L137.6 15.1 L144.8 15.4 L152.0 16.0"/>
+            <text class="pv-lp-t" x="98" y="9">ζ .62 · +8%</text>
+            <text class="pv-lp-t" x="64" y="44">ζ 1 · no overshoot</text>
+          </svg>
+          <p>Real things have mass and friction. <b>A toggle may overshoot; a confirmation never does</b> — a bounce on “Approve” reads as doubt.</p>
+          <a class="pv-law-link" href="#live">Applied in 5.7 Live</a>
+        </li>
+        <li class="pv-law-card">
+          <span class="pv-law-disc">Human nature · the eye</span>
+          <h3>Isolation <small>von Restorff 1933</small></h3>
+          <code class="pv-law-f">1 differs of n ⇒ recalled</code>
+          <svg class="pv-law-plot" viewBox="0 0 160 64" aria-hidden="true" focusable="false">
+            <g class="pv-lp-caps">
+              <rect x="10" y="10" width="28" height="10" rx="5"/><rect x="46" y="10" width="28" height="10" rx="5"/><rect x="82" y="10" width="28" height="10" rx="5"/><rect x="118" y="10" width="28" height="10" rx="5"/>
+              <rect x="10" y="27" width="28" height="10" rx="5"/><rect x="46" y="27" width="28" height="10" rx="5"/><rect x="118" y="27" width="28" height="10" rx="5"/>
+              <rect x="10" y="44" width="28" height="10" rx="5"/><rect x="46" y="44" width="28" height="10" rx="5"/><rect x="82" y="44" width="28" height="10" rx="5"/><rect x="118" y="44" width="28" height="10" rx="5"/>
+            </g>
+            <rect class="pv-lp-one" x="82" y="27" width="28" height="10" rx="5"/>
+          </svg>
+          <p>The one that differs is the one that is found and remembered. <b>One primary per surface</b>; two equal primaries cancel each other out.</p>
+          <a class="pv-law-link" href="#keycaps">Applied in 5.2 Keycaps</a>
+        </li>
+      </ol>
+      <p class="pv-laws-also"><span>Also measured here</span> Gestalt proximity, 4 : 16 · <a href="#fields">5.5</a> &nbsp;/&nbsp; Reading rate, 200 wpm · <a href="#transient">5.6</a> &nbsp;/&nbsp; Contrast, 4.5 : 1 · <a href="#tokens">5.3</a> &nbsp;/&nbsp; Peak–end, the exit is the memory · <a href="#states">5.8</a></p>
+    </section>
+
+    <!-- 5.1 GRAMMAR -->
+    <section class="chapter" id="grammar" aria-labelledby="h-grammar">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.1</div>
+        <div>
+          <p class="ch-kicker">Grammar · affordance · curvature</p>
+          <h2 class="t-h2" id="h-grammar">Shape is a <em>sentence.</em></h2>
+          <p class="t-lede">A capsule says press. A squircle says hold. A circle says state. A 3px mark says measure. Before a single colour is added, the silhouette has already told the hand what can happen — and the eye what to trust.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing principle">
+          <span class="pv-law-k">Affordance · Gibson 1979</span>
+          <code class="pv-law-x">shape ⇒ verb</code>
+          <p>An object's form tells the body what it offers before the mind names it.</p>
+          <span class="folio">Grammar · 01 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-plinth pv-sils">
+        <article class="pv-sil">
+          <div class="pv-sil-fig" aria-hidden="true">
+            <span class="pv-fig-capsule"><i class="pv-fig-r">r = h/2</i></span>
+          </div>
+          <p class="pv-sil-verb">press<span>.</span></p>
+          <div class="pv-sil-meta"><span class="pv-sil-no">01 · Capsule</span><code>r = h / 2</code></div>
+          <p class="pv-sil-copy">Every approach angle meets the same radius. A control with no dead corner.</p>
+          <div class="pv-sil-live"><span class="tx-btn tx-primary tx-sm" aria-hidden="true">Approve</span><span class="tx-btn tx-sm" aria-hidden="true">Review</span></div>
+        </article>
+        <article class="pv-sil">
+          <div class="pv-sil-fig" aria-hidden="true">
+            <span class="pv-fig-squircle"><i class="pv-fig-ghost"></i><i class="pv-fig-r">K = 2</i></span>
+          </div>
+          <p class="pv-sil-verb">hold<span>.</span></p>
+          <div class="pv-sil-meta"><span class="pv-sil-no">02 · Squircle</span><code>|x|⁴ + |y|⁴ = 1</code></div>
+          <p class="pv-sil-copy">Curvature rises from zero, so the edge never jolts. The dashed arc is the circular corner it replaces.</p>
+          <div class="pv-sil-live"><span class="pv-mini-panel"><i></i><i></i><i></i><span class="pv-mini-chip"></span></span></div>
+        </article>
+        <article class="pv-sil">
+          <div class="pv-sil-fig" aria-hidden="true">
+            <span class="pv-fig-circle"><i class="pv-fig-r">r = 50%</i></span>
+          </div>
+          <p class="pv-sil-verb">state<span>.</span></p>
+          <div class="pv-sil-meta"><span class="pv-sil-no">03 · Circle</span><code>no orientation</code></div>
+          <p class="pv-sil-copy">No front, no edge, no hierarchy. A circle is a condition, never a control.</p>
+          <div class="pv-sil-live"><span class="tx-ring" style="--tx-p:72;--tx-sz:2.5rem" aria-hidden="true"><span class="num">72</span></span><span class="tx-dot tx-dot-live" aria-hidden="true"></span><span class="tx-dot tx-dot-ok" aria-hidden="true"></span></div>
+        </article>
+        <article class="pv-sil">
+          <div class="pv-sil-fig" aria-hidden="true">
+            <span class="pv-fig-marks"><i style="--h:42%"></i><i style="--h:64%"></i><i style="--h:52%"></i><i style="--h:88%"></i><i style="--h:70%"></i></span>
+          </div>
+          <p class="pv-sil-verb">measure<span>.</span></p>
+          <div class="pv-sil-meta"><span class="pv-sil-no">04 · Mark</span><code>r = 3px</code></div>
+          <p class="pv-sil-copy">Bars stay bars. A data mark never borrows the softness of a surface.</p>
+          <div class="pv-sil-live"><span class="pv-mini-bars" aria-hidden="true"><i style="--h:30%"></i><i style="--h:55%"></i><i style="--h:42%"></i><i style="--h:70%"></i><i style="--h:62%"></i><i style="--h:90%"></i><i style="--h:76%"></i></span><span class="pv-mini-v num" aria-hidden="true">61.4k</span></div>
+        </article>
+      </div>
+
+      <div class="pv-grammar">
+        <div class="pv-plinth pv-anatomy">
+          <div class="pv-plinth-head">
+            <span class="board-label">Keycap anatomy · magnified 2×</span>
+            <span class="pv-anatomy-tag">36 → 72 px</span>
+          </div>
+          <div class="pv-anatomy-stage">
+            <span class="pv-light" aria-hidden="true"><i></i>one light · above</span>
+            <span class="pv-mag-btn" aria-hidden="true">Approve <span class="pv-mag-kbd">⌘↵</span></span>
+            <span class="pv-call pv-call-halo"><i></i>4 px halo</span>
+            <span class="pv-call pv-call-travel"><i></i>1 px travel</span>
+            <span class="pv-call pv-call-key"><i></i>1.5 px key edge</span>
+            <span class="pv-call pv-call-radius"><i></i>18 px end radius</span>
+          </div>
+          <div class="pv-anatomy-foot">
+            <span><b>Label</b> 15 / 600 · body</span>
+            <span><b>Gap</b> 4 · sp-1</span>
+            <span><b>Target</b> full cap ≥ 24</span>
+            <span><b>Ring</b> one halo only</span>
+          </div>
+        </div>
+
+        <ol class="pv-rules">
+          <li><span class="n">01</span><div><h3>One primary.</h3><p>Isolation only works once. One signal fill per surface; demote the rest.</p></div></li>
+          <li><span class="n">02</span><div><h3>Verb + object.</h3><p>“Approve &amp; run”, never “Submit”. The label names the outcome.</p></div></li>
+          <li><span class="n">03</span><div><h3>No hover-only.</h3><p>A finger has no hover. Every action is visible and reachable by keyboard and touch.</p></div></li>
+          <li><span class="n">04</span><div><h3>Never colour alone.</h3><p>One in twelve men reads red and green as one. Status pairs a hue with a glyph and a word.</p></div></li>
+        </ol>
+      </div>
+      <p class="section-cap"><b>Silhouette is the first instruction.</b> The primitives below never invent a new shape; they spend the four silhouettes on four verbs.</p>
+    </section>
+
+    <!-- 5.2 KEYCAPS -->
+    <section class="chapter" id="keycaps" aria-labelledby="h-keycaps">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.2</div>
+        <div>
+          <p class="ch-kicker">Keycaps · action</p>
+          <h2 class="t-h2" id="h-keycaps">The next action, <em>made physical.</em></h2>
+          <p class="t-lede">A button is a keycap: a surface that promises travel. Four sizes, five variants, one primary. The label names the outcome; the shortcut rides on the cap; the halo arrives for the keyboard.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing law">
+          <span class="pv-law-k">Fitts · 1954</span>
+          <code class="pv-law-x">MT = a + b · log₂(2D/W)</code>
+          <p>Time to hit a target grows with distance and shrinks with size. Every pixel of height is time returned.</p>
+          <span class="folio">Keycaps · 02 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-keys">
+        <div class="pv-plinth pv-spec">
+          <div class="pv-spec-rows">
+            <span class="pv-row-label">Variant</span>
+            <div class="pv-row">
+              <button class="tx-btn tx-primary" type="button">Approve</button>
+              <button class="tx-btn" type="button">Review</button>
+              <button class="tx-btn tx-dark" type="button">Open console</button>
+              <button class="tx-btn tx-ghost" type="button">Dismiss</button>
+              <button class="tx-btn tx-danger" type="button"><span aria-hidden="true">×</span>Stop</button>
+            </div>
+            <span class="pv-row-label">Glyph &amp; keys</span>
+            <div class="pv-row">
+              <button class="tx-btn tx-icon" type="button" aria-label="Tool settings"><svg class="tx-ic" aria-hidden="true"><use href="#i-tool"/></svg></button>
+              <button class="tx-btn tx-icon tx-ghost" type="button" aria-label="Assign an agent"><svg class="tx-ic" aria-hidden="true"><use href="#i-agent"/></svg></button>
+              <button class="tx-btn" type="button"><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-run"/></svg>Run<span class="tx-kbd">⌘↵</span></button>
+              <button class="tx-btn tx-primary" type="button">Approve<span class="tx-kbd">A</span></button>
+            </div>
+            <span class="pv-row-label">State</span>
+            <div class="pv-row">
+              <button class="tx-btn" type="button" disabled>Disabled</button>
+              <button class="tx-btn tx-primary" type="button" aria-disabled="true">Can't approve</button>
+              <button class="tx-btn" type="button" disabled><span class="tx-spin" aria-hidden="true"></span>Working…</button>
+              <button class="tx-btn" type="button" id="pv-load-btn">Run turn</button>
+            </div>
+          </div>
+          <p class="pv-spec-note">Every button here is real. <b>“Run turn” actually runs a state</b> — idle, working, done, idle.</p>
+        </div>
+
+        <figure class="pv-plinth pv-ladder" aria-labelledby="h-ladder">
+          <div class="pv-plinth-head">
+            <figcaption class="board-label" id="h-ladder">Height is latency · D = 360 px</figcaption>
+            <span class="pv-plinth-note">model time, ms</span>
+          </div>
+          <div class="pv-ladder-rows">
+            <div class="pv-ladder-row" style="--mt:925">
+              <span class="pv-ladder-btn"><span class="tx-btn tx-xs" aria-hidden="true">XS</span></span>
+              <span class="pv-ladder-k"><b>24</b> px · 4.91 bits</span>
+              <span class="pv-ladder-bar"><i></i></span>
+              <b class="pv-ladder-v num">925</b>
+            </div>
+            <div class="pv-ladder-row" style="--mt:893">
+              <span class="pv-ladder-btn"><span class="tx-btn tx-sm" aria-hidden="true">Small</span></span>
+              <span class="pv-ladder-k"><b>28</b> px · 4.68 bits</span>
+              <span class="pv-ladder-bar"><i></i></span>
+              <b class="pv-ladder-v num">893</b>
+            </div>
+            <div class="pv-ladder-row is-default" style="--mt:839">
+              <span class="pv-ladder-btn"><span class="tx-btn" aria-hidden="true">Medium</span></span>
+              <span class="pv-ladder-k"><b>36</b> px · 4.32 bits</span>
+              <span class="pv-ladder-bar"><i></i></span>
+              <b class="pv-ladder-v num">839</b>
+            </div>
+            <div class="pv-ladder-row" style="--mt:797">
+              <span class="pv-ladder-btn"><span class="tx-btn tx-lg" aria-hidden="true">Large</span></span>
+              <span class="pv-ladder-k"><b>44</b> px · 4.03 bits</span>
+              <span class="pv-ladder-bar"><i></i></span>
+              <b class="pv-ladder-v num">797</b>
+            </div>
+          </div>
+          <p class="pv-ladder-note">From 24 to 44 px the hand saves <b>128 ms</b> on every confirm — about 14%. Small caps are for dense rails, never for the decision.</p>
+        </figure>
+      </div>
+
+      <div class="pv-plinth pv-film" role="group" aria-labelledby="h-film">
+        <div class="pv-plinth-head">
+          <span class="board-label" id="h-film">One press, frame by frame</span>
+          <span class="pv-plinth-note">side profile below each frame · light from above</span>
+        </div>
+        <ol class="pv-frames">
+          <li class="pv-frame">
+            <span class="pv-frame-k"><b>01</b> Rest</span>
+            <span class="pv-frame-cap"><span class="tx-btn" aria-hidden="true">Review</span></span>
+            <span class="pv-profile" aria-hidden="true"><i></i></span>
+            <span class="pv-frame-t">no input</span>
+            <span class="pv-frame-d">surface · line-strong · key edge</span>
+          </li>
+          <li class="pv-frame pv-frame-hover">
+            <span class="pv-frame-k"><b>02</b> Hover</span>
+            <span class="pv-frame-cap"><span class="tx-btn" aria-hidden="true">Review</span></span>
+            <span class="pv-profile" aria-hidden="true"><i></i></span>
+            <span class="pv-frame-t">pointer enters · <b>120 ms</b></span>
+            <span class="pv-frame-d">surface-2 · ctl border · no travel</span>
+          </li>
+          <li class="pv-frame pv-frame-press">
+            <span class="pv-frame-k"><b>03</b> Press</span>
+            <span class="pv-frame-cap"><span class="tx-btn" aria-hidden="true">Review</span></span>
+            <span class="pv-profile" aria-hidden="true"><i></i></span>
+            <span class="pv-frame-t">pointer down · <b>0 ms</b></span>
+            <span class="pv-frame-d">1 px travel · key edge goes inset</span>
+          </li>
+          <li class="pv-frame pv-frame-focus">
+            <span class="pv-frame-k"><b>04</b> Focus</span>
+            <span class="pv-frame-cap"><span class="tx-btn" aria-hidden="true">Review</span></span>
+            <span class="pv-profile" aria-hidden="true"><i></i></span>
+            <span class="pv-frame-t">Tab key · <b>120 ms</b></span>
+            <span class="pv-frame-d">one 4 px signal halo</span>
+          </li>
+          <li class="pv-frame pv-frame-disabled">
+            <span class="pv-frame-k"><b>05</b> Disabled</span>
+            <span class="pv-frame-cap"><span class="tx-btn" aria-hidden="true">Review</span></span>
+            <span class="pv-profile" aria-hidden="true"><i></i></span>
+            <span class="pv-frame-t">condition unmet</span>
+            <span class="pv-frame-d">45% · not interactive · say why</span>
+          </li>
+        </ol>
+        <p class="pv-film-note">Press is the only frame with <b>0 ms</b>: the cap must move the instant the finger does, or the hand stops trusting it. Everything else settles inside the 100 ms that still feels instant.</p>
+      </div>
+    </section>
+
+    <!-- 5.3 TOKENS -->
+    <section class="chapter" id="tokens" aria-labelledby="h-tokens">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.3</div>
+        <div>
+          <p class="ch-kicker">Tokens · state · reference</p>
+          <h2 class="t-h2" id="h-tokens">Small things that <em>mean something.</em></h2>
+          <p class="t-lede">Pills name state, chips let you pick or point, tiles hold a glyph, keycaps name a key. Each has one job and one silhouette. Status never travels as colour alone.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing measure">
+          <span class="pv-law-k">Contrast · WCAG 2.2</span>
+          <code class="pv-law-x">(L₁ + .05) / (L₂ + .05) ≥ 4.5</code>
+          <p>Luminance, not hue, is what an ageing or colour-blind eye can still separate.</p>
+          <span class="folio">Tokens · 03 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-tone-grid">
+        <div class="pv-plinth pv-tone-board">
+          <div class="pv-plinth-head">
+            <span class="board-label">Pills · glyph + word</span>
+            <span class="pv-plinth-note">status is never a hue alone</span>
+          </div>
+          <div class="pv-row pv-row-loose">
+            <span class="tx-pill tx-pill-ok"><span aria-hidden="true">✓</span>Ready</span>
+            <span class="tx-pill tx-pill-warn"><span aria-hidden="true">!</span>Needs auth</span>
+            <span class="tx-pill tx-pill-bad"><span aria-hidden="true">×</span>Failed</span>
+            <span class="tx-pill tx-pill-live"><span class="tx-pulse" aria-hidden="true"></span>Running</span>
+            <span class="tx-pill tx-pill-inv"><svg class="tx-ic" aria-hidden="true"><use href="#i-agent"/></svg>Qlik</span>
+            <span class="tx-pill tx-pill-line">Draft</span>
+            <span class="tx-pill tx-pill-sm">v2</span>
+          </div>
+          <div class="pv-pill-anatomy" aria-hidden="true">
+            <span class="pv-pill-stage"><span class="tx-pill tx-pill-ok pv-pill-lg"><span>✓</span>Ready</span><span class="pv-pill-tag">magnified 2.5×</span></span>
+            <ol class="pv-pill-notes">
+              <li><b>Glyph</b> names the state</li>
+              <li><b>Word</b> confirms it</li>
+              <li><b>Tint</b> only repeats it</li>
+            </ol>
+          </div>
+          <div class="pv-mono-test" aria-hidden="true">
+            <span class="pv-mono-k">Grayscale test</span>
+            <span class="pv-mono-row">
+              <span class="tx-pill tx-pill-ok"><span>✓</span>Ready</span>
+              <span class="tx-pill tx-pill-warn"><span>!</span>Needs auth</span>
+              <span class="tx-pill tx-pill-bad"><span>×</span>Failed</span>
+            </span>
+            <span class="pv-mono-cap">Hue removed. The meaning survives.</span>
+          </div>
+        </div>
+
+        <figure class="pv-plinth pv-ratio-board" aria-labelledby="h-ratio">
+          <div class="pv-plinth-head">
+            <figcaption class="board-label" id="h-ratio">Contrast receipt</figcaption>
+            <span class="pv-plinth-note">ratio : 1 · light / dark</span>
+          </div>
+          <div class="pv-cbars" role="table" aria-label="Contrast ratios for each tone pair, light and dark theme">
+            <div class="pv-cbar-scale" aria-hidden="true">
+              <span style="--at:0">1</span><span class="is-aa" style="--at:.389">AA 4.5</span><span class="is-aaa" style="--at:.667">AAA 7</span><span style="--at:1">12</span>
+            </div>
+            <div class="pv-cbar" role="row">
+              <span class="pv-cbar-k" role="rowheader"><i class="pv-sw pv-sw-ok" aria-hidden="true"></i>Ok ink on ok soft</span>
+              <span class="pv-cbar-v" role="cell" style="--r:5.85"><i></i><b>L 5.85</b></span>
+              <span class="pv-cbar-v is-dark" role="cell" style="--r:9.38"><i></i><b>D 9.38</b></span>
+            </div>
+            <div class="pv-cbar" role="row">
+              <span class="pv-cbar-k" role="rowheader"><i class="pv-sw pv-sw-warn" aria-hidden="true"></i>Warn ink on warn soft</span>
+              <span class="pv-cbar-v" role="cell" style="--r:5.59"><i></i><b>L 5.59</b></span>
+              <span class="pv-cbar-v is-dark" role="cell" style="--r:9.75"><i></i><b>D 9.75</b></span>
+            </div>
+            <div class="pv-cbar" role="row">
+              <span class="pv-cbar-k" role="rowheader"><i class="pv-sw pv-sw-bad" aria-hidden="true"></i>Fail ink on fail soft</span>
+              <span class="pv-cbar-v" role="cell" style="--r:6.18"><i></i><b>L 6.18</b></span>
+              <span class="pv-cbar-v is-dark" role="cell" style="--r:7.65"><i></i><b>D 7.65</b></span>
+            </div>
+            <div class="pv-cbar" role="row">
+              <span class="pv-cbar-k" role="rowheader"><i class="pv-sw pv-sw-signal" aria-hidden="true"></i>Signal ink on signal soft</span>
+              <span class="pv-cbar-v" role="cell" style="--r:4.69"><i></i><b>L 4.69</b></span>
+              <span class="pv-cbar-v is-dark" role="cell" style="--r:8.42"><i></i><b>D 8.42</b></span>
+            </div>
+            <div class="pv-cbar" role="row">
+              <span class="pv-cbar-k" role="rowheader"><i class="pv-sw pv-sw-ink" aria-hidden="true"></i>Ink 3 on surface</span>
+              <span class="pv-cbar-v" role="cell" style="--r:5.10"><i></i><b>L 5.10</b></span>
+              <span class="pv-cbar-v is-dark" role="cell" style="--r:6.11"><i></i><b>D 6.11</b></span>
+            </div>
+            <div class="pv-cbar" role="row">
+              <span class="pv-cbar-k" role="rowheader"><i class="pv-sw pv-sw-fill" aria-hidden="true"></i>On-signal on signal fill</span>
+              <span class="pv-cbar-v" role="cell" style="--r:4.65"><i></i><b>L 4.65</b></span>
+              <span class="pv-cbar-v is-dark" role="cell" style="--r:6.80"><i></i><b>D 6.80</b></span>
+            </div>
+          </div>
+          <p class="pv-ratio-note">Every pair clears AA in both themes. The thinnest margin is the primary keycap in light, <b>4.65</b> — which is why its label is 600 weight.</p>
+        </figure>
+      </div>
+
+      <div class="pv-plinth pv-token-strip">
+        <div class="pv-token-col">
+          <span class="board-label">Chips · pick or reference</span>
+          <div class="pv-row">
+            <button class="tx-chip" type="button" aria-pressed="false">Datasets</button>
+            <button class="tx-chip" type="button" aria-pressed="true">Access</button>
+            <button class="tx-chip" type="button" aria-pressed="false">Shadowing</button>
+          </div>
+          <div class="pv-row">
+            <button class="tx-chip tx-chip-ref" type="button" id="pv-chip-ref" data-ref="err_7f3a21">err_7f3a21<span class="tx-kbd">⌘C</span></button>
+            <span class="pv-token-note">press to copy</span>
+          </div>
+          <p class="pv-token-caption">Pressed chips use signal soft + signal border. The reference chip is mono, 24 px, and copies.</p>
+        </div>
+        <div class="pv-token-col">
+          <span class="board-label">Tiles · a glyph held</span>
+          <div class="pv-row">
+            <span class="tx-tile"><svg class="tx-ic" aria-hidden="true"><use href="#i-tool"/></svg></span>
+            <span class="tx-tile tx-tile-signal"><svg class="tx-ic" aria-hidden="true"><use href="#i-run"/></svg></span>
+            <span class="tx-tile tx-tile-ok"><span aria-hidden="true">✓</span></span>
+            <span class="tx-tile tx-tile-warn"><span aria-hidden="true">!</span></span>
+            <span class="tx-tile tx-tile-bad"><span aria-hidden="true">×</span></span>
+            <span class="tx-tile tx-tile-inv"><svg class="tx-ic" aria-hidden="true"><use href="#i-agent"/></svg></span>
+          </div>
+          <div class="pv-row">
+            <span class="tx-tile tx-tile-sm"><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-search"/></svg></span>
+            <span class="tx-tile"><svg class="tx-ic" aria-hidden="true"><use href="#i-trace"/></svg></span>
+            <span class="tx-tile tx-tile-lg"><svg class="tx-ic tx-ic-lg" aria-hidden="true"><use href="#i-tool"/></svg></span>
+            <span class="pv-token-note">24 · 32 · 40 px</span>
+          </div>
+          <p class="pv-token-caption">Tiles tint the glyph, not the label. Tone mirrors the pill it sits beside.</p>
+        </div>
+        <div class="pv-token-col">
+          <span class="board-label">Keycaps · a key named</span>
+          <div class="pv-row tx-keys">
+            <span class="tx-kbd">⌘</span><span class="tx-kbd">⇧</span><span class="tx-kbd">↵</span>
+          </div>
+          <div class="pv-row tx-keys">
+            <span class="tx-kbd">⌘</span><span class="tx-kbd">K</span>
+            <span class="pv-key-then">then</span>
+            <span class="tx-kbd">S</span>
+          </div>
+          <div class="pv-row tx-keys">
+            <span class="tx-kbd">Esc</span><span class="tx-kbd">↵</span>
+            <span class="pv-token-note">physical depth, 2 px lip</span>
+          </div>
+          <p class="pv-token-caption">One key is a cap; a shortcut is a stack. “Then” marks a sequence, never a plus.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5.4 PICKERS -->
+    <section class="chapter" id="pickers" aria-labelledby="h-pickers">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.4</div>
+        <div>
+          <p class="ch-kicker">Pickers · choice</p>
+          <h2 class="t-h2" id="h-pickers">Every option has <em>a cost.</em></h2>
+          <p class="t-lede">A segmented control shows two to four options; tabs separate views; a switch is instant; a menu hides the long tail. The curve on the right is the price list.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing law">
+          <span class="pv-law-k">Hick–Hyman · 1952</span>
+          <code class="pv-law-x">RT = a + b · log₂(n + 1)</code>
+          <p>Decision time grows with the number of equally likely options — slowly, but never for free.</p>
+          <span class="folio">Pickers · 04 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-pickers">
+        <div class="pv-plinth pv-picker-board">
+          <div class="pv-picker-rows">
+            <span class="pv-row-label">Segmented</span>
+            <div class="pv-row">
+              <div class="tx-seg" role="group" aria-label="Scope" data-seg>
+                <button type="button" aria-pressed="true">This turn</button>
+                <button type="button" aria-pressed="false">Session</button>
+                <button type="button" aria-pressed="false">Project</button>
+              </div>
+              <div class="tx-seg tx-seg-sm" role="group" aria-label="Density" data-seg>
+                <button type="button" aria-pressed="false">Comfortable</button>
+                <button type="button" aria-pressed="true">Compact</button>
+              </div>
+            </div>
+
+            <span class="pv-row-label">Tabs</span>
+            <div class="pv-tabs-demo">
+              <div class="tx-tabs" role="tablist" aria-label="Session panel" id="pv-tabs">
+                <button role="tab" aria-selected="true" id="pv-tab-a" aria-controls="pv-panel-a">Activity</button>
+                <button role="tab" aria-selected="false" id="pv-tab-b" aria-controls="pv-panel-b" tabindex="-1">Plan</button>
+                <button role="tab" aria-selected="false" id="pv-tab-c" aria-controls="pv-panel-c" tabindex="-1">Goal</button>
+                <button role="tab" aria-selected="false" id="pv-tab-d" aria-controls="pv-panel-d" tabindex="-1">Agents</button>
+              </div>
+              <div class="pv-tabbody">
+                <div role="tabpanel" id="pv-panel-a" aria-labelledby="pv-tab-a">23 tool calls across four turns; one failed and was retried.</div>
+                <div role="tabpanel" id="pv-panel-b" aria-labelledby="pv-tab-b" hidden>Plan v2 — four steps, on step three of four.</div>
+                <div role="tabpanel" id="pv-panel-c" aria-labelledby="pv-tab-c" hidden>Goal — 142.2k of 500k tokens used (28%).</div>
+                <div role="tabpanel" id="pv-panel-d" aria-labelledby="pv-tab-d" hidden>Agents — Qlik Analyst plus four helpers.</div>
+              </div>
+            </div>
+
+            <span class="pv-row-label">Switch</span>
+            <div class="pv-row pv-switch-row">
+              <label class="pv-sw-l"><input type="checkbox" role="switch" class="tx-switch" checked><span>Auto-approve reads</span></label>
+              <label class="pv-sw-l"><input type="checkbox" role="switch" class="tx-switch"><span>Pause on error</span></label>
+            </div>
+
+            <span class="pv-row-label">Menu</span>
+            <div class="pv-menu-wrap">
+              <nav class="tx-menu" aria-label="Turn actions">
+                <div class="tx-menu-h">Turn</div>
+                <button class="tx-menu-item" type="button"><span>Steer the agent<small>Interrupt without losing the plan</small></span><span class="tx-kbd">S</span></button>
+                <button class="tx-menu-item" type="button"><span>Retry turn<small>Re-run from the last prompt</small></span><span class="tx-kbd">R</span></button>
+                <div class="tx-menu-sep" role="separator"></div>
+                <button class="tx-menu-item" type="button" id="pv-menu-reason" aria-pressed="true"><span>Show reasoning</span><span class="pv-menu-check" aria-hidden="true">✓</span></button>
+                <button class="tx-menu-item" type="button"><span>Copy transcript</span><span class="tx-kbd">⌘C</span></button>
+                <div class="tx-menu-sep" role="separator"></div>
+                <button class="tx-menu-item tx-menu-danger" type="button" id="pv-stop-session"><span>Stop session</span><span class="tx-kbd">Del</span></button>
+              </nav>
+            </div>
+          </div>
+        </div>
+
+        <figure class="pv-plinth pv-hick" aria-labelledby="h-hick">
+          <div class="pv-plinth-head">
+            <figcaption class="board-label" id="h-hick">Choice cost · bits</figcaption>
+            <span class="pv-plinth-note">log₂(n + 1)</span>
+          </div>
+          <svg class="pv-hick-svg" viewBox="0 0 320 160" role="img" aria-labelledby="pv-hick-t">
+            <title id="pv-hick-t">Choice cost in bits for one to eight options: 1.00, 1.58, 2.00, 2.32, 2.58, 2.81, 3.00, 3.17. Two to four options are a glance; five or more belong in a menu.</title>
+            <rect class="pv-hz-glance" x="54" y="12" width="100" height="128"/>
+            <rect class="pv-hz-menu" x="164" y="12" width="150" height="128"/>
+            <text class="pv-hz-t" x="60" y="26">glance · segment</text>
+            <text class="pv-hz-t" x="170" y="26">long tail · menu</text>
+            <line class="pv-h-axis" x1="24" y1="140" x2="304" y2="140"/>
+            <line class="pv-h-grid" x1="24" y1="103.4" x2="304" y2="103.4"/>
+            <line class="pv-h-grid" x1="24" y1="66.9" x2="304" y2="66.9"/>
+            <line class="pv-h-grid" x1="24" y1="30.3" x2="304" y2="30.3"/>
+            <text class="pv-h-y" x="20" y="106.4">1</text>
+            <text class="pv-h-y" x="20" y="69.9">2</text>
+            <text class="pv-h-y" x="20" y="33.3">3</text>
+            <path class="pv-h-curve" d="M24.0 103.4 L32.0 98.4 L40.0 93.8 L48.0 89.6 L56.0 85.7 L64.0 82.0 L72.0 78.6 L80.0 75.4 L88.0 72.4 L96.0 69.6 L104.0 66.9 L112.0 64.3 L120.0 61.8 L128.0 59.5 L136.0 57.2 L144.0 55.1 L152.0 53.0 L160.0 51.0 L168.0 49.1 L176.0 47.3 L184.0 45.5 L192.0 43.7 L200.0 42.1 L208.0 40.4 L216.0 38.9 L224.0 37.3 L232.0 35.8 L240.0 34.4 L248.0 33.0 L256.0 31.6 L264.0 30.3 L272.0 29.0 L280.0 27.7 L288.0 26.5 L296.0 25.3 L304.0 24.1"/>
+            <g class="pv-h-pts">
+              <circle cx="24" cy="103.4" r="3"/><circle cx="64" cy="82" r="3"/><circle cx="104" cy="66.9" r="3"/><circle cx="144" cy="55.1" r="3"/>
+              <circle cx="184" cy="45.5" r="3"/><circle cx="224" cy="37.3" r="3"/><circle cx="264" cy="30.3" r="3"/><circle cx="304" cy="24.1" r="3"/>
+            </g>
+            <g class="pv-h-x">
+              <text x="24" y="154">1</text><text x="64" y="154">2</text><text x="104" y="154">3</text><text x="144" y="154">4</text>
+              <text x="184" y="154">5</text><text x="224" y="154">6</text><text x="264" y="154">7</text><text x="304" y="154">8</text>
+            </g>
+            <line class="pv-h-drop" id="pv-hick-drop" x1="104" y1="66.9" x2="104" y2="140"/>
+            <circle class="pv-h-dot" id="pv-hick-dot" cx="104" cy="66.9" r="5.5"/>
+          </svg>
+          <p class="pv-hick-note" id="pv-hick-note" aria-live="polite"><b>Scope · 3 options = 2.00 bits.</b> Press the other segment and the marker moves.</p>
+          <ul class="pv-notes">
+            <li><b>Segmented:</b> all options visible; 2–4 only.</li>
+            <li><b>Tabs:</b> views of one object, never separate tasks.</li>
+            <li><b>Switch:</b> one bit, instant, no save, reversible.</li>
+            <li><b>Menu:</b> the long tail, grouped and labelled.</li>
+          </ul>
+        </figure>
+      </div>
+      <p class="section-cap"><b>All four are keyboard-operable.</b> Segments and tabs move with arrows; switches with space; menu items are real buttons. The math is a budget, not a decoration.</p>
+    </section>
+
+    <!-- 5.5 FIELDS -->
+    <section class="chapter" id="fields" aria-labelledby="h-fields">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.5</div>
+        <div>
+          <p class="ch-kicker">Fields · intent</p>
+          <h2 class="t-h2" id="h-fields">Ask once, <em>clearly.</em></h2>
+          <p class="t-lede">A field is a label, a control and a hint. Proximity does the grouping: 4px inside a field, 16px between fields. Focus is one soft halo. Nothing relies on placeholder text to name itself.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing law">
+          <span class="pv-law-k">Proximity · Wertheimer 1923</span>
+          <code class="pv-law-x">gap in : gap out = 1 : 4</code>
+          <p>Things that sit close are read as one. The ratio does the grouping; no rule or box is needed.</p>
+          <span class="folio">Fields · 05 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-fields">
+        <div class="pv-plinth pv-form-board">
+          <form class="pv-form" id="pv-form" novalidate>
+            <div class="tx-field">
+              <label for="pv-name">Session name <span class="tx-req" aria-hidden="true">*</span></label>
+              <input class="tx-input" id="pv-name" type="text" value="Onboarding plan for new analysts" required aria-required="true">
+              <span class="tx-hint">Shown in the session list and the topbar crumb.</span>
+            </div>
+            <div class="pv-form-g2">
+              <div class="tx-field">
+                <label for="pv-budget">Token budget</label>
+                <input class="tx-input tx-input-num" id="pv-budget" type="number" value="500000" min="0" step="1000">
+                <span class="tx-hint">142.2k used · 28%.</span>
+              </div>
+              <div class="tx-field">
+                <label for="pv-date">Target date</label>
+                <input class="tx-input" id="pv-date" type="date" value="2026-11-02">
+                <span class="tx-hint">Day one for the cohort.</span>
+              </div>
+            </div>
+            <div class="pv-form-g2">
+              <div class="tx-field">
+                <label for="pv-mode">Approval mode</label>
+                <select class="tx-input tx-select" id="pv-mode">
+                  <option>Ask every time</option>
+                  <option selected>Auto-approve reads</option>
+                  <option>Auto-approve all (sandbox)</option>
+                </select>
+                <span class="tx-hint">How the agent asks before running tools.</span>
+              </div>
+              <div class="tx-field">
+                <label for="pv-secret">Drive token <span class="tx-req" aria-hidden="true">*</span></label>
+                <div class="tx-secret">
+                  <input class="tx-input" id="pv-secret" type="password" value="ya29-example-redacted" autocomplete="off" aria-required="true">
+                  <button class="tx-reveal" type="button" id="pv-reveal" aria-pressed="false" aria-controls="pv-secret" aria-label="Show token"><span class="pv-reveal-tx">Show</span></button>
+                </div>
+                <span class="tx-hint">Stored in the OS keychain, never the session.</span>
+              </div>
+            </div>
+            <div class="tx-field">
+              <label for="pv-first">First prompt</label>
+              <textarea class="tx-input" id="pv-first" rows="2">Draft a two-week onboarding plan from the handbook.</textarea>
+              <span class="tx-hint">What the main agent starts on.</span>
+            </div>
+            <div class="tx-field">
+              <label for="pv-key">Jira project key <span class="tx-req" aria-hidden="true">*</span></label>
+              <input class="tx-input" id="pv-key" type="text" value="onboarding plan" aria-invalid="true" aria-describedby="pv-key-msg" required>
+              <span class="tx-hint tx-errmsg" id="pv-key-msg"><span aria-hidden="true">!</span>Keys are 2–6 uppercase letters, e.g. <code>ONB</code>.</span>
+            </div>
+          </form>
+        </div>
+
+        <aside class="pv-plinth pv-field-side">
+          <div class="pv-field-block">
+            <span class="board-label">Proximity · 4 : 16</span>
+            <div class="pv-prox" aria-hidden="true">
+              <div class="pv-prox-group">
+                <span class="pv-prox-lbl">Label</span>
+                <span class="pv-prox-gap"><i></i>4</span>
+                <span class="pv-prox-input"></span>
+                <span class="pv-prox-gap"><i></i>4</span>
+                <span class="pv-prox-hint"></span>
+              </div>
+              <span class="pv-prox-gap pv-prox-gap-lg"><i></i>16 · between fields</span>
+              <div class="pv-prox-group">
+                <span class="pv-prox-lbl">Next label</span>
+                <span class="pv-prox-gap"><i></i>4</span>
+                <span class="pv-prox-input"></span>
+                <span class="pv-prox-gap"><i></i>4</span>
+                <span class="pv-prox-hint"></span>
+              </div>
+            </div>
+            <p class="pv-prox-note">The shaded fields are what the eye groups. Nothing draws them; the 1 : 4 gap does.</p>
+          </div>
+
+          <div class="pv-field-block">
+            <span class="board-label">Focus · one halo</span>
+            <div class="pv-focus-demo" aria-hidden="true">
+              <span class="pv-focus-label">Session name</span>
+              <span class="pv-focus-input"><i></i></span>
+            </div>
+            <p class="pv-focus-note">Signal border plus a 4px 20% halo. Nothing stacks; nothing doubles.</p>
+          </div>
+
+          <ul class="pv-notes">
+            <li><b>Label above.</b> Placeholders vanish on the first keystroke; memory should not have to hold the question.</li>
+            <li><b>Error names the fix.</b> The message is tied by <code>aria-describedby</code>.</li>
+            <li><b>Reveal is a toggle.</b> <code>aria-pressed</code> and the label both flip.</li>
+          </ul>
+        </aside>
+      </div>
+      <p class="section-cap"><b>Type the Jira key above.</b> Lowercase keeps it invalid; two to six uppercase letters turn the message into a receipt.</p>
+    </section>
+
+    <!-- 5.6 TRANSIENT -->
+    <section class="chapter" id="transient" aria-labelledby="h-transient">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.6</div>
+        <div>
+          <p class="ch-kicker">Transient · confirmation</p>
+          <h2 class="t-h2" id="h-transient">Speak once, <em>then leave.</em></h2>
+          <p class="t-lede">A tooltip explains on hover or focus, and hides on Escape. A toast confirms without stealing focus, lives 4.5 seconds, and stacks no more than three. Transient does not mean unreadable.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing measure">
+          <span class="pv-law-k">Reading rate · 200 wpm</span>
+          <code class="pv-law-x">t = words ÷ 3.33 + 0.9 s</code>
+          <p>A message must outlast the time it takes to read it, plus the time to find it.</p>
+          <span class="folio">Transient · 06 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-transient">
+        <div class="pv-plinth pv-transient-board">
+          <div class="pv-row pv-row-center">
+            <span class="tx-tip">
+              <button class="tx-btn" type="button" aria-describedby="pv-tt-1">Last run</button>
+              <span class="tx-tip-pop" role="tooltip" id="pv-tt-1">2m 04s · 48.0k tokens</span>
+            </span>
+            <span class="tx-tip tx-tip-up">
+              <button class="tx-btn tx-icon tx-ghost" type="button" aria-label="Context usage" aria-describedby="pv-tt-2"><svg class="tx-ic" aria-hidden="true"><use href="#i-trace"/></svg></button>
+              <span class="tx-tip-pop" role="tooltip" id="pv-tt-2">Context 61.4k of 258k (24%)</span>
+            </span>
+            <span class="pv-divider" aria-hidden="true"></span>
+            <button class="tx-btn tx-primary" type="button" id="pv-toast-ok">Raise a toast</button>
+            <button class="tx-btn tx-danger" type="button" id="pv-toast-bad">Raise an error</button>
+          </div>
+
+          <div class="pv-toast-stage">
+            <div class="tx-toast" aria-hidden="true">
+              <span class="tx-tile tx-tile-ok"><span aria-hidden="true">✓</span></span>
+              <div><h5>Checklist saved</h5><p>18 of 30 rows saved.</p></div>
+              <span class="tx-toast-x" aria-hidden="true">×</span>
+            </div>
+            <span class="pv-stage-tag">Sample · auto-dismiss after 4.5 s</span>
+          </div>
+          <p class="pv-transient-foot">Hover or focus “Last run”, then press <span class="tx-kbd">Esc</span> to dismiss the tooltip. Real toasts appear bottom-right and do not move focus.</p>
+        </div>
+
+        <aside class="pv-plinth pv-transient-side">
+          <div class="pv-life" id="pv-life">
+            <div class="pv-plinth-head">
+              <span class="board-label">Lifetime · 4.5 s</span>
+              <span class="pv-plinth-note" id="pv-life-state">raise a toast to time it</span>
+            </div>
+            <div class="pv-life-line" aria-hidden="true">
+              <span class="pv-life-read"></span>
+              <span class="pv-life-spare"></span>
+              <span class="pv-life-head"></span>
+            </div>
+            <div class="pv-life-labels" aria-hidden="true"><span>0 s arrive</span><span>3.6 s read</span><span>4.5 s leave</span></div>
+            <div class="pv-life-math">
+              <span><b>12</b> words</span><span>÷</span><span><b>3.33</b> words/s</span><span>=</span><span><b>3.6</b> s</span><span>+</span><span><b>0.9</b> s to find it</span>
+            </div>
+          </div>
+          <ul class="pv-notes">
+            <li><b>No focus theft.</b> The host is <code>aria-live="polite"</code>; the page keeps its place.</li>
+            <li><b>Escape closes a tooltip.</b> The trigger keeps focus; the hint never traps.</li>
+            <li><b>Maximum three.</b> Beyond three, the eye starts counting instead of reading.</li>
+          </ul>
+        </aside>
+      </div>
+    </section>
+
+    <!-- 5.7 LIVE -->
+    <section class="chapter" id="live" aria-labelledby="h-live">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.7</div>
+        <div>
+          <p class="ch-kicker">Live · proportion · motion</p>
+          <h2 class="t-h2" id="h-live">Motion, with <em>a static twin.</em></h2>
+          <p class="t-lede">Motion is physics or it is noise. Three springs move everything in truex; meters, rings, spinners and carets carry live state. Every motion has a still form, so reduced motion loses the animation and keeps the meaning.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing law">
+          <span class="pv-law-k">Damped harmonic oscillator</span>
+          <code class="pv-law-x">x″ + 2ζω x′ + ω² x = 0</code>
+          <p>ζ is honesty. Below 1 the thing overshoots and settles; at 1 it arrives without doubt.</p>
+          <span class="folio">Live · 07 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-plinth pv-springs" role="group" aria-labelledby="h-springs">
+        <div class="pv-plinth-head">
+          <span class="board-label" id="h-springs">Three springs · shared 480 ms axis</span>
+          <div class="pv-spring-ctl">
+            <div class="tx-seg tx-seg-sm" role="group" aria-label="Playback speed" id="pv-spring-speed" data-seg>
+              <button type="button" aria-pressed="true" data-speed="1">1×</button>
+              <button type="button" aria-pressed="false" data-speed="4">¼×</button>
+            </div>
+            <button class="tx-btn tx-sm" type="button" id="pv-spring-play"><svg class="tx-ic tx-ic-sm" aria-hidden="true"><use href="#i-run"/></svg>Play</button>
+          </div>
+        </div>
+        <div class="pv-spring-row">
+          <figure class="pv-spring" data-spring="confirm">
+            <figcaption class="pv-spring-k"><b>Confirm</b><span>ζ 1.00 · 320 ms · 0% overshoot</span></figcaption>
+            <svg viewBox="0 0 240 104" aria-hidden="true" focusable="false">
+              <line class="pv-sp-axis" x1="8" y1="92" x2="232" y2="92"/>
+              <line class="pv-sp-target" x1="8" y1="28" x2="232" y2="28"/>
+              <line class="pv-sp-end" x1="157.3" y1="20" x2="157.3" y2="92"/>
+              <path class="pv-sp-curve" d="M8.0 92.0 L12.7 91.1 L17.3 88.7 L22.0 85.4 L26.7 81.5 L31.3 77.3 L36.0 73.0 L40.7 68.8 L45.3 64.8 L50.0 61.0 L54.7 57.4 L59.3 54.1 L64.0 51.1 L68.7 48.4 L73.3 45.9 L78.0 43.7 L82.7 41.7 L87.3 40.0 L92.0 38.4 L96.7 37.1 L101.3 35.9 L106.0 34.8 L110.7 33.9 L115.3 33.1 L120.0 32.4 L124.7 31.8 L129.3 31.3 L134.0 30.8 L138.7 30.4 L143.3 30.1 L148.0 29.8 L157.3 28.0 L232.0 28.0"/>
+              <text class="pv-sp-t" x="161" y="40">settled · 320</text>
+            </svg>
+            <div class="pv-lane" aria-hidden="true"><span class="pv-carriage"><i></i></span></div>
+            <p>Dialogs, sheets, “Approve”. Arrives once and stays — no bounce on a decision.</p>
+          </figure>
+          <figure class="pv-spring" data-spring="arrive">
+            <figcaption class="pv-spring-k"><b>Arrive</b><span>ζ 0.82 · 400 ms · 0.6% overshoot</span></figcaption>
+            <svg viewBox="0 0 240 104" aria-hidden="true" focusable="false">
+              <line class="pv-sp-axis" x1="8" y1="92" x2="232" y2="92"/>
+              <line class="pv-sp-target" x1="8" y1="28" x2="232" y2="28"/>
+              <line class="pv-sp-end" x1="194.7" y1="20" x2="194.7" y2="92"/>
+              <path class="pv-sp-curve" d="M8.0 92.0 L12.7 91.6 L17.3 90.3 L22.0 88.5 L26.7 86.2 L31.3 83.5 L36.0 80.6 L40.7 77.4 L45.3 74.2 L50.0 71.0 L54.7 67.7 L59.3 64.5 L64.0 61.4 L68.7 58.4 L73.3 55.6 L78.0 52.9 L82.7 50.3 L87.3 47.9 L92.0 45.7 L96.7 43.6 L101.3 41.7 L106.0 40.0 L110.7 38.4 L115.3 37.0 L120.0 35.7 L124.7 34.5 L129.3 33.5 L134.0 32.5 L138.7 31.7 L143.3 31.0 L148.0 30.4 L152.7 29.8 L157.3 29.3 L162.0 28.9 L166.7 28.6 L171.3 28.3 L176.0 28.1 L180.7 27.9 L185.3 27.7 L190.0 27.6 L194.7 28.0 L232.0 28.0"/>
+              <text class="pv-sp-t pv-sp-end-t" x="190" y="44">settled · 400</text>
+            </svg>
+            <div class="pv-lane" aria-hidden="true"><span class="pv-carriage"><i></i></span></div>
+            <p>Toasts, menus, meters filling. A touch of give, like a drawer that has weight.</p>
+          </figure>
+          <figure class="pv-spring" data-spring="toggle">
+            <figcaption class="pv-spring-k"><b>Toggle</b><span>ζ 0.62 · 480 ms · 8.3% overshoot</span></figcaption>
+            <svg viewBox="0 0 240 104" aria-hidden="true" focusable="false">
+              <line class="pv-sp-axis" x1="8" y1="92" x2="232" y2="92"/>
+              <line class="pv-sp-target" x1="8" y1="28" x2="232" y2="28"/>
+              <rect class="pv-sp-over" x="96" y="22.7" width="136" height="5.3"/>
+              <path class="pv-sp-curve" d="M8.0 92.0 L12.7 91.5 L17.3 89.9 L22.0 87.6 L26.7 84.7 L31.3 81.2 L36.0 77.4 L40.7 73.4 L45.3 69.2 L50.0 65.0 L54.7 60.8 L59.3 56.8 L64.0 52.8 L68.7 49.1 L73.3 45.6 L78.0 42.3 L82.7 39.3 L87.3 36.5 L92.0 34.1 L96.7 31.9 L101.3 30.0 L106.0 28.4 L110.7 27.0 L115.3 25.8 L120.0 24.8 L124.7 24.1 L129.3 23.5 L134.0 23.1 L138.7 22.8 L143.3 22.7 L148.0 22.7 L152.7 22.7 L157.3 22.9 L162.0 23.1 L166.7 23.3 L171.3 23.6 L176.0 23.9 L180.7 24.3 L185.3 24.6 L190.0 25.0 L194.7 25.3 L199.3 25.7 L204.0 26.0 L208.7 26.3 L213.3 26.6 L218.0 26.9 L222.7 27.1 L227.3 27.3 L232.0 28.0"/>
+              <text class="pv-sp-t" x="120" y="16">+8.3% · reversible</text>
+            </svg>
+            <div class="pv-lane" aria-hidden="true"><span class="pv-carriage"><i></i></span></div>
+            <p>Switch thumbs, chips, segments. The overshoot says “this can go back”.</p>
+          </figure>
+        </div>
+        <p class="pv-spring-note">Curves are the exact step response of each spring, sampled into CSS <code>linear()</code>. Reduced motion jumps straight to the end: same destination, no journey.</p>
+      </div>
+
+      <div class="pv-plinth pv-live-board">
+        <div class="pv-plinth-head">
+          <span class="board-label">Live affordances · one clock</span>
+          <label class="pv-live-motion" for="pv-reduce">
+            <input type="checkbox" class="tx-switch" id="pv-reduce" role="switch">
+            <span>Reduced motion <b id="pv-motion-state">off</b></span>
+          </label>
+        </div>
+        <div class="pv-live-grid">
+          <div class="pv-live-cell">
+            <span class="pv-cell-label">Meters · proportion</span>
+            <div class="pv-meter-list">
+              <div class="pv-meter-row"><span>Goal</span><div class="tx-meter tx-meter-signal" style="--tx-p:28" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="28" aria-label="Goal used"><i></i></div><span class="num">28%</span></div>
+              <div class="pv-meter-row"><span>Context</span><div class="tx-meter" style="--tx-p:24" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="24" aria-label="Context used"><i></i></div><span class="num">24%</span></div>
+              <div class="pv-meter-row"><span>5h window</span><div class="tx-meter tx-meter-warn" style="--tx-p:72" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="72" aria-label="Five hour window used"><i></i></div><span class="num">72%</span></div>
+              <div class="pv-meter-row"><span>Disk</span><div class="tx-meter tx-meter-bad tx-meter-lg" style="--tx-p:94" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="94" aria-label="Disk used"><i></i></div><span class="num">94%</span></div>
+            </div>
+          </div>
+
+          <div class="pv-live-cell">
+            <span class="pv-cell-label">Rings · fill &amp; countdown</span>
+            <div class="pv-ring-row">
+              <span class="tx-ring" style="--tx-p:24"><span class="num">24%</span></span>
+              <span class="tx-ring" style="--tx-p:72;--tx-c:var(--warn)"><span class="num">72%</span></span>
+              <span class="pv-ring-live">
+                <span class="tx-ring" id="pv-live-ring" style="--tx-sz:3rem;--tx-p:100" role="timer" aria-label="Approval countdown"><span class="tx-sr" id="pv-ring-label">60 seconds remaining</span></span>
+                <span class="pv-ring-cap">approval · <b id="pv-ring-seconds">60</b><span class="pv-unit">s</span></span>
+              </span>
+            </div>
+            <p class="pv-cell-note">The third ring is driven by the page clock. Outside this page, set <code>--tx-p</code>.</p>
+          </div>
+
+          <div class="pv-live-cell">
+            <span class="pv-cell-label">In flight · motion</span>
+            <div class="pv-flight">
+              <span class="tx-pill tx-pill-live"><span class="tx-spin" aria-hidden="true"></span>Working</span>
+              <span class="pv-shimmer-line"><span class="tx-shimmer">Thinking…</span></span>
+              <span class="pv-stream-line">Writing checklist<span class="tx-caret"></span></span>
+              <div class="tx-bar pv-flight-bar"><i class="tx-stripes" style="width:60%"></i></div>
+            </div>
+          </div>
+
+          <div class="pv-live-cell">
+            <span class="pv-cell-label">Loading &amp; flag</span>
+            <div class="pv-skels" aria-hidden="true">
+              <span class="tx-skel" style="height:.75rem;width:70%"></span>
+              <span class="tx-skel" style="height:.75rem;width:90%"></span>
+              <span class="tx-skel" style="height:.75rem;width:55%"></span>
+            </div>
+            <div class="pv-row pv-dotrow">
+              <span class="tx-tape">needs auth</span>
+              <span class="tx-dot tx-dot-ok"></span>
+              <span class="tx-dot tx-dot-warn"></span>
+              <span class="tx-dot tx-dot-bad"></span>
+              <span class="tx-dot tx-dot-off"></span>
+            </div>
+          </div>
+        </div>
+        <div class="pv-twins">
+          <div class="pv-twin"><b>Spinner</b><span>Reduced: the arc holds at 2 o'clock. Still “running”.</span></div>
+          <div class="pv-twin"><b>Shimmer</b><span>Reduced: solid ink-2. Still “thinking”.</span></div>
+          <div class="pv-twin"><b>Caret</b><span>Reduced: steady block. Still “typing”.</span></div>
+          <div class="pv-twin"><b>Stripes</b><span>Reduced: static hatch. Still “in flight”.</span></div>
+        </div>
+      </div>
+      <p class="section-cap"><b>Try the switch.</b> Reduced motion removes the moving part and keeps every fact. The clock keeps running; only the animation stops.</p>
+    </section>
+
+    <!-- 5.8 STATES -->
+    <section class="chapter" id="states" aria-labelledby="h-states">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.8</div>
+        <div>
+          <p class="ch-kicker">States · non-happy paths</p>
+          <h2 class="t-h2" id="h-states">A state is <em>a sentence.</em></h2>
+          <p class="t-lede">Every list and panel needs three states beside the happy one: empty, loading and error. Each names what is happening, why, and the one action that moves forward. A dead end is a design error.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing law">
+          <span class="pv-law-k">Peak–end rule · Kahneman 1993</span>
+          <code class="pv-law-x">memory ≈ (peak + end) ÷ 2</code>
+          <p>People remember the worst moment and the last one. An error is the peak; its exit is the end.</p>
+          <span class="folio">States · 08 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-states-head">
+        <span class="board-label">Three states · annotated</span>
+        <label class="pv-live-motion" for="pv-anno">
+          <input type="checkbox" class="tx-switch" id="pv-anno" role="switch" checked>
+          <span>Show anatomy</span>
+        </label>
+      </div>
+      <div class="pv-states is-annotated" id="pv-states">
+        <div class="tx-card tx-card-pad tx-state">
+          <div class="pv-an" data-n="1"><span class="tx-tile tx-tile-lg"><svg class="tx-ic tx-ic-lg" aria-hidden="true"><use href="#i-search"/></svg></span></div>
+          <div class="pv-an" data-n="2"><h4>No sessions yet</h4></div>
+          <div class="pv-an" data-n="3"><p>Start a session to see turns, plans and files here.</p></div>
+          <div class="pv-an" data-n="4"><button class="tx-btn tx-primary tx-sm" type="button">New session</button></div>
+          <span class="pv-state-k">Empty · an invitation</span>
+        </div>
+        <div class="tx-card tx-card-pad tx-state" aria-busy="true">
+          <div class="pv-an" data-n="1"><span class="tx-tile tx-tile-lg tx-tile-signal"><span class="tx-spin" aria-hidden="true"></span></span></div>
+          <div class="pv-an" data-n="2"><h4><span class="tx-shimmer">Loading activity…</span></h4></div>
+          <div class="pv-an" data-n="3"><span class="pv-skels" aria-hidden="true">
+            <span class="tx-skel" style="height:.75rem;width:80%"></span>
+            <span class="tx-skel" style="height:.75rem;width:95%"></span>
+            <span class="tx-skel" style="height:.75rem;width:60%"></span>
+          </span></div>
+          <span class="pv-state-k">Loading · a held shape</span>
+        </div>
+        <div class="tx-card tx-card-pad tx-state tx-state-error">
+          <div class="pv-an" data-n="1"><span class="tx-tile tx-tile-lg tx-tile-bad"><span aria-hidden="true">×</span></span></div>
+          <div class="pv-an" data-n="2"><h4>Drive search failed</h4></div>
+          <div class="pv-an" data-n="3"><p>Token expired. <span class="tx-chip tx-chip-ref">err_7f3a21</span></p></div>
+          <div class="pv-an" data-n="4"><span class="tx-row"><button class="tx-btn tx-sm" type="button">Reconnect</button><button class="tx-btn tx-ghost tx-sm" type="button">Retry</button></span></div>
+          <span class="pv-state-k">Error · a named failure with an exit</span>
+        </div>
+      </div>
+
+      <ol class="pv-formula">
+        <li><i aria-hidden="true">1</i><b>Icon</b><span>Hold the shape of the thing.</span></li>
+        <li><i aria-hidden="true">2</i><b>Title</b><span>Name the state in five words or fewer.</span></li>
+        <li><i aria-hidden="true">3</i><b>Why</b><span>One sentence of cause, with a reference when it exists.</span></li>
+        <li><i aria-hidden="true">4</i><b>One action</b><span>The smallest step that moves forward. Loading has none — it already is one.</span></li>
+      </ol>
+      <p class="section-cap"><b>An empty state is an invitation,</b> a loading state is a held shape, an error is a named failure with an exit. None of them is a shrug.</p>
+    </section>
+
+    <!-- 5.9 CONTRACT -->
+    <section class="chapter" id="contract" aria-labelledby="h-contract">
+      <header class="chapter-head pv-head">
+        <div class="ch-no" aria-hidden="true">5.9</div>
+        <div>
+          <p class="ch-kicker">Contract · file</p>
+          <h2 class="t-h2" id="h-contract">One file. <em>No new tokens.</em></h2>
+          <p class="t-lede">primitives.css is the application layer: sixteen primitives, one prefix, four foundations. It declares no new font, no raw hex, no new radius. States are CSS; JavaScript only moves data and focus.</p>
+        </div>
+        <aside class="pv-law" aria-label="Governing principle">
+          <span class="pv-law-k">Gall's law · 1975</span>
+          <code class="pv-law-x">complex ⟸ simple, working</code>
+          <p>A complex system that works grew from a simple system that worked. Sixteen parts, then patterns.</p>
+          <span class="folio">Contract · 09 / 09</span>
+        </aside>
+      </header>
+
+      <div class="pv-contract">
+        <div class="pv-contract-side">
+          <div class="pv-plinth-head">
+            <span class="board-label">The index · 16 primitives by silhouette</span>
+          </div>
+          <div class="pv-contract-index">
+            <div class="pv-index-item"><i class="pv-glyph is-capsule" aria-hidden="true"></i><code>.tx-btn</code><span>keycap</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-squircle" aria-hidden="true"></i><code>.tx-kbd</code><span>key</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-capsule" aria-hidden="true"></i><code>.tx-pill</code><span>state</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-capsule" aria-hidden="true"></i><code>.tx-chip</code><span>pick / ref</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-squircle" aria-hidden="true"></i><code>.tx-tile</code><span>glyph</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-capsule" aria-hidden="true"></i><code>.tx-seg</code><span>select</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-mark" aria-hidden="true"></i><code>.tx-tabs</code><span>view</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-squircle" aria-hidden="true"></i><code>.tx-input</code><span>field</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-capsule" aria-hidden="true"></i><code>.tx-switch</code><span>toggle</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-squircle" aria-hidden="true"></i><code>.tx-menu</code><span>actions</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-squircle" aria-hidden="true"></i><code>.tx-tip</code><span>hint</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-squircle" aria-hidden="true"></i><code>.tx-toast</code><span>confirm</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-capsule" aria-hidden="true"></i><code>.tx-meter</code><span>proportion</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-circle" aria-hidden="true"></i><code>.tx-ring</code><span>fill</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-circle" aria-hidden="true"></i><code>.tx-spin</code><span>in flight</span></div>
+            <div class="pv-index-item"><i class="pv-glyph is-squircle" aria-hidden="true"></i><code>.tx-card</code><span>state</span></div>
+          </div>
+          <p class="pv-index-tally"><span><i class="pv-glyph is-capsule" aria-hidden="true"></i><b>6</b> capsule</span><span><i class="pv-glyph is-squircle" aria-hidden="true"></i><b>7</b> squircle</span><span><i class="pv-glyph is-circle" aria-hidden="true"></i><b>2</b> circle</span><span><i class="pv-glyph is-mark" aria-hidden="true"></i><b>1</b> mark</span></p>
+
+          <ul class="pv-checks">
+            <li><span class="g" aria-hidden="true">✓</span><span>Controls consume only foundation tokens; no raw hex in primitives.css.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Every control is keyboard-operable; focus is one soft outer halo.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Status pairs hue with glyph and word; no colour-only state.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Reduced motion keeps the meaning with a static twin.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>Animation is transform, opacity and background-position only.</span></li>
+            <li><span class="g" aria-hidden="true">✓</span><span>The whole layer ships without JavaScript; the clock is the one loop.</span></li>
+          </ul>
+
+          <div class="pv-perf">
+            <div><b id="pv-css-size">31.8 KB</b><span>css raw</span></div>
+            <div><b id="pv-css-gzip">6.1 KB</b><span>css gzip</span></div>
+            <div><b id="pv-css-classes">87</b><span>tx classes</span></div>
+            <div><b>0</b><span>dependencies</span></div>
+            <div><b>0</b><span>JS shipped</span></div>
+            <div><b>04</b><span>foundations</span></div>
+          </div>
+          <p class="pv-perf-note">Measured on this file at 100% text. Colour, type, spacing and radius tokens stay in the foundations; the layer adds control geometry, motion and keycap depth.</p>
+        </div>
+
+        <div class="pv-code-stack">
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              primitives.css · tokens
+              <button class="copy" type="button" data-copy="#pv-code-tokens" aria-label="Copy primitive tokens CSS">Copy</button>
+            </div>
+            <pre class="code" id="pv-code-tokens"><code><span class="c">/* one prefix, four foundations */</span>
+<span class="p">:root</span> {
+  <span class="p">--tx-h-xs</span>: <span class="n">1.5rem</span>;   <span class="c">/* 24 · floor */</span>
+  <span class="p">--tx-h-sm</span>: <span class="n">1.75rem</span>;  <span class="c">/* 28 */</span>
+  <span class="p">--tx-h</span>:    <span class="n">2.25rem</span>;  <span class="c">/* 36 · default */</span>
+  <span class="p">--tx-h-lg</span>: <span class="n">2.75rem</span>;  <span class="c">/* 44 · touch */</span>
+}
+
+<span class="p">.tx-btn</span> {
+  <span class="p">border-radius</span>: <span class="k">var</span>(--r-pill);
+  <span class="p">background</span>: <span class="k">var</span>(--signal-fill);
+  <span class="p">color</span>: <span class="k">var</span>(--on-signal);
+  <span class="p">font-size</span>: <span class="k">var</span>(--t-ui);
+  <span class="p">box-shadow</span>: <span class="k">var</span>(--key);
+}
+
+<span class="p">.tx-btn:focus-visible</span> {
+  <span class="p">box-shadow</span>: <span class="k">var</span>(--focus); <span class="c">/* one halo */</span>
+}</code></pre>
+          </div>
+
+          <div class="code-card">
+            <div class="code-head">
+              <span class="dots3" aria-hidden="true"><span></span><span></span><span></span></span>
+              markup · a primary keycap
+              <button class="copy" type="button" data-copy="#pv-code-markup" aria-label="Copy keycap markup">Copy</button>
+            </div>
+            <pre class="code" id="pv-code-markup"><code><span class="p">&lt;button</span> <span class="k">class</span>=<span class="s">"tx-btn tx-primary"</span> <span class="k">type</span>=<span class="s">"button"</span><span class="p">&gt;</span>
+  <span class="p">&lt;svg</span> <span class="k">class</span>=<span class="s">"tx-ic tx-ic-sm"</span> <span class="k">aria-hidden</span>=<span class="s">"true"</span><span class="p">&gt;</span>
+    <span class="p">&lt;use</span> <span class="k">href</span>=<span class="s">"#i-run"</span><span class="p">/&gt;</span>
+  <span class="p">&lt;/svg&gt;</span>
+  Approve &amp;amp; run
+  <span class="p">&lt;span</span> <span class="k">class</span>=<span class="s">"tx-kbd"</span><span class="p">&gt;</span>⌘↵<span class="p">&lt;/span&gt;</span>
+<span class="p">&lt;/button&gt;</span>
+
+<span class="c">&lt;!-- one primary per surface --&gt;</span>
+<span class="p">&lt;button</span> <span class="k">class</span>=<span class="s">"tx-btn"</span> <span class="k">type</span>=<span class="s">"button"</span><span class="p">&gt;</span>Review<span class="p">&lt;/button&gt;</span></code></pre>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-note pv-lock">
+        <div class="lock-left">
+          <span class="seal pv-seal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></span>
+          <div><b>Proposal · Primitives</b><small>Ready for sign-off. On approval, primitives.css becomes the application control layer.</small></div>
+        </div>
+        <div class="lock-right">Files · primitives.css / 05-primitives.html<br><a href="04-corners.html">← Chapter 04 Corners</a><br><a href="06-patterns.html">Next · 06 Patterns →</a></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="foot">
+    <div>
+      <div class="foot-left">
+        <span class="foot-brand">
+          <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" style="width:.95rem;height:.95rem"><ellipse cx="8.6" cy="12" rx="2.2" ry="3" fill="currentColor"/><ellipse cx="15.4" cy="12" rx="2.2" ry="3" fill="currentColor"/></svg></span>
+          <b>truex</b>
+        </span>
+        <span class="foot-meta">System / Chapter 05 — Primitives / Proposal 26 Oct 2026</span>
+      </div>
+    </div>
+    <p class="foot-serif">The hand knows before the eye. <a href="#top" aria-label="Back to top">↑</a></p>
+  </footer>
+</main>
+
+<div class="tx-toast-host" id="page-toast-host" aria-live="polite" aria-atomic="false"></div>
+
+<script src="space.js"></script>
+<script src="primitives.js"></script>
+</body>
+</html>

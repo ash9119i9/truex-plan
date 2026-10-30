@@ -1,12 +1,16 @@
 "use client";
-import { useId, useMemo, useRef, useState, type CSSProperties } from "react";
-import { CONFETTI_COLORS, lookOf, tintOf, tone } from "@/lib/agent-look";
+import { useEffect, useId, useRef, type ReactNode } from "react";
+import { lookOf, tone } from "@/lib/agent-look";
+import {
+  dragPose,
+  grabX,
+  releaseSpin,
+  settled,
+  swingStep,
+  type Swing,
+} from "@/lib/lanyard";
 
-// Robot, lanyard badge and confetti for the agent dialog (Session §7; source
-// app.tsx:679-917, copied from agent-badge-standalone.md).
-
-const clamp = (v: number, lo: number, hi: number) =>
-  Math.max(lo, Math.min(hi, v));
+// The agent robot portrait and the lanyard its ID card hangs from (spec 15.3).
 
 export function Robot({ look, size = 64 }: { look: number; size?: number }) {
   const L = lookOf(look);
@@ -482,136 +486,184 @@ function Clip() {
   );
 }
 
-// Lanyard ID badge. Drag it and the strap stays pinned at the top: the lanyard pivots around its anchor
-// and the strap stretches (with rubber-band resistance) so the grabbed point follows the pointer. Springs back on release.
-export function Badge({
-  name,
-  handle,
-  look,
-  tint,
-  modelLabel,
-  tag,
-  shine = 0,
-  subtitle,
+// The lanyard the ID card hangs from. Hold it and the card follows the
+// pointer: the lanyard pivots on its anchor and the strap stretches. Let go and
+// it swings as a damped pendulum from the speed it was released at, then
+// rests (lib/lanyard.ts). A press that barely moves is a tap (the desk flips
+// the card). Pointer moves write the transform directly, so dragging never
+// re-renders the card.
+export function Lanyard({
+  onTap,
+  children,
 }: {
-  name: string;
-  handle: string;
-  look: number;
-  tint: string;
-  modelLabel: string;
-  tag?: string;
-  shine?: number;
-  /** Replaces the "@handle" line, for agents that have no handle. */
-  subtitle?: string;
+  onTap?: () => void;
+  children: ReactNode;
 }) {
-  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null);
-  const origin = useRef<{ x: number; y: number } | null>(null);
-  // Resting strap length and the grabbed point's distance below the anchor, measured when a drag starts.
-  const rest = useRef({ len: 92, r: 200 });
-  const strapRef = useRef<HTMLSpanElement>(null);
-  const end = () => {
-    origin.current = null;
-    setDrag(null);
+  const el = useRef<HTMLDivElement>(null);
+  const strap = useRef<HTMLSpanElement>(null);
+  const live = useRef({
+    swing: { a: 0, v: 0 } as Swing,
+    raf: 0,
+    last: 0,
+    // The strap's resting length, measured while nothing is stretching it.
+    len: 60,
+    held: null as null | {
+      ox: number;
+      oy: number;
+      start: { x: number; y: number };
+      moved: number;
+      r: number;
+      r0: number;
+    },
+    samples: [] as { t: number; a: number }[],
+  });
+
+  const pose = (angle: number) => {
+    if (el.current)
+      el.current.style.transform = angle
+        ? `rotate(${angle.toFixed(2)}deg)`
+        : "";
+  };
+  const stop = () => {
+    cancelAnimationFrame(live.current.raf);
+    live.current.raf = 0;
+    live.current.last = 0;
+    el.current?.classList.remove("is-swing");
+  };
+  const tick = (now: number) => {
+    const s = live.current;
+    const dt = s.last ? Math.min((now - s.last) / 1000, 0.064) : 1 / 60;
+    s.last = now;
+    swingStep(s.swing, dt, reducedMotion());
+    if (settled(s.swing)) {
+      s.swing = { a: 0, v: 0 };
+      pose(0);
+      stop();
+      return;
+    }
+    pose(s.swing.a);
+    s.raf = requestAnimationFrame(tick);
+  };
+  const release = () => {
+    const s = live.current;
+    if (!s.held) return;
+    s.held = null;
+    el.current?.classList.remove("is-drag");
+    // The strap springs back through its CSS transition.
+    if (strap.current) {
+      strap.current.style.height = "";
+      strap.current.style.width = "";
+    }
+    s.swing.v = releaseSpin(s.samples);
+    s.samples = [];
+    if (settled(s.swing)) {
+      s.swing = { a: 0, v: 0 };
+      pose(0);
+      return;
+    }
+    el.current?.classList.add("is-swing");
+    s.last = 0;
+    s.raf = requestAnimationFrame(tick);
   };
 
-  let swing: CSSProperties | undefined, stretch: CSSProperties | undefined;
-  if (drag) {
-    const { len, r } = rest.current;
-    const dy =
-      drag.y > 0
-        ? 220 * Math.tanh(drag.y / 280)
-        : -len * 0.25 * Math.tanh(-drag.y / 90);
-    const dx = 260 * Math.tanh(drag.x / 320);
-    const reach = Math.hypot(dx, r + dy);
-    const h = Math.max(len * 0.75, len + reach - r);
-    swing = {
-      transform: `rotate(${(-Math.atan2(dx, r + dy) * 180) / Math.PI}deg)`,
+  // The strap's resting length, read only while nothing stretches or
+  // animates it: the celebration unrolls it, and a release springs it back.
+  const measure = () => {
+    const node = strap.current;
+    if (!node || live.current.held || node.style.height) return;
+    if (node.getAnimations().length) return;
+    live.current.len = node.offsetHeight || live.current.len;
+  };
+  useEffect(() => {
+    measure();
+    const node = strap.current;
+    window.addEventListener("resize", measure);
+    node?.addEventListener("animationend", measure);
+    node?.addEventListener("transitionend", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      node?.removeEventListener("animationend", measure);
+      node?.removeEventListener("transitionend", measure);
+      cancelAnimationFrame(live.current.raf);
     };
-    stretch = { height: h, width: clamp(24 * Math.sqrt(len / h), 16, 24) };
-  }
-  const t = tintOf(tint);
+    // measure reads refs only, so the first one is current for good
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="lanyard-anchor">
       <div
-        className={"lanyard" + (drag ? " is-drag" : "")}
-        style={swing}
+        ref={el}
+        className="lanyard"
         aria-hidden="true"
         onPointerDown={(e) => {
-          const el = e.currentTarget;
-          el.setPointerCapture(e.pointerId);
-          rest.current = {
-            len: strapRef.current?.offsetHeight || 92,
-            r: Math.max(40, e.clientY - el.getBoundingClientRect().top),
+          const s = live.current;
+          const node = e.currentTarget;
+          node.setPointerCapture(e.pointerId);
+          measure();
+          stop();
+          // The pivot: the top centre of the anchor the lanyard hangs from.
+          const box = node.parentElement!.getBoundingClientRect();
+          const px = box.left + box.width / 2;
+          const r = Math.max(
+            40,
+            Math.hypot(e.clientX - px, e.clientY - box.top),
+          );
+          const x0 = grabX(s.swing.a, r);
+          s.held = {
+            ox: e.clientX - x0,
+            oy: e.clientY,
+            start: { x: e.clientX, y: e.clientY },
+            moved: 0,
+            r,
+            r0: dragPose(x0, 0, s.len, r).reach,
           };
-          origin.current = { x: e.clientX, y: e.clientY };
-          setDrag({ x: 0, y: 0 });
+          s.samples = [{ t: e.timeStamp, a: s.swing.a }];
+          s.swing.v = 0;
+          node.classList.add("is-drag");
         }}
         onPointerMove={(e) => {
-          const o = origin.current;
-          if (o) setDrag({ x: e.clientX - o.x, y: e.clientY - o.y });
+          const s = live.current;
+          const held = s.held;
+          if (!held) return;
+          held.moved = Math.max(
+            held.moved,
+            Math.hypot(e.clientX - held.start.x, e.clientY - held.start.y),
+          );
+          const p = dragPose(
+            e.clientX - held.ox,
+            e.clientY - held.oy,
+            s.len,
+            held.r,
+            held.r0,
+          );
+          s.swing.a = p.angle;
+          pose(p.angle);
+          if (strap.current) {
+            strap.current.style.height = `${p.height}px`;
+            strap.current.style.width = `${p.width}px`;
+          }
+          s.samples.push({ t: e.timeStamp, a: p.angle });
+          if (s.samples.length > 32) s.samples.splice(0, s.samples.length - 32);
         }}
-        onPointerUp={end}
-        onPointerCancel={end}
+        onPointerUp={() => {
+          const tap = !!live.current.held && live.current.held.moved < 5;
+          release();
+          if (tap) onTap?.();
+        }}
+        onPointerCancel={release}
       >
         <div className="lanyard-sway">
-          <span
-            ref={strapRef}
-            className="strap"
-            style={{ "--strap": t.dot, ...stretch } as CSSProperties}
-          />
+          <span ref={strap} className="strap" />
           <Clip />
-          <div className="badge">
-            <span className="badge-slot" />
-            {shine > 0 && <span key={shine} className="badge-shine" />}
-            <span className="badge-brand">truex</span>
-            <div className="badge-top" style={{ background: t.bg }}>
-              <Robot look={look} size={150} />
-            </div>
-            <div className="badge-body">
-              <div className={"badge-name" + (name.trim() ? "" : " is-empty")}>
-                {name.trim() || "Unnamed"}
-              </div>
-              <div className="badge-handle">
-                {subtitle ?? `@${handle || "handle"}`}
-                {tag && ` · ${tag}`}
-              </div>
-            </div>
-            <div className="badge-foot">
-              <span>{modelLabel}</span>
-            </div>
-          </div>
+          {children}
         </div>
       </div>
     </div>
   );
 }
 
-export function Confetti() {
-  const bits = useMemo(
-    () =>
-      Array.from({ length: 56 }, (_, i) => {
-        const a = Math.random() * Math.PI * 2,
-          dist = 110 + Math.random() * 220,
-          dot = i % 3 === 0;
-        return {
-          "--x": `${Math.round(Math.cos(a) * dist)}px`,
-          "--y": `${Math.round(Math.sin(a) * dist * 0.75 - 70)}px`,
-          "--r": `${Math.round(Math.random() * 720 - 360)}deg`,
-          "--c": CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-          "--w": dot ? "7px" : `${5 + Math.round(Math.random() * 4)}px`,
-          "--h": dot ? "7px" : `${3 + Math.round(Math.random() * 9)}px`,
-          "--d": `${Math.round(Math.random() * 140)}ms`,
-          "--t": `${1500 + Math.round(Math.random() * 900)}ms`,
-          borderRadius: dot ? "50%" : "2px",
-        } as CSSProperties;
-      }),
-    [],
-  );
-  return (
-    <div className="confetti" aria-hidden="true">
-      {bits.map((s, i) => (
-        <i key={i} style={s} />
-      ))}
-    </div>
-  );
-}
+// Reduced motion: the card returns once instead of swinging.
+const reducedMotion = () =>
+  document.documentElement.dataset.effMotion === "reduce" ||
+  matchMedia("(prefers-reduced-motion: reduce)").matches;

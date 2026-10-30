@@ -1,137 +1,142 @@
 "use client";
-import { memo } from "react";
-import { convoGroup, convoTime } from "@/lib/sidebar";
-import { useSidebarDay } from "@/lib/use-sidebar-clock";
+import { memo, useId, useState } from "react";
+import { historyGroups, sessionTime } from "@/lib/sidebar";
+import { useSidebarNow } from "@/lib/use-sidebar-clock";
 import type { ChatSummary } from "@/lib/tenant-chat";
-import { Icon } from "@/components/v2/icon";
+import { Pulse } from "@/components/tx/live";
 
-// The sidebar (Layout & shell §3): a new-chat button and the member's chats,
-// newest activity first. Data comes in through props; nothing is fetched here.
+// The sidebar history (DESIGN-SPEC 11.2): Today and Previous show; the older
+// groups fold behind "View all conversations". Data comes in through props.
 export const ChatList = memo(function ChatList({
   chats,
   activeId,
+  unread,
   state,
   error,
   hasMore,
   loadingMore,
   onOpen,
-  onNew,
   onRetry,
   onMore,
-  onConnectedTools,
 }: {
   chats: ChatSummary[];
   activeId: string | null;
+  // Chats whose reply finished while another chat was open.
+  unread?: ReadonlySet<string>;
   state: "loading" | "ready" | "error";
   error: string;
   hasMore: boolean;
   loadingMore: boolean;
   onOpen: (id: string) => void;
-  onNew: () => void;
   onRetry: () => void;
   onMore: () => void;
-  /** Opens the Connected tools page. Omitted hides the nav entry. */
-  onConnectedTools?: () => void;
 }) {
-  const now = new Date(useSidebarDay());
-  const today = chats.filter(
-    (c) => convoGroup(c.lastMessageAt, now) === "Today",
+  const olderId = useId();
+  // null until the person folds or opens it; then their choice holds.
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const now = new Date(useSidebarNow());
+  const groups = historyGroups(chats, (chat) => chat.lastMessageAt, now);
+  const recent = groups.filter((group) => !group.older);
+  const older = groups.filter((group) => group.older);
+  // With nothing recent there is nothing to fold behind. An open chat in an
+  // older group opens the fold, so the current row starts in view.
+  const folds = recent.length > 0 && older.length > 0;
+  const activeIsOlder = older.some((group) =>
+    group.rows.some((chat) => chat.id === activeId),
   );
-  const earlier = chats.filter(
-    (c) => convoGroup(c.lastMessageAt, now) !== "Today",
-  );
-  const rows = (list: ChatSummary[]) =>
-    list.map((chat) => {
-      const active = chat.id === activeId;
-      return (
-        <div
+  const expanded = !folds || (choice ?? activeIsOlder);
+
+  const group = (label: string, rows: ChatSummary[]) => (
+    <div key={label} className="pt-rail-group" role="group" aria-label={label}>
+      <div className="cs-side-label" aria-hidden="true">
+        {label}
+      </div>
+      {rows.map((chat) => (
+        <button
           key={chat.id}
-          className={active ? "convo-row is-active" : "convo-row"}
+          type="button"
+          className="tx-btn tx-ghost pt-session cs-session"
+          aria-current={chat.id === activeId ? "page" : undefined}
+          data-unread={unread?.has(chat.id) || undefined}
+          onClick={() => onOpen(chat.id)}
         >
-          <button
-            type="button"
-            className={active ? "convo is-active" : "convo"}
-            aria-current={active ? "page" : undefined}
-            onClick={() => onOpen(chat.id)}
-          >
-            <span className="convo-title">{chat.title || "New chat"}</span>
-            <span className="convo-time">
-              {chat.activeRunId ? (
-                <span
-                  className="pulse tchat-pulse"
-                  role="img"
-                  aria-label="Answering"
-                />
-              ) : (
-                convoTime(chat.lastMessageAt, now)
-              )}
+          <span className="pt-session-title">{chat.title || "New chat"}</span>
+          {unread?.has(chat.id) && <span className="tx-sr">, new reply</span>}
+          {chat.activeRunId ? (
+            <span className="pt-session-time" role="img" aria-label="Answering">
+              <Pulse />
             </span>
-          </button>
-        </div>
-      );
-    });
+          ) : (
+            <span className="pt-session-time">
+              {sessionTime(chat.lastMessageAt, now)}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (state === "loading")
+    return (
+      <p className="cs-side-note" aria-busy="true">
+        Loading conversations…
+      </p>
+    );
+  if (state === "error")
+    return (
+      <p className="cs-side-note" role="alert">
+        {error}{" "}
+        <button
+          type="button"
+          className="tx-btn tx-ghost tx-xs cs-side-retry"
+          onClick={onRetry}
+        >
+          Try again
+        </button>
+      </p>
+    );
+  if (chats.length === 0)
+    return (
+      <p className="cs-side-note">
+        No conversations yet. They appear here once you send a message.
+      </p>
+    );
+
+  const more = hasMore && expanded && (
+    <button
+      type="button"
+      className="tx-btn tx-ghost tx-xs cs-view-all"
+      onClick={onMore}
+      disabled={loadingMore}
+      aria-busy={loadingMore || undefined}
+    >
+      {loadingMore ? "Loading…" : "Show older conversations"}
+    </button>
+  );
 
   return (
     <>
-      <button
-        type="button"
-        className="btn-new"
-        onClick={onNew}
-        aria-current={activeId === null ? "page" : undefined}
-      >
-        <Icon name="plus" size={16} stroke={2} />
-        New chat
-      </button>
-      <nav className="side-scroll" aria-label="Chats">
-        {state === "loading" && (
-          <p className="tchat-side-note muted sm" aria-busy="true">
-            Loading chats…
-          </p>
-        )}
-        {state === "error" && (
-          <p className="side-error" role="alert">
-            {error} ·{" "}
-            <button type="button" className="side-retry" onClick={onRetry}>
-              Retry
-            </button>
-          </p>
-        )}
-        {state === "ready" && chats.length === 0 && (
-          <p className="tchat-side-note muted sm">
-            No chats yet. Your chats appear here.
-          </p>
-        )}
-        {today.length > 0 && (
-          <section className="side-group" aria-label="Today">
-            <div className="eyebrow">Today</div>
-            {rows(today)}
-          </section>
-        )}
-        {earlier.length > 0 && (
-          <section className="side-group" aria-label="Earlier">
-            <div className="eyebrow">Earlier</div>
-            {rows(earlier)}
-          </section>
-        )}
-        {hasMore && state === "ready" && (
-          <button
-            type="button"
-            className="side-show-more"
-            onClick={onMore}
-            disabled={loadingMore}
-          >
-            {loadingMore ? "Loading…" : "Show more"}
-          </button>
-        )}
-      </nav>
-      {onConnectedTools && (
+      {recent.map((g) => group(g.label, g.rows))}
+      {folds ? (
+        <div className="cs-older" id={olderId} hidden={!expanded}>
+          {older.map((g) => group(g.label, g.rows))}
+          {more}
+        </div>
+      ) : (
+        <>
+          {older.map((g) => group(g.label, g.rows))}
+          {more}
+        </>
+      )}
+      {folds && (
         <button
           type="button"
-          className="side-link side-foot"
-          onClick={onConnectedTools}
+          className="tx-btn tx-ghost tx-xs cs-view-all"
+          aria-expanded={expanded}
+          aria-controls={olderId}
+          onClick={() => setChoice(!expanded)}
         >
-          <Icon name="plug" size={16} />
-          Connected tools
+          {expanded ? "Show less" : "View all conversations"}
         </button>
       )}
     </>

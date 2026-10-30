@@ -1,0 +1,829 @@
+/* The capabilities board on the sign-in and invitation pages: an illustration
+   (glass objects, pastel tints, printed type), a fixed material like the agent
+   card, so its colours and artwork geometry are raw by sanction (19.1). Not on
+   the tokens-only list. */
+/* Capabilities board: the right pane of the join page.
+   Source: join-tenant-v3-dev-spec.html ("Capabilities board", "Materials", "Specimens", "Motion")
+   and join-tenant-v3-capabilities.html (board CSS). App tokens come from tokens.css; only the
+   board-only tokens and agent tints are defined here, scoped under .join-page.
+   Every rule is scoped under .join-page .right. Keyframes are prefixed jb- so they never clash
+   with the app's global keyframes (base.css already has spin/rise). The clover clip path id is
+   unique per board; the component passes it in as --clover. */
+
+/* ---------- tokens ---------- */
+/* Agent tints: fixed hex, no dark variant. */
+.join-page {
+  --ice: #eaf5f8;
+  --ice-dot: #3691cd;
+  --mint: #e7f4ed;
+  --mint-dot: #a9d5be;
+  --butter: #fff3d9;
+  --butter-dot: #ebcb8b;
+  --peach: #fbe9dd;
+  --peach-dot: #f0b999;
+  --lilac: #efedf8;
+  --lilac-dot: #c4bde3;
+  --tint-ink: #1f2a30;
+  /* Board-only tokens, light. */
+  --board-bg: #f6f9fa;
+  --board-dot: rgb(31 42 48 / 11%);
+  --glass: rgb(255 255 255 / 38%);
+  --glass-hi: rgb(255 255 255 / 78%);
+  --glass-line: rgb(31 42 48 / 9%);
+  --sheen: rgb(255 255 255 / 85%);
+  --obj-shadow:
+    0 1px 1px rgb(31 42 48 / 5%), 0 14px 30px -12px rgb(31 42 48 / 24%);
+  --obj-drop: drop-shadow(0 12px 16px rgb(31 42 48 / 14%));
+  --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .7 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+:root[data-eff-theme="dark"] .join-page {
+  --board-bg: #1c1c1c;
+  --board-dot: rgb(238 244 246 / 9%);
+  --glass: rgb(255 255 255 / 4%);
+  --glass-hi: rgb(255 255 255 / 13%);
+  --glass-line: rgb(255 255 255 / 11%);
+  --sheen: rgb(255 255 255 / 22%);
+  --obj-shadow: 0 1px 1px rgb(0 0 0 / 40%), 0 18px 36px -12px rgb(0 0 0 / 75%);
+  --obj-drop: drop-shadow(0 16px 20px rgb(0 0 0 / 55%));
+}
+
+/* ---------- panel ---------- */
+.join-page .right {
+  border-radius: var(--r-lg);
+  background-color: var(--board-bg);
+  background-image: radial-gradient(var(--board-dot) 1px, transparent 1.2px);
+  background-size: 14px 14px;
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-5) var(--sp-5) var(--sp-4);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  color: var(--ink);
+  animation: jb-rise 0.5s 0.08s ease-out both;
+}
+.join-page .right .right-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+.join-page .right .right-head h2 {
+  margin: 0;
+  font-size: var(--t-h4);
+  font-weight: 600;
+  font-variation-settings: var(--cut-heading);
+  letter-spacing: var(--tr-h4);
+  line-height: var(--lh-h4);
+}
+/* the headline beside the board holds the page's one serif accent (3.6) */
+.join-page .right .right-head h2 em {
+  font-style: normal;
+}
+.join-page .right .right-head p {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+  max-width: 40ch;
+}
+.join-page .right .right-head .mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* ---------- board coordinate system ---------- */
+.join-page .right .board-wrap {
+  flex: 1;
+  min-height: 0;
+  margin-top: var(--sp-2);
+  container-type: size;
+  display: grid;
+  place-items: center;
+}
+.join-page .right .board {
+  position: relative;
+  width: min(100cqw, 560px, 100cqh * 5 / 5.4);
+  aspect-ratio: 5 / 5.4;
+  container-type: inline-size;
+}
+.join-page .right .sp {
+  position: absolute;
+  --d: 1;
+  transform: translate3d(
+    calc(var(--px, 0) * var(--d) * 1px),
+    calc(var(--py, 0) * var(--d) * 1px),
+    0
+  );
+  transition:
+    transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1),
+    scale 0.35s cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 0.3s;
+  animation: jb-float var(--fd, 9s) ease-in-out var(--fdl, 0s) infinite
+    alternate;
+}
+.join-page .right .sp .idx {
+  position: absolute;
+  font: 400 max(10px, 1.9cqw) var(--f-mono);
+  color: var(--ink-3);
+  top: -0.4cqw;
+  right: -4.6cqw;
+}
+.join-page .right .board.has-hot .sp:not(.is-hot) {
+  opacity: 0.3;
+}
+.join-page .right .sp.is-hot {
+  scale: 1.04;
+}
+
+/* ---------- materials ---------- */
+.join-page .right .clover {
+  clip-path: var(--clover);
+  position: relative;
+  overflow: hidden;
+}
+.join-page .right .drop {
+  filter: var(--obj-drop);
+}
+/* film grain: makes flat fills read as material */
+.join-page .right .grain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--noise);
+  mix-blend-mode: overlay;
+  opacity: 0.55;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 3;
+}
+/* soft top-left light */
+.join-page .right .lit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+    120% 90% at 22% 12%,
+    rgb(255 255 255 / 55%),
+    transparent 45%
+  );
+  mix-blend-mode: soft-light;
+  pointer-events: none;
+  z-index: 2;
+}
+/* frosted glass */
+.join-page .right .glass {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(150deg, var(--glass-hi), var(--glass) 70%);
+  border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 var(--sheen),
+    inset 0 -12px 22px -14px rgb(0 0 0 / 22%),
+    var(--obj-shadow);
+}
+.join-page .right .glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    112deg,
+    transparent 38%,
+    rgb(255 255 255 / 28%) 50%,
+    transparent 62%
+  );
+  translate: -130% 0;
+  animation: jb-sweep 11s ease-in-out var(--sw, 0s) infinite;
+  pointer-events: none;
+}
+
+/* ---------- bars ---------- */
+.join-page .right .bar-a,
+.join-page .right .bar-b {
+  border-radius: 2.6cqw;
+  overflow: hidden;
+  box-shadow:
+    inset 1.5px 0 0 rgb(255 255 255 / 38%),
+    inset -8px 0 14px -8px rgb(0 0 0 / 22%),
+    var(--obj-shadow);
+}
+.join-page .right .bar-a {
+  left: 47%;
+  top: 24%;
+  width: 10.5cqw;
+  height: 44%;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--mint-dot) 75%, #fff),
+    var(--mint-dot) 32%,
+    color-mix(in srgb, var(--mint-dot) 62%, #2e4a3a) 100%
+  );
+}
+.join-page .right .bar-b {
+  left: 37.5%;
+  top: 40%;
+  width: 10.5cqw;
+  height: 20%;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--peach) 70%, #fff),
+    var(--peach-dot) 70%,
+    color-mix(in srgb, var(--peach-dot) 80%, #9c5a3c) 100%
+  );
+}
+
+/* ---------- 01 agent: living aurora ---------- */
+.join-page .right .s1 {
+  left: 36%;
+  top: 6%;
+  width: 19cqw;
+  height: 19cqw;
+}
+.join-page .right .s1 .clover {
+  width: 100%;
+  height: 100%;
+  background: var(--ice);
+}
+.join-page .right .aurora {
+  position: absolute;
+  inset: -30%;
+  background:
+    radial-gradient(circle at 30% 30%, var(--peach-dot), transparent 42%),
+    radial-gradient(circle at 72% 32%, var(--ice-dot), transparent 44%),
+    radial-gradient(circle at 55% 78%, var(--lilac-dot), transparent 46%),
+    radial-gradient(circle at 24% 72%, var(--mint-dot), transparent 42%),
+    var(--lilac);
+  filter: blur(12px) saturate(115%);
+  animation: jb-spin 24s linear infinite;
+}
+.join-page .right .s1 .core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34%;
+  height: 34%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  z-index: 1;
+  background: radial-gradient(
+    circle at 38% 32%,
+    rgb(255 255 255 / 95%),
+    rgb(255 255 255 / 35%) 42%,
+    transparent 72%
+  );
+  filter: blur(1.5px);
+  animation: jb-breathe 5s ease-in-out infinite;
+}
+
+/* ---------- 02 live timer ---------- */
+.join-page .right .s2 {
+  left: 63%;
+  top: 18%;
+}
+.join-page .right .s2 .pill {
+  height: max(30px, 6.6cqw);
+  padding: 0 2.6cqw 0 1.3cqw;
+  border-radius: var(--r-pill);
+  display: inline-flex;
+  align-items: center;
+  gap: 1.6cqw;
+  font: 500 max(12px, 2.8cqw) var(--f-mono);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.join-page .right .s2 .live {
+  position: relative;
+  z-index: 1;
+  width: max(12px, 2.8cqw);
+  height: max(12px, 2.8cqw);
+  border-radius: 50%;
+  background: radial-gradient(
+    circle at 36% 30%,
+    #fff 0 10%,
+    color-mix(in srgb, var(--mint-dot) 70%, #fff) 28%,
+    var(--mint-dot) 55%,
+    color-mix(in srgb, var(--mint-dot) 55%, #2e4a3a) 100%
+  );
+  box-shadow: var(--sh-1);
+  animation: jb-glow 2.6s ease-in-out infinite;
+}
+.join-page .right .s2 .pill > span:last-child {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- 03 goals: layered lotus ---------- */
+.join-page .right .s3 {
+  left: 12%;
+  top: 26%;
+  width: 17cqw;
+  height: 17cqw;
+}
+.join-page .right .s3 .tile {
+  width: 100%;
+  height: 100%;
+  border-radius: 4.6cqw;
+  display: grid;
+  place-items: center;
+}
+.join-page .right .lotus {
+  position: relative;
+  z-index: 1;
+  width: 76%;
+  height: 76%;
+}
+.join-page .right .lotus i {
+  position: absolute;
+  clip-path: var(--clover);
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--lilac-dot) 55%, #3b3160) 18%,
+    var(--lilac-dot) 58%,
+    color-mix(in srgb, var(--lilac) 60%, #fff) 100%
+  );
+}
+.join-page .right .lotus i:nth-child(1) {
+  inset: 0;
+}
+.join-page .right .lotus i:nth-child(2) {
+  inset: 14%;
+  animation: jb-bloom 6s ease-in-out infinite;
+}
+.join-page .right .lotus i:nth-child(3) {
+  inset: 28%;
+  animation: jb-bloom 6s ease-in-out -1s infinite;
+}
+.join-page .right .lotus i:nth-child(4) {
+  inset: 40%;
+  background: radial-gradient(
+    circle at 40% 35%,
+    #fff,
+    color-mix(in srgb, var(--lilac) 70%, #fff) 60%
+  );
+  animation: jb-bloom 6s ease-in-out -2s infinite;
+}
+
+/* ---------- 04 search: glass lens ---------- */
+.join-page .right .s4 {
+  left: 53%;
+  top: 27%;
+  width: 12.6cqw;
+  height: 12.6cqw;
+  --sw: 3s;
+}
+.join-page .right .s4 .orb {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--ink);
+  background: radial-gradient(
+    circle at 30% 24%,
+    var(--glass-hi),
+    var(--glass) 62%
+  );
+  -webkit-backdrop-filter: blur(5px) saturate(170%) brightness(1.06);
+  backdrop-filter: blur(5px) saturate(170%) brightness(1.06);
+}
+.join-page .right .s4 .orb svg {
+  position: relative;
+  z-index: 1;
+  width: 40%;
+  height: 40%;
+}
+.join-page .right .s4 kbd {
+  position: absolute;
+  left: 50%;
+  bottom: -4.4cqw;
+  transform: translateX(-50%);
+  font: 500 max(10px, 1.8cqw) var(--f-mono);
+  color: var(--ink-3);
+  padding: var(--sp-h) var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  background: var(--well);
+  white-space: nowrap;
+}
+
+/* ---------- 05 start session: ghost pill ---------- */
+.join-page .right .s5 {
+  left: 3%;
+  top: 47%;
+}
+.join-page .right .s5 .ghost-pill {
+  height: max(34px, 8.2cqw);
+  padding: 0 4.4cqw;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  font: 400 max(12px, 2.6cqw) var(--f-mono);
+  color: var(--ink);
+  white-space: nowrap;
+  background:
+    linear-gradient(
+        color-mix(in srgb, var(--board-bg) 88%, transparent),
+        color-mix(in srgb, var(--board-bg) 88%, transparent)
+      )
+      padding-box,
+    linear-gradient(
+        100deg,
+        var(--line-strong) 40%,
+        var(--signal-fill) 50%,
+        var(--line-strong) 60%
+      )
+      border-box;
+  background-size:
+    100% 100%,
+    320% 100%;
+  animation: jb-edge 7s linear infinite;
+}
+
+/* ---------- 06 teammate portrait ---------- */
+.join-page .right .s6 {
+  left: 57%;
+  top: 42%;
+  width: 25cqw;
+}
+.join-page .right .s6 .frame {
+  position: relative;
+  width: 25cqw;
+  height: 25cqw;
+}
+.join-page .right .s6 .clover {
+  width: 100%;
+  height: 100%;
+  background: #c9ccbf;
+}
+.join-page .right .photo {
+  position: absolute;
+  inset: -10%;
+  filter: blur(4px) saturate(108%);
+  background:
+    radial-gradient(ellipse 11% 13% at 55% 40%, #b98468 0 55%, transparent 72%),
+    radial-gradient(ellipse 12% 6% at 55% 29%, #2f2622 0 50%, transparent 75%),
+    radial-gradient(ellipse 30% 26% at 55% 88%, #b4552f 0 55%, transparent 74%),
+    radial-gradient(ellipse 8% 18% at 55% 90%, #2e2a28 0 50%, transparent 72%),
+    radial-gradient(
+      ellipse 30% 60% at 10% 35%,
+      rgb(255 246 228 / 90%),
+      transparent 70%
+    ),
+    radial-gradient(ellipse 34% 70% at 92% 30%, #5e7c58, transparent 72%),
+    radial-gradient(ellipse 40% 40% at 80% 80%, #7e9a6e, transparent 70%),
+    linear-gradient(180deg, #d8cebf, #a3a596);
+}
+.join-page .right .s6 .vign {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: radial-gradient(
+    circle at 50% 45%,
+    transparent 55%,
+    rgb(20 24 26 / 28%)
+  );
+}
+.join-page .right .s6 .plus {
+  position: absolute;
+  right: 9%;
+  bottom: 17%;
+  z-index: 4;
+  width: 7.6cqw;
+  height: 7.6cqw;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: rgb(96 40 22 / 50%);
+  border: 1px solid rgb(255 255 255 / 28%);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 30%),
+    0 6px 14px -6px rgb(0 0 0 / 45%);
+}
+.join-page .right .s6 .plus svg {
+  width: 42%;
+  height: 42%;
+}
+.join-page .right .s6 .who,
+.join-page .right .s7 .who {
+  margin-top: 1.4cqw;
+  font: 500 max(12px, 2.3cqw) var(--f-mono);
+  color: var(--ink);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--sp-1);
+  white-space: nowrap;
+}
+.join-page .right .s6 .who svg,
+.join-page .right .s7 .who svg {
+  color: var(--signal-ink);
+  flex: none;
+}
+.join-page .right .s6 .sub,
+.join-page .right .s7 .sub {
+  text-align: center;
+  font: 400 max(10.5px, 2cqw) var(--f-mono);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* ---------- 07 you: live seat ---------- */
+.join-page .right .s7 {
+  left: 17%;
+  top: 62%;
+  width: 16cqw;
+  text-align: center;
+}
+.join-page .right .s7 .clover {
+  width: 16cqw;
+  height: 16cqw;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(
+    150deg,
+    var(--glass-hi),
+    color-mix(in srgb, var(--ink) 6%, transparent)
+  );
+}
+.join-page .right .s7 .aura {
+  position: absolute;
+  inset: -25%;
+  opacity: 1;
+  transition: opacity 0.7s ease;
+  background:
+    radial-gradient(
+      circle at 30% 28%,
+      var(--a1, var(--butter-dot)),
+      transparent 50%
+    ),
+    radial-gradient(
+      circle at 74% 72%,
+      var(--a2, var(--peach-dot)),
+      transparent 52%
+    ),
+    var(--a3, var(--butter));
+  filter: blur(10px) saturate(115%);
+  animation: jb-spin 30s linear infinite reverse;
+}
+.join-page .right .s7 .clover.is-empty .aura {
+  opacity: 0;
+}
+.join-page .right .s7 .clover.is-empty::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    112deg,
+    transparent 35%,
+    rgb(255 255 255 / 35%) 50%,
+    transparent 65%
+  );
+  translate: -130% 0;
+  animation: jb-sweep 5s ease-in-out infinite;
+}
+.join-page .right .s7 .me {
+  position: relative;
+  z-index: 4;
+  font: 600 4.2cqw var(--f-ui);
+  letter-spacing: -0.02em;
+  color: #fff;
+  text-shadow: 0 1px 8px rgb(31 42 48 / 35%);
+  transition: color 0.4s;
+}
+.join-page .right .s7 .clover.is-empty .me {
+  color: var(--ink-3);
+  text-shadow: none;
+  font: 500 max(10px, 2cqw) var(--f-mono);
+  letter-spacing: 0.08em;
+}
+
+/* ---------- 08 custom agents: pearl tray ---------- */
+.join-page .right .s8 {
+  left: 56%;
+  top: 77%;
+  width: 12.6cqw;
+  height: 12.6cqw;
+  --sw: 6s;
+}
+/* place-items: stretch undoes base.css's global .tile (place-items: center), which would collapse the pearls to 0x0. */
+.join-page .right .s8 .tile {
+  width: 100%;
+  height: 100%;
+  border-radius: 3.8cqw;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.1cqw;
+  padding: 1.9cqw;
+  place-items: stretch;
+}
+.join-page .right .pearl {
+  position: relative;
+  z-index: 1;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: radial-gradient(
+    circle at 34% 28%,
+    #fff 0 7%,
+    color-mix(in srgb, var(--c) 55%, #fff) 24%,
+    var(--c) 58%,
+    color-mix(in srgb, var(--c) 62%, #1f2a30) 100%
+  );
+  box-shadow:
+    0 3px 6px -2px rgb(0 0 0 / 30%),
+    inset 0 -2px 4px rgb(0 0 0 / 12%);
+}
+.join-page .right .pearl svg {
+  width: 48%;
+  height: 48%;
+}
+.join-page .right .pearl.add {
+  background: radial-gradient(circle at 34% 26%, #5a6770, #2b353b 70%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 22%),
+    0 3px 6px -2px rgb(0 0 0 / 35%);
+}
+.join-page .right .pearl.add svg {
+  width: 52%;
+  height: 52%;
+}
+
+/* ---------- board foot ---------- */
+.join-page .right .board-foot {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+.join-page .right .board-foot .mono {
+  font-family: var(--f-mono);
+  font-size: max(var(--t-micro), 1.7cqw);
+  line-height: 1.6;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.join-page .right .board-foot .sig {
+  font-family: var(--f-ui);
+  font-weight: 650;
+  letter-spacing: var(--tr-h4);
+  font-size: max(var(--t-ui), 3.4cqw);
+  color: var(--ink);
+}
+
+/* ---------- legend: the readable version of the board ---------- */
+.join-page .right .legend {
+  flex: none;
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) 0 0;
+  border-top: 1px dashed var(--line-strong);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-h) var(--sp-2);
+}
+.join-page .right .legend li {
+  display: grid;
+  align-content: start;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--sp-h) var(--sp-1);
+  padding: var(--sp-1);
+  border-radius: var(--r-sm);
+  cursor: default;
+  transition: background 0.15s;
+}
+.join-page .right .legend li:hover,
+.join-page .right .legend li:focus-visible {
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.join-page .right .legend .n {
+  font: 400 var(--t-micro)/var(--t-h4) var(--f-mono);
+  color: var(--ink-3);
+}
+.join-page .right .legend b {
+  font-size: var(--t-meta);
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.join-page .right .legend .d {
+  grid-column: 2;
+  font-size: var(--t-micro);
+  line-height: 1.4;
+  color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---------- responsive ---------- */
+@media (min-width: 1400px) {
+  .join-page .right .legend {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (max-width: 960px) {
+  .join-page .right {
+    margin: 0 var(--sp-3);
+    border-radius: var(--r-lg);
+    padding: var(--sp-4) var(--sp-4) var(--sp-4);
+  }
+  .join-page .right .board-wrap {
+    flex: none;
+    container-type: inline-size;
+  }
+}
+@media (max-width: 520px) {
+  .join-page .right .legend {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .join-page .right .board {
+    aspect-ratio: 5 / 6.4;
+  }
+}
+
+/* ---------- motion (spec "Motion": rise, spin, float, breathe, glow, bloom, sweep, edge) ---------- */
+@keyframes jb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes jb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes jb-float {
+  to {
+    translate: 0 -4px;
+  }
+}
+@keyframes jb-breathe {
+  50% {
+    scale: 0.8;
+    opacity: 0.75;
+  }
+}
+@keyframes jb-glow {
+  50% {
+    box-shadow: var(--sh-1);
+  }
+}
+@keyframes jb-bloom {
+  50% {
+    scale: 0.93;
+  }
+}
+@keyframes jb-sweep {
+  0%,
+  72% {
+    translate: -130% 0;
+  }
+  100% {
+    translate: 130% 0;
+  }
+}
+@keyframes jb-edge {
+  from {
+    background-position:
+      0 0,
+      100% 0;
+  }
+  to {
+    background-position:
+      0 0,
+      -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .join-page .right,
+  .join-page .right *,
+  .join-page .right *::before,
+  .join-page .right *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

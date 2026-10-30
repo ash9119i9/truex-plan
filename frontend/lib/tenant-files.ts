@@ -140,16 +140,34 @@ export function filesOfRun(
   files: readonly ChatFile[],
   runId: string,
 ): ChatFile[] {
-  const byPath = new Map<string, ChatFile>();
+  return filesByRun(files).get(runId) ?? [];
+}
+
+// Every reply's files (as `filesOfRun`) in one pass over the chat's files,
+// so a transcript can hand each reply the same array until the files change.
+// Runs that made no files are absent.
+export function filesByRun(
+  files: readonly ChatFile[],
+): Map<string, ChatFile[]> {
+  const byRun = new Map<string, Map<string, ChatFile>>();
   for (const file of files) {
-    if (file.runId !== runId || file.upload) continue;
+    if (file.upload) continue;
+    let byPath = byRun.get(file.runId);
+    if (!byPath) byRun.set(file.runId, (byPath = new Map()));
     const kept = byPath.get(file.path);
     if (!kept || file.version > kept.version) byPath.set(file.path, file);
   }
-  return [...byPath.values()].sort(
-    (a, b) =>
-      a.createdAt.localeCompare(b.createdAt) || a.path.localeCompare(b.path),
-  );
+  const result = new Map<string, ChatFile[]>();
+  for (const [runId, byPath] of byRun)
+    result.set(
+      runId,
+      [...byPath.values()].sort(
+        (a, b) =>
+          a.createdAt.localeCompare(b.createdAt) ||
+          a.path.localeCompare(b.path),
+      ),
+    );
+  return result;
 }
 
 // Which file the viewer shows: a reply's file by path (the version it
@@ -324,6 +342,9 @@ export type PreviewKind =
   | "html"
   | "image"
   | "text"
+  // Office files, parsed in a worker (lib/office).
+  | "sheet"
+  | "docx"
   // No preview in the browser: download only.
   | "none";
 
@@ -373,6 +394,8 @@ export function previewKind(name: string): PreviewKind {
   if (ext === "md" || ext === "markdown") return "markdown";
   if (ext === "csv") return "csv";
   if (ext === "html" || ext === "htm") return "html";
+  if (ext === "xlsx") return "sheet";
+  if (ext === "docx") return "docx";
   if (IMAGE.has(ext)) return "image";
   if (TEXT.has(ext)) return "text";
   return "none";
@@ -383,8 +406,14 @@ export const isImage = (name: string) => previewKind(name) === "image";
 // Whether the viewer can show the file's raw text (the Source tab).
 export const hasSource = (name: string) => {
   const kind = previewKind(name);
-  return kind !== "image" && kind !== "none";
+  return (
+    kind === "markdown" || kind === "csv" || kind === "html" || kind === "text"
+  );
 };
+
+// Whether the viewer previews the file by parsing its bytes in a worker.
+export const isOffice = (kind: PreviewKind): kind is "sheet" | "docx" =>
+  kind === "sheet" || kind === "docx";
 
 // The short tag on the file's tile ("MD", "XLSX") and its colour family.
 export function fileTag(name: string): { label: string; tone: string } {
@@ -500,4 +529,38 @@ export function sandboxedHtml(html: string): string {
   const policy =
     "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; font-src data:";
   return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}">${html}`;
+}
+
+// A Word document's HTML (lib/office/docx.ts) for a frame that runs no
+// script: no network, only its own styles and data: images. It reads as a
+// white page in either theme, like the document itself.
+export function sandboxedDocx(html: string): string {
+  const policy = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
+  const style =
+    "body{margin:0;padding:24px 28px;background:#fff;color:#1f2328;font:15px/1.55 system-ui,sans-serif;overflow-wrap:anywhere}" +
+    "h1,h2,h3,h4,h5,h6{line-height:1.25;margin:1.2em 0 .5em}h1{font-size:1.6em}h2{font-size:1.3em}h3{font-size:1.1em}" +
+    "p{margin:0 0 .75em}ul,ol{margin:0 0 .75em;padding-left:1.6em}" +
+    "table{border-collapse:collapse;margin:0 0 1em;max-width:100%}td,th{border:1px solid #d0d7de;padding:4px 8px;vertical-align:top}td p,th p{margin:0}" +
+    "img{max-width:100%;height:auto}";
+  return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}"><style>${style}</style>${html}`;
+}
+
+// A DocumentCard size (DESIGN-SPEC 12.3): "2.4 MB" from 1 MB (no ".0"),
+// "4.2 KB" under 10 KB (at least 0.1), otherwise whole KB with grouping.
+export function docSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    const mb = Math.round((bytes / (1024 * 1024)) * 10) / 10;
+    return `${mb.toLocaleString("en-US")} MB`;
+  }
+  const kb = bytes / 1024;
+  if (kb < 10) return `${Math.max(0.1, Math.round(kb * 10) / 10)} KB`;
+  return `${Math.round(kb).toLocaleString("en-US")} KB`;
+}
+
+// A file name split so its extension can stay visible while the base truncates;
+// only an extension of up to 11 characters is pinned.
+export function splitName(name: string): { base: string; ext: string } {
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0 || name.length - dot > 11) return { base: name, ext: "" };
+  return { base: name.slice(0, dot), ext: name.slice(dot) };
 }

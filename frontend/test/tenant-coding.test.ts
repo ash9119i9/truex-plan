@@ -10,7 +10,6 @@ import { parseApprovalEvent } from "../lib/tenant-connectors.ts";
 import {
   activityLabel,
   allowForChatHint,
-  codingCardTitle,
   MAX_OUTPUT_CHARS,
   parseActivity,
   writingNote,
@@ -272,11 +271,6 @@ test("labels are plain words", () => {
       files: [{ path: "x", kind: "delete" }],
     }),
     "Couldn't delete x",
-  );
-  assert.equal(codingCardTitle("push"), "The assistant wants to push code");
-  assert.equal(
-    codingCardTitle("command"),
-    "The assistant wants to run a command",
   );
   assert.equal(allowForChatHint("push"), null);
   assert.match(String(allowForChatHint("command")), /only this exact command/);

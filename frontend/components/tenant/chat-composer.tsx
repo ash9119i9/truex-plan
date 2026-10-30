@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import {
   canSendMessage,
   draftProblem,
@@ -7,7 +7,8 @@ import {
   sendsOnEnter,
   type SendFailure,
 } from "@/lib/tenant-chat";
-import { fileTag, formatBytes } from "@/lib/tenant-files";
+import { docSize, splitName } from "@/lib/tenant-files";
+import { documentKind } from "@/lib/document-kind";
 import {
   acceptList,
   filesNote,
@@ -15,15 +16,17 @@ import {
   type DraftFile,
   type UploadSettings,
 } from "@/lib/tenant-uploads";
-import { Icon } from "@/components/v2/icon";
+import { Spin } from "@/components/tx/live";
+import { Icon } from "@/components/tx/icon";
+import { Button } from "@/components/tx/button";
+import { classes } from "@/components/tx/classes";
 import { SmoothTextarea } from "@/components/smooth-textarea";
 import { useObjectUrl } from "./file-card";
-import "@/styles/v2/chat-files.css";
 
 // Shown from this many characters, before the limit is reached.
 const COUNT_FROM = MAX_MESSAGE_CHARS - 2_000;
 
-// Composer frame (Core components §2) for the tenant chat: text, and files
+// Composer (DESIGN-SPEC 11.4, 11.5) for the tenant chat: text, and files
 // when the platform takes them (each uploads as soon as it is picked). While
 // a reply runs, Send becomes Stop; the chat takes one message at a time.
 export function ChatComposer({
@@ -46,6 +49,7 @@ export function ChatComposer({
   onAddFiles,
   onRemoveFile,
   fileError = "",
+  bar,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -75,7 +79,10 @@ export function ChatComposer({
   onRemoveFile?: (key: string) => void;
   /** Why the last picked files weren't attached. */
   fileError?: string;
+  /** Controls placed after Attach in the bar (the hero's agent picker). */
+  bar?: ReactNode;
 }) {
+  const inputId = useId();
   const input = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
@@ -111,9 +118,19 @@ export function ChatComposer({
   }, [focusKey, touch, disabled]);
 
   const length = value.length;
+  const slim = !hero && !focused && !value && files.length === 0;
+  const placeholder = !agentName
+    ? "Choose an agent to start"
+    : hero
+      ? "Ask anything, or type / for commands"
+      : busy && awaitingApproval
+        ? "Add a note to this turn, or answer above"
+        : busy
+          ? "Steer this turn: add a note, or press Stop"
+          : "Ask a follow-up or assign a step";
   return (
     <form
-      className="composer-form"
+      className="cs-composer-wrap"
       onSubmit={(e) => {
         e.preventDefault();
         if (ready) onSend();
@@ -136,17 +153,15 @@ export function ChatComposer({
       }}
     >
       <div
-        className={[
-          "composer",
-          hero && "is-hero",
-          focused && "is-focus",
+        className={classes(
+          "tx-card pt-composer cs-composer",
+          hero && "cs-composer-hero",
+          slim && "is-slim",
           dragging && "is-drop",
-        ]
-          .filter(Boolean)
-          .join(" ")}
+        )}
       >
         {files.length > 0 && (
-          <ul className="composer-files" aria-label="Attached files">
+          <ul className="ac-tray" role="list" aria-label="Attached files">
             {files.map((file) => (
               <DraftFileChip
                 key={file.key}
@@ -157,20 +172,22 @@ export function ChatComposer({
             ))}
           </ul>
         )}
+        <label className="tx-sr" htmlFor={inputId}>
+          {agentName ? `Message ${agentName}` : "Message"}
+        </label>
         <SmoothTextarea
           ref={input}
-          autoGrow={240}
-          rows={hero ? 3 : 2}
+          id={inputId}
+          className="tx-input pt-composer-input"
+          autoGrow={224}
+          rows={1}
           value={value}
           // The message being sent was taken from here and comes back if
           // it fails, so nothing typed meanwhile could be lost.
           readOnly={sending}
-          aria-label={agentName ? `Message ${agentName}` : "Message"}
-          aria-describedby="tchat-hint tchat-problem"
+          aria-describedby={`${inputId}-hint ${inputId}-problem`}
           aria-invalid={textProblem ? true : undefined}
-          placeholder={
-            agentName ? `Message ${agentName}` : "Choose an agent to start"
-          }
+          placeholder={placeholder}
           disabled={disabled}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -200,12 +217,12 @@ export function ChatComposer({
             if (ready) onSend();
           }}
         />
-        <span id="tchat-hint" className="sr-only">
+        <span id={`${inputId}-hint`} className="tx-sr">
           {touch
             ? "Use the send button to send."
             : "Enter to send, Shift + Enter for a new line."}
         </span>
-        <div className="composer-bar">
+        <div className="pt-composer-bar">
           {attaching && (
             <>
               <input
@@ -219,29 +236,27 @@ export function ChatComposer({
                   e.target.value = "";
                 }}
               />
-              <button
-                type="button"
-                className="icon-btn ghost"
+              <Button
+                iconOnly
+                icon="paperclip"
+                variant="ghost"
+                size="sm"
                 onClick={() => picker.current?.click()}
                 disabled={
                   disabled || sending || files.length >= uploads.maxFiles
                 }
                 aria-label="Attach files"
-                title={`Attach files (up to ${uploads.maxFiles}, ${formatBytes(uploads.maxFileBytes)} each)`}
-              >
-                <Icon name="paperclip" size={16} />
-              </button>
+                title={`Attach files · up to ${uploads.maxFiles}, ${docSize(uploads.maxFileBytes)} each`}
+              />
             </>
           )}
+          {bar}
           <span
-            id="tchat-problem"
-            className={
-              problem
-                ? "tchat-count is-bad"
-                : status
-                  ? "tchat-count is-status"
-                  : "tchat-count"
-            }
+            id={`${inputId}-problem`}
+            className={classes(
+              "cs-count",
+              problem ? "is-bad" : status && "is-status",
+            )}
             aria-live="polite"
           >
             {problem ??
@@ -250,53 +265,42 @@ export function ChatComposer({
                 ? `${length.toLocaleString("en-US")} / ${MAX_MESSAGE_CHARS.toLocaleString("en-US")}`
                 : "")}
           </span>
-          <span className="grow" />
-          {sending && (
-            <span className="muted sm" role="status">
-              Sending…
-            </span>
-          )}
-          {!sending && awaitingApproval && (
-            <span className="muted sm" role="status">
-              Waiting for your approval
-            </span>
-          )}
+          <span className="pt-spacer" />
           {busy && (
-            <button
-              type="button"
-              className="send is-stop"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="cs-stop"
+              icon="stop"
               onClick={onStop}
-              disabled={ending !== null}
-              aria-label={
+              working={
                 ending === "saving"
-                  ? "Saving the reply"
+                  ? "Saving…"
                   : ending === "stopping"
-                    ? "Stopping"
-                    : "Stop the reply"
-              }
-              title={
-                ending === "saving" ? "Saving the reply" : "Stop the reply"
+                    ? "Stopping…"
+                    : undefined
               }
             >
-              <Icon name="stop" size={12} stroke={3} />
-            </button>
+              Stop
+            </Button>
           )}
-          <button
+          <Button
             type="submit"
-            className="send"
+            // One primary on the surface (9.1): while a request card is
+            // docked above, its decision is the primary, not Send.
+            variant={awaitingApproval ? undefined : "primary"}
+            size="sm"
             disabled={!ready}
-            aria-label={
-              sending ? "Sending" : busy ? "Send to this reply" : "Send"
-            }
-            title={busy ? "Send to this reply" : undefined}
+            kbd="↵"
+            title={busy ? "Send. It joins the turn in progress" : undefined}
           >
-            <Icon name="arrowUp" size={17} stroke={2.25} />
-          </button>
+            {sending ? "Sending…" : "Send"}
+          </Button>
         </div>
       </div>
       {(failure || stopError) && (
         <p
-          className={failure?.unknown ? "tchat-note" : "tchat-note is-bad"}
+          className={classes("cs-composer-note", !failure?.unknown && "is-bad")}
           role="alert"
         >
           {stopError || failure?.message}
@@ -306,9 +310,9 @@ export function ChatComposer({
   );
 }
 
-// One attached file in the composer: its type (an image as itself), name
-// and size, uploading or why it failed, and Remove.
-function DraftFileChip({
+// One attached file in the composer (DESIGN-SPEC 12.4): its kind (an image as
+// itself), name with the extension pinned, its state, and Remove.
+export function DraftFileChip({
   file,
   removable,
   onRemove,
@@ -317,46 +321,62 @@ function DraftFileChip({
   removable: boolean;
   onRemove: () => void;
 }) {
-  const tag = fileTag(file.name);
+  const { kind, label } = documentKind(file.name);
+  const { base, ext } = splitName(file.name);
   const preview = useObjectUrl(file.preview);
   return (
     <li
-      className={file.state === "failed" ? "draft-file is-bad" : "draft-file"}
+      className={`ac is-${file.state === "ready" ? "ready" : file.state}`}
+      role="listitem"
       title={file.state === "failed" ? file.error : file.name}
     >
       {preview ? (
-        <img className="file-tile file-thumb" src={preview} alt="" />
+        <img className="ac-tile ac-thumb" src={preview} alt="" />
       ) : (
-        <span className={`file-tile ft-${tag.tone}`} aria-hidden="true">
-          {tag.label}
+        <span className="ac-tile" aria-hidden="true">
+          <Icon name={KIND_ICON[kind]} size="sm" />
         </span>
       )}
-      <span className="draft-file-text">
-        <span className="draft-file-name">{file.name}</span>
-        <span className="draft-file-meta">
+      <span className="ac-text">
+        <span className="ac-name">
+          <span className="dc-base">{base}</span>
+          {ext && <span className="dc-ext">{ext}</span>}
+        </span>
+        <span className="ac-meta">
           {file.state === "uploading" ? (
             <>
-              <span className="spinner" aria-hidden="true" /> Uploading
+              <Spin /> Uploading
             </>
           ) : file.state === "failed" ? (
-            file.error
+            <>
+              <Icon name="alert" size="sm" /> Upload failed · {file.error}
+            </>
           ) : (
-            formatBytes(file.size)
+            `${label} · ${docSize(file.size)}`
           )}
         </span>
       </span>
-      <button
-        type="button"
-        className="icon-btn ghost"
+      <Button
+        iconOnly
+        icon="x"
+        variant="ghost"
+        size="xs"
+        className="ac-remove"
         onClick={onRemove}
         disabled={!removable}
         aria-label={`Remove ${file.name}`}
-      >
-        <Icon name="x" size={13} />
-      </button>
+      />
     </li>
   );
 }
+
+const KIND_ICON = {
+  document: "file",
+  sheet: "sheet",
+  slides: "slides",
+  code: "code",
+  text: "text",
+} as const;
 
 // A touch-first device: Enter makes a new line there.
 function useTouch(): boolean {

@@ -1,0 +1,134 @@
+/* ============================================================================
+   truex system · continuous corners
+   Radius sets the footprint. Corner-shape sets the curvature family.
+
+   A circular arc (round) is constant curvature 1/R and arrives at the straight
+   edge as a step. A squircle is a superellipse, |x|^2K + |y|^2K = 1, with zero
+   curvature at both tangents and a smooth maximum at 45°. The engine draws it:
+   no masks, no extra nodes, no layout change.
+
+   Native in Chromium. Elsewhere the property is ignored and the same radius
+   renders as a circular arc; geometry and hit areas do not move.
+   ============================================================================ */
+
+:root {
+  --corner-surface: squircle;   /* K = 2 · exponent 4 */
+  --corner-mark: round;         /* circles, capsules, data marks */
+  --corner-mode: var(--corner-surface);
+}
+
+/* Rectangular surfaces default to the continuous curve. Zero specificity, so
+   a component can always declare its own shape. */
+@supports (corner-shape: squircle) {
+  :where(html *) {
+    corner-shape: var(--corner-mode);
+  }
+
+  /* Round charter ----------------------------------------------------------
+     These shapes carry meaning or have no corners to soften. They keep the
+     circular arc in every mode: controls that are capsules, people and live
+     state that are circles, data marks, and the brand. */
+  .btn,
+  .chip,
+  .seg,
+  .seg button,
+  .pin,
+  .copy,
+  .preset,
+  .tool,
+  .stage-chip,
+  .lock-chip,
+  .sample-chip,
+  .study-chip,
+  .cs-warn-chip,
+  .cs-seg,
+  .cs-seg span,
+  .ctx-btn,
+  .ls-btn,
+  .ui-run,
+  .sig-track,
+  .sf-meter .m,
+  .sf-meter .m i,
+  .lattice-bars i,
+  .audit-bad .ap-chart i,
+  .audit-bad .ap-chips .chip,
+  .code-head .dots3 span,
+  .brand-mark,
+  .app-mark,
+  .cs-app-mark,
+  .ui-mark,
+  .live-dot,
+  .agent-avatar,
+  .crew-dot,
+  .send,
+  .seal,
+  .glow-dot,
+  .hero-note .pulse,
+  .study-note .pulse,
+  .id-mini-row .dot,
+  .id-base-dot,
+  .status-base,
+  .status-glyph,
+  .cs-ring,
+  .cs-wf-x,
+  .cs-scatter-legend i,
+  .cs-heat-today i,
+  .rc-mark,
+  .rc-pill,
+  .cv-round,
+  .sig-track > span,
+  .cn-proposal,
+  .cn-proposal i,
+  .cn-native i,
+  .cnp-send,
+  .cnp-ev-issue i,
+  .cn-note-mark,
+  .cn-proof-dot,
+  .cn-console-badge,
+  .cn-charter-badge,
+  .cn-browser,
+  .cn-browser i,
+  .cn-kappa-legend i,
+  .cn-nest-send,
+  .cn-rail-plus,
+  .cn-evi-row .is-warn i,
+  input[type="range"],
+  /* 05 · primitives: capsules are pressed, circles are states, marks are data */
+  .tx-btn,
+  .tx-pill,
+  .tx-chip,
+  .tx-seg,
+  .tx-seg button,
+  .tx-switch,
+  .tx-meter,
+  .tx-meter > i,
+  .tx-bar,
+  .tx-bar > i,
+  .tx-ring,
+  .tx-ring::before,
+  .tx-spin,
+  .tx-pulse,
+  .tx-pulse::after,
+  .tx-dot,
+  .pt-user,
+  .cs-status,
+  .cs-dock,
+  .cs-dock-pip,
+  .cs-dock-badge,
+  .pv-proposal,
+  .pg-proposal,
+  .pg-hero-fold,
+  .pg-fold-state,
+  [data-corner="round"] {
+    corner-shape: round;
+  }
+
+  /* Explicit opt-in for a component that must be continuous even when it
+     shares a class with the round charter. */
+  [data-corner="continuous"] {
+    corner-shape: var(--corner-mode);
+  }
+}
+
+/* No corner-shape: keep the exact radius, spacing and silhouette footprint.
+   Nothing else in the system depends on the property. */

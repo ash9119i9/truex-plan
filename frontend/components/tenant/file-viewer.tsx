@@ -1,19 +1,28 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   CopyTextButton,
   StreamingMarkdown,
 } from "@/components/streaming-markdown";
-import { Icon } from "@/components/v2/icon";
+import { Spin } from "@/components/tx/live";
+import { Icon } from "@/components/tx/icon";
+import { Tabs, tabId } from "@/components/tx/tabs";
 import { userMessage } from "@/lib/api";
 import type { LiveReply } from "@/lib/tenant-chat";
 import type { RetryState } from "./file-card";
+import { DocView } from "./doc-view";
+import { SheetView } from "./sheet-view";
+import { parseInWorker } from "@/lib/office/client";
+import { OFFICE_LIMITS, PreviewError } from "@/lib/office/limits";
+import type { PreviewResult } from "@/lib/office/run";
+import "@/styles/app/viewer.css";
 import {
   cachedFileContent,
   fileTag,
   filesOfRun,
   formatBytes,
   hasSource,
+  isOffice,
   lineCount,
   MAX_PREVIEW_BYTES,
   parseCsv,
@@ -30,8 +39,11 @@ type Loaded =
   | { state: "loading" }
   | { state: "text"; text: string }
   | { state: "image"; url: string }
+  | { state: "office"; result: PreviewResult }
   | { state: "large" }
   | { state: "none" }
+  // An Office file the preview couldn't read: broken, encrypted or unusual.
+  | { state: "unreadable" }
   | { state: "error"; message: string };
 
 function useFileContent(
@@ -44,11 +56,45 @@ function useFileContent(
     if (!file) return;
     const kind = previewKind(file.name);
     if (kind === "none") return setLoaded({ state: "none" });
-    if (kind !== "image" && file.size > MAX_PREVIEW_BYTES)
+    const limit = isOffice(kind) ? OFFICE_LIMITS.fileBytes : MAX_PREVIEW_BYTES;
+    if (kind !== "image" && file.size > limit)
       return setLoaded({ state: "large" });
     let cancelled = false;
     let url: string | null = null;
     setLoaded({ state: "loading" });
+    if (isOffice(kind)) {
+      // Aborting stops the worker: a file no longer shown stops parsing.
+      const abort = new AbortController();
+      cachedFileContent(chatId, file.id)
+        .then((blob) => blob.arrayBuffer())
+        .then(
+          (bytes) => {
+            if (abort.signal.aborted) return;
+            return parseInWorker(kind, bytes, { signal: abort.signal }).then(
+              (result) => {
+                if (!abort.signal.aborted)
+                  setLoaded({ state: "office", result });
+              },
+              (error: unknown) => {
+                if (abort.signal.aborted) return;
+                setLoaded(
+                  error instanceof PreviewError && error.code === "too-large"
+                    ? { state: "large" }
+                    : { state: "unreadable" },
+                );
+              },
+            );
+          },
+          (error: unknown) => {
+            if (!abort.signal.aborted)
+              setLoaded({
+                state: "error",
+                message: userMessage(error, "The file couldn't be loaded."),
+              });
+          },
+        );
+      return () => abort.abort();
+    }
     cachedFileContent(chatId, file.id)
       .then(async (blob) => {
         if (cancelled) return;
@@ -108,6 +154,7 @@ export function FileViewer({
   const name = path.slice(path.lastIndexOf("/") + 1);
   const file = subject.state === "ready" ? subject.file : null;
   const [tab, setTab] = useState<"preview" | "source">("preview");
+  const tabsId = useId();
   const [attempt, setAttempt] = useState(0);
   const loaded = useFileContent(chatId, file, attempt);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -172,13 +219,13 @@ export function FileViewer({
             {stats.join(" · ")}
             {subject.state === "writing" && (
               <span className="file-writing">
-                <span className="spinner" aria-hidden="true" />
+                <Spin />
                 Writing…
               </span>
             )}
             {subject.state === "saving" && (
               <span className="file-writing">
-                <span className="spinner" aria-hidden="true" />
+                <Spin />
                 Saving…
               </span>
             )}
@@ -188,56 +235,53 @@ export function FileViewer({
           <div className="fv-nav" aria-label="Files from this reply">
             <button
               type="button"
-              className="icon-btn ghost"
+              className="tx-btn tx-ghost tx-icon tx-sm"
               aria-label="Previous file"
               disabled={index <= 0}
               onClick={() =>
                 onSelect({ runId: target.runId, path: siblings[index - 1] })
               }
             >
-              <Icon name="chevronL" size={15} />
+              <Icon name="chev-l" />
             </button>
             <span className="fv-count">
               {index + 1} of {siblings.length}
             </span>
             <button
               type="button"
-              className="icon-btn ghost"
+              className="tx-btn tx-ghost tx-icon tx-sm"
               aria-label="Next file"
               disabled={index >= siblings.length - 1}
               onClick={() =>
                 onSelect({ runId: target.runId, path: siblings[index + 1] })
               }
             >
-              <Icon name="chevronR" size={15} />
+              <Icon name="chev" />
             </button>
           </div>
         )}
         <button
           type="button"
-          className="icon-btn ghost"
+          className="tx-btn tx-ghost tx-icon tx-sm"
           aria-label="Close file"
           onClick={onClose}
         >
-          <Icon name="x" size={16} />
+          <Icon name="x" />
         </button>
       </header>
       <div className="fv-bar">
         {source && kind !== "text" ? (
-          <div className="fv-tabs" role="tablist" aria-label="View">
-            {(["preview", "source"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                role="tab"
-                aria-selected={tab === t}
-                className={tab === t ? "is-active" : undefined}
-                onClick={() => setTab(t)}
-              >
-                {t === "preview" ? "Preview" : "Source"}
-              </button>
-            ))}
-          </div>
+          <Tabs
+            label="View"
+            idBase={tabsId}
+            panelId={`${tabsId}-panel`}
+            items={[
+              { id: "preview", label: "Preview" },
+              { id: "source", label: "Source" },
+            ]}
+            selected={tab}
+            onSelect={(t) => setTab(t as "preview" | "source")}
+          />
         ) : (
           <span />
         )}
@@ -247,7 +291,7 @@ export function FileViewer({
           )}
           <button
             type="button"
-            className="btn-soft"
+            className="tx-btn"
             disabled={!file}
             onClick={() => file && onDownload(file)}
           >
@@ -257,7 +301,13 @@ export function FileViewer({
       </div>
       <div
         className="fv-body"
-        role={source && kind !== "text" ? "tabpanel" : undefined}
+        {...(source && kind !== "text"
+          ? {
+              role: "tabpanel",
+              id: `${tabsId}-panel`,
+              "aria-labelledby": tabId(tabsId, tab),
+            }
+          : {})}
         aria-busy={
           !notSaved && (subject.state !== "ready" || loaded.state === "loading")
         }
@@ -305,7 +355,7 @@ function ViewerBody({
         </p>
         <button
           type="button"
-          className="btn-soft"
+          className="tx-btn"
           onClick={unsaved.onSave}
           disabled={unsaved.saving?.busy === true}
         >
@@ -320,7 +370,8 @@ function ViewerBody({
       </p>
     );
   if (subject.state === "writing") {
-    if (!subject.text) return <Skeleton />;
+    // An Office file's text while it's written is zip bytes, not a preview.
+    if (!subject.text || isOffice(kind)) return <Skeleton />;
     return (
       <>
         <TextView text={subject.text} kind={kind} tab={tab} streaming />
@@ -337,7 +388,7 @@ function ViewerBody({
       return (
         <div className="fv-error" role="alert">
           <p>{loaded.message}</p>
-          <button type="button" className="btn-soft" onClick={onRetry}>
+          <button type="button" className="tx-btn" onClick={onRetry}>
             Try again
           </button>
         </div>
@@ -347,7 +398,7 @@ function ViewerBody({
         <div className="fv-note">
           <p>This file type can&apos;t be previewed here.</p>
           {onDownload && (
-            <button type="button" className="btn-soft" onClick={onDownload}>
+            <button type="button" className="tx-btn" onClick={onDownload}>
               Download it
             </button>
           )}
@@ -358,11 +409,28 @@ function ViewerBody({
         <div className="fv-note">
           <p>This file is too large to preview.</p>
           {onDownload && (
-            <button type="button" className="btn-soft" onClick={onDownload}>
+            <button type="button" className="tx-btn" onClick={onDownload}>
               Download it
             </button>
           )}
         </div>
+      );
+    case "unreadable":
+      return (
+        <div className="fv-note">
+          <p>This file couldn&apos;t be read for a preview.</p>
+          {onDownload && (
+            <button type="button" className="tx-btn" onClick={onDownload}>
+              Download it
+            </button>
+          )}
+        </div>
+      );
+    case "office":
+      return loaded.result.kind === "sheet" ? (
+        <SheetView workbook={loaded.result.workbook} />
+      ) : (
+        <DocView html={loaded.result.html} />
       );
     case "image":
       // A blob: URL of the stored bytes; an image can't run anything.
