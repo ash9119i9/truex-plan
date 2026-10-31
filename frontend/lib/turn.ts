@@ -95,6 +95,12 @@ export function turnErrorOf(
         code: "context_length_exceeded",
         action,
       };
+    case "COMMAND_LIMIT":
+      return {
+        title: "Stopped after too many steps",
+        code: "command_limit",
+        action,
+      };
     default:
       return { title: "Something went wrong", code: "internal_error", action };
   }

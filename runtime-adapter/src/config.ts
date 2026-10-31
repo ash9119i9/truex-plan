@@ -42,6 +42,11 @@ export interface RuntimeLimits {
   readonly heartbeatMs: number;
   readonly finishedRunTtlMs: number;
   readonly bufferEvents: number;
+  // Per reply, counting the lead's and its helpers' commands: a reply stops
+  // as COMMAND_LIMIT when this many commands failed, or this many ran, so a
+  // model retrying tools that can't work stops spending tokens.
+  readonly maxFailedCommands: number;
+  readonly maxCommands: number;
 }
 
 export const DEFAULT_LIMITS: RuntimeLimits = {
@@ -53,6 +58,8 @@ export const DEFAULT_LIMITS: RuntimeLimits = {
   heartbeatMs: 15_000,
   finishedRunTtlMs: 5 * 60_000,
   bufferEvents: 500,
+  maxFailedCommands: 12,
+  maxCommands: 120,
 };
 
 export class ConfigError extends Error {
@@ -93,6 +100,23 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
   const maxProcesses = int("RUNTIME_MAX_PROCESSES", 20, 1, 1000);
   const idleMs = int("RUNTIME_IDLE_MS", 600_000, 1000, 86_400_000);
   const drainMs = int("RUNTIME_DRAIN_MS", 30_000, 0, 600_000);
+  const maxFailedCommands = int(
+    "RUNTIME_MAX_FAILED_COMMANDS",
+    DEFAULT_LIMITS.maxFailedCommands,
+    1,
+    1000,
+  );
+  const maxCommands = int(
+    "RUNTIME_MAX_COMMANDS",
+    DEFAULT_LIMITS.maxCommands,
+    1,
+    10_000,
+  );
+  // A total under the failure limit would leave that limit unreachable.
+  if (maxCommands < maxFailedCommands)
+    problems.push(
+      "RUNTIME_MAX_COMMANDS must be at least RUNTIME_MAX_FAILED_COMMANDS.",
+    );
   // Opt-in, test-only: a single "1" turns it on. Any other value (including
   // "true") is treated as off, so an accidental setting can never silently
   // weaken transport security in production.
@@ -117,7 +141,7 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
     maxProcesses,
     idleMs,
     drainMs,
-    limits: DEFAULT_LIMITS,
+    limits: { ...DEFAULT_LIMITS, maxFailedCommands, maxCommands },
     allowLoopbackMcp,
     coding: codingEnabled
       ? {

@@ -9,6 +9,7 @@ import {
   riseBand,
   settle,
   spring,
+  stowReach,
   type Spring,
 } from "@/lib/dock";
 import { ariaKeys, useKeyLabel, type ShortcutId } from "@/lib/shortcuts";
@@ -201,7 +202,13 @@ function useDockStow(
       const shift = t === "none" ? 0 : new DOMMatrix(t).m42;
       return floor() - (dock.getBoundingClientRect().top - shift);
     };
-    const reach = () => footprint() + DOCK.slack;
+    // The column the dock sits in (.cs-bottom: the composer and the cards
+    // above it) moves up with it, so the dock holds while the pointer is in it.
+    const reach = () =>
+      stowReach(
+        footprint(),
+        floor() - (dock.parentElement?.getBoundingClientRect().top ?? floor()),
+      );
     // The empty room the dock will fill: its footprint, cut off at the lowest
     // content above it (the composer in its row in an open chat, the centred
     // hero in a new one), so reaching for the composer never raises it.

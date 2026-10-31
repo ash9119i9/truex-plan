@@ -200,13 +200,17 @@ export class RuntimeClient {
   }
 
   // The chat's workspace files, for copying a run's output into storage.
+  // `signal` (the capture's deadline) also ends the request.
   async files(
     ref: ChatRef,
+    signal?: AbortSignal,
   ): Promise<{ files: WorkspaceFile[]; truncated: boolean }> {
     const query = new URLSearchParams({ tenantId: ref.tenantId });
     const body = (await this.json(
       `/v1/chats/${encodeURIComponent(ref.chatId)}/files?${query}`,
       "GET",
+      undefined,
+      signal,
     )) as { files?: unknown; truncated?: unknown };
     if (!Array.isArray(body.files))
       throw new AdapterUnreachable("invalid files response");
@@ -217,14 +221,18 @@ export class RuntimeClient {
   }
 
   // One workspace file's bytes. Refusals are AdapterRefusal (FILE_NOT_FOUND,
-  // PAYLOAD_TOO_LARGE).
-  async file(ref: ChatRef, path: string): Promise<Buffer> {
+  // PAYLOAD_TOO_LARGE). `signal` (the capture's deadline) also ends it.
+  async file(
+    ref: ChatRef,
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<Buffer> {
     const query = new URLSearchParams({ tenantId: ref.tenantId, path });
     const res = await this.send(
       `/v1/chats/${encodeURIComponent(ref.chatId)}/file?${query}`,
       "GET",
       undefined,
-      AbortSignal.timeout(this.timeouts.requestMs),
+      this.deadline(signal),
     );
     const declared = Number(res.headers.get("content-length") ?? 0);
     if (declared > MAX_WORKSPACE_FILE_BYTES)
@@ -282,13 +290,19 @@ export class RuntimeClient {
     );
   }
 
-  private async json(path: string, method: string, body?: unknown) {
-    const res = await this.send(
-      path,
-      method,
-      body,
-      AbortSignal.timeout(this.timeouts.requestMs),
-    );
+  // The request timeout, ended sooner by the caller's signal when given.
+  private deadline(signal?: AbortSignal): AbortSignal {
+    const timeout = AbortSignal.timeout(this.timeouts.requestMs);
+    return signal ? AbortSignal.any([timeout, signal]) : timeout;
+  }
+
+  private async json(
+    path: string,
+    method: string,
+    body?: unknown,
+    signal?: AbortSignal,
+  ) {
+    const res = await this.send(path, method, body, this.deadline(signal));
     try {
       return (await res.json()) as unknown;
     } catch {

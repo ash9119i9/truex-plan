@@ -15,17 +15,21 @@
   --f-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Bricolage variable cuts, assigned by role — never by eye ---------------- */
+  /* Headings run at normal width: the narrow cuts made letters touch. The
+     cuts, heading tracking, h2/display line heights and big-headline
+     weights changed 2026-10-30 (docs/HEADING-TYPE-CHANGES.md). */
   --cut-text: "opsz" 14, "wdth" 100;
-  --cut-heading: "opsz" 48, "wdth" 90;
-  --cut-h2: "opsz" 96, "wdth" 82;
-  --cut-display: "opsz" 96, "wdth" 82;
-  --cut-hero: "opsz" 96, "wdth" 80;
+  --cut-heading: "opsz" 24, "wdth" 100;
+  --cut-h2: "opsz" 48, "wdth" 100;
+  --cut-display: "opsz" 48, "wdth" 100;
+  --cut-hero: "opsz" 48, "wdth" 100;
   --cut-brand: "opsz" 48, "wdth" 85;
 
   /* sizes ---------------------------------------------------------------- */
   --t-hero: clamp(3.25rem, 7vw, 6.75rem);
   --t-display: 3.5rem;
-  --t-h2: clamp(2.25rem, 4.6vw, 3.75rem);
+  /* smaller since 2026-10-30: the normal-width cut sets wider */
+  --t-h2: clamp(2.125rem, 4.5vw, 2.75rem);
   --t-h3: 1.5rem;
   --t-h4: 1.0625rem;
   --t-lede: 1.0625rem;
@@ -39,8 +43,8 @@
 
   /* line height ---------------------------------------------------------- */
   --lh-hero: 0.9;
-  --lh-display: 0.95;
-  --lh-h2: 0.98;
+  --lh-display: 1.05;
+  --lh-h2: 1.08;
   --lh-h3: 1.15;
   --lh-h4: 1.25;
   --lh-lede: 1.55;
@@ -53,11 +57,11 @@
   --lh-code: 1.55;
 
   /* tracking ------------------------------------------------------------- */
-  --tr-hero: -0.04em;
-  --tr-display: -0.045em;
-  --tr-h2: -0.045em;
-  --tr-h3: -0.03em;
-  --tr-h4: -0.02em;
+  --tr-hero: -0.032em;
+  --tr-display: -0.032em;
+  --tr-h2: -0.032em;
+  --tr-h3: -0.025em;
+  --tr-h4: -0.018em;
   --tr-ui: -0.005em;
   --tr-micro: 0.12em;
   --tr-editorial: -0.02em;
@@ -100,14 +104,14 @@ h1, h2, h3, h4 {
 }
 h1 {
   font-size: var(--t-display);
-  font-weight: 780;
+  font-weight: 700;
   line-height: var(--lh-display);
   letter-spacing: var(--tr-display);
   font-variation-settings: var(--cut-display);
 }
 h2 {
   font-size: var(--t-h2);
-  font-weight: 760;
+  font-weight: 700;
   line-height: var(--lh-h2);
   letter-spacing: var(--tr-h2);
   font-variation-settings: var(--cut-h2);
@@ -144,7 +148,7 @@ code, kbd, samp, pre {
   overflow-wrap: break-word;
   font-family: var(--f-ui);
   font-size: var(--t-hero);
-  font-weight: 800;
+  font-weight: 700;
   line-height: var(--lh-hero);
   letter-spacing: var(--tr-hero);
   word-spacing: 0.06em;
@@ -156,7 +160,7 @@ code, kbd, samp, pre {
   overflow-wrap: break-word;
   font-family: var(--f-ui);
   font-size: var(--t-display);
-  font-weight: 780;
+  font-weight: 700;
   line-height: var(--lh-display);
   letter-spacing: var(--tr-display);
   font-variation-settings: var(--cut-display);
@@ -167,7 +171,7 @@ code, kbd, samp, pre {
   overflow-wrap: break-word;
   font-family: var(--f-ui);
   font-size: var(--t-h2);
-  font-weight: 760;
+  font-weight: 700;
   line-height: var(--lh-h2);
   letter-spacing: var(--tr-h2);
   font-variation-settings: var(--cut-h2);

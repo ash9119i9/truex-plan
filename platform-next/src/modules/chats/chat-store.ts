@@ -26,6 +26,7 @@ import {
   type MessageState,
   type RunDoc,
   type RunErrorInfo,
+  type RunPlan,
   type RunStatus,
   type RunUsage,
   type SteerDoc,
@@ -137,6 +138,8 @@ export interface Settlement {
   readonly items: readonly SettleItem[];
   // Present only when helpers ran. Their usage is already in `usage`.
   readonly agents?: readonly AgentSettleItem[];
+  // The lead's last checklist, present only when it planned.
+  readonly plan?: RunPlan;
   readonly usage: RunUsage | null;
   readonly threadId: string | null;
   readonly turnId: string | null;
@@ -144,6 +147,10 @@ export interface Settlement {
   readonly threadLost: boolean;
   // Files the run wrote that couldn't be stored (see ChatFilesService).
   readonly unsavedFiles?: readonly string[];
+  // Files the run wrote that are too large to store.
+  readonly tooLargeFiles?: readonly string[];
+  // The workspace had more files than capture could check.
+  readonly filesTruncated?: boolean;
   // Set by the executor before settle: rows from the last answer, for a
   // completed run in a chat with Follow Ups on.
   readonly followUps?: RunDoc["followUps"];
@@ -677,11 +684,16 @@ export class ChatStore {
             ...(outcome.agents?.length
               ? { helperCount: outcome.agents.length }
               : {}),
+            ...(outcome.plan ? { plan: outcome.plan } : {}),
             ...(outcome.threadId ? { threadId: outcome.threadId } : {}),
             ...(outcome.turnId ? { turnId: outcome.turnId } : {}),
             ...(outcome.unsavedFiles?.length
               ? { unsavedFiles: [...outcome.unsavedFiles] }
               : {}),
+            ...(outcome.tooLargeFiles?.length
+              ? { tooLargeFiles: [...outcome.tooLargeFiles] }
+              : {}),
+            ...(outcome.filesTruncated ? { filesTruncated: true } : {}),
             ...(outcome.followUps ? { followUps: outcome.followUps } : {}),
           },
         },

@@ -80,30 +80,45 @@ export function FileCard({
   files,
   writing,
   unsaved = [],
+  tooLarge = [],
+  truncated = false,
 }: {
   runId: string;
   files: readonly ChatFile[];
   writing: readonly WritingFile[];
   unsaved?: readonly string[];
+  // Files over the per-file limit: shown, never retried.
+  tooLarge?: readonly string[];
+  // The chat had more files than could be checked, so some may be missing.
+  truncated?: boolean;
 }) {
   const actions = useContext(FileActionsContext);
   const [expanded, setExpanded] = useState(false);
   if (!actions) return null;
   const stored = new Set(files.map((f) => f.path));
-  const failed = unsaved.filter((path) => !stored.has(path));
+  const big = tooLarge.filter((path) => !stored.has(path));
+  const bigSet = new Set(big);
+  const failed = unsaved.filter(
+    (path) => !stored.has(path) && !bigSet.has(path),
+  );
   const failedSet = new Set(failed);
   const rows: Array<
     | { kind: "file"; file: ChatFile }
     | { kind: "writing"; path: string }
     | { kind: "unsaved"; path: string }
+    | { kind: "tooLarge"; path: string }
   > = [
     ...files.map((file) => ({ kind: "file" as const, file })),
     ...failed.map((path) => ({ kind: "unsaved" as const, path })),
+    ...big.map((path) => ({ kind: "tooLarge" as const, path })),
     ...writing
-      .filter((w) => !stored.has(w.path) && !failedSet.has(w.path))
+      .filter(
+        (w) =>
+          !stored.has(w.path) && !failedSet.has(w.path) && !bigSet.has(w.path),
+      )
       .map((w) => ({ kind: "writing" as const, path: w.path })),
   ];
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !truncated) return null;
   const total = rows.length;
   const ready = files.length;
   const visible = expanded ? rows : rows.slice(0, SHOWN);
@@ -112,8 +127,8 @@ export function FileCard({
   const heading =
     ready === total
       ? `${total} ${noun}`
-      : failed.length > 0
-        ? `${total} ${noun} · ${failed.length} not saved`
+      : failed.length + big.length > 0
+        ? `${total} ${noun} · ${failed.length + big.length} not saved`
         : `${total} ${noun} · ${ready} ready`;
   const isActive = (path: string) =>
     actions.active?.runId === runId && actions.active.path === path;
@@ -123,6 +138,10 @@ export function FileCard({
       {visible.map((row) => {
         const path = row.kind === "file" ? row.file.path : row.path;
         const name = path.slice(path.lastIndexOf("/") + 1);
+        if (row.kind === "tooLarge")
+          return (
+            <DocumentCard key={path} name={name} size={0} state="tooLarge" />
+          );
         if (row.kind === "unsaved")
           return (
             <DocumentCard
@@ -151,6 +170,12 @@ export function FileCard({
       {retry && !retry.busy && (
         <p className="dc-stack-note" role="alert">
           {retry.message}
+        </p>
+      )}
+      {truncated && (
+        <p className="dc-stack-note">
+          This chat has too many files to check them all, so some files from
+          this reply may be missing here.
         </p>
       )}
       {rows.length > SHOWN && (

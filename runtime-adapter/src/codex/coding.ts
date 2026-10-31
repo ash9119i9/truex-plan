@@ -57,10 +57,17 @@ prefix_rule(
 `;
 
 // Tells the model what it can do, in the words it should use with the user.
+// Which document tools exist. Without it models reach for pandoc, LibreOffice,
+// weasyprint or `pip install`, none of which the sandbox has, and retry other
+// missing tools until they give up (one chat: 36 commands, 19 failed, 749k
+// tokens, no PDF, while reportlab was installed). The libraries are the pinned
+// toolchain's (toolchain/requirements.in); keep the two in step.
+export const DOCUMENT_INSTRUCTIONS = `For Word, Excel, PowerPoint and PDF files use Python with the installed libraries: python-docx (.docx), openpyxl (.xlsx), python-pptx (.pptx), reportlab to write PDF and pypdf to read it. Nothing else can be installed (no pip, brew or apt), and pandoc, LibreOffice, wkhtmltopdf, weasyprint and the markdown package are not available. If an approach fails twice, do not try other tools for it; say plainly what you could not make.`;
+
 // Kept short and stable: it is part of every request's cached prefix.
 // /tmp is denied (see `codingConfig`); models reach for it by habit, so the
 // scratch directory is named.
-export const CODING_INSTRUCTIONS = `You can create, edit and delete files in this chat and run code: Node.js and Python are available, with no internet access. Use this when the user asks for a file, for code, or to run, test or check something; otherwise just answer. Files you create appear in the chat for the user to open. For temporary files use $TMPDIR, never /tmp. When you talk to the user, refer to files by their name only. Never mention workspaces, directories, paths, commands, terminals, sandboxes, tool names or approvals. If an action is declined, do not retry it; tell the user what you could not do.`;
+export const CODING_INSTRUCTIONS = `You can create, edit and delete files in this chat and run code: Node.js and Python are available, with no internet access. Use this when the user asks for a file, for code, or to run, test or check something; otherwise just answer. Files you create appear in the chat for the user to open. For temporary files use $TMPDIR, never /tmp. When you talk to the user, refer to files by their name only. Never mention workspaces, directories, paths, commands, terminals, sandboxes, tool names or approvals. If an action is declined, do not retry it; tell the user what you could not do. ${DOCUMENT_INSTRUCTIONS}`;
 
 // Added for a chat with skills. The skills catalog shows each skill by its
 // stored path, which the shell cannot list; $SKILLS names every skill of the

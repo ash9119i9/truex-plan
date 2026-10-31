@@ -1,7 +1,7 @@
 import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { ObjectId } from "mongodb";
@@ -9,6 +9,7 @@ import type { MongoMemoryReplSet } from "mongodb-memory-server";
 import type { AppConfig } from "../../src/config/app-config";
 import { DatabaseService } from "../../src/database/database.service";
 import {
+  MAX_FILES_PER_RUN,
   MemoryFileStore,
   type ChatFileView,
 } from "../../src/modules/chats/chat-files";
@@ -357,7 +358,11 @@ describe("coding chat: platform-next → adapter (coding on) → pinned Codex", 
     try {
       const { chatId, events } = await send(null, "Plan", () => "allow");
       const announced = events.find((e) => e.type === "files")!.data;
-      assert.deepEqual(announced, { files: [], unsaved: ["plan.md"] });
+      assert.deepEqual(announced, {
+        files: [],
+        unsaved: ["plan.md"],
+        tooLarge: [],
+      });
       const saved = events.find((e) => e.type === "saved")!.data as {
         run: { id: string; unsavedFiles?: string[] };
       };
@@ -381,6 +386,7 @@ describe("coding chat: platform-next → adapter (coding on) → pinned Codex", 
       assert.deepEqual(await again.json(), {
         files: [],
         unsaved: ["plan.md"],
+        tooLarge: [],
       });
 
       fileStore.failPuts = null;
@@ -404,6 +410,7 @@ describe("coding chat: platform-next → adapter (coding on) → pinned Codex", 
       assert.deepEqual(await (await retry()).json(), {
         files: [],
         unsaved: [],
+        tooLarge: [],
       });
       // A reply that isn't in the chat is not found.
       const missing = await call(
@@ -414,6 +421,172 @@ describe("coding chat: platform-next → adapter (coding on) → pinned Codex", 
     } finally {
       fileStore.failPuts = null;
     }
+  });
+
+  // The reported bug: a script makes the files, the reply says so, and the
+  // chat showed only some of them with nothing to retry.
+  test("files a command makes are stored, or unsaved and retried, never dropped", async () => {
+    const extra = 2;
+    const count = MAX_FILES_PER_RUN + extra;
+    gateway.script.push(
+      {
+        kind: "call",
+        name: "exec_command",
+        args: {
+          cmd: `mkdir -p out && for i in $(seq -w 1 ${count}); do printf 'r%s' "$i" > "out/report$i.xlsx"; done && printf 'doc' > summary.docx`,
+        },
+      },
+      { kind: "reply", text: `Created ${count + 1} files.` },
+    );
+    const { chatId, events } = await send(null, "Make reports", () => "deny");
+    const pad = (i: number) => String(i).padStart(String(count).length, "0");
+    const expected = [
+      ...Array.from(
+        { length: count },
+        (_, i) => `out/report${pad(i + 1)}.xlsx`,
+      ),
+      "summary.docx",
+    ];
+    for (const path of expected)
+      assert.notEqual(await workspaceFile(chatId, path), null, path);
+
+    const announced = events.find((e) => e.type === "files")!.data as {
+      files: ChatFileView[];
+      unsaved: string[];
+    };
+    assert.equal(announced.files.length, MAX_FILES_PER_RUN);
+    // Every file in the workspace is shown or offered for retry.
+    assert.deepEqual(
+      [...announced.files.map((f) => f.path), ...announced.unsaved].sort(),
+      [...expected].sort(),
+    );
+    assert.equal(announced.unsaved.length, extra + 1);
+    const saved = events.find((e) => e.type === "saved")!.data as {
+      run: { id: string; unsavedFiles?: string[] };
+    };
+    assert.deepEqual(saved.run.unsavedFiles, announced.unsaved);
+
+    const listed = (await (
+      await call("GET", `/chats/${chatId}/files`)
+    ).json()) as { files: ChatFileView[] };
+    assert.equal(listed.files.length, MAX_FILES_PER_RUN);
+
+    const retried = (await (
+      await call("POST", `/chats/${chatId}/runs/${saved.run.id}/files/retry`)
+    ).json()) as { files: ChatFileView[]; unsaved: string[] };
+    assert.deepEqual(retried.unsaved, []);
+    assert.deepEqual(
+      retried.files.map((f) => f.path).sort(),
+      [...announced.unsaved].sort(),
+    );
+    const all = (await (
+      await call("GET", `/chats/${chatId}/files`)
+    ).json()) as { files: ChatFileView[] };
+    assert.deepEqual(all.files.map((f) => f.path).sort(), [...expected].sort());
+    const docx = all.files.find((f) => f.path === "summary.docx")!;
+    const content = await call(
+      "GET",
+      `/chats/${chatId}/files/${docx.id}/content`,
+    );
+    assert.equal(await content.text(), "doc");
+
+    // The next quiet run neither stores again nor reports them.
+    gateway.script.push({ kind: "reply", text: "Hi." });
+    const quiet = await send(chatId, "Hello", () => "deny");
+    assert.ok(!quiet.events.some((e) => e.type === "files"));
+  });
+
+  test("a file over the per-file limit is too large: shown once, never offered for retry", async () => {
+    gateway.script.push(
+      {
+        kind: "call",
+        name: "exec_command",
+        args: {
+          cmd: "head -c 22020096 /dev/zero > dump.bin && printf 'ok' > report.csv",
+        },
+      },
+      { kind: "reply", text: "Made dump.bin and report.csv." },
+    );
+    const { chatId, events } = await send(null, "Export", () => "deny");
+    assert.notEqual(await workspaceFile(chatId, "dump.bin"), null);
+    const announced = events.find((e) => e.type === "files")!.data as {
+      files: ChatFileView[];
+      unsaved: string[];
+      tooLarge: string[];
+    };
+    assert.deepEqual(
+      announced.files.map((f) => f.path),
+      ["report.csv"],
+    );
+    assert.deepEqual(announced.unsaved, []);
+    assert.deepEqual(announced.tooLarge, ["dump.bin"]);
+    const saved = events.find((e) => e.type === "saved")!.data as {
+      run: { id: string; unsavedFiles?: string[]; tooLargeFiles?: string[] };
+    };
+    assert.equal(saved.run.unsavedFiles, undefined, "nothing to retry");
+    assert.deepEqual(saved.run.tooLargeFiles, ["dump.bin"]);
+    const reopened = (await (await call("GET", `/chats/${chatId}`)).json()) as {
+      runs: Array<{ id: string; tooLargeFiles?: string[] }>;
+    };
+    assert.deepEqual(
+      reopened.runs.find((r) => r.id === saved.run.id)?.tooLargeFiles,
+      ["dump.bin"],
+    );
+    // No unsaved files: a retry has nothing to do.
+    assert.deepEqual(
+      await (
+        await call("POST", `/chats/${chatId}/runs/${saved.run.id}/files/retry`)
+      ).json(),
+      { files: [], unsaved: [], tooLarge: [] },
+    );
+    // A later reply that doesn't touch it doesn't show it again. Its time is
+    // set a minute back, as when the member replies later; a reply within
+    // RUN_START_SLACK_MS of the write may show it again (accepted).
+    const minuteAgo = Date.now() / 1000 - 60;
+    await utimes(
+      join(
+        adapter.stateDir,
+        "t",
+        tenantId.toHexString(),
+        "c",
+        chatId,
+        "workspace",
+        "dump.bin",
+      ),
+      minuteAgo,
+      minuteAgo,
+    );
+    gateway.script.push({ kind: "reply", text: "Hi." });
+    const quiet = await send(chatId, "Hello", () => "deny");
+    assert.ok(!quiet.events.some((e) => e.type === "files"));
+  });
+
+  test("an edit a truncated listing misses is still stored, ahead of command files", async () => {
+    gateway.script.push(
+      {
+        kind: "call",
+        name: "exec_command",
+        args: {
+          cmd: 'for i in $(seq -w 1 510); do printf x > "f$i.txt"; done',
+        },
+      },
+      {
+        kind: "custom",
+        name: "apply_patch",
+        input:
+          "*** Begin Patch\n*** Add File: zz/report.md\n+# Report\n*** End Patch\n",
+      },
+      { kind: "reply", text: "Done." },
+    );
+    const { events } = await send(null, "Build", () => "deny");
+    const announced = events.find((e) => e.type === "files")!.data as {
+      files: ChatFileView[];
+      unsaved: string[];
+    };
+    assert.equal(announced.files[0]?.path, "zz/report.md");
+    assert.equal(announced.files.length, MAX_FILES_PER_RUN);
+    assert.ok(!announced.unsaved.includes("zz/report.md"));
+    assert.equal(announced.unsaved.length, 50);
   });
 
   test("another member can't list or read a chat's files", async () => {

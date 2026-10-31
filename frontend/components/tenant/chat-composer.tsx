@@ -119,15 +119,21 @@ export function ChatComposer({
 
   const length = value.length;
   const slim = !hero && !focused && !value && files.length === 0;
-  const placeholder = !agentName
-    ? "Choose an agent to start"
+  // While a reply runs the hint says what the composer does now, so only an
+  // idle, empty composer cycles through ideas.
+  const hints = !agentName
+    ? ["Choose an agent to start"]
     : hero
-      ? "Ask anything, or type / for commands"
+      ? attaching
+        ? [...HERO_HINTS, ATTACH_HINT]
+        : HERO_HINTS
       : busy && awaitingApproval
-        ? "Add a note to this turn, or answer above"
+        ? ["Add a note to this turn, or answer above"]
         : busy
-          ? "Steer this turn: add a note, or press Stop"
-          : "Ask a follow-up or assign a step";
+          ? ["Steer this turn: add a note, or press Stop"]
+          : FOLLOW_UP_HINTS;
+  const placeholder = useRotatingHint(hints, !value && !disabled && !busy);
+  const hint = useCrossfade(placeholder);
   return (
     <form
       className="cs-composer-wrap"
@@ -159,6 +165,21 @@ export function ChatComposer({
           slim && "is-slim",
           dragging && "is-drop",
         )}
+        // A press anywhere on the card that isn't a control puts the caret
+        // in the text, so its padding and bar are not dead space.
+        onMouseDown={(e) => {
+          const target = e.target as HTMLElement;
+          if (
+            disabled ||
+            e.button !== 0 ||
+            target.closest(
+              "textarea, button, a, input, label, [role='menu'], .ac",
+            )
+          )
+            return;
+          e.preventDefault();
+          input.current?.focus();
+        }}
       >
         {files.length > 0 && (
           <ul className="ac-tray" role="list" aria-label="Attached files">
@@ -175,48 +196,70 @@ export function ChatComposer({
         <label className="tx-sr" htmlFor={inputId}>
           {agentName ? `Message ${agentName}` : "Message"}
         </label>
-        <SmoothTextarea
-          ref={input}
-          id={inputId}
-          className="tx-input pt-composer-input"
-          autoGrow={224}
-          rows={1}
-          value={value}
-          // The message being sent was taken from here and comes back if
-          // it fails, so nothing typed meanwhile could be lost.
-          readOnly={sending}
-          aria-describedby={`${inputId}-hint ${inputId}-problem`}
-          aria-invalid={textProblem ? true : undefined}
-          placeholder={placeholder}
-          disabled={disabled}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          onChange={(e) => onChange(e.target.value)}
-          onPaste={(e) => {
-            if (!attaching || e.clipboardData.files.length === 0) return;
-            e.preventDefault();
-            add(e.clipboardData.files);
-          }}
-          onKeyDown={(e) => {
-            if (
-              !sendsOnEnter(
-                {
-                  key: e.key,
-                  shiftKey: e.shiftKey,
-                  altKey: e.altKey,
-                  ctrlKey: e.ctrlKey,
-                  metaKey: e.metaKey,
-                  // keyCode 229: some browsers report IME input this way only.
-                  isComposing: e.nativeEvent.isComposing || e.keyCode === 229,
-                },
-                touch,
+        <div className="cs-field">
+          {/* The placeholder as drawn: the native one can't crossfade, so it
+              stays for assistive tech and is hidden by composer.css. */}
+          {!value && (
+            <div className="cs-hint" aria-hidden="true">
+              {hint.previous !== null && (
+                <span key={hint.n - 1} className="cs-hint-line is-out">
+                  {hint.previous}
+                </span>
+              )}
+              <span
+                key={hint.n}
+                className={classes(
+                  "cs-hint-line",
+                  hint.previous !== null && "is-in",
+                )}
+              >
+                {hint.current}
+              </span>
+            </div>
+          )}
+          <SmoothTextarea
+            ref={input}
+            id={inputId}
+            className="tx-input pt-composer-input"
+            autoGrow={224}
+            rows={1}
+            value={value}
+            // The message being sent was taken from here and comes back if
+            // it fails, so nothing typed meanwhile could be lost.
+            readOnly={sending}
+            aria-describedby={`${inputId}-hint ${inputId}-problem`}
+            aria-invalid={textProblem ? true : undefined}
+            placeholder={placeholder}
+            disabled={disabled}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onChange={(e) => onChange(e.target.value)}
+            onPaste={(e) => {
+              if (!attaching || e.clipboardData.files.length === 0) return;
+              e.preventDefault();
+              add(e.clipboardData.files);
+            }}
+            onKeyDown={(e) => {
+              if (
+                !sendsOnEnter(
+                  {
+                    key: e.key,
+                    shiftKey: e.shiftKey,
+                    altKey: e.altKey,
+                    ctrlKey: e.ctrlKey,
+                    metaKey: e.metaKey,
+                    // keyCode 229: some browsers report IME input this way only.
+                    isComposing: e.nativeEvent.isComposing || e.keyCode === 229,
+                  },
+                  touch,
+                )
               )
-            )
-              return;
-            e.preventDefault();
-            if (ready) onSend();
-          }}
-        />
+                return;
+              e.preventDefault();
+              if (ready) onSend();
+            }}
+          />
+        </div>
         <span id={`${inputId}-hint`} className="tx-sr">
           {touch
             ? "Use the send button to send."
@@ -377,6 +420,62 @@ const KIND_ICON = {
   code: "code",
   text: "text",
 } as const;
+
+// Ideas an idle composer cycles through; the first is the one shown first
+// and the only one under reduced motion.
+const HERO_HINTS = [
+  "Ask anything, or type / for commands",
+  "Describe a task and let the agent take it on",
+  "Paste text to summarise, rewrite or check",
+];
+const ATTACH_HINT = "Attach a file and ask about it";
+const FOLLOW_UP_HINTS = [
+  "Ask a follow-up or assign a step",
+  "Ask it to go deeper on any point",
+  "Ask for a change to the last answer",
+];
+const HINT_EVERY = 4_000;
+// The crossfade's length; matches .cs-hint-line in composer.css.
+const HINT_FADE = 600;
+
+// The placeholder to show: `hints` in turn every HINT_EVERY ms while
+// `active`. Starts at the first so the server and the first client render
+// agree.
+export function useRotatingHint(hints: readonly string[], active: boolean) {
+  const [at, setAt] = useState(0);
+  const key = hints.join("\n");
+  useEffect(() => {
+    setAt(0);
+    const reduced =
+      document.documentElement.dataset.effMotion === "reduce" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!active || reduced || key.split("\n").length < 2) return;
+    const every = window.setInterval(() => setAt((i) => i + 1), HINT_EVERY);
+    return () => clearInterval(every);
+  }, [key, active]);
+  return hints[at % hints.length] ?? "";
+}
+
+// The line leaving (`previous`) stays drawn for HINT_FADE ms beside the one
+// arriving, so a change crossfades instead of swapping. `n` keys each line.
+function useCrossfade(text: string) {
+  const [lines, setLines] = useState({
+    current: text,
+    previous: null as string | null,
+    n: 0,
+  });
+  if (lines.current !== text)
+    setLines({ current: text, previous: lines.current, n: lines.n + 1 });
+  useEffect(() => {
+    if (lines.previous === null) return;
+    const done = window.setTimeout(
+      () => setLines((l) => ({ ...l, previous: null })),
+      HINT_FADE,
+    );
+    return () => clearTimeout(done);
+  }, [lines]);
+  return lines;
+}
 
 // A touch-first device: Enter makes a new line there.
 function useTouch(): boolean {

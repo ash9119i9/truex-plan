@@ -73,6 +73,7 @@ import {
   type RunPlan,
   type ToolErrorCode,
 } from "./run";
+import { CommandTally } from "./command-tally";
 
 // One chat's Codex home, process and active run. A chat has exactly one
 // thread, recorded in `chat.json` the moment Codex creates it, so a retried
@@ -193,6 +194,9 @@ interface Active {
   readonly collabCalls: Set<string>;
   // Helper events seen before the lead's item that names the helper.
   strays: Notification[];
+  // Commands this reply ran and those that failed, the lead's and its
+  // helpers', against RuntimeLimits.maxCommands and maxFailedCommands.
+  readonly commands: CommandTally;
   // Set while the run's outcome waits for its helpers to stop.
   childrenDone: (() => void) | undefined;
   childTimer: NodeJS.Timeout | undefined;
@@ -414,6 +418,7 @@ export class ChatRuntime {
       children: new Map(),
       collabCalls: new Set(),
       strays: [],
+      commands: new CommandTally(),
       childrenDone: undefined,
       childTimer: undefined,
       leadUsage: null,
@@ -1170,6 +1175,9 @@ export class ChatRuntime {
       case "item/completed": {
         this.activity(active);
         const item = n.params.item as Record<string, unknown> | undefined;
+        // A helper's commands count against the reply's limits too.
+        if (n.method === "item/completed" && item?.type === "commandExecution")
+          this.countCommand(active, item, child.threadId);
         // Connector and tool names come from the chat's own spec.
         if (n.method === "item/started" && item?.type === "mcpToolCall")
           return active.run.agentActivity(
@@ -1378,6 +1386,26 @@ export class ChatRuntime {
     if (shown) active.run.appendOutput(itemId, shown);
   }
 
+  // Counts a finished command, the lead's or a helper's, against the reply's
+  // limits (CommandTally). Past either limit the reply stops as
+  // COMMAND_LIMIT, so a model that keeps trying tools that aren't there stops
+  // spending tokens. A repeated item/completed counts once.
+  private countCommand(
+    active: Active,
+    item: Record<string, unknown>,
+    threadId = "",
+  ): void {
+    const id = typeof item.id === "string" ? item.id : "";
+    if (!active.commands.add(id && `${threadId}:${id}`, item)) return;
+    if (active.interrupting || !active.commands.over(this.host.limits)) return;
+    this.host.log("command_limit", {
+      runId: active.run.runId,
+      commands: active.commands.commands,
+      failedCommands: active.commands.failed,
+    });
+    this.interrupt("COMMAND_LIMIT");
+  }
+
   // Maps a commandExecution or fileChange item to activity events. Started
   // items are kept so the approval request Codex sends next can be matched to
   // them by item id.
@@ -1405,6 +1433,7 @@ export class ChatRuntime {
       }
       active.activities.delete(itemId);
       this.streamOutput(active, itemId, "", true);
+      this.countCommand(active, item);
       run.completeCommand(
         itemId,
         command,

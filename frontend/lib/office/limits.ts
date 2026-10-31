@@ -12,7 +12,10 @@ export const OFFICE_LIMITS = {
   sheets: 50,
   sheetRows: 500,
   sheetColumns: 50,
-  // Images in a Word document, each and all together, shown as data: URLs.
+  // Slides shown per presentation; the rest are left for the download.
+  slides: 100,
+  // Images in a Word document or a presentation, each and all together,
+  // shown as data: URLs.
   images: 50,
   imageBytes: 5 * 1024 * 1024,
   imagesTotalBytes: 20 * 1024 * 1024,

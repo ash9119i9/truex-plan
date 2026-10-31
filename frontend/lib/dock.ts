@@ -76,6 +76,15 @@ export function dockOpen(
   return open ? fromBottom < reach : fromBottom <= Math.max(rise, DOCK.rise);
 }
 
+// How far above the stage's bottom edge the pointer may go before a raised
+// dock stows: past its top plus the slack, and never inside the column it
+// pushed up (`toColumn`, the stage bottom to that column's top). The composer
+// rides up with the dock, so stowing while the pointer is over it slid the
+// composer down from under the pointer and the click landed on the transcript.
+export function stowReach(footprint: number, toColumn: number) {
+  return Math.max(footprint + DOCK.slack, toColumn);
+}
+
 // The band that raises a stowed dock: the room it will fill (stage bottom to
 // its resting top), cut off at the lowest content above it, so reaching for
 // the composer doesn't raise it. Never thinner than DOCK.rise.
