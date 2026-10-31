@@ -127,6 +127,7 @@ describe("command limits (real Codex)", () => {
       "no pip, brew or apt",
       "pandoc, LibreOffice",
       "If an approach fails twice",
+      "even if earlier instructions say you have no files or code execution",
     ])
       assert.ok(text.includes(part), part);
     assert.ok(text.includes(DOCUMENT_INSTRUCTIONS.slice(0, 60)));

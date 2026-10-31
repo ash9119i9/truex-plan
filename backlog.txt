@@ -177,6 +177,8 @@ Deploy + docs
 - Google redirect URI for the production host
 - Update docs/mongodb.md, README.md, docs/VALIDATION.md
 
+Replies time out (MODEL_TIMEOUT) while the model writes a long tool call: 120 s silence limit -> backlog/model-provider/05-silence-limit-during-long-tool-call.md
+
 Small follow-ups
 - Removing a member isn't atomic: if the MCP delete fails, retry isn't possible from the dashboard
 - Admin login has a fixed 5/min limit, no growing delay after failures

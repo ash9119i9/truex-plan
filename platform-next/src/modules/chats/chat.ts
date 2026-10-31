@@ -105,7 +105,7 @@ export const SENDS_PER_MINUTE = 20;
 // Messages a member can add to one reply while it is being written.
 export const STEERS_PER_RUN = 5;
 // The base prompt version every user agent's prompt is built from.
-export const PLATFORM_INSTRUCTIONS_VERSION = "v5";
+export const PLATFORM_INSTRUCTIONS_VERSION = "v6";
 
 // Whether a chat asks the model for Follow Up rows. Decided once when the
 // chat is created: a holdout never flips mid-chat.
