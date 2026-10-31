@@ -1,15 +1,18 @@
 import { PreviewError, type PreviewErrorCode } from "./limits.ts";
+import type { Deck } from "./pptx.ts";
 import { parseXlsx, type Workbook } from "./xlsx.ts";
 
 // One preview request, as the worker runs it. Kept apart from the worker's
 // wiring so Node tests can run it directly.
 
-export type OfficeKind = "sheet" | "docx";
+export type OfficeKind = "sheet" | "docx" | "slides";
 export type PreviewRequest = { kind: OfficeKind; bytes: ArrayBuffer };
 export type PreviewResult =
   | { kind: "sheet"; workbook: Workbook }
   // HTML for sandboxedDocx's frame only, never the page.
-  | { kind: "docx"; html: string };
+  | { kind: "docx"; html: string }
+  // Plain text and raster data: URLs, rendered as React text and <img>.
+  | { kind: "slides"; deck: Deck };
 export type PreviewResponse =
   | { ok: true; result: PreviewResult }
   | { ok: false; code: PreviewErrorCode; message: string };
@@ -27,6 +30,10 @@ export async function runPreview({
         // mammoth is loaded only when a Word file opens.
         const { parseDocx } = await import("./docx.ts");
         return { ok: true, result: { kind, html: await parseDocx(data) } };
+      }
+      case "slides": {
+        const { parsePptx } = await import("./pptx.ts");
+        return { ok: true, result: { kind, deck: parsePptx(data) } };
       }
       default:
         throw new PreviewError(

@@ -20,6 +20,8 @@ const REDUCED = "(prefers-reduced-motion: reduce)";
 // On a line change a horizontal move wider than this snaps instead of
 // sweeping diagonally across the text (Enter, wrapping, Home/End jumps).
 const SWEEP_LIMIT = 48;
+// A moved caret stays solid this long before it starts to blink.
+const BLINK_AFTER = 500;
 const MIRRORED = [
   "fontFamily",
   "fontSize",
@@ -66,7 +68,8 @@ export function SmoothTextarea({
     mirror = useRef<HTMLDivElement>(null),
     last = useRef<Target | null>(null),
     caret = useRef<HTMLDivElement>(null),
-    frame = useRef(0);
+    frame = useRef(0),
+    still = useRef(0);
   const x = useRef<Spring>(createSpring(0)),
     line = useRef<Spring>(createSpring(0)),
     view = useRef({ scroll: 0, height: 0, opacity: 0 });
@@ -103,6 +106,18 @@ export function SmoothTextarea({
     },
     [ref],
   );
+
+  // The caret blinks only at rest: each move holds it solid until the person
+  // has paused for BLINK_AFTER ms, as a native caret does.
+  const hold = useCallback(() => {
+    const el = caret.current;
+    if (!el) return;
+    el.dataset.moving = "";
+    clearTimeout(still.current);
+    still.current = window.setTimeout(() => {
+      delete el.dataset.moving;
+    }, BLINK_AFTER);
+  }, []);
 
   const hide = useCallback(() => {
     view.current.opacity = 0;
@@ -162,6 +177,7 @@ export function SmoothTextarea({
     const prev = last.current;
     last.current = { x: left, line: top, width };
     if (prev && prev.x === left && prev.line === top) return paint();
+    hold();
 
     if (matchMedia(REDUCED).matches || !prev || prev.width !== width) {
       jumpSpring(x.current, left);
@@ -176,7 +192,7 @@ export function SmoothTextarea({
     if (lineChanged) retargetSpring(line.current, top, now);
     paint();
     run();
-  }, [hide, paint, run]);
+  }, [hide, hold, paint, run]);
 
   // Spec composer (Core §2): height = auto, then min(scrollHeight, cap).
   useLayoutEffect(() => {
@@ -212,6 +228,7 @@ export function SmoothTextarea({
       observer.disconnect();
       cancelAnimationFrame(frame.current);
       frame.current = 0;
+      clearTimeout(still.current);
     };
   }, [update, hide]);
 

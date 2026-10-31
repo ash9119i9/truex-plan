@@ -900,3 +900,200 @@
 :root[data-eff-motion="reduce"] .cs-work-chev {
   transition: none;
 }
+
+/* The lead's checklist at the top of a reply (Codex update_plan). Codex TUI
+   vocabulary: done is dim and struck through, in progress bold accent,
+   pending dim. No motion. Long steps wrap; nothing scrolls sideways. */
+/* The model's checklist (plan): a card with a progress bar and a column of
+   round markers joined by a thin rail. Done steps stay readable (no strike
+   through); the step in progress is the one that stands out. */
+.plan {
+  --plan-mark: 1.125rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  max-width: 36rem;
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.plan-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--t-meta);
+}
+.plan-title {
+  font-weight: 600;
+  color: var(--ink);
+}
+.plan-count {
+  color: var(--ink-3);
+}
+.plan.is-complete .plan-count {
+  color: var(--ok-ink);
+}
+.plan-bar {
+  height: var(--sp-1);
+  border-radius: var(--r-pill);
+  background: var(--well);
+  overflow: hidden;
+}
+.plan-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--signal);
+  transition: width var(--tx-d-3) var(--tx-ease);
+}
+.plan.is-complete .plan-bar > span {
+  background: var(--ok);
+}
+.plan-why {
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.plan-steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.plan-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--plan-mark) minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  align-items: start;
+  padding-block: var(--sp-1);
+  font-size: var(--t-ui);
+  line-height: var(--lh-ui);
+  color: var(--ink-3);
+}
+/* The rail between one marker and the next. */
+.plan-step:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: calc(var(--sp-1) + var(--plan-mark) + var(--sp-h));
+  bottom: calc(var(--sp-h) - var(--sp-1));
+  left: calc(var(--plan-mark) / 2);
+  width: 1px;
+  background: var(--line);
+}
+.plan-step.is-done:not(:last-child)::before {
+  background: var(--ok);
+}
+.plan-mark {
+  display: grid;
+  place-items: center;
+  width: var(--plan-mark);
+  height: var(--plan-mark);
+  margin-top: calc((1lh - var(--plan-mark)) / 2);
+  color: var(--ink-3);
+}
+.plan-mark > svg,
+.plan-mark::after {
+  grid-area: 1 / 1;
+}
+.plan-mark svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+/* Waiting and in progress: a ring of round dots. */
+.plan-ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-dasharray: 0.01 3.85;
+}
+.plan-fill {
+  fill: var(--ok);
+}
+.plan-step.is-done .plan-mark svg {
+  animation: plan-tick-in var(--tx-d-3) var(--tx-spring) both;
+}
+@keyframes plan-tick-in {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+.plan-tick {
+  fill: none;
+  stroke: var(--on-signal);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.plan-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plan-step.is-done {
+  color: var(--ink-2);
+}
+
+.plan-step.is-active {
+  color: var(--ink);
+}
+.plan-step.is-active .plan-text {
+  font-weight: 600;
+}
+.plan-step.is-active .plan-mark {
+  color: var(--signal);
+}
+/* The ring turns slowly and the dot inside breathes while the step runs. */
+.plan-step.is-active .plan-mark svg {
+  animation: plan-turn 6s linear infinite;
+}
+.plan-step.is-active .plan-mark::after {
+  content: "";
+  width: 34%;
+  height: 34%;
+  border-radius: var(--r-pill);
+  background: var(--signal);
+  animation: plan-pulse 1.6s var(--tx-ease) infinite;
+}
+@keyframes plan-turn {
+  to {
+    transform: rotate(1turn);
+  }
+}
+@keyframes plan-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+.plan-empty {
+  margin: 0;
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+@media (prefers-reduced-motion: reduce) {
+  .plan-bar > span {
+    transition: none;
+  }
+  .plan-step.is-active .plan-mark::after,
+  .plan-step .plan-mark svg {
+    animation: none;
+  }
+}
+:root[data-eff-motion="reduce"] .plan-bar > span {
+  transition: none;
+}
+:root[data-eff-motion="reduce"] .plan-step.is-active .plan-mark::after,
+:root[data-eff-motion="reduce"] .plan-step .plan-mark svg {
+  animation: none;
+}

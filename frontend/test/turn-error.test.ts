@@ -33,6 +33,14 @@ test("a run error maps to the spec's reason, title and action", () => {
     },
   );
   assert.deepEqual(
+    turnErrorOf({ code: "COMMAND_LIMIT", message: "m", retryable: false }),
+    {
+      title: "Stopped after too many steps",
+      code: "command_limit",
+      action: "new",
+    },
+  );
+  assert.deepEqual(
     turnErrorOf({ code: "THREAD_LOST", message: "m", retryable: false }),
     {
       title: "Something went wrong",

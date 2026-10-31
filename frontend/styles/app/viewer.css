@@ -244,6 +244,62 @@
   height: auto;
   border-radius: var(--r-sm);
 }
+/* A PDF: its pages in order, drawn in the PDF's own colours. */
+.fv-pdf-pages {
+  display: grid;
+  gap: var(--sp-3);
+  justify-items: center;
+}
+.fv-pdf-page {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+/* A presentation: one card per slide, in order. */
+.fv-slides {
+  display: grid;
+  gap: var(--sp-3);
+}
+/* Theme colours, not a white page: the text takes the theme's ink, so the
+   card must take the theme's surface or dark mode is light text on white. */
+.fv-slide {
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.fv-slide-num {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--t-meta);
+  color: var(--ink-3);
+}
+.fv-slide-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--t-h4);
+  font-weight: 600;
+  line-height: var(--lh-h4);
+  font-variation-settings: var(--cut-heading);
+  letter-spacing: var(--tr-h4);
+}
+.fv-slide-text {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--t-ui);
+  line-height: 1.5;
+}
+/* A white backdrop, as on the slide itself: a transparent picture of dark
+   text or a logo would vanish on a dark card. */
+.fv-slide-img {
+  background: var(--pr-paper, white);
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-top: var(--sp-2);
+  border-radius: var(--r-sm);
+}
 .fv-note {
   margin: var(--sp-2) 0 0;
   font-size: var(--t-meta);

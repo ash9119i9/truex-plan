@@ -12,6 +12,8 @@ import type { LiveReply } from "@/lib/tenant-chat";
 import type { RetryState } from "./file-card";
 import { DocView } from "./doc-view";
 import { SheetView } from "./sheet-view";
+import { PdfView } from "./pdf-view";
+import { SlidesView } from "./slides-view";
 import { parseInWorker } from "@/lib/office/client";
 import { OFFICE_LIMITS, PreviewError } from "@/lib/office/limits";
 import type { PreviewResult } from "@/lib/office/run";
@@ -40,6 +42,7 @@ type Loaded =
   | { state: "text"; text: string }
   | { state: "image"; url: string }
   | { state: "office"; result: PreviewResult }
+  | { state: "pdf"; bytes: ArrayBuffer }
   | { state: "large" }
   | { state: "none" }
   // An Office file the preview couldn't read: broken, encrypted or unusual.
@@ -56,12 +59,34 @@ function useFileContent(
     if (!file) return;
     const kind = previewKind(file.name);
     if (kind === "none") return setLoaded({ state: "none" });
-    const limit = isOffice(kind) ? OFFICE_LIMITS.fileBytes : MAX_PREVIEW_BYTES;
+    const limit =
+      isOffice(kind) || kind === "pdf"
+        ? OFFICE_LIMITS.fileBytes
+        : MAX_PREVIEW_BYTES;
     if (kind !== "image" && file.size > limit)
       return setLoaded({ state: "large" });
     let cancelled = false;
     let url: string | null = null;
     setLoaded({ state: "loading" });
+    if (kind === "pdf") {
+      cachedFileContent(chatId, file.id)
+        .then((blob) => blob.arrayBuffer())
+        .then(
+          (bytes) => {
+            if (!cancelled) setLoaded({ state: "pdf", bytes });
+          },
+          (error: unknown) => {
+            if (!cancelled)
+              setLoaded({
+                state: "error",
+                message: userMessage(error, "The file couldn't be loaded."),
+              });
+          },
+        );
+      return () => {
+        cancelled = true;
+      };
+    }
     if (isOffice(kind)) {
       // Aborting stops the worker: a file no longer shown stops parsing.
       const abort = new AbortController();
@@ -133,6 +158,7 @@ export function FileViewer({
   onClose,
   onDownload,
   unsaved,
+  tooLarge = [],
   saving,
   onSave,
 }: {
@@ -146,6 +172,8 @@ export function FileViewer({
   // The target reply's files that couldn't be saved, its retry (if any),
   // and how to retry them.
   unsaved: readonly string[];
+  // Its files too large to save: shown as such, never retried.
+  tooLarge?: readonly string[];
   saving: RetryState | undefined;
   onSave: () => void;
 }) {
@@ -161,9 +189,10 @@ export function FileViewer({
   const kind = previewKind(name);
   const source = hasSource(name);
   // Written but not stored, and won't be without a retry.
-  const notSaved =
-    (subject.state === "missing" || subject.state === "saving") &&
-    unsaved.includes(subject.path);
+  const notStored = subject.state === "missing" || subject.state === "saving";
+  // Too large to save: says so, with nothing to retry.
+  const tooBig = notStored && tooLarge.includes(subject.path);
+  const notSaved = notStored && !tooBig && unsaved.includes(subject.path);
 
   // A new file starts on Preview, with focus on its name.
   useEffect(() => {
@@ -309,7 +338,9 @@ export function FileViewer({
             }
           : {})}
         aria-busy={
-          !notSaved && (subject.state !== "ready" || loaded.state === "loading")
+          !notSaved &&
+          !tooBig &&
+          (subject.state !== "ready" || loaded.state === "loading")
         }
       >
         <ViewerBody
@@ -320,6 +351,7 @@ export function FileViewer({
           onRetry={() => setAttempt((n) => n + 1)}
           onDownload={file ? () => onDownload(file) : null}
           unsaved={notSaved ? { saving, onSave } : null}
+          tooBig={tooBig}
         />
       </div>
     </div>
@@ -334,6 +366,7 @@ function ViewerBody({
   onRetry,
   onDownload,
   unsaved,
+  tooBig = false,
 }: {
   subject: ViewerSubject;
   loaded: Loaded;
@@ -343,8 +376,17 @@ function ViewerBody({
   onDownload: (() => void) | null;
   // Set when the file couldn't be saved and can be retried.
   unsaved: { saving: RetryState | undefined; onSave: () => void } | null;
+  // Set when the file is too large to save: no retry can store it.
+  tooBig?: boolean;
 }) {
   const kind = previewKind(name);
+  if (tooBig)
+    return (
+      <p className="fv-note" role="status">
+        This file is too large to save (over 20 MB), so it can&apos;t be opened
+        here.
+      </p>
+    );
   if (unsaved)
     return (
       <div className="fv-error" role="alert">
@@ -371,7 +413,7 @@ function ViewerBody({
     );
   if (subject.state === "writing") {
     // An Office file's text while it's written is zip bytes, not a preview.
-    if (!subject.text || isOffice(kind)) return <Skeleton />;
+    if (!subject.text || isOffice(kind) || kind === "pdf") return <Skeleton />;
     return (
       <>
         <TextView text={subject.text} kind={kind} tab={tab} streaming />
@@ -429,9 +471,13 @@ function ViewerBody({
     case "office":
       return loaded.result.kind === "sheet" ? (
         <SheetView workbook={loaded.result.workbook} />
+      ) : loaded.result.kind === "slides" ? (
+        <SlidesView deck={loaded.result.deck} />
       ) : (
         <DocView html={loaded.result.html} />
       );
+    case "pdf":
+      return <PdfView bytes={loaded.bytes} onDownload={onDownload} />;
     case "image":
       // A blob: URL of the stored bytes; an image can't run anything.
       return <img className="fv-image" src={loaded.url} alt={name} />;

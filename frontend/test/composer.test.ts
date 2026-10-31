@@ -162,10 +162,10 @@ test("the dock's Agent menu lists a few agents, then Browse all and Create agent
   assert.equal(create.label, "Create agent");
   assert.equal(create.icon, "plus");
   // unavailable agents can't start a chat; with none, only the two actions
-  assert.deepEqual(ids(dockAgentMenu([agent("x", { available: false })], null)), [
-    "browse",
-    "new",
-  ]);
+  assert.deepEqual(
+    ids(dockAgentMenu([agent("x", { available: false })], null)),
+    ["browse", "new"],
+  );
 });
 
 test("the old composer and agent-list CSS is gone; the new CSS is tokens only", () => {
@@ -188,4 +188,27 @@ test("the old composer and agent-list CSS is gone; the new CSS is tokens only", 
     read("test/design-system.test.ts"),
     /"styles\/app\/composer\.css"/,
   );
+});
+
+test("an idle composer starts on its first hint; a running turn keeps its own", () => {
+  assert.match(composer(), /placeholder="Ask a follow-up or assign a step"/);
+  assert.match(
+    composer({
+      hero: true,
+      uploads: { enabled: true, maxFiles: 5, maxFileBytes: 1, extensions: [] },
+      onAddFiles() {},
+    }),
+    /placeholder="Ask anything, or type \/ for commands"/,
+  );
+  assert.match(
+    composer({ busy: true }),
+    /placeholder="Steer this turn: add a note, or press Stop"/,
+  );
+  // the drawn hint shows the same first line, hidden from assistive tech,
+  // and goes once there is text
+  assert.match(
+    composer(),
+    /<div class="cs-hint" aria-hidden="true"><span class="cs-hint-line">Ask a follow-up or assign a step<\/span><\/div>/,
+  );
+  assert.doesNotMatch(composer({ value: "hi" }), /cs-hint/);
 });

@@ -160,9 +160,15 @@ export interface ChatRun {
   steers?: SteerView[];
   // Files the reply wrote that couldn't be saved; absent when none.
   unsavedFiles?: string[];
+  // Files the reply wrote that are too large to save; absent when none.
+  tooLargeFiles?: string[];
+  // The chat had more files than could be checked; absent otherwise.
+  filesTruncated?: true;
   // The rows a completed reply offered, while Follow Ups are on; absent
   // otherwise.
   followUps?: { items: FollowUpItem[] };
+  // The reply's last checklist, as saved; absent when it never planned.
+  plan?: RunPlan;
 }
 
 // One open chat: its summary and the loaded, contiguous tail of messages.
@@ -415,6 +421,90 @@ function withHelpers(
   return next;
 }
 
+// The lead's checklist (Codex `update_plan`), one per reply. Each update is
+// the whole plan and replaces the previous one. Model-written: the platform
+// bounds it and it is bounded again here.
+export type PlanStepStatus = "pending" | "inProgress" | "completed";
+export interface PlanStep {
+  step: string;
+  status: PlanStepStatus;
+}
+export interface RunPlan {
+  explanation: string | null;
+  steps: PlanStep[];
+}
+
+const PLAN_STATUSES: readonly PlanStepStatus[] = [
+  "pending",
+  "inProgress",
+  "completed",
+];
+const MAX_PLAN_STEPS = 50;
+const MAX_PLAN_STEP = 500;
+const MAX_PLAN_EXPLANATION = 2000;
+
+// A step is one line: whitespace (newlines included) folds to a space, so a
+// step can't fake a second row or a status marker of its own.
+function parsePlanStep(value: unknown): PlanStep | null {
+  const s = record(value);
+  if (typeof s?.step !== "string") return null;
+  const step = s.step.replace(/\s+/g, " ").trim().slice(0, MAX_PLAN_STEP);
+  // An unknown status reads as pending rather than dropping the step.
+  return step
+    ? { step, status: oneOf(s.status, PLAN_STATUSES) ?? "pending" }
+    : null;
+}
+
+// A plan without a steps array is malformed and ignored (null); an empty
+// array is a plan with no steps.
+export function parsePlan(value: unknown): RunPlan | null {
+  const p = record(value);
+  if (!p || !Array.isArray(p.steps)) return null;
+  const explanation =
+    typeof p.explanation === "string"
+      ? p.explanation.trim().slice(0, MAX_PLAN_EXPLANATION)
+      : "";
+  return {
+    explanation: explanation || null,
+    steps: list(p.steps, parsePlanStep).slice(0, MAX_PLAN_STEPS),
+  };
+}
+
+// The next frame when the card catches up with a plan that ticked several
+// steps at once: one more step done, the step after it shown in progress,
+// later ticks held back. Null when the card already shows `target`, or when
+// the steps themselves changed (then the card shows the new plan at once).
+export function planFrame(shown: RunPlan, target: RunPlan): RunPlan | null {
+  if (shown === target) return null;
+  const same =
+    shown.steps.length === target.steps.length &&
+    shown.steps.every((s, i) => s.step === target.steps[i]!.step);
+  if (!same) return target;
+  const next = target.steps.findIndex(
+    (s, i) =>
+      s.status === "completed" && shown.steps[i]!.status !== "completed",
+  );
+  if (next < 0) return target;
+  const waiting = target.steps.some(
+    (s, i) =>
+      i > next &&
+      s.status === "completed" &&
+      shown.steps[i]!.status !== "completed",
+  );
+  if (!waiting) return target;
+  return {
+    explanation: target.explanation,
+    steps: target.steps.map((s, i) => {
+      if (i <= next || s.status !== "completed") return s;
+      if (shown.steps[i]!.status === "completed") return s;
+      return {
+        step: s.step,
+        status: i === next + 1 ? "inProgress" : "pending",
+      };
+    }),
+  };
+}
+
 export function parseMessage(value: unknown): ChatMessage | null {
   const m = record(value);
   const messageId = id(m?.id);
@@ -538,7 +628,9 @@ export function parseRun(value: unknown): ChatRun | null {
       })
     : null;
   const unsavedFiles = parseUnsaved(r.unsavedFiles);
+  const tooLargeFiles = parseUnsaved(r.tooLargeFiles);
   const followUps = parseFollowUpItems(r.followUps);
+  const plan = parsePlan(r.plan);
   return {
     id: runId,
     status,
@@ -547,7 +639,10 @@ export function parseRun(value: unknown): ChatRun | null {
     timings,
     ...(steers ? { steers } : {}),
     ...(unsavedFiles.length ? { unsavedFiles } : {}),
+    ...(tooLargeFiles.length ? { tooLargeFiles } : {}),
+    ...(r.filesTruncated === true ? { filesTruncated: true as const } : {}),
     ...(followUps.length ? { followUps: { items: followUps } } : {}),
+    ...(plan ? { plan } : {}),
   };
 }
 
@@ -936,12 +1031,18 @@ export interface LiveReply {
   // the still-pending set, so a reconnecting caller shows the open cards.
   approvals: Record<string, ApprovalView>;
   // The file versions the reply stored, once it has finished (the `files`
-  // event, before `saved`), and the paths it wrote that couldn't be stored.
+  // event, before `saved`), the paths it wrote that couldn't be stored, and
+  // those too large to store.
   files: ChatFile[];
   unsaved: string[];
+  tooLarge: string[];
+  // Some of the chat's files weren't checked for this reply.
+  filesTruncated: boolean;
   // Helper agents the lead started, in start order. Kept apart from items:
   // a helper's result is never one of the lead's replies.
   helpers: LiveHelper[];
+  // The lead's latest checklist; null until it plans.
+  plan: RunPlan | null;
 }
 
 export function liveReply(runId: string, now = Date.now()): LiveReply {
@@ -957,7 +1058,10 @@ export function liveReply(runId: string, now = Date.now()): LiveReply {
     approvals: {},
     files: [],
     unsaved: [],
+    tooLarge: [],
+    filesTruncated: false,
     helpers: [],
+    plan: null,
   };
 }
 
@@ -1194,6 +1298,7 @@ export type StreamEvent =
   | { type: "skill"; data: unknown }
   | { type: "network"; data: unknown }
   | { type: "agent"; data: unknown }
+  | { type: "plan"; data: unknown }
   | { type: "output"; data: unknown }
   | { type: "progress"; data: unknown }
   | { type: "usage"; data: unknown }
@@ -1232,7 +1337,15 @@ export function applyStreamEvent(
           reply.helpers,
           list(data.agents, parseLiveHelper).slice(0, MAX_HELPERS),
         ),
+        // A snapshot without a readable plan keeps the one already shown.
+        plan: parsePlan(data.plan) ?? reply.plan,
       };
+    }
+    case "plan": {
+      // The whole plan each time: the latest replaces it, even after
+      // `completed` (the reply is shown until it is saved).
+      const plan = parsePlan(data);
+      return plan ? { ...reply, plan } : reply;
     }
     case "agent": {
       const helper = parseLiveHelper(data);
@@ -1504,14 +1617,24 @@ export function applyStreamEvent(
           reply.helpers,
           list(data.agents, parseLiveHelper).slice(0, MAX_HELPERS),
         ),
+        plan: parsePlan(data.plan) ?? reply.plan,
         outcome: { status, error: parseRunError(data.error) },
       };
     }
     case "files": {
       const files = parseFiles(data);
       const unsaved = parseUnsaved(data?.unsaved);
-      if (!files.length && !unsaved.length) return reply;
-      return { ...reply, files: withFiles(reply.files, files), unsaved };
+      const tooLarge = parseUnsaved(data?.tooLarge);
+      const truncated = data?.truncated === true;
+      if (!files.length && !unsaved.length && !tooLarge.length && !truncated)
+        return reply;
+      return {
+        ...reply,
+        files: withFiles(reply.files, files),
+        unsaved,
+        tooLarge,
+        filesTruncated: reply.filesTruncated || truncated,
+      };
     }
     case "save_failed":
       return { ...reply, saveFailed: true };

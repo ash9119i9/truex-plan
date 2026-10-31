@@ -12,6 +12,7 @@ import {
   riseBand,
   settle,
   spring,
+  stowReach,
 } from "../lib/dock.ts";
 import { component } from "./next-details-runtime.ts";
 
@@ -124,4 +125,18 @@ test("every dock key is a labelled button with its tooltip; toggles report their
   assert.match(keys[2], /aria-keyshortcuts="Meta\+J Control\+J"/);
   assert.equal((html.match(/role="tooltip"/g) ?? []).length, 5);
   assert.match(html, /Sidebar <kbd class="tx-kbd">⌘B<\/kbd>/);
+});
+
+test("a raised dock holds while the pointer is over the composer it pushed up", () => {
+  // The composer column rides 92px up with the dock; stowing while the
+  // pointer is in it slid the composer out from under the click.
+  const footprint = 76;
+  const column = 220; // stage bottom to the top of .cs-bottom
+  const reach = stowReach(footprint, column);
+  assert.equal(reach, column);
+  assert.equal(dockOpen(true, 150, reach, false), true);
+  assert.equal(dockOpen(true, 219, reach, false), true);
+  assert.equal(dockOpen(true, 221, reach, false), false);
+  // an empty column (a new chat) keeps the old reach: the dock plus slack
+  assert.equal(stowReach(footprint, 0), footprint + DOCK.slack);
 });

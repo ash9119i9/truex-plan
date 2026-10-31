@@ -28,6 +28,7 @@ import { RefChip } from "@/components/tx/chip";
 import { stripSuggestions, type FollowUpItem } from "@/lib/suggestions";
 import { FollowUpRows } from "./follow-up-rows";
 import {
+  planFrame,
   exchangeKey,
   exchangesOf,
   helperApprovalNote,
@@ -49,7 +50,9 @@ import {
   type ChatThread,
   type HelperAgent,
   type HelperStatus,
+  type PlanStepStatus,
   type RunError,
+  type RunPlan,
   type LiveReply,
 } from "@/lib/tenant-chat";
 import { Spin } from "@/components/tx/live";
@@ -815,6 +818,99 @@ function NetworkCard({
 
 // The helper agents the lead started, as one group placed before its final
 // answer (live and saved alike). Results are model-written: plain text only.
+// The lead's checklist at the top of its reply, in the Codex TUI vocabulary:
+// ✔ done (dim, struck through), □ in progress (bold accent), □ pending (dim).
+// Steps and the explanation are model-written, so they render as plain text
+// only. The marker is decoration; each step says its status in text.
+const PLAN_STEP: Record<PlanStepStatus, { className: string; said: string }> = {
+  completed: { className: "is-done", said: "Completed: " },
+  inProgress: { className: "is-active", said: "In progress: " },
+  pending: { className: "is-pending", said: "Pending: " },
+};
+
+// How long each extra tick waits when one update completes several steps,
+// so they tick off one by one instead of all at once.
+const PLAN_TICK_MS = 450;
+
+// The plan the card shows: `plan` itself, except that several steps ticked
+// in one update are revealed one at a time. The first plan shows as it is,
+// so a saved reply opens complete.
+function useStaggeredPlan(plan: RunPlan): RunPlan {
+  const [shown, setShown] = useState(plan);
+  useEffect(() => {
+    const next = planFrame(shown, plan);
+    if (!next) return;
+    const reduced =
+      document.documentElement.dataset.effMotion === "reduce" ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (next === plan || reduced) return setShown(plan);
+    const tick = window.setTimeout(() => setShown(next), PLAN_TICK_MS);
+    return () => clearTimeout(tick);
+  }, [plan, shown]);
+  return shown;
+}
+
+// The model's checklist at the top of the reply: a progress bar, then each
+// step with a marker (a filled tick when done, a turning dotted ring while
+// in progress, a still dotted ring while waiting). The status is also said in
+// words, so it never rests on the marker alone.
+export const PlanChecklist = memo(function PlanChecklist({
+  plan: latest,
+}: {
+  plan: RunPlan;
+}) {
+  const plan = useStaggeredPlan(latest);
+  const total = plan.steps.length;
+  const done = plan.steps.filter((s) => s.status === "completed").length;
+  const explanation = plan.explanation?.trim();
+  const complete = total > 0 && done === total;
+  return (
+    <section
+      className={complete ? "plan is-complete" : "plan"}
+      aria-label="Plan"
+    >
+      <div className="plan-head">
+        <span className="plan-title">Plan</span>
+        <span className="plan-count num">{`${done}/${total} complete`}</span>
+      </div>
+      <div className="plan-bar" aria-hidden="true">
+        <span style={{ width: `${total ? (done / total) * 100 : 0}%` }} />
+      </div>
+      {explanation && <p className="plan-why">{explanation}</p>}
+      {total ? (
+        <ol className="plan-steps">
+          {plan.steps.map((s, index) => {
+            const look = PLAN_STEP[s.status] ?? PLAN_STEP.pending;
+            return (
+              <li key={index} className={`plan-step ${look.className}`}>
+                <span className="plan-mark" aria-hidden="true">
+                  <svg viewBox="0 0 18 18" focusable="false">
+                    {s.status === "completed" ? (
+                      <>
+                        <circle className="plan-fill" cx="9" cy="9" r="8" />
+                        <path
+                          className="plan-tick"
+                          d="M5.6 9.3 8 11.6l4.4-4.9"
+                        />
+                      </>
+                    ) : (
+                      <circle className="plan-ring" cx="9" cy="9" r="7.4" />
+                    )}
+                  </svg>
+                </span>
+                <span className="tx-sr">{look.said}</span>
+                <span className="plan-text">{s.step}</span>
+              </li>
+            );
+          })}
+        </ol>
+      ) : (
+        <p className="plan-empty">(no steps provided)</p>
+      )}
+    </section>
+  );
+});
+
 export function HelperGroup({
   helpers,
   live,
@@ -1104,12 +1200,18 @@ function SavedExchange({
       />
     ) : null;
   const card =
-    run && (files.length > 0 || run.unsavedFiles?.length) ? (
+    run &&
+    (files.length > 0 ||
+      run.unsavedFiles?.length ||
+      run.tooLargeFiles?.length ||
+      run.filesTruncated) ? (
       <FileCard
         runId={run.id}
         files={files}
         writing={[]}
         unsaved={run.unsavedFiles}
+        tooLarge={run.tooLargeFiles}
+        truncated={run.filesTruncated}
       />
     ) : null;
   // The settled run's receipt: its time, tokens and model, opening the trace.
@@ -1139,6 +1241,7 @@ function SavedExchange({
     }
   }
   const lastAgentIndex = blocks.map((b) => b.kind).lastIndexOf("agent");
+  const firstAgentIndex = blocks.findIndex((b) => b.kind === "agent");
   const hasFooter = !!(note || usage || card || error);
   // An empty settled run (no replies saved) still shows its footer.
   const showLooseFooter = hasFooter && lastAgentIndex < 0;
@@ -1162,6 +1265,7 @@ function SavedExchange({
             <SavedBody
               entries={block.messages}
               connectors={connectors}
+              plan={index === firstAgentIndex ? run?.plan : null}
               note={index === lastAgentIndex ? note : null}
               usage={index === lastAgentIndex ? usage : null}
               error={index === lastAgentIndex ? error : null}
@@ -1183,6 +1287,7 @@ function SavedExchange({
           <SavedBody
             entries={[]}
             connectors={connectors}
+            plan={run?.plan}
             note={note}
             usage={usage}
             error={error}
@@ -1364,6 +1469,7 @@ export function SavedBody({
   error,
   card,
   followUps,
+  plan,
 }: {
   entries: ChatMessage[];
   connectors: ConnectorRef[];
@@ -1376,6 +1482,8 @@ export function SavedBody({
   card: ReactNode;
   // Follow Up rows, under the latest completed answer only.
   followUps?: ReactNode;
+  // The run's checklist, at the top of its first reply frame.
+  plan?: RunPlan | null;
 }) {
   const progress = progressFlags(
     entries.map((m) => (m.role === "tool" ? "tool" : "reply")),
@@ -1502,6 +1610,7 @@ export function SavedBody({
     });
   return (
     <>
+      {plan && <PlanChecklist plan={plan} />}
       <Slots parts={parts} />
       {error}
       {card}
@@ -1750,6 +1859,7 @@ export function LiveBody({
     });
   return (
     <>
+      {live.plan && <PlanChecklist plan={live.plan} />}
       <Slots parts={parts} />
       {streaming && !answered && (
         // Held on a request, nothing is working: the warn hand, no motion.
@@ -1769,6 +1879,8 @@ export function LiveBody({
         files={files}
         writing={writing}
         unsaved={live.unsaved}
+        tooLarge={live.tooLarge}
+        truncated={live.filesTruncated}
       />
       <ConnectorBanners
         failures={live.connectorFailures}

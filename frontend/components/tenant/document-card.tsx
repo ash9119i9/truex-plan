@@ -16,7 +16,9 @@ const KIND_ICON: Record<DocumentKind, IconName> = {
   text: "text",
 };
 
-export type DocumentState = "ready" | "writing" | "unsaved" | "saving";
+// "tooLarge": over the per-file limit, so it can never be saved: no Retry.
+export type DocumentState =
+  "ready" | "writing" | "unsaved" | "saving" | "tooLarge";
 
 export function DocumentCard({
   name,
@@ -63,6 +65,11 @@ export function DocumentCard({
         <Icon name="alert" size="sm" />
         Couldn’t save this file
       </span>
+    ) : state === "tooLarge" ? (
+      <span className="dc-meta is-bad">
+        <Icon name="alert" size="sm" />
+        Too large to save (over 20 MB)
+      </span>
     ) : (
       <span className="dc-meta">
         {label} · {docSize(size)}
@@ -76,7 +83,7 @@ export function DocumentCard({
           ? active
             ? "dc is-active"
             : "dc"
-          : state === "saving"
+          : state === "saving" || state === "tooLarge"
             ? "dc is-unsaved"
             : `dc is-${state}`
       }
@@ -85,7 +92,10 @@ export function DocumentCard({
       <span className="dc-tile" aria-hidden="true">
         <Icon name={KIND_ICON[kind]} />
       </span>
-      {onOpen && state !== "unsaved" && state !== "saving" ? (
+      {onOpen &&
+      state !== "unsaved" &&
+      state !== "saving" &&
+      state !== "tooLarge" ? (
         <button
           type="button"
           className="dc-open"
@@ -101,7 +111,8 @@ export function DocumentCard({
           {meta}
         </span>
       )}
-      {state === "unsaved" || state === "saving" ? (
+      {state === "tooLarge" ? null : state === "unsaved" ||
+        state === "saving" ? (
         <Button
           size="sm"
           variant="ghost"

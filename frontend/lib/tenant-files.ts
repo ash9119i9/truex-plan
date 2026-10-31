@@ -88,7 +88,8 @@ export function parseFiles(value: unknown): ChatFile[] {
 const MAX_UNSAVED = 50;
 
 // The paths a reply wrote that couldn't be saved: a run's `unsavedFiles`,
-// the `files` event's and a retry's `unsaved`.
+// the `files` event's and a retry's `unsaved`. Also the paths too large to
+// save (`tooLargeFiles`, `tooLarge`), bounded the same way.
 export function parseUnsaved(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const out: string[] = [];
@@ -104,11 +105,11 @@ export function parseUnsaved(value: unknown): string[] {
 }
 
 // Asks the platform to save a reply's unsaved files again: the versions it
-// stored, and the paths that still failed.
+// stored, the paths that still failed, and those found too large to save.
 export async function retryUnsavedFiles(
   chatId: string,
   runId: string,
-): Promise<{ files: ChatFile[]; unsaved: string[] }> {
+): Promise<{ files: ChatFile[]; unsaved: string[]; tooLarge: string[] }> {
   const data = await api(
     `/api/v1/chats/${encodeURIComponent(chatId)}/runs/${encodeURIComponent(runId)}/files/retry`,
     {},
@@ -116,6 +117,7 @@ export async function retryUnsavedFiles(
   return {
     files: parseFiles(data),
     unsaved: parseUnsaved(record(data)?.unsaved),
+    tooLarge: parseUnsaved(record(data)?.tooLarge),
   };
 }
 
@@ -320,7 +322,12 @@ export async function downloadFile(
   chatId: string,
   file: ChatFile,
 ): Promise<void> {
-  const blob = await fetchFileContent(chatId, file.id);
+  // The viewer's copy when it can preview the file (a stored version never
+  // changes); a file it can't preview isn't kept in memory after its save.
+  const blob =
+    previewKind(file.name) === "none"
+      ? await fetchFileContent(chatId, file.id)
+      : await cachedFileContent(chatId, file.id);
   const url = URL.createObjectURL(blob);
   try {
     const a = document.createElement("a");
@@ -345,6 +352,9 @@ export type PreviewKind =
   // Office files, parsed in a worker (lib/office).
   | "sheet"
   | "docx"
+  | "slides"
+  // Drawn page by page with pdf.js (lib/pdf.ts).
+  | "pdf"
   // No preview in the browser: download only.
   | "none";
 
@@ -396,6 +406,8 @@ export function previewKind(name: string): PreviewKind {
   if (ext === "html" || ext === "htm") return "html";
   if (ext === "xlsx") return "sheet";
   if (ext === "docx") return "docx";
+  if (ext === "pptx") return "slides";
+  if (ext === "pdf") return "pdf";
   if (IMAGE.has(ext)) return "image";
   if (TEXT.has(ext)) return "text";
   return "none";
@@ -412,8 +424,10 @@ export const hasSource = (name: string) => {
 };
 
 // Whether the viewer previews the file by parsing its bytes in a worker.
-export const isOffice = (kind: PreviewKind): kind is "sheet" | "docx" =>
-  kind === "sheet" || kind === "docx";
+export const isOffice = (
+  kind: PreviewKind,
+): kind is "sheet" | "docx" | "slides" =>
+  kind === "sheet" || kind === "docx" || kind === "slides";
 
 // The short tag on the file's tile ("MD", "XLSX") and its colour family.
 export function fileTag(name: string): { label: string; tone: string } {

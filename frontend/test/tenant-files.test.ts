@@ -296,3 +296,58 @@ test("the viewer: writing, then saving, then the stored version", () => {
     { state: "ready", file: stored },
   );
 });
+
+test("too-large files: the files event and a saved run carry them, bounded", () => {
+  let reply = liveReply(RUN);
+  reply = applyStreamEvent(reply, {
+    type: "files",
+    data: { files: [], unsaved: [], tooLarge: ["dump.sqlite", 3, ""] },
+  });
+  // A files event with only too-large files still reaches the reply.
+  assert.deepEqual(reply.tooLarge, ["dump.sqlite"]);
+  assert.deepEqual(reply.unsaved, []);
+  const run = parseRun({
+    id: RUN,
+    status: "completed",
+    timings: { acceptedAt: "2026-10-22T09:00:00.000Z" },
+    tooLargeFiles: Array.from({ length: 80 }, (_, i) => `big${i}.bin`),
+  });
+  assert.equal(run?.tooLargeFiles?.length, 50);
+  const clean = parseRun({
+    id: RUN,
+    status: "completed",
+    timings: { acceptedAt: "2026-10-22T09:00:00.000Z" },
+  });
+  assert.equal(clean && "tooLargeFiles" in clean, false);
+});
+
+test("a cut-short file check reaches the reply and the saved run", () => {
+  let reply = liveReply(RUN);
+  assert.equal(reply.filesTruncated, false);
+  reply = applyStreamEvent(reply, {
+    type: "files",
+    data: { files: [], unsaved: [], tooLarge: [], truncated: true },
+  });
+  // A files event with nothing but the flag still reaches the reply.
+  assert.equal(reply.filesTruncated, true);
+  // A later files event without it doesn't clear it.
+  reply = applyStreamEvent(reply, {
+    type: "files",
+    data: { files: [], unsaved: ["a.md"], tooLarge: [] },
+  });
+  assert.equal(reply.filesTruncated, true);
+  const run = parseRun({
+    id: RUN,
+    status: "completed",
+    timings: { acceptedAt: "2026-10-22T09:00:00.000Z" },
+    filesTruncated: true,
+  });
+  assert.equal(run?.filesTruncated, true);
+  const odd = parseRun({
+    id: RUN,
+    status: "completed",
+    timings: { acceptedAt: "2026-10-22T09:00:00.000Z" },
+    filesTruncated: "yes",
+  });
+  assert.equal(odd && "filesTruncated" in odd, false);
+});

@@ -1223,6 +1223,12 @@ export function TenantChat() {
     : openLive?.runId === viewerRun
       ? openLive.unsaved
       : (shownThread?.runs[viewerRun]?.unsavedFiles ?? []);
+  // ...and those too large to save, which are never retried.
+  const viewerTooLarge = !viewerRun
+    ? []
+    : openLive?.runId === viewerRun
+      ? openLive.tooLarge
+      : (shownThread?.runs[viewerRun]?.tooLargeFiles ?? []);
   // A reply that starts writing a new file opens it in the viewer, so its
   // text can be watched as it is written. Not on a phone, where the viewer
   // would cover the chat, and not after the person closed it for this reply.
@@ -1271,12 +1277,14 @@ export function TenantChat() {
         });
       put({ busy: true });
       retryUnsavedFiles(chatId, runId).then(
-        ({ files, unsaved }) => {
+        ({ files, unsaved, tooLarge }) => {
           addFiles(chatId, files);
-          // Neither saved nor still failing: no longer in the chat.
+          // Neither saved, still failing nor too large: no longer in the chat.
           const gone = paths.some(
             (path) =>
-              !unsaved.includes(path) && !files.some((f) => f.path === path),
+              !unsaved.includes(path) &&
+              !tooLarge.includes(path) &&
+              !files.some((f) => f.path === path),
           );
           put(
             unsaved.length
@@ -1296,19 +1304,34 @@ export function TenantChat() {
             const run = current?.chat.id === chatId && current.runs[runId];
             if (!run) return current;
             const { unsavedFiles: _before, ...rest } = run;
+            // A file a retry found too large joins the reply's too large ones.
+            const big = [
+              ...new Set([...(run.tooLargeFiles ?? []), ...tooLarge]),
+            ];
             return {
               ...current,
               runs: {
                 ...current.runs,
-                [runId]: unsaved.length
-                  ? { ...rest, unsavedFiles: unsaved }
-                  : rest,
+                [runId]: {
+                  ...rest,
+                  ...(unsaved.length ? { unsavedFiles: unsaved } : {}),
+                  ...(big.length ? { tooLargeFiles: big } : {}),
+                },
               },
             };
           });
           setLive((current) =>
             current?.chatId === chatId && current.reply.runId === runId
-              ? { ...current, reply: { ...current.reply, unsaved } }
+              ? {
+                  ...current,
+                  reply: {
+                    ...current.reply,
+                    unsaved,
+                    tooLarge: [
+                      ...new Set([...current.reply.tooLarge, ...tooLarge]),
+                    ],
+                  },
+                }
               : current,
           );
         },
@@ -1791,6 +1814,7 @@ export function TenantChat() {
         onClose={onClose}
         onDownload={download}
         unsaved={viewerUnsaved}
+        tooLarge={viewerTooLarge}
         saving={retries[target.runId]}
         onSave={() => retryFiles(target.runId, viewerUnsaved)}
       />

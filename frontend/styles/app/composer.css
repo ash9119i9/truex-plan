@@ -106,7 +106,17 @@
   width: 100%;
   transition: padding var(--tx-d-1) var(--tx-ease);
 }
+/* The text's inset from the top of the field, shared by the textarea and the
+   hint drawn over it (.cs-hint) so the hint sits exactly where text and the
+   caret go. */
+.cs-composer {
+  --cs-field-pad: var(--sp-2);
+}
+.cs-composer.is-slim {
+  --cs-field-pad: var(--sp-h);
+}
 .cs-composer .pt-composer-input {
+  padding-block: var(--cs-field-pad);
   min-height: 2.25rem;
   max-height: 14rem;
   resize: none;
@@ -127,7 +137,6 @@
 }
 .cs-composer.is-slim .pt-composer-input {
   min-height: 1.75rem;
-  padding-block: var(--sp-h);
 }
 .cs-composer.is-slim .tx-chip {
   height: 1.5rem;
@@ -189,9 +198,75 @@
   left: 0;
   width: 2px;
   border-radius: var(--r-mark);
-  background: var(--signal);
   pointer-events: none;
   will-change: transform;
+}
+/* The blink lives on the bar inside: the caret's own opacity is written by
+   script to hide it, and an animation there would override that. */
+.smooth-caret::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--signal);
+  animation: smooth-caret-blink 1.06s step-end infinite;
+}
+.smooth-caret[data-moving]::after {
+  animation: none;
+}
+@keyframes smooth-caret-blink {
+  50% {
+    opacity: 0;
+  }
+}
+/* The placeholder is drawn by .cs-hint so a new hint can crossfade in: the
+   old line drifts up and out while the next rises into its place. */
+.cs-field {
+  position: relative;
+}
+.cs-composer .pt-composer-input::placeholder {
+  color: transparent;
+}
+.cs-hint {
+  position: absolute;
+  top: 0;
+  inset-inline: 0;
+  display: grid;
+  padding-block: var(--cs-field-pad);
+  overflow: hidden;
+  color: var(--ink-3);
+  font-family: var(--f-ui);
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  pointer-events: none;
+  transition: padding var(--tx-d-1) var(--tx-ease);
+}
+.cs-hint-line {
+  grid-area: 1 / 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cs-hint-line.is-in {
+  animation: cs-hint-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.cs-hint-line.is-out {
+  animation: cs-hint-out 0.45s cubic-bezier(0.4, 0, 0.6, 1) both;
+}
+@keyframes cs-hint-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.4em);
+    filter: blur(2px);
+  }
+}
+@keyframes cs-hint-out {
+  to {
+    opacity: 0;
+    transform: translateY(-0.4em);
+    filter: blur(2px);
+  }
 }
 
 /* ── agent picker ─────────────────────────────────────────────────────────── */
@@ -257,18 +332,30 @@
 @media (prefers-reduced-motion: reduce) {
   .cs-composer,
   .cs-composer .pt-composer-input,
+  .cs-hint,
   .cs-agent-chev {
     transition: none;
   }
-  .cs-agent-menu {
+  .cs-agent-menu,
+  .cs-hint-line,
+  .smooth-caret::after {
     animation: none;
+  }
+  .cs-hint-line.is-out {
+    display: none;
   }
 }
 :root[data-eff-motion="reduce"] .cs-composer,
 :root[data-eff-motion="reduce"] .cs-composer .pt-composer-input,
+:root[data-eff-motion="reduce"] .cs-hint,
 :root[data-eff-motion="reduce"] .cs-agent-chev {
   transition: none;
 }
-:root[data-eff-motion="reduce"] .cs-agent-menu {
+:root[data-eff-motion="reduce"] .cs-agent-menu,
+:root[data-eff-motion="reduce"] .cs-hint-line,
+:root[data-eff-motion="reduce"] .smooth-caret::after {
   animation: none;
+}
+:root[data-eff-motion="reduce"] .cs-hint-line.is-out {
+  display: none;
 }

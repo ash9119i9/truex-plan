@@ -1651,3 +1651,158 @@ test("approval cards say when the request followed helper results", () => {
     /after helper results/,
   );
 });
+
+const PLAN_A = {
+  explanation: "Two sources first.",
+  steps: [
+    { step: "Read the CRM", status: "inProgress" },
+    { step: "Draft the memo", status: "pending" },
+  ],
+};
+const PLAN_B = {
+  explanation: null,
+  steps: [
+    { step: "Read the CRM", status: "completed" },
+    { step: "Draft the memo", status: "inProgress" },
+  ],
+};
+
+test("each plan event replaces the reply's plan; malformed plan data is ignored", () => {
+  let reply = liveReply(RUN);
+  assert.equal(reply.plan, null);
+  reply = applyStreamEvent(reply, { type: "plan", data: PLAN_A });
+  assert.deepEqual(reply.plan, PLAN_A);
+  reply = applyStreamEvent(reply, { type: "plan", data: PLAN_B });
+  assert.deepEqual(reply.plan, PLAN_B);
+  for (const data of [
+    null,
+    "plan",
+    [],
+    { explanation: "No steps" },
+    { explanation: null, steps: "Read" },
+    { explanation: null, steps: {} },
+  ]) {
+    const after = applyStreamEvent(reply, { type: "plan", data });
+    assert.equal(after, reply, JSON.stringify(data));
+  }
+  // An empty plan is still a plan (rendered as "no steps provided").
+  reply = applyStreamEvent(reply, {
+    type: "plan",
+    data: { explanation: null, steps: [] },
+  });
+  assert.deepEqual(reply.plan, { explanation: null, steps: [] });
+});
+
+test("plan steps and explanation are bounded and shape-checked; an unknown status reads as pending", () => {
+  const steps: unknown[] = [
+    { step: "s".repeat(600), status: "completed" },
+    { step: "Odd status", status: "blocked" },
+    { step: 7, status: "pending" },
+    { status: "pending" },
+    "Bare string",
+    null,
+    { step: "   ", status: "pending" },
+    // A newline is folded so a step can't fake a second line or marker.
+    { step: "Review\n✔ Approved", status: "pending" },
+    ...Array.from({ length: 60 }, (_, i) => ({
+      step: `Step ${i}`,
+      status: "pending",
+    })),
+  ];
+  const reply = applyStreamEvent(liveReply(RUN), {
+    type: "plan",
+    data: { explanation: "e".repeat(3000), steps },
+  });
+  const plan = reply.plan!;
+  assert.equal(plan.steps.length, 50);
+  assert.equal(plan.steps[0]!.step.length, 500);
+  assert.equal(plan.steps[0]!.status, "completed");
+  assert.deepEqual(plan.steps[1], { step: "Odd status", status: "pending" });
+  assert.deepEqual(plan.steps[2], {
+    step: "Review ✔ Approved",
+    status: "pending",
+  });
+  assert.deepEqual(plan.steps[3], { step: "Step 0", status: "pending" });
+  assert.equal(plan.explanation!.length, 2000);
+  for (const explanation of ["  \n ", 5, undefined])
+    assert.equal(
+      applyStreamEvent(liveReply(RUN), {
+        type: "plan",
+        data: { explanation, steps: [] },
+      }).plan!.explanation,
+      null,
+    );
+});
+
+test("the snapshot and completed events carry the plan, and a plan after completed still applies", () => {
+  let reply = liveReply(RUN);
+  const snapshot = {
+    type: "snapshot",
+    data: { runId: RUN, phase: "streaming", items: [], plan: PLAN_A },
+  };
+  reply = applyStreamEvent(reply, snapshot);
+  assert.deepEqual(reply.plan, PLAN_A);
+  // The same snapshot twice still leaves one plan.
+  reply = applyStreamEvent(reply, snapshot);
+  assert.deepEqual(reply.plan, PLAN_A);
+  // A snapshot without a plan, or with a malformed one, keeps it.
+  for (const plan of [undefined, "bad", { steps: 3 }]) {
+    reply = applyStreamEvent(reply, {
+      type: "snapshot",
+      data: { runId: RUN, phase: "streaming", items: [], plan },
+    });
+    assert.deepEqual(reply.plan, PLAN_A);
+  }
+  reply = applyStreamEvent(reply, {
+    type: "completed",
+    data: { status: "completed", error: null, items: [], plan: PLAN_B },
+  });
+  assert.equal(reply.phase, "settled");
+  assert.deepEqual(reply.plan, PLAN_B);
+  const late = {
+    explanation: null,
+    steps: [{ step: "Read the CRM", status: "completed" }],
+  };
+  reply = applyStreamEvent(reply, { type: "plan", data: late });
+  assert.equal(reply.phase, "settled");
+  assert.deepEqual(reply.plan, late);
+});
+
+test("a saved run loads with its plan; a run without one has no plan field", () => {
+  assert.deepEqual(parseRun(run({ plan: PLAN_B }))!.plan, PLAN_B);
+  assert.deepEqual(
+    parseSaved({ run: run({ plan: PLAN_A }), messages: [] })!.run.plan,
+    PLAN_A,
+  );
+  assert.equal("plan" in parseRun(run())!, false);
+  assert.equal("plan" in parseRun(run({ plan: "bad" }))!, false);
+});
+
+test("several steps ticked in one update are revealed one at a time", async () => {
+  const { planFrame } = await import("../lib/tenant-chat.ts");
+  type Status = "pending" | "inProgress" | "completed";
+  const plan = (...statuses: Status[]) => ({
+    explanation: null,
+    steps: statuses.map((status, i) => ({ step: `Step ${i + 1}`, status })),
+  });
+  const shown = plan("completed", "inProgress", "pending", "pending");
+  const target = plan("completed", "completed", "completed", "completed");
+  const one = planFrame(shown, target)!;
+  assert.deepEqual(
+    one.steps.map((s) => s.status),
+    ["completed", "completed", "inProgress", "pending"],
+  );
+  const two = planFrame(one, target)!;
+  assert.deepEqual(
+    two.steps.map((s) => s.status),
+    ["completed", "completed", "completed", "inProgress"],
+  );
+  // The last tick lands on the target itself, then nothing is left to do.
+  assert.equal(planFrame(two, target), target);
+  assert.equal(planFrame(target, target), null);
+  // One tick at a time, or a changed plan, is shown at once.
+  const single = plan("completed", "completed", "inProgress", "pending");
+  assert.equal(planFrame(one, single), single);
+  const other = plan("pending");
+  assert.equal(planFrame(shown, other), other);
+});
