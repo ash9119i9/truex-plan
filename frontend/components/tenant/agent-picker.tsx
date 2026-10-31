@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import type { TenantAgent } from "@/lib/tenant-agents";
 import { AgentAvatar } from "./agent-avatar";
 import { Icon } from "@/components/tx/icon";
@@ -58,6 +58,8 @@ export function dockAgentMenu(
 
 // Room the menu needs below the chip before it flips up (17rem menu, 6 rows).
 const MENU_ROOM = 320;
+// Air kept between the open menu and the edge of the area that clips it.
+const MENU_GAP = 12;
 
 // The hero composer's agent chip (DESIGN-SPEC 11.6).
 export function AgentPick({
@@ -75,16 +77,31 @@ export function AgentPick({
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const [up, setUp] = useState(false);
+  const [room, setRoom] = useState<number | null>(null);
   const selected = agents.find((agent) => agent.id === selectedId) ?? null;
-  // The menu opens downward unless the chip sits too close to the bottom.
+  // The menu opens downward unless the chip sits too close to the bottom and
+  // there is more room above. Either way it is capped to the room it has, so
+  // the scrolling chat area never clips it.
   const measure = () => {
-    const box = wrap.current?.getBoundingClientRect();
-    if (box) setUp(window.innerHeight - box.bottom < MENU_ROOM);
+    const node = wrap.current;
+    const box = node?.getBoundingClientRect();
+    if (!node || !box) return;
+    const frame = node.closest(".cs-scroll")?.getBoundingClientRect();
+    const above = box.top - (frame?.top ?? 0);
+    const below = (frame?.bottom ?? window.innerHeight) - box.bottom;
+    const flip = below < MENU_ROOM && above > below;
+    setUp(flip);
+    setRoom(Math.max(0, Math.round((flip ? above : below) - MENU_GAP)));
   };
   return (
     <div
       className="cs-agent"
       ref={wrap}
+      style={
+        room === null
+          ? undefined
+          : ({ "--cs-menu-room": `${room}px` } as CSSProperties)
+      }
       onPointerDownCapture={measure}
       onKeyDownCapture={measure}
     >

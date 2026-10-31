@@ -28,6 +28,7 @@ import {
   previewUpdate,
   type PreviewState,
   parseChanges,
+  maskSandboxEnv,
   PathMask,
   splitStreamed,
   workspacePath,
@@ -170,8 +171,13 @@ interface Active {
   // Commands and file changes in progress, so an approval request can be
   // matched to the item Codex started for it (by exact item id).
   readonly activities: Map<string, Activity>;
+  // The chat's mask plus this run's secrets, for everything the run shows.
+  readonly mask: PathMask;
   // Command output not yet forwarded (see streamOutput), by item id.
   readonly outputTails: Map<string, string>;
+  // Reply text held back while it might end inside a masked place or
+  // secret (see streamReply), by item id.
+  readonly replyTails: Map<string, string>;
   // apply_patch calls the model is still writing, before Codex starts their
   // file change item. Ended when anything else starts instead.
   // The value is the live preview sent so far (new files only).
@@ -409,7 +415,9 @@ export class ChatRuntime {
           }
         : undefined,
       activities: new Map(),
+      mask: this.mask.withSecrets(runSecrets(request)),
       outputTails: new Map(),
+      replyTails: new Map(),
       writing: new Map(),
       skillUse: undefined,
       network: this.host.coding ? request.network : undefined,
@@ -632,7 +640,7 @@ export class ChatRuntime {
     } finally {
       this.lastUsedAt = Date.now();
     }
-    return page.data.map(toHistoryTurn);
+    return page.data.map((turn) => toHistoryTurn(turn, this.mask));
   }
 
   // Stops the process. The chat's files stay on disk for the next resume.
@@ -947,7 +955,11 @@ export class ChatRuntime {
         return;
       case "item/agentMessage/delta":
         this.activity(active);
-        run.appendText(String(n.params.itemId), String(n.params.delta ?? ""));
+        this.streamReply(
+          active,
+          String(n.params.itemId),
+          String(n.params.delta ?? ""),
+        );
         return;
       case "item/fileChange/patchUpdated": {
         // The patch so far, while the model writes it: paths, a line count
@@ -1019,8 +1031,13 @@ export class ChatRuntime {
             bounded(String(item.agentPath ?? ""), AGENT_PATH_CHARS),
           );
         this.activity(active);
-        if (n.method === "item/completed" && item.type === "agentMessage")
-          run.completeItem(String(item.id), String(item.text ?? ""));
+        if (n.method === "item/completed" && item.type === "agentMessage") {
+          active.replyTails.delete(String(item.id));
+          run.completeItem(
+            String(item.id),
+            active.mask.apply(String(item.text ?? "")),
+          );
+        }
         if (n.method === "item/completed" && item.type === "contextCompaction")
           run.emit("compaction", { itemId: String(item.id) });
         return;
@@ -1070,7 +1087,7 @@ export class ChatRuntime {
         // The lead's checklist, a full snapshot each time. A helper's plan
         // arrives on its own thread and never reaches this switch.
         this.activity(active);
-        run.updatePlan(parsePlan(n.params));
+        run.updatePlan(parsePlan(n.params, active.mask));
         return;
       case "serverRequest/resolved":
         // Codex withdrew a request (its turn ended or was interrupted). Our
@@ -1188,7 +1205,7 @@ export class ChatRuntime {
             ),
           );
         if (n.method === "item/completed" && item?.type === "agentMessage") {
-          const text = String(item.text ?? "");
+          const text = active.mask.apply(String(item.text ?? ""));
           if (!text.trim()) return;
           child.result = bounded(text, AGENT_RESULT_CHARS);
           active.run.agentActivity(
@@ -1380,10 +1397,28 @@ export class ChatRuntime {
     end = false,
   ): void {
     const text = (active.outputTails.get(itemId) ?? "") + delta;
-    const { shown, tail } = splitStreamed(this.mask, text, end);
+    const { shown, tail } = splitStreamed(active.mask, text, end);
     if (tail) active.outputTails.set(itemId, tail);
     else active.outputTails.delete(itemId);
-    if (shown) active.run.appendOutput(itemId, shown);
+    if (shown) active.run.appendOutput(itemId, maskSandboxEnv(shown));
+  }
+
+  // Forwards reply text with places and secrets masked, holding back only an
+  // end that could still grow into one (PathMask.streamCut). `end` sends
+  // the rest, for a reply that never completes (cut off by a steer or stop).
+  private streamReply(
+    active: Active,
+    itemId: string,
+    delta: string,
+    end = false,
+  ): void {
+    const text = (active.replyTails.get(itemId) ?? "") + delta;
+    const cut = end ? text.length : active.mask.streamCut(text);
+    const tail = text.slice(cut);
+    if (tail) active.replyTails.set(itemId, tail);
+    else active.replyTails.delete(itemId);
+    const shown = active.mask.apply(text.slice(0, cut));
+    if (shown) active.run.appendText(itemId, shown);
   }
 
   // Counts a finished command, the lead's or a helper's, against the reply's
@@ -1420,7 +1455,7 @@ export class ChatRuntime {
     this.activity(active);
     if (item.type === "commandExecution") {
       const raw = String(item.command ?? "");
-      const command = this.mask.apply(displayCommand(raw));
+      const command = active.mask.apply(displayCommand(raw));
       if (method === "item/started") {
         if (!active.activities.has(itemId))
           active.activities.set(itemId, {
@@ -1443,7 +1478,7 @@ export class ChatRuntime {
           ? Math.round(item.durationMs)
           : undefined,
         typeof item.aggregatedOutput === "string"
-          ? this.mask.apply(item.aggregatedOutput)
+          ? maskSandboxEnv(active.mask.apply(item.aggregatedOutput))
           : undefined,
       );
       return;
@@ -1609,6 +1644,9 @@ export class ChatRuntime {
     // A stopped command's last partial line.
     for (const itemId of [...active.outputTails.keys()])
       this.streamOutput(active, itemId, "", true);
+    // A reply cut off before it completed.
+    for (const itemId of [...active.replyTails.keys()])
+      this.streamReply(active, itemId, "", true);
     active.run.finish(status, error, active.usage);
     this.host.log("run_finished", {
       runId: active.run.runId,
@@ -1754,7 +1792,7 @@ export class ChatRuntime {
         connector: WORKSPACE,
         tool: push ? "push" : "command",
         params: [
-          { name: "command", value: this.mask.apply(displayCommand(raw)) },
+          { name: "command", value: active.mask.apply(displayCommand(raw)) },
           ...(typeof params.cwd === "string"
             ? [
                 {
@@ -2037,7 +2075,12 @@ const PLAN_STATUSES = new Set(["pending", "inProgress", "completed"]);
 
 // `turn/plan/updated` params ({ explanation, plan: [{ step, status }] }) to
 // a bounded plan. Malformed steps are dropped; a blank explanation is null.
-export function parsePlan(params: Record<string, unknown>): RunPlan {
+// `mask` hides places and secrets the model wrote into the checklist.
+export function parsePlan(
+  params: Record<string, unknown>,
+  mask?: PathMask,
+): RunPlan {
+  const show = (text: string) => (mask ? mask.apply(text) : text);
   const raw = Array.isArray(params.plan) ? params.plan : [];
   const steps: PlanStep[] = [];
   for (const entry of raw) {
@@ -2045,13 +2088,13 @@ export function parsePlan(params: Record<string, unknown>): RunPlan {
     const { step, status } = asRecord(entry);
     if (typeof step !== "string" || typeof status !== "string") continue;
     if (!PLAN_STATUSES.has(status)) continue;
-    const text = bounded(step, PLAN_STEP_CHARS).trim();
+    const text = bounded(show(step), PLAN_STEP_CHARS).trim();
     if (!text) continue;
     steps.push({ step: text, status: status as PlanStep["status"] });
   }
   const explanation =
     typeof params.explanation === "string"
-      ? bounded(params.explanation, PLAN_EXPLANATION_CHARS).trim()
+      ? bounded(show(params.explanation), PLAN_EXPLANATION_CHARS).trim()
       : "";
   return { explanation: explanation || null, steps };
 }
@@ -2104,12 +2147,31 @@ function mcpFingerprint(mcp: readonly McpServerSpec[]): string {
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
 }
 
-function toHistoryTurn(turn: Record<string, unknown>): HistoryTurn {
+// The token values a run carries, so nothing the run shows repeats them: the
+// gateway token, connector header values (and the credential after an auth
+// scheme) and sandbox connector tokens. PathMask skips short values.
+export function runSecrets(request: StartRunRequest): string[] {
+  const secrets = [request.model.gatewayToken];
+  for (const server of request.mcp ?? [])
+    for (const value of Object.values(server.headers)) {
+      secrets.push(value);
+      const scheme = /^\S+\s+(\S.*)$/.exec(value);
+      if (scheme) secrets.push(scheme[1]!);
+    }
+  for (const connector of request.network?.connectors ?? [])
+    if (connector.credential) secrets.push(connector.credential.token);
+  return secrets;
+}
+
+function toHistoryTurn(
+  turn: Record<string, unknown>,
+  mask: PathMask,
+): HistoryTurn {
   const items = (turn.items ?? []) as Array<Record<string, unknown>>;
   const user = items.find((item) => item.type === "userMessage");
   const text = items
     .filter((item) => item.type === "agentMessage")
-    .map((item) => String(item.text ?? ""))
+    .map((item) => mask.apply(String(item.text ?? "")))
     .join("\n\n");
   const ordered: HistoryItem[] = [];
   for (const item of items) {
@@ -2120,7 +2182,10 @@ function toHistoryTurn(turn: Record<string, unknown>): HistoryTurn {
           typeof item.clientId === "string" ? item.clientId : null,
       });
     else if (item.type === "agentMessage")
-      ordered.push({ type: "reply", text: String(item.text ?? "") });
+      ordered.push({
+        type: "reply",
+        text: mask.apply(String(item.text ?? "")),
+      });
   }
   return {
     turnId: String(turn.id),
