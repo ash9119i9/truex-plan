@@ -76,13 +76,14 @@ import {
   type MessageTool,
   type RunDoc,
   type RunErrorInfo,
+  type RunPlan,
   type RunStatus,
   type RunUsage,
   type SendInput,
   type StartChatInput,
   type SteerDoc,
 } from "./chat";
-import { ChatFilesService, type ChatFileView } from "./chat-files";
+import { ChatFilesService, MAX_UNSAVED, type ChatFileView } from "./chat-files";
 import {
   AttachmentsGoneError,
   ChatUploadsService,
@@ -184,9 +185,16 @@ export interface RunView {
   steers?: SteerView[];
   // Files the reply wrote that couldn't be saved; absent when none.
   unsavedFiles?: string[];
+  // Files the reply wrote that are too large to save; absent when none.
+  tooLargeFiles?: string[];
+  // Some files weren't checked; absent otherwise.
+  filesTruncated?: true;
   // The rows a completed reply offered, while Follow Ups are on. Only the
   // items: status, shape and stage stay in the database for the report.
   followUps?: { items: FollowUpItem[] };
+  // The reply's last checklist, as the model left it; absent when it never
+  // planned.
+  plan?: RunPlan;
 }
 
 // A chat without its agent's display fields.
@@ -935,7 +943,7 @@ export class ChatsService {
     context: TenantContext,
     chatId: ObjectId,
     runId: ObjectId,
-  ): Promise<{ files: ChatFileView[]; unsaved: string[] }> {
+  ): Promise<{ files: ChatFileView[]; unsaved: string[]; tooLarge: string[] }> {
     this.requireRuntime();
     const chat = await this.findOwned(context, chatId);
     const { runs } = this.db(context);
@@ -943,7 +951,7 @@ export class ChatsService {
     const run = await runs.findOne(owned);
     if (!run) throw new DomainError("NOT_FOUND", "This reply does not exist.");
     const paths = run.unsavedFiles ?? [];
-    if (paths.length === 0) return { files: [], unsaved: [] };
+    if (paths.length === 0) return { files: [], unsaved: [], tooLarge: [] };
     if (!isSettled(run.status) || chat.activeRun) throw chatBusy();
     const key = toWireId(runId);
     if (this.retrying.has(key))
@@ -972,14 +980,21 @@ export class ChatsService {
           "UNAVAILABLE",
           "Files can't be saved on this server.",
         );
-      const { stored, unsaved } = result;
-      await runs.updateOne(
-        owned,
-        unsaved.length
-          ? { $set: { unsavedFiles: unsaved, updatedAt: new Date() } }
-          : { $unset: { unsavedFiles: "" }, $set: { updatedAt: new Date() } },
-      );
-      return { files: stored, unsaved };
+      const { stored, unsaved, tooLarge } = result;
+      // A file that grew past the per-file limit moves to the run's too
+      // large files: it is never retried again.
+      const kept = [
+        ...new Set([...(run.tooLargeFiles ?? []), ...tooLarge]),
+      ].slice(0, MAX_UNSAVED);
+      await runs.updateOne(owned, {
+        $set: {
+          updatedAt: new Date(),
+          ...(unsaved.length ? { unsavedFiles: unsaved } : {}),
+          ...(kept.length ? { tooLargeFiles: kept } : {}),
+        },
+        ...(unsaved.length ? {} : { $unset: { unsavedFiles: "" } }),
+      });
+      return { files: stored, unsaved, tooLarge };
     } finally {
       this.retrying.delete(key);
     }
@@ -2146,6 +2161,16 @@ export function runView(run: RunDoc, showFollowUps = false): RunView {
       ? { steers: run.steers.map(steerView) }
       : {}),
     ...(run.unsavedFiles?.length ? { unsavedFiles: run.unsavedFiles } : {}),
+    ...(run.tooLargeFiles?.length ? { tooLargeFiles: run.tooLargeFiles } : {}),
+    ...(run.filesTruncated ? { filesTruncated: true as const } : {}),
+    ...(run.plan
+      ? {
+          plan: {
+            explanation: run.plan.explanation,
+            steps: run.plan.steps.map(({ step, status }) => ({ step, status })),
+          },
+        }
+      : {}),
     ...(showFollowUps && run.followUps?.items.length
       ? {
           followUps: {

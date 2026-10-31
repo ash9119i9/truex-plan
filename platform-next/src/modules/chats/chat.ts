@@ -348,6 +348,20 @@ export interface RunUsage {
   reasoning: number;
 }
 
+// The lead's checklist (Codex `update_plan`) as the runtime last sent it,
+// bounded again by the platform. A stopped or failed run keeps the plan as
+// it was. A completed run's steps are all saved as done: the model writes
+// its reply in one final message and never sends the last tick.
+export interface RunPlanStep {
+  step: string;
+  status: "pending" | "inProgress" | "completed";
+}
+
+export interface RunPlan {
+  explanation: string | null;
+  steps: RunPlanStep[];
+}
+
 export interface RunTimings {
   acceptedAt: Date;
   dispatchedAt?: Date;
@@ -398,6 +412,8 @@ export interface RunDoc {
   usage?: RunUsage;
   // How many helper agents the run started. Absent when none.
   helperCount?: number;
+  // The lead's last checklist. Absent when the run never planned.
+  plan?: RunPlan;
   timings: RunTimings;
   stopRequested?: boolean;
   // At most STEERS_PER_RUN, in arrival order.
@@ -405,6 +421,12 @@ export interface RunDoc {
   // Files the run wrote that couldn't be stored when it ended (at most
   // MAX_UNSAVED), until a retry stores them. Absent when there are none.
   unsavedFiles?: string[];
+  // Files the run wrote that are over the per-file limit (at most
+  // MAX_UNSAVED): never stored, never retried. Absent when there are none.
+  tooLargeFiles?: string[];
+  // The workspace had more files than capture could check, so some may
+  // be missing from the reply's files. Absent otherwise.
+  filesTruncated?: true;
   createdAt: Date;
   updatedAt: Date;
 }

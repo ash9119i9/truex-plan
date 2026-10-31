@@ -17,6 +17,8 @@ import {
   type ApprovalDecision,
   type FollowUpsAssignment,
   type RunErrorInfo,
+  type RunPlan,
+  type RunPlanStep,
   type RunUsage,
   type MessageAttachment,
 } from "./chat";
@@ -122,11 +124,22 @@ export type LiveEvent =
   | { type: "progress"; data: ProgressEventData }
   // A helper agent started, is working or finished (its whole state).
   | { type: "agent"; data: AgentSettleItem }
+  // The lead's checklist, whole: it replaces the last one.
+  | { type: "plan"; data: RunPlan }
   | { type: "usage"; data: RunUsage }
   | { type: "completed"; data: Completed }
-  // The file versions the run stored, after completed and before saved, and
-  // the files it wrote that couldn't be stored.
-  | { type: "files"; data: { files: ChatFileView[]; unsaved: string[] } }
+  // The file versions the run stored, after completed and before saved, the
+  // files it wrote that couldn't be stored, and those too large to store.
+  | {
+      type: "files";
+      data: {
+        files: ChatFileView[];
+        unsaved: string[];
+        tooLarge: string[];
+        // The workspace had more files than capture could check.
+        truncated?: true;
+      };
+    }
   | { type: "saved"; data: SettleResult }
   | { type: "save_failed"; data: Record<string, never> };
 
@@ -220,6 +233,8 @@ export interface Snapshot {
   writing: Array<Extract<ProgressEventData, { lines: number }>>;
   // Helper agents, only when some ran.
   agents?: AgentSettleItem[];
+  // The lead's checklist, only when it planned.
+  plan?: RunPlan;
 }
 
 export interface Completed {
@@ -227,6 +242,7 @@ export interface Completed {
   error: RunErrorInfo | null;
   items: SettleItem[];
   agents?: AgentSettleItem[];
+  plan?: RunPlan;
   usage: RunUsage | null;
 }
 
@@ -350,6 +366,8 @@ class LiveRun {
   private readonly networks = new Map<string, NetworkSettleItem>();
   // Helper agents by id, in start order.
   private readonly agents = new Map<string, AgentSettleItem>();
+  // The lead's last checklist, once it planned.
+  private plan: RunPlan | undefined;
   // File changes the model is still writing, until they become activities.
   private readonly writing = new Map<
     string,
@@ -376,6 +394,8 @@ class LiveRun {
   saveFailed = false;
   files: ChatFileView[] = [];
   unsaved: string[] = [];
+  tooLarge: string[] = [];
+  truncated = false;
   readonly subscribers = new Set<LiveSubscriber>();
   readonly abort = new AbortController();
   done: Promise<void> = Promise.resolve();
@@ -403,6 +423,7 @@ class LiveRun {
       approvals: [...this.approvals.values()],
       writing: [...this.writing.values()],
       ...this.agentField(),
+      ...this.planField(),
     };
   }
 
@@ -512,6 +533,33 @@ class LiveRun {
     return this.agents.size
       ? { agents: [...this.agents.values()].map((agent) => ({ ...agent })) }
       : {};
+  }
+
+  // The lead's checklist from the runtime, always whole: it replaces the
+  // last one. "update" (plan.updated) is relayed every time; "snapshot" (a
+  // reconnect or the outcome) only when it changes the plan, so a repeated
+  // snapshot sends nothing.
+  setPlan(plan: RunPlan, how: "update" | "snapshot"): void {
+    if (
+      how === "snapshot" &&
+      this.plan &&
+      JSON.stringify(this.plan) === JSON.stringify(plan)
+    )
+      return;
+    this.plan = plan;
+    this.broadcast({ type: "plan", data: clonePlan(plan) });
+  }
+
+  // The plan as the reply settles: what it is saved with. A viewer who
+  // joins afterwards then sees the same plan as the saved reply. The
+  // completed event already carries it, so nothing is broadcast.
+  settlePlan(plan: RunPlan): void {
+    this.plan = plan;
+  }
+
+  // Present only when the lead planned, so other runs are unchanged.
+  planField(): { plan?: RunPlan } {
+    return this.plan ? { plan: clonePlan(this.plan) } : {};
   }
 
   // The network proxy refused a sandbox request. Once per site and method.
@@ -843,10 +891,20 @@ export class RunExecutor implements OnApplicationShutdown {
     subscriber.send({ type: "snapshot", data: run.snapshot() });
     if (run.completed)
       subscriber.send({ type: "completed", data: run.completed });
-    if (run.files.length > 0 || run.unsaved.length > 0)
+    if (
+      run.files.length > 0 ||
+      run.unsaved.length > 0 ||
+      run.tooLarge.length > 0 ||
+      run.truncated
+    )
       subscriber.send({
         type: "files",
-        data: { files: run.files, unsaved: run.unsaved },
+        data: {
+          files: run.files,
+          unsaved: run.unsaved,
+          tooLarge: run.tooLarge,
+          ...(run.truncated ? { truncated: true as const } : {}),
+        },
       });
     if (run.saved) subscriber.send({ type: "saved", data: run.saved });
     else if (run.saveFailed) subscriber.send({ type: "save_failed", data: {} });
@@ -1323,6 +1381,11 @@ export class RunExecutor implements OnApplicationShutdown {
           );
         return null;
       }
+      case "plan.updated": {
+        const plan = planOf(d);
+        if (plan) run.setPlan(plan, "update");
+        return null;
+      }
       case "skill.used": {
         const slug = str(d.slug);
         if (slug) run.useSkill(slug);
@@ -1377,6 +1440,8 @@ export class RunExecutor implements OnApplicationShutdown {
           }
         run.closeApprovalsNotIn(pending);
         for (const agent of agentsOf(d.agents)) run.setAgent(agent, "snapshot");
+        const plan = planOf(d.plan);
+        if (plan) run.setPlan(plan, "snapshot");
         if (str(d.threadId)) run.threadId = str(d.threadId);
         if (str(d.turnId)) {
           // A snapshot with a turn replaces a run.accepted no longer buffered.
@@ -1521,6 +1586,7 @@ export class RunExecutor implements OnApplicationShutdown {
       turnId: str(d.turnId) ?? run.turnId,
       firstTextAt: run.firstTextAt,
       ...this.finalAgents(run, d.agents),
+      ...this.finalPlan(run, d.plan),
     };
     if (status === "failed" && d.delivery === "unknown") {
       // The turn may have run anyway; its saved history decides.
@@ -1545,6 +1611,14 @@ export class RunExecutor implements OnApplicationShutdown {
   ): { agents?: AgentSettleItem[] } {
     for (const agent of agentsOf(value)) run.setAgent(agent, "snapshot");
     return run.agentField();
+  }
+
+  // The plan as the runtime's outcome has it (authoritative), else the last
+  // one streamed. Never rewritten: a stopped run keeps its unfinished steps.
+  private finalPlan(run: LiveRun, value: unknown): { plan?: RunPlan } {
+    const plan = planOf(value);
+    if (plan) run.setPlan(plan, "snapshot");
+    return run.planField();
   }
 
   // The run's message in the runtime's saved history, or null when the
@@ -1576,6 +1650,7 @@ export class RunExecutor implements OnApplicationShutdown {
       firstTextAt: run.firstTextAt,
       threadLost: false,
       ...run.agentField(),
+      ...run.planField(),
     };
     if (turn.status === "completed")
       return {
@@ -1611,12 +1686,20 @@ export class RunExecutor implements OnApplicationShutdown {
     // Before anything is shown or saved: the block never reaches a saved
     // message, on the live, reconcile or recovery path (all settle here).
     outcome = withFollowUpRows(outcome, run.dispatch.followUps);
+    // A reply that finished did every step: the model writes it in one
+    // final message and calls nothing after it, so its last tick never
+    // arrives. Stopped and failed runs keep their plan as sent.
+    if (outcome.status === "completed" && outcome.plan) {
+      outcome = { ...outcome, plan: allDone(outcome.plan) };
+      run.settlePlan(outcome.plan!);
+    }
     run.flush();
     run.completed = {
       status: outcome.status,
       error: outcome.error,
       items: [...outcome.items],
       ...(outcome.agents?.length ? { agents: [...outcome.agents] } : {}),
+      ...(outcome.plan ? { plan: clonePlan(outcome.plan) } : {}),
       usage: outcome.usage,
     };
     run.broadcast({ type: "completed", data: run.completed });
@@ -1624,25 +1707,48 @@ export class RunExecutor implements OnApplicationShutdown {
     // The run's files are stored before it is saved, so a member who sees
     // the saved reply can open them. Bounded by CAPTURE_TIMEOUT_MS; a
     // file the run wrote that can't be stored is saved on the run as
-    // unsaved, so the member sees it and can retry.
+    // unsaved, so the member sees it and can retry, and one too large to
+    // store is saved as such.
     if (this.chatFiles?.configured && this.client) {
-      const { stored, unsaved } = await this.chatFiles.capture(
-        {
-          dbName,
-          tenantId: run.dispatch.ref.tenantId,
-          chatId,
-          ownerId: run.dispatch.ownerId,
-          runId,
-          ref: run.dispatch.ref,
-        },
-        this.client,
-        { report: writtenPaths(outcome.items) },
-      );
+      const { stored, unsaved, tooLarge, truncated } =
+        await this.chatFiles.capture(
+          {
+            dbName,
+            tenantId: run.dispatch.ref.tenantId,
+            chatId,
+            ownerId: run.dispatch.ownerId,
+            runId,
+            ref: run.dispatch.ref,
+            since: runStartedBefore(runId),
+          },
+          this.client,
+          { report: writtenPaths(outcome.items) },
+        );
       run.files = stored;
       run.unsaved = unsaved;
-      if (stored.length > 0 || unsaved.length > 0)
-        run.broadcast({ type: "files", data: { files: stored, unsaved } });
+      run.tooLarge = tooLarge;
+      run.truncated = truncated;
+      if (
+        stored.length > 0 ||
+        unsaved.length > 0 ||
+        tooLarge.length > 0 ||
+        truncated
+      )
+        run.broadcast({
+          type: "files",
+          data: {
+            files: stored,
+            unsaved,
+            tooLarge,
+            ...(truncated ? { truncated: true as const } : {}),
+          },
+        });
       if (unsaved.length > 0) outcome = { ...outcome, unsavedFiles: unsaved };
+      if (tooLarge.length > 0)
+        outcome = { ...outcome, tooLargeFiles: tooLarge };
+      // Files past the runtime's listing limit were never checked: the
+      // member is told some may be missing.
+      if (truncated) outcome = { ...outcome, filesTruncated: true };
     }
     // The chat's thread is recorded before the chat is released, so the
     // next message continues it.
@@ -1771,6 +1877,17 @@ export function withFollowUpRows(
   };
 }
 
+// The runtime's clock may run behind ours (both are NTP-synced): a
+// too-large file modified this long before the run started still counts as
+// the run's. A reply sent within this window may show it again.
+export const RUN_START_SLACK_MS = 5_000;
+
+// A time (ms) no later than the run's start, from its id (whole seconds,
+// rounded down), less the clock slack.
+export function runStartedBefore(runId: ObjectId): number {
+  return runId.getTimestamp().getTime() - RUN_START_SLACK_MS;
+}
+
 // The files a run's completed edits left in the chat, in edit order: added
 // or updated paths and move destinations, without those it later deleted or
 // moved away.
@@ -1805,6 +1922,7 @@ function failed(
     firstTextAt: run.firstTextAt,
     threadLost,
     ...run.agentField(),
+    ...run.planField(),
   };
 }
 
@@ -1858,6 +1976,63 @@ function agentsOf(value: unknown): AgentSettleItem[] {
     if (agent) agents.push(agent);
   }
   return agents;
+}
+
+// The lead's checklist: the adapter bounds it already; it is parsed and
+// bounded again here because the runtime is a separate trust boundary.
+// Malformed steps are dropped; a value that isn't an object is no plan.
+const MAX_PLAN_STEPS = 50;
+const MAX_PLAN_STEP = 500;
+const MAX_PLAN_EXPLANATION = 2000;
+const PLAN_STATUSES = new Set(["pending", "inProgress", "completed"]);
+
+// Control characters (newline and tab kept) and bidi overrides removed, as
+// the adapter does; cut without leaving half of a surrogate pair.
+function planText(value: string, max: number): string {
+  const clean = value
+    .replace(
+      /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202E\u2066-\u2069]/g,
+      "",
+    )
+    .trim();
+  if (clean.length <= max) return clean;
+  const cut = /[\uD800-\uDBFF]/.test(clean[max - 1] ?? "") ? max - 1 : max;
+  return clean.slice(0, cut).trim();
+}
+
+function planOf(value: unknown): RunPlan | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const v = value as Record<string, unknown>;
+  const steps: RunPlan["steps"] = [];
+  for (const entry of Array.isArray(v.steps) ? v.steps : []) {
+    if (steps.length >= MAX_PLAN_STEPS) break;
+    if (!entry || typeof entry !== "object") continue;
+    const { step, status } = entry as Record<string, unknown>;
+    if (typeof step !== "string" || typeof status !== "string") continue;
+    if (!PLAN_STATUSES.has(status)) continue;
+    const text = planText(step, MAX_PLAN_STEP);
+    if (!text) continue;
+    steps.push({ step: text, status: status as RunPlanStep["status"] });
+  }
+  const explanation =
+    typeof v.explanation === "string"
+      ? planText(v.explanation, MAX_PLAN_EXPLANATION)
+      : "";
+  return { explanation: explanation || null, steps };
+}
+
+function allDone(plan: RunPlan): RunPlan {
+  return {
+    explanation: plan.explanation,
+    steps: plan.steps.map((step) => ({ ...step, status: "completed" })),
+  };
+}
+
+function clonePlan(plan: RunPlan): RunPlan {
+  return {
+    explanation: plan.explanation,
+    steps: plan.steps.map((step) => ({ ...step })),
+  };
 }
 
 // A tool call from an adapter event or item, or null when unreadable.
@@ -2242,6 +2417,11 @@ const RUN_ERRORS: Record<string, Omit<RunErrorInfo, "code">> = {
   SUBAGENT_LIMIT: {
     message:
       "This needed more helper agents than one reply allows. Try a narrower request.",
+    retryable: false,
+  },
+  COMMAND_LIMIT: {
+    message:
+      "This reply stopped after running too many steps. Try a narrower request.",
     retryable: false,
   },
 };

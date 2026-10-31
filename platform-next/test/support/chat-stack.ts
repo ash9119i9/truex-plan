@@ -298,6 +298,10 @@ export class AdapterProcess {
         PORT: String(this.port),
         RUNTIME_DRAIN_MS: "1000",
         ...(this.options.coding ? { RUNTIME_CODING_ENABLED: "1" } : {}),
+        // A worktree without its own Codex build can use another checkout's.
+        ...(process.env.RUNTIME_CODEX_BINARY
+          ? { RUNTIME_CODEX_BINARY: process.env.RUNTIME_CODEX_BINARY }
+          : {}),
       },
       stdio: "ignore",
     });

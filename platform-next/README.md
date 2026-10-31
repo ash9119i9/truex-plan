@@ -186,12 +186,21 @@ the chat's runtime workspace into S3 as a new version (at most 20 files and
 `chat_files` collection, and sends a `files` stream event before `saved`.
 Versions are never overwritten. `GET /api/v1/chats/:id/files` lists them and
 `GET /api/v1/chats/:id/files/:fileId/content` returns one, owner only, always
-as an attachment with `nosniff`. A file the run edited that can't be stored
-(storage refused it, or it missed the per-run limits) is sent as `unsaved` in
-the `files` event and kept on the run as `unsavedFiles`; the reply's card shows
-it with Retry, which calls `POST /api/v1/chats/:id/runs/:runId/files/retry`
-(owner only, 409 while the chat answers) and returns the stored versions and
-the paths still unsaved. Objects are keyed
+as an attachment with `nosniff`. A new or changed file that can't be stored
+(storage refused it, it couldn't be read, or it missed the per-run limits or
+the 30 s), whether an edit or a command wrote it, is sent as `unsaved` in the
+`files` event and kept on the run as `unsavedFiles` (at most 50); the reply's
+card shows it with Retry, which calls
+`POST /api/v1/chats/:id/runs/:runId/files/retry` (owner only, 409 while the
+chat answers) and returns the stored versions, the paths still unsaved and
+those found too large. The files the run's edits wrote are stored and listed
+first, so a command that writes many files can't crowd them out. A file over
+20 MiB is never read: it is sent as `tooLarge` and kept as `tooLargeFiles`,
+shown as too large with no Retry, and only by the run that wrote it (modified
+after the run started, less 5 s of clock slack). When the runtime's listing
+is cut short (500 files), capture logs it and still reads the run's edits by
+path. The 30 s bound covers the listing, every read and every upload.
+Objects are keyed
 `<prefix>t/<tenantId>/c/<chatId>/f/<fileId>` with SSE-S3; the identity needs
 `s3:PutObject` and `s3:GetObject` on that prefix. Run
 `ensure-tenant-indexes --all` (index version 4) before setting the bucket.

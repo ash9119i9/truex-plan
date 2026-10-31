@@ -248,15 +248,16 @@ export class ChatsController {
     return this.chats.stop(context, idOf(id, "chat"), idOf(runId, "reply"));
   }
 
-  // Tries again to save the files a reply couldn't: the versions stored
-  // and the paths still unsaved. 409 CHAT_BUSY while the chat answers.
+  // Tries again to save the files a reply couldn't: the versions stored,
+  // the paths still unsaved, and those found too large to save. 409
+  // CHAT_BUSY while the chat answers.
   @Post(":id/runs/:runId/files/retry")
   @HttpCode(200)
   retryFiles(
     @CurrentTenant() context: TenantContext,
     @Param("id") id: string,
     @Param("runId") runId: string,
-  ): Promise<{ files: ChatFileView[]; unsaved: string[] }> {
+  ): Promise<{ files: ChatFileView[]; unsaved: string[]; tooLarge: string[] }> {
     return this.chats.retryFiles(
       context,
       idOf(id, "chat"),
@@ -403,6 +404,7 @@ export class ChatsController {
           ),
           usage: saved.run.usage ?? null,
           approvals: [],
+          ...(saved.run.plan ? { plan: saved.run.plan } : {}),
         },
       });
       send({ type: "saved", data: saved });

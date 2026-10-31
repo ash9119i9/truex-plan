@@ -3,7 +3,9 @@ import assert from "node:assert/strict";
 import { ObjectId } from "mongodb";
 import type { ChatStore, Settlement } from "../../src/modules/chats/chat-store";
 import {
+  RUN_START_SLACK_MS,
   RunExecutor,
+  runStartedBefore,
   writtenPaths,
   type Dispatch,
   type LiveEvent,
@@ -190,7 +192,7 @@ describe("RunExecutor", () => {
         configured: true,
         capture: async () => {
           calls++;
-          return { stored: [], unsaved: [] };
+          return { stored: [], unsaved: [], tooLarge: [], truncated: false };
         },
       };
       const executor = new RunExecutor(
@@ -1455,4 +1457,65 @@ describe("RunExecutor coding activity", () => {
       ["a.md", "new.md"],
     );
   });
+});
+
+test("a run's start for capture: its id's second, less the clock slack", () => {
+  const id = ObjectId.createFromTime(1_700_000_123);
+  assert.equal(RUN_START_SLACK_MS, 5_000);
+  assert.equal(runStartedBefore(id), 1_700_000_123_000 - 5_000);
+});
+
+test("a cut-short file check is sent with the files and saved on the run", async () => {
+  let outcome: Settlement | undefined;
+  const store = {
+    markAccepted: async () => undefined,
+    renewLease: async () => true,
+    markUncertain: async () => undefined,
+    settleWithRetry: async (...args: unknown[]) => {
+      outcome = args[4] as Settlement;
+      return { run: {}, messages: [] };
+    },
+  };
+  const client = {
+    async *startRun(): AsyncGenerator<AdapterEvent> {
+      yield {
+        seq: 1,
+        type: "run.completed",
+        data: { status: "completed", delivery: "accepted", items: [] },
+      };
+    },
+    history: async () => [],
+  };
+  const chatFiles = {
+    configured: true,
+    capture: async () => ({
+      stored: [],
+      unsaved: [],
+      tooLarge: [],
+      truncated: true,
+    }),
+  };
+  const executor = new RunExecutor(
+    store as unknown as ChatStore,
+    client as unknown as RuntimeClient,
+    null,
+    chatFiles as never,
+  );
+  const runId = new ObjectId();
+  const events: LiveEvent[] = [];
+  executor.begin({
+    ...dispatchFor(runId),
+    body: {
+      threadId: "th",
+      input: { text: "Hi", clientMessageId: "m1" },
+    } as Dispatch["body"],
+  });
+  executor.subscribe(runId, {
+    send: (event) => events.push(event),
+    end: () => undefined,
+  });
+  await executor.drain(5_000);
+  const files = events.find((e) => e.type === "files");
+  assert.deepEqual(files?.type === "files" ? files.data.truncated : null, true);
+  assert.equal(outcome?.filesTruncated, true);
 });

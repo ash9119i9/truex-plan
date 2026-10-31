@@ -101,6 +101,10 @@ interface ChatBody {
     followUps?: {
       items: Array<{ slot: number; intent: string; text: string }>;
     };
+    plan?: {
+      explanation: string | null;
+      steps: Array<{ step: string; status: string }>;
+    };
   }>;
   hasMore: boolean;
 }
@@ -2578,6 +2582,121 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
     assert.equal(body.messages[1]?.text, "Draining done.");
     await running.close();
     await boot();
+  });
+
+  // ---- Plan checklist (Codex update_plan) ----
+
+  const planCall = (status: string, explanation?: string) => ({
+    kind: "call" as const,
+    name: "update_plan",
+    args: {
+      ...(explanation ? { explanation } : {}),
+      plan: [
+        { step: "Compare vendors", status },
+        { step: "Draft summary", status: "pending" },
+      ],
+    },
+  });
+  const planOf = (first: string) => ({
+    steps: [
+      { step: "Compare vendors", status: first },
+      { step: "Draft summary", status: "pending" },
+    ],
+  });
+
+  test("a plan streams live, is saved with the run and returned on chat read", async () => {
+    gateway.script.push(
+      planCall("in_progress", "Two parts."),
+      planCall("completed"),
+      { kind: "reply", text: "Vendors compared." },
+    );
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    const events = await finish(alice, receipt);
+    const streamed = { explanation: null, ...planOf("completed") };
+    // The reply finished, so its unticked last step is saved as done.
+    const last = {
+      explanation: null,
+      steps: streamed.steps.map((s) => ({ ...s, status: "completed" })),
+    };
+    assert.deepEqual(
+      events.filter((e) => e.type === "plan").map((e) => e.data),
+      [{ explanation: "Two parts.", ...planOf("inProgress") }, streamed],
+    );
+    assert.deepEqual(
+      events.find((e) => e.type === "completed")?.data.plan,
+      last,
+    );
+    assert.deepEqual(savedOf(events).run.plan, last);
+    assert.deepEqual((await runDoc(receipt.run.id))?.plan, last);
+    const body = await getChat(alice, receipt.chat.id);
+    assert.deepEqual(
+      body.runs.find((r) => r.id === receipt.run.id)?.plan,
+      last,
+    );
+    // A reply's plan is a field of its run, never a message.
+    assert.deepEqual(
+      body.messages.map((m) => m.role),
+      ["user", "assistant"],
+    );
+
+    // After a restart the settled reply's stream is answered from MongoDB,
+    // and still carries the plan.
+    await running.close();
+    await boot();
+    const again = await finish(alice, receipt);
+    assert.deepEqual(again.find((e) => e.type === "snapshot")?.data.plan, last);
+    assert.deepEqual(savedOf(again).run.plan, last);
+  });
+
+  test("a stopped run keeps its last plan as sent", async () => {
+    gateway.script.push(planCall("in_progress"), {
+      kind: "held",
+      before: "Comparing",
+      after: " vendors.",
+    });
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    const events = await streamUntil(receipt, "Comparing", async () => {
+      await json(
+        await call(
+          alice,
+          "POST",
+          `/chats/${receipt.chat.id}/runs/${receipt.run.id}/stop`,
+        ),
+        202,
+      );
+    });
+    gateway.release();
+    const sent = { explanation: null, ...planOf("inProgress") };
+    const saved = savedOf(events);
+    assert.equal(saved.run.status, "stopped");
+    assert.deepEqual(saved.run.plan, sent);
+    assert.deepEqual((await runDoc(receipt.run.id))?.plan, sent);
+    const body = await getChat(alice, receipt.chat.id);
+    assert.deepEqual(
+      body.runs.find((r) => r.id === receipt.run.id)?.plan,
+      sent,
+    );
+  });
+
+  // A guard, not a red/green test: nothing wrote a plan before this change.
+  test("a reply without a plan stores and returns no plan field", async () => {
+    const receipt = await json<Receipt>(await startChat(alice), 202);
+    const events = await finish(alice, receipt);
+    assert.equal(
+      events.some((e) => e.type === "plan"),
+      false,
+    );
+    for (const type of ["snapshot", "completed"])
+      assert.equal(
+        "plan" in (events.find((e) => e.type === type)?.data ?? {}),
+        false,
+      );
+    assert.equal("plan" in savedOf(events).run, false);
+    const raw = await runDoc(receipt.run.id);
+    assert.ok(raw);
+    assert.equal("plan" in raw, false);
+    const body = await getChat(alice, receipt.chat.id);
+    assert.equal("plan" in body.runs[0]!, false);
   });
 });
 

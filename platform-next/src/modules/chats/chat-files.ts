@@ -17,6 +17,7 @@ import { toWireId } from "../../database/object-id";
 import { CHAT_FILES_COLLECTION } from "./chat";
 import {
   AdapterRefusal,
+  MAX_WORKSPACE_FILE_BYTES,
   type ChatRef,
   type RuntimeClient,
 } from "./runtime-client";
@@ -28,7 +29,8 @@ import {
 // opened. Members only ever read files from here, never from the runtime.
 
 // Per run: at most this many files are stored, and this many bytes in total.
-// The rest wait for the next run's capture.
+// The rest are unsaved: the member can retry them, and the next run's
+// capture stores them too.
 export const MAX_FILES_PER_RUN = 20;
 export const MAX_RUN_FILE_BYTES = 100 * 1024 * 1024;
 // A capture taking longer than this is cut short; the run is saved anyway.
@@ -73,7 +75,13 @@ export interface ChatFileView {
 
 // Where file bytes live. S3 in deployments; memory in tests.
 export interface FileStore {
-  put(key: string, data: Buffer, contentType: string): Promise<void>;
+  // `signal` ends a put that is still running.
+  put(
+    key: string,
+    data: Buffer,
+    contentType: string,
+    signal?: AbortSignal,
+  ): Promise<void>;
   // Null when the object is missing.
   get(key: string): Promise<Readable | null>;
 }
@@ -87,7 +95,12 @@ export class S3FileStore implements FileStore {
     this.client = new S3Client({ region: config.region });
   }
 
-  async put(key: string, data: Buffer, contentType: string): Promise<void> {
+  async put(
+    key: string,
+    data: Buffer,
+    contentType: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.config.bucket,
@@ -98,6 +111,7 @@ export class S3FileStore implements FileStore {
         ChecksumAlgorithm: "SHA256",
         ServerSideEncryption: "AES256",
       }),
+      signal ? { abortSignal: signal } : undefined,
     );
   }
 
@@ -121,9 +135,22 @@ export class MemoryFileStore implements FileStore {
   readonly objects = new Map<string, { data: Buffer; contentType: string }>();
   // Tests: every put fails with this until it is cleared.
   failPuts: Error | null = null;
+  // Tests: every put hangs until its signal aborts it.
+  holdPuts = false;
 
-  put(key: string, data: Buffer, contentType: string): Promise<void> {
+  put(
+    key: string,
+    data: Buffer,
+    contentType: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
     if (this.failPuts) return Promise.reject(this.failPuts);
+    if (this.holdPuts)
+      return new Promise((_, reject) =>
+        signal?.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        }),
+      );
     this.objects.set(key, { data: Buffer.from(data), contentType });
     return Promise.resolve();
   }
@@ -143,7 +170,8 @@ export function fileStoreFor(config: AppConfig): FileStore | null {
 export const MAX_UNSAVED = 50;
 
 export interface CaptureScope {
-  // Paths whose failure is reported: the files the run wrote.
+  // The files the run's edits wrote: reported unsaved when the listing or
+  // the version lookup fails, so capture can't tell which files are new.
   readonly report?: ReadonlySet<string>;
   // Capture only these paths, reporting each that fails (a retry).
   readonly only?: ReadonlySet<string>;
@@ -151,8 +179,24 @@ export interface CaptureScope {
 
 export interface CaptureResult {
   readonly stored: ChatFileView[];
-  // Reported paths that couldn't be stored, at most MAX_UNSAVED.
+  // New or changed files that couldn't be stored, the run's edits first, at
+  // most MAX_UNSAVED. A retry may store them.
   readonly unsaved: string[];
+  // Files over the runtime's per-file limit, at most MAX_UNSAVED. They can
+  // never be stored, so they are never retried.
+  readonly tooLarge: string[];
+  // The runtime listed only part of the workspace: files past its limits
+  // weren't checked. The run's edits still were, by path.
+  readonly truncated: boolean;
+}
+
+// A workspace file as capture handles it. `unlisted`: a path a truncated
+// listing missed, read by path; its size and time are unknown until then.
+interface CaptureFile {
+  readonly path: string;
+  readonly size: number;
+  readonly modifiedAt: number;
+  readonly unlisted?: boolean;
 }
 
 export interface CaptureTarget {
@@ -162,6 +206,9 @@ export interface CaptureTarget {
   readonly ownerId: ObjectId;
   readonly runId: ObjectId;
   readonly ref: ChatRef;
+  // When the run started (ms): a too-large file last modified before it
+  // was reported by an earlier run. Absent: every too-large file is.
+  readonly since?: number;
 }
 
 @Injectable()
@@ -180,66 +227,128 @@ export class ChatFilesService {
   }
 
   // Stores every file in the run's workspace that is new or changed since
-  // its last stored version, and returns the versions stored. Never throws:
-  // a file that can't be read or stored (or doesn't fit the run's limits) is
-  // skipped and logged. Skipped files in `scope.report` are returned as
-  // `unsaved`, so the member sees them and can retry; others wait for the
-  // next run's capture. `scope.only` captures just those paths (a retry)
-  // and reports each one that still fails. A path no longer in the chat is
-  // neither stored nor unsaved.
+  // its last stored version, and returns the versions stored. Never throws.
+  // A new or changed file that can't be read or stored, or doesn't fit the
+  // run's limits, is `unsaved`, whether an edit or a command wrote it, so
+  // the member sees it and can retry. The run's edits go first, so a
+  // command that writes many files can't crowd them out of the limits or
+  // the unsaved list. A file over the runtime's per-file limit is
+  // `tooLarge` instead: never retried, and shown only by the run that wrote
+  // it. A truncated listing is reported, and the edits it missed are read
+  // by path. `scope.only` captures just those paths (a retry) and reports
+  // each one that still fails. A path no longer in the chat is in none of
+  // the lists. The signal bounds the listing, every read and every upload.
   async capture(
     target: CaptureTarget,
     client: RuntimeClient,
     scope: CaptureScope = {},
     signal: AbortSignal = AbortSignal.timeout(CAPTURE_TIMEOUT_MS),
   ): Promise<CaptureResult> {
-    if (!this.store) return { stored: [], unsaved: [] };
-    const report = scope.only ?? scope.report ?? new Set<string>();
     const stored: ChatFileView[] = [];
     const unsaved = new Set<string>();
-    const skipped = (path: string) => {
-      if (report.has(path)) unsaved.add(path);
+    const tooLarge = new Set<string>();
+    let truncated = false;
+    const result = (): CaptureResult => ({
+      stored,
+      unsaved: [...unsaved].slice(0, MAX_UNSAVED),
+      tooLarge: [...tooLarge].slice(0, MAX_UNSAVED),
+      truncated,
+    });
+    if (!this.store) return result();
+    const report = scope.only ?? scope.report ?? new Set<string>();
+    // A file too large to store is shown once: by the run that wrote it.
+    const fresh = (file: CaptureFile) =>
+      report.has(file.path) ||
+      target.since === undefined ||
+      file.modifiedAt >= target.since;
+    // A member's attached upload is theirs, never a reply's file to report.
+    let latest = new Map<string, ChatFileDoc>();
+    const isUpload = (path: string) => latest.get(path)?.source === "upload";
+    const oversize = (file: CaptureFile) => {
+      if (fresh(file) && !isUpload(file.path)) tooLarge.add(file.path);
     };
-    // The reported paths still in the chat, once the listing is read.
+    const skipped = (path: string) => {
+      if (!isUpload(path)) unsaved.add(path);
+    };
+    // The paths still in the chat, once the listing is read.
     let present: Set<string> | null = null;
     try {
-      const listed = (await client.files(target.ref)).files;
-      const files = scope.only
-        ? listed.filter((f) => scope.only!.has(f.path))
-        : listed;
+      const listing = await client.files(target.ref, signal);
+      truncated = listing.truncated;
+      if (truncated)
+        this.logger.warn(
+          `file capture got a truncated listing (${listing.files.length} files)`,
+        );
+      const listed: CaptureFile[] = scope.only
+        ? listing.files.filter((f) => scope.only!.has(f.path))
+        : listing.files;
+      const all = new Set(listing.files.map((f) => f.path));
+      const unlisted: CaptureFile[] = truncated
+        ? [...report]
+            .filter((path) => !all.has(path) && listable(path))
+            .map((path) => ({ path, size: 0, modifiedAt: 0, unlisted: true }))
+        : [];
+      // The run's edits first; the sort is stable, so each group keeps the
+      // listing's order.
+      const files = [...listed, ...unlisted].sort(
+        (a, b) => Number(report.has(b.path)) - Number(report.has(a.path)),
+      );
       present = new Set(files.map((f) => f.path));
-      if (files.length === 0) return { stored, unsaved: [] };
-      const latest = await this.latestVersions(
-        target.dbName,
-        target.chatId,
-        files.map((f) => f.path),
+      if (files.length === 0) return result();
+      latest = await withSignal(
+        this.latestVersions(
+          target.dbName,
+          target.chatId,
+          files.map((f) => f.path),
+        ),
+        signal,
       );
       let bytes = 0;
       for (const file of files) {
         const last = latest.get(file.path);
         if (
+          !file.unlisted &&
           last &&
           last.size === file.size &&
           last.sourceModifiedAt === file.modifiedAt
         )
           continue;
+        if (file.size > MAX_WORKSPACE_FILE_BYTES) {
+          oversize(file);
+          continue;
+        }
         if (
           signal.aborted ||
           stored.length >= MAX_FILES_PER_RUN ||
           bytes + file.size > MAX_RUN_FILE_BYTES
         ) {
-          skipped(file.path);
+          // An edit the listing missed may be gone or unchanged: read it
+          // (without storing it) before reporting it.
+          const outcome =
+            file.unlisted && !signal.aborted
+              ? await this.probe(target, client, file, last, signal)
+              : "unsaved";
+          if (outcome === "tooLarge") oversize(file);
+          else if (outcome === "unsaved") skipped(file.path);
           continue;
         }
-        const view = await this.captureOne(target, client, file, last).catch(
-          (error: unknown) => {
+        const view = await this.captureOne(
+          target,
+          client,
+          file,
+          last,
+          signal,
+          MAX_RUN_FILE_BYTES - bytes,
+        ).catch((error: unknown) => {
+          if (isTooLarge(error)) oversize(file);
+          else {
             this.logger.warn(
               `file capture skipped a file: ${errorName(error)}`,
             );
             skipped(file.path);
-            return null;
-          },
-        );
+          }
+          return null;
+        });
         if (view) {
           stored.push(view);
           bytes += view.size;
@@ -247,13 +356,18 @@ export class ChatFilesService {
       }
     } catch (error) {
       this.logger.warn(`file capture failed: ${errorName(error)}`);
-      // Whatever was not stored by then is unsaved.
+      // The run's edits not stored by then are unsaved; which other files
+      // are new isn't known.
       const done = new Set(stored.map((f) => f.path));
       for (const path of report)
-        if (!done.has(path) && (!present || present.has(path)))
-          unsaved.add(path);
+        if (
+          !done.has(path) &&
+          !tooLarge.has(path) &&
+          (!present || present.has(path))
+        )
+          skipped(path);
     }
-    return { stored, unsaved: [...unsaved].slice(0, MAX_UNSAVED) };
+    return result();
   }
 
   // Every stored version of the chat's files, newest first. The caller has
@@ -290,31 +404,41 @@ export class ChatFilesService {
   private async captureOne(
     target: CaptureTarget,
     client: RuntimeClient,
-    file: { path: string; size: number; modifiedAt: number },
+    file: CaptureFile,
     last: ChatFileDoc | undefined,
+    signal: AbortSignal,
+    // Bytes the run may still store.
+    room: number,
   ): Promise<ChatFileView | null> {
     let data: Buffer;
     try {
-      data = await client.file(target.ref, file.path);
+      data = await client.file(target.ref, file.path, signal);
     } catch (error) {
-      // Deleted or replaced since the listing: nothing to store.
-      if (error instanceof AdapterRefusal && error.code === "FILE_NOT_FOUND")
-        return null;
+      // Deleted or replaced since the listing, or a path the runtime never
+      // reads: nothing to store, now or on a retry.
+      if (nothingToStore(error)) return null;
       throw error;
     }
+    // Grown since the listing, or never listed: it must still fit the run.
+    if (data.length > room) throw new Error("over the run's byte limit");
     const sha256 = createHash("sha256").update(data).digest("hex");
     if (last?.sha256 === sha256) {
       // Touched, not changed: remember the new time so it isn't read again.
-      await this.files(target.dbName).updateOne(
-        { _id: last._id },
-        { $set: { sourceModifiedAt: file.modifiedAt } },
-      );
+      // An unlisted file's time isn't known; the next listing records it.
+      if (!file.unlisted)
+        await withSignal(
+          this.files(target.dbName).updateOne(
+            { _id: last._id },
+            { $set: { sourceModifiedAt: file.modifiedAt } },
+          ),
+          signal,
+        );
       return null;
     }
     const id = new ObjectId();
     const contentType = contentTypeOf(file.path);
     const storageKey = `t/${target.tenantId}/c/${toWireId(target.chatId)}/f/${toWireId(id)}`;
-    await this.store!.put(storageKey, data, contentType);
+    await this.store!.put(storageKey, data, contentType, signal);
     const doc: ChatFileDoc = {
       _id: id,
       chatId: target.chatId,
@@ -330,7 +454,9 @@ export class ChatFilesService {
       createdAt: new Date(),
     };
     try {
-      await this.files(target.dbName).insertOne(doc);
+      // An insert cut short by the deadline may still land; the next capture
+      // then finds this version and stores nothing twice.
+      await withSignal(this.files(target.dbName).insertOne(doc), signal);
     } catch (error) {
       // Another capture stored this version first; its object is the one
       // kept. This one's object is left unreferenced.
@@ -338,6 +464,25 @@ export class ChatFilesService {
       throw error;
     }
     return fileView(doc);
+  }
+
+  // A file the listing missed, read but not stored, when the run's limits
+  // leave no room for it: gone, refused or unchanged is nothing to report.
+  private async probe(
+    target: CaptureTarget,
+    client: RuntimeClient,
+    file: CaptureFile,
+    last: ChatFileDoc | undefined,
+    signal: AbortSignal,
+  ): Promise<"skip" | "unsaved" | "tooLarge"> {
+    try {
+      const data = await client.file(target.ref, file.path, signal);
+      const sha256 = createHash("sha256").update(data).digest("hex");
+      return last?.sha256 === sha256 ? "skip" : "unsaved";
+    } catch (error) {
+      if (nothingToStore(error)) return "skip";
+      return isTooLarge(error) ? "tooLarge" : "unsaved";
+    }
   }
 
   // Copies a message's attached files from storage into the chat's runtime
@@ -427,6 +572,56 @@ export class ChatFilesService {
 }
 
 const FILE_NOT_FOUND = "This file does not exist or you cannot see it.";
+
+// A path the runtime would list (runtime-adapter/src/runtime/files.ts): no
+// dot segment and no installed tree. Others it never lists or reads.
+const UNLISTED_DIRS = new Set(["node_modules", "__pycache__", "venv"]);
+// The runtime's longest listed path (runtime-adapter/src/runtime/files.ts).
+const MAX_WORKSPACE_PATH = 1024;
+function listable(path: string): boolean {
+  if (path.length > MAX_WORKSPACE_PATH || path.includes("\\")) return false;
+  const segments = path.split("/");
+  return segments.every(
+    (s, i) =>
+      s !== "" &&
+      !s.startsWith(".") &&
+      (i === segments.length - 1 || !UNLISTED_DIRS.has(s)),
+  );
+}
+
+// The runtime has nothing to give for the path: deleted, or a path it
+// refuses to read. Neither is ever worth a retry.
+function nothingToStore(error: unknown): boolean {
+  return (
+    error instanceof AdapterRefusal &&
+    (error.code === "FILE_NOT_FOUND" || error.code === "INVALID_REQUEST")
+  );
+}
+
+// Ends `work`'s wait when the capture's deadline passes. The work itself
+// isn't cancelled; the capture just stops waiting for it.
+function withSignal<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    work.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+// Over the runtime's per-file limit when it was read: it can never be stored.
+function isTooLarge(error: unknown): boolean {
+  return error instanceof AdapterRefusal && error.code === "PAYLOAD_TOO_LARGE";
+}
 
 export function fileView(doc: ChatFileDoc): ChatFileView {
   return {
