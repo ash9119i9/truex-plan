@@ -141,6 +141,10 @@ export class Harness {
       RUNTIME_ADAPTER_TOKEN: TOKEN,
       RUNTIME_STATE_DIR: this.stateDir,
       PORT: "1",
+      // A worktree without its own Codex build can use another checkout's.
+      ...(process.env.RUNTIME_CODEX_BINARY
+        ? { RUNTIME_CODEX_BINARY: process.env.RUNTIME_CODEX_BINARY }
+        : {}),
       ...(this.options.coding ? { RUNTIME_CODING_ENABLED: "1" } : {}),
       ...(this.options.toolchainDirs
         ? { RUNTIME_TOOLCHAIN_DIRS: this.options.toolchainDirs.join(":") }

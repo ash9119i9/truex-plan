@@ -33,6 +33,10 @@ describe("pinned Codex behavior", () => {
     const { codexBinary } = loadConfig({
       RUNTIME_ADAPTER_TOKEN: TOKEN,
       RUNTIME_STATE_DIR: root,
+      // A worktree without its own Codex build can use another checkout's.
+      ...(process.env.RUNTIME_CODEX_BINARY
+        ? { RUNTIME_CODEX_BINARY: process.env.RUNTIME_CODEX_BINARY }
+        : {}),
     });
     codex = new CodexProcess({
       binary: codexBinary,

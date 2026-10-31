@@ -110,6 +110,12 @@ export const RUN_ERRORS = {
     false,
     "This needed more helper agents than one reply allows. Try a narrower request.",
   ],
+  // RuntimeLimits.maxFailedCommands or maxCommands: the model kept running
+  // commands (usually trying tools that aren't there) without finishing.
+  COMMAND_LIMIT: [
+    false,
+    "This reply stopped after running too many steps. Try a narrower request.",
+  ],
 } as const satisfies Record<string, readonly [boolean, string]>;
 
 export type RunErrorCode = keyof typeof RUN_ERRORS;

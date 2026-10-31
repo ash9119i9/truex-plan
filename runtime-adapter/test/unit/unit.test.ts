@@ -1622,3 +1622,21 @@ describe("sub-agents contract and config", () => {
     assert.match(String(v2.multi_agent_mode_hint_text), /share your workspace/);
   });
 });
+
+describe("planning guidance", () => {
+  // A plan is for real multi-step work. The skip rule must win for short
+  // answers, so "required" wording that overrides it must not come back.
+  test("plans only multi-step work and skips short answers, even two-part ones", () => {
+    assert.match(
+      PLANNING_INSTRUCTIONS,
+      /Use it only for work with several distinct steps/,
+    );
+    assert.match(
+      PLANNING_INSTRUCTIONS,
+      /Never plan a greeting, a single question/,
+    );
+    assert.match(PLANNING_INSTRUCTIONS, /even when it asks two things/);
+    assert.doesNotMatch(PLANNING_INSTRUCTIONS, /required|You must call/i);
+    assert.match(PLANNING_INSTRUCTIONS, /never repeat the plan in your reply/);
+  });
+});
