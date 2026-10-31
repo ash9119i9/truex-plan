@@ -100,9 +100,9 @@ store the latest on `LiveRun`, and broadcast `{ type: "plan", data }` to chat
 subscribers, plus include it in the live snapshot sent to a reconnecting browser.
 
 **Acceptance criteria:**
-- [ ] Live subscribers get one `plan` event per update, latest wins.
-- [ ] A browser that subscribes mid-run gets the current plan in its snapshot.
-- [ ] The same snapshot applied twice leaves one plan.
+- [x] Live subscribers get one `plan` event per update, latest wins.
+- [x] A browser that subscribes mid-run gets the current plan in its snapshot.
+- [x] The same snapshot applied twice leaves one plan.
 
 **Verification:**
 - [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
@@ -122,9 +122,9 @@ it on settle, and return it when messages are read. Stopped and failed runs keep
 their last plan unchanged.
 
 **Acceptance criteria:**
-- [ ] After a run settles, reading the chat returns the reply with its final plan.
-- [ ] Replies without a plan have no `plan` field (stored documents unchanged).
-- [ ] A stopped run's reply keeps its last plan as sent.
+- [x] After a run settles, reading the chat returns the reply with its final plan.
+- [x] Replies without a plan have no `plan` field (stored documents unchanged).
+- [x] A stopped run's reply keeps its last plan as sent.
 
 **Verification:**
 - [ ] `platform-next`: `npm test`, `npm run typecheck`, `npm run format:check`
@@ -141,7 +141,10 @@ their last plan unchanged.
 
 ## Checkpoint 2: Platform
 - [ ] platform-next checks pass
-- [ ] Adapter + platform run together: plan visible over SSE and on chat read
+  typecheck and format:check pass. Full `npm test`: 681/683; two
+  integration tests that never plan failed under the full run and pass alone
+  (restart recovery: 401 after 569 s; claim race: 3 of 4 sends taken).
+- [x] Adapter + platform run together: plan visible over SSE and on chat read
 
 ## Task 6: Plan state in the chat client
 
@@ -150,12 +153,12 @@ the snapshot and saved replies (bounded and shape-checked again), store it as
 `reply.plan`, and replace it on each update.
 
 **Acceptance criteria:**
-- [ ] Each `plan` event replaces `reply.plan`; malformed data is ignored.
-- [ ] A plan arriving after `completed` still applies to that reply.
-- [ ] A saved reply loads with its plan.
+- [x] Each `plan` event replaces `reply.plan`; malformed data is ignored.
+- [x] A plan arriving after `completed` still applies to that reply.
+- [x] A saved reply loads with its plan.
 
 **Verification:**
-- [ ] `frontend`: `npm test`, `npm run typecheck`
+- [x] `frontend`: `npm test`, `npm run typecheck`
 
 **Dependencies:** Task 5
 
@@ -174,12 +177,12 @@ when not blank. Accessible: a list with each step's status in text, not only in 
 marker.
 
 **Acceptance criteria:**
-- [ ] Renders the three statuses, the count, the empty case and the explanation rule.
-- [ ] Screen readers hear each step's status.
-- [ ] Long steps wrap; no layout break on narrow widths.
+- [x] Renders the three statuses, the count, the empty case and the explanation rule.
+- [x] Screen readers hear each step's status.
+- [x] Long steps wrap; no layout break on narrow widths.
 
 **Verification:**
-- [ ] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
+- [x] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
 - [ ] Manual check in the real app
 
 **Dependencies:** Task 6
