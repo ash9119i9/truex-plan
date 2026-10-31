@@ -9,9 +9,20 @@ import {
 // Startup configuration, read once and validated before anything listens.
 // Invalid configuration stops startup with every problem listed.
 
+// How the adapter is reached (RUNTIME_MODE):
+// - "server" (default): the HTTP API on HOST:PORT, bearer token from
+//   RUNTIME_ADAPTER_TOKEN.
+// - "agentcore": the Bedrock AgentCore Runtime contract (/ping and
+//   /invocations) on HOST:PORT, default 0.0.0.0:8080. The HTTP API runs on
+//   loopback behind it with a token generated at start (src/agentcore).
+export type RuntimeMode = "server" | "agentcore";
+const MODES: readonly RuntimeMode[] = ["server", "agentcore"];
+
 export interface AdapterConfig {
+  readonly mode: RuntimeMode;
   readonly host: string;
   readonly port: number;
+  // Empty in agentcore mode, where the bridge generates one per start.
   readonly token: string;
   readonly stateDir: string;
   readonly codexBinary: string;
@@ -87,16 +98,24 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
     return value;
   };
 
-  const token = env.RUNTIME_ADAPTER_TOKEN ?? "";
-  if (token.length < 32)
+  const rawMode = env.RUNTIME_MODE || "server";
+  const mode = MODES.find((m) => m === rawMode) ?? "server";
+  if (mode !== rawMode)
+    problems.push(`RUNTIME_MODE must be one of: ${MODES.join(", ")}.`);
+  const agentCore = mode === "agentcore";
+
+  // In agentcore mode IAM authenticates callers and the loopback token is
+  // generated at start, so RUNTIME_ADAPTER_TOKEN is not read.
+  const token = agentCore ? "" : (env.RUNTIME_ADAPTER_TOKEN ?? "");
+  if (!agentCore && token.length < 32)
     problems.push("RUNTIME_ADAPTER_TOKEN must be at least 32 characters.");
 
   const stateDir = env.RUNTIME_STATE_DIR ?? "";
   if (!stateDir || !isAbsolute(stateDir))
     problems.push("RUNTIME_STATE_DIR must be an absolute path.");
 
-  const host = env.HOST || "127.0.0.1";
-  const port = int("PORT", 4400, 1, 65535);
+  const host = env.HOST || (agentCore ? "0.0.0.0" : "127.0.0.1");
+  const port = int("PORT", agentCore ? 8080 : 4400, 1, 65535);
   const maxProcesses = int("RUNTIME_MAX_PROCESSES", 20, 1, 1000);
   const idleMs = int("RUNTIME_IDLE_MS", 600_000, 1000, 86_400_000);
   const drainMs = int("RUNTIME_DRAIN_MS", 30_000, 0, 600_000);
@@ -133,6 +152,7 @@ export function loadConfig(env: Env, repoRoot = REPO_ROOT): AdapterConfig {
 
   if (problems.length) throw new ConfigError(problems);
   return {
+    mode,
     host,
     port,
     token,

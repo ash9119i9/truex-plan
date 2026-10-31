@@ -1,0 +1,17 @@
+# Repository-root context for runtime-adapter/Dockerfile: the adapter's build
+# inputs and its toolchain pins only. Codex is downloaded during the build.
+**
+!runtime-adapter/
+!runtime-adapter/Dockerfile
+!runtime-adapter/Dockerfile.dockerignore
+!runtime-adapter/package.json
+!runtime-adapter/package-lock.json
+!runtime-adapter/tsconfig.json
+!runtime-adapter/tsconfig.build.json
+!runtime-adapter/src/
+!runtime-adapter/src/**
+!runtime-adapter/toolchain/
+!runtime-adapter/toolchain/requirements.txt
+**/.env
+**/.env.*
+**/node_modules

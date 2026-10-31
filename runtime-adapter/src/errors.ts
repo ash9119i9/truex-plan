@@ -4,6 +4,12 @@
 export const REQUEST_ERRORS = {
   INVALID_REQUEST: [400, false, "The request is invalid."],
   UNAUTHORIZED: [401, false, "Authentication is required."],
+  // AgentCore mode: the request's chat doesn't match its runtime session.
+  SESSION_MISMATCH: [
+    403,
+    false,
+    "This request doesn't belong to this runtime session.",
+  ],
   RUN_NOT_FOUND: [404, false, "This run is unknown or has expired."],
   THREAD_LOST: [
     404,

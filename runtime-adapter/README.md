@@ -20,18 +20,17 @@ cp .env.example .env     # set RUNTIME_ADAPTER_TOKEN and RUNTIME_STATE_DIR
 npm run dev
 ```
 
-| Variable                      | Default                | Meaning                                                                                                          |
-| ----------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `RUNTIME_ADAPTER_TOKEN`       | required               | Shared bearer token, at least 32 characters. The platform sends it on every request.                             |
-| `RUNTIME_STATE_DIR`           | required               | Absolute path holding every chat's Codex home and workspace. Keep it across restarts.                            |
-| `HOST` / `PORT`               | `127.0.0.1` / `4400`   | Listen address. Loopback by default.                                                                             |
-| `RUNTIME_CODEX_BINARY`        | from `codex.lock.json` | Operator override for packaged images. Callers can never choose a binary.                                        |
-| `RUNTIME_MAX_PROCESSES`       | `20`                   | Codex processes loaded at once (~150 MB each).                                                                   |
-| `RUNTIME_IDLE_MS`             | `600000`               | An idle chat's process is stopped after this long.                                                               |
-| `RUNTIME_DRAIN_MS`            | `30000`                | Shutdown waits this long for active runs, then stops them.                                                       |
-| `RUNTIME_MAX_FAILED_COMMANDS` | `12`                   | A reply stops as `COMMAND_LIMIT` after this many failed commands (lead and helpers together).                    |
-| `RUNTIME_MAX_COMMANDS`        | `120`                  | A reply stops as `COMMAND_LIMIT` after this many commands in all.                                                |
-| `ADAPTER_ALLOW_LOOPBACK_MCP`  | `0`                    | Test only. `1` lets an MCP spec use an `http` loopback URL; otherwise MCP is https-only. Any other value is off. |
+| Variable                     | Default                | Meaning                                                                                                          |
+| ---------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `RUNTIME_MODE`               | `server`               | `server`: this HTTP API. `agentcore`: the Bedrock AgentCore contract in front of it (see [AgentCore mode](#agentcore-mode)). |
+| `RUNTIME_ADAPTER_TOKEN`      | required               | Shared bearer token, at least 32 characters. The platform sends it on every request. Not read in `agentcore` mode. |
+| `RUNTIME_STATE_DIR`          | required               | Absolute path holding every chat's Codex home and workspace. Keep it across restarts.                            |
+| `HOST` / `PORT`              | `127.0.0.1` / `4400`   | Listen address. Loopback by default; `0.0.0.0` / `8080` in `agentcore` mode.                                     |
+| `RUNTIME_CODEX_BINARY`       | from `codex.lock.json` | Operator override for packaged images. Callers can never choose a binary.                                        |
+| `RUNTIME_MAX_PROCESSES`      | `20`                   | Codex processes loaded at once (~150 MB each).                                                                   |
+| `RUNTIME_IDLE_MS`            | `600000`               | An idle chat's process is stopped after this long.                                                               |
+| `RUNTIME_DRAIN_MS`           | `30000`                | Shutdown waits this long for active runs, then stops them.                                                       |
+| `ADAPTER_ALLOW_LOOPBACK_MCP` | `0`                    | Test only. `1` lets an MCP spec use an `http` loopback URL; otherwise MCP is https-only. Any other value is off. |
 
 ## Storage
 
@@ -385,6 +384,7 @@ text-only ones. The profile lives in `src/codex/coding.ts`.
 | --------------------- | ------ | --------- | ------------------------------------------------------------ |
 | `INVALID_REQUEST`     | 400    | no        | Body, query or IDs failed validation.                        |
 | `UNAUTHORIZED`        | 401    | no        | Missing or wrong token.                                      |
+| `SESSION_MISMATCH`    | 403    | no        | AgentCore mode: the chat doesn't match the runtime session.  |
 | `RUN_NOT_FOUND`       | 404    | no        | Unknown or expired run, or one belonging to another chat.    |
 | `THREAD_LOST`         | 404    | no        | The chat's Codex history no longer exists.                   |
 | `CHAT_BUSY`           | 409    | no        | The chat already has an active run.                          |
@@ -425,6 +425,72 @@ path), so a Codex upgrade that changes one fails the suite:
 - Retries multiply: 1 request retry × 2 stream retries means up to 6 provider
   attempts; only stream retries emit `error` with `willRetry` (→ `retrying`).
 - Stop before the provider sends headers is not acted on by Codex.
+
+## AgentCore mode
+
+`RUNTIME_MODE=agentcore` serves the
+[AgentCore Runtime HTTP contract](https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-http-protocol-contract.html)
+on `0.0.0.0:8080` (`src/agentcore/`). Everything above still applies; only the
+way requests arrive changes.
+
+- **`GET /ping`**: `{"status":"Healthy"}`, `HealthyBusy` while a run is active
+  (AgentCore keeps the session alive), `503 Unhealthy` while shutting down.
+  It never sends `time_of_last_update`.
+- **`POST /invocations`**: one adapter operation per call:
+
+  ```json
+  {"method":"POST","path":"/v1/runs","body":{"runId":"...","tenantId":"t1","chatId":"c1","...":"..."}}
+  {"method":"GET","path":"/v1/runs/r1/events","query":{"tenantId":"t1","chatId":"c1","after":"12"}}
+  {"method":"PUT","path":"/v1/chats/c1/uploads/a.png","query":{"tenantId":"t1","sha256":"..."},"bodyBase64":"..."}
+  ```
+
+  Only the routes above are accepted. `body` goes with POST, `bodyBase64` with
+  PUT (uploads up to 20 MiB, skills up to 5 MB), and `query` holds the query
+  string fields.
+- **Responses**: a run's event stream and a file's bytes come back as the
+  adapter sent them. Everything else, errors included, is HTTP 200 with
+  `{"status":409,"body":{"error":{"code":"CHAT_BUSY",...}}}`, because AgentCore
+  replaces a container's 4xx/5xx with its own error.
+- **Sessions**: one AgentCore session per chat. The session ID is `chat-` +
+  sha256(`<tenantId>/<chatId>`) hex. A request whose chat doesn't match the
+  `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` header, or a second chat in one
+  runtime, gets `SESSION_MISMATCH` (403) and is not forwarded.
+- **Lifecycle**: the adapter starts on the first invocation, listening on
+  loopback with a token made at start; IAM authenticates callers, so
+  `RUNTIME_ADAPTER_TOKEN` is not used. SIGTERM drains runs for
+  `RUNTIME_DRAIN_MS` like the server.
+- **No authentication of its own**: inside AgentCore only the service reaches
+  port 8080. Anywhere else, bind it to loopback (`HOST=127.0.0.1`).
+
+Run it locally (the `.env` values for `HOST` and `PORT` apply too, so set them):
+
+```sh
+RUNTIME_MODE=agentcore HOST=127.0.0.1 PORT=8080 npm run dev
+curl localhost:8080/ping
+curl localhost:8080/invocations -H 'content-type: application/json' \
+  -H "x-amzn-bedrock-agentcore-runtime-session-id: chat-$(printf 't1/c1' | sha256sum | cut -d' ' -f1)" \
+  -d '{"method":"GET","path":"/v1/chats/c1/files","query":{"tenantId":"t1"}}'
+```
+
+Image (ARM64, `RUNTIME_MODE=agentcore`), built from the repository root:
+
+```sh
+docker buildx build --platform linux/arm64 -f runtime-adapter/Dockerfile \
+  -t truex-runtime-adapter:local --load .
+```
+
+The build downloads the official Codex release named in the Dockerfile
+(`CODEX_RELEASE`, `CODEX_VERSION`, `CODEX_SHA256`), checks its sha256 and
+architecture, and installs it at `/opt/truex/bin/codex`. That release can
+differ from `codex.lock.json`, which local development and `test/codex` use;
+run `RUNTIME_CODEX_BINARY=<release binary> npx tsx --test test/codex/agentcore.test.ts`
+against the same release before changing it.
+
+On AgentCore, mount session storage at `RUNTIME_STATE_DIR` (`/mnt/state`):
+`filesystemConfigurations: [{"sessionStorage": {"mountPath": "/mnt/state"}}]`.
+Session storage survives stop and resume but is reset when the runtime version
+changes, which loses existing chats' threads (`THREAD_LOST`). `gatewayUrl` must
+be reachable from the runtime's network.
 
 ## Checks
 
