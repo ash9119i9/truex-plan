@@ -1,3 +1,4 @@
+import { PLATFORM_INSTRUCTIONS_VERSION } from "../../src/modules/chats/chat";
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { loadChatConfig } from "../../src/config/chat-config";
@@ -467,5 +468,61 @@ describe("isApprovalId", () => {
       isApprovalId("ap_AAAAAAAA-0000-0000-0000-000000000000"),
       false,
     );
+  });
+});
+
+describe("chat prompt v6 (tools come from the runtime)", () => {
+  const agent = {
+    source: "personal" as const,
+    name: "Bot",
+    description: "Writes.",
+  };
+  const chat = (version: string) => ({
+    platformInstructionsVersion: version,
+    createdAt: new Date("2026-11-01T02:00:00Z"),
+  });
+  const cases: Array<[string, string[], string[]]> = [
+    ["text-only", [], []],
+    ["read-only connectors", ["GitHub get issue"], []],
+    ["writable connectors", ["Jira"], ["Jira create issue"]],
+  ];
+
+  test("new chats start on v6", () => {
+    assert.equal(PLATFORM_INSTRUCTIONS_VERSION, "v6");
+  });
+
+  // A coding runtime gives the model file and code tools; the platform's
+  // prompt must never deny them, or the model refuses work it can do.
+  for (const [label, tools, writes] of cases)
+    test(`v6 ${label} never says the chat has no files or code execution`, () => {
+      const prompt = chatPrompt(agent, chat("v6"), tools, writes);
+      assert.doesNotMatch(prompt, /no tools|files|code execution/i);
+      assert.match(prompt, /Use only the tools you are given in this chat/);
+      for (const name of [...tools, ...writes])
+        assert.ok(prompt.includes(name));
+    });
+
+  test("v6 keeps the approval rule for tools that change data", () => {
+    const prompt = chatPrompt(
+      agent,
+      chat("v6"),
+      ["Jira"],
+      ["Jira create issue"],
+    );
+    assert.match(prompt, /Only these tools change data: Jira create issue/);
+    assert.match(prompt, /waits for the member's approval/);
+  });
+
+  test("a v6 chat with Follow Ups on ends with the rule, as v5 does", () => {
+    const on = chatPrompt(agent, { ...chat("v6"), followUps: "on" as const });
+    assert.ok(
+      on.endsWith("[/truex-suggestions]") || on.includes("Follow Up rows."),
+    );
+    const off = chatPrompt(agent, { ...chat("v6"), followUps: "off" as const });
+    assert.ok(!off.includes("Follow Up rows."));
+  });
+
+  test("v5 is unchanged: a saved v5 chat keeps the text it started on", () => {
+    assert.match(chatPrompt(agent, chat("v5")), /You have no tools/);
   });
 });

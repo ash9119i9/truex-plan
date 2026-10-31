@@ -408,7 +408,7 @@ describe("chat: platform-next → runtime adapter → pinned Codex", () => {
       .collection<ChatDoc>(CHATS_COLLECTION)
       .findOne({ _id: new ObjectId(receipt.chat.id) });
     assert.ok(chat);
-    assert.equal(chat.platformInstructionsVersion, "v5");
+    assert.equal(chat.platformInstructionsVersion, "v6");
     assert.equal(chat.followUps, "on");
     assert.ok(
       JSON.stringify(request.body).includes(
