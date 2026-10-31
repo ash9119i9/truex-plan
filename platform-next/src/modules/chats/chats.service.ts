@@ -137,6 +137,9 @@ export interface ChatView {
   // The chat's goal for its badge, from the chat document; null when it has
   // none or goal mode ended in it.
   goal: Pick<ChatGoalSummary, "status" | "review"> | null;
+  // The goal maximum the chat was created with; null when goals are off in
+  // it (the tenant had no goal settings then).
+  goals: { maxTokenBudget: number } | null;
   status: "active" | "archived";
   lastMessageAt: string;
   createdAt: string;
@@ -2208,6 +2211,7 @@ function chatState(
     goal: chat.goal
       ? { status: chat.goal.status, review: chat.goal.review }
       : null,
+    goals: chat.goals ? { maxTokenBudget: chat.goals.maxTokenBudget } : null,
     status: chat.status,
     lastMessageAt: chat.lastMessageAt.toISOString(),
     createdAt: chat.createdAt.toISOString(),

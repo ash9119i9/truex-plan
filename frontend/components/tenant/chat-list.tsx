@@ -3,7 +3,9 @@ import { memo, useId, useState } from "react";
 import { historyGroups, sessionTime } from "@/lib/sidebar";
 import { useSidebarNow } from "@/lib/use-sidebar-clock";
 import type { ChatSummary } from "@/lib/tenant-chat";
+import { goalBadge } from "@/lib/tenant-goal";
 import { Pulse } from "@/components/tx/live";
+import { Pill } from "@/components/tx/pill";
 
 // The sidebar history (DESIGN-SPEC 11.2): Today and Previous show; the older
 // groups fold behind "View all conversations". Data comes in through props.
@@ -62,6 +64,11 @@ export const ChatList = memo(function ChatList({
         >
           <span className="pt-session-title">{chat.title || "New chat"}</span>
           {unread?.has(chat.id) && <span className="tx-sr">, new reply</span>}
+          {goalBadge(chat.goal) && (
+            <Pill tone="line" size="sm" className="cs-goal-badge">
+              {goalBadge(chat.goal)!.text}
+            </Pill>
+          )}
           {chat.activeRunId ? (
             <span className="pt-session-time" role="img" aria-label="Answering">
               <Pulse />

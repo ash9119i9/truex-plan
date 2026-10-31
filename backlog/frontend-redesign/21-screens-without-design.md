@@ -16,6 +16,14 @@ The spec covers the shell, the chat, replies, requests, the Activity Panel and A
 | File viewer (open a reply's file, versions, download) | `frontend/components/tenant/file-viewer.tsx` |
 | Visualize (interactive charts and explainers in replies) | `docs/VISUALIZE.md` |
 | Goal: set, budget, review gate (only the `.pt-goal` strip is specified) | goal feature |
+
+## Decisions
+
+- **Goal: set, budget, review gate** (2026-10-31): restyle only. The goal card uses the
+  specified `.pt-goal` strip; the start dialog, review panel and chat-list badge use the
+  system's dialog, field, segmented, meter and pill pieces (`styles/app/goal.css`,
+  tokens only). A later design can replace the layout without changing the logic in
+  `frontend/lib/tenant-goal.ts`.
 | Error, not-found and global-error pages | `frontend/app/error.tsx`, `not-found.tsx`, `global-error.tsx` |
 | Projects (removed from the sidebar earlier) | `backlog.txt` |
 

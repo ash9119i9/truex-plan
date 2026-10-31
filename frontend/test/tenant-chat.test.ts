@@ -154,6 +154,30 @@ test("parses chats and drops malformed ones", () => {
   assert.equal(odd?.agent, null);
 });
 
+test("a chat carries its goal badge and whether goals are on in it", () => {
+  const withGoal = parseChat(
+    chat({
+      goal: { status: "complete", review: "pending" },
+      goals: { maxTokenBudget: 3_000_000 },
+    }),
+  );
+  assert.deepEqual(withGoal?.goal, { status: "complete", review: "pending" });
+  assert.deepEqual(withGoal?.goals, { maxTokenBudget: 3_000_000 });
+  // An older platform, or goals off: neither field.
+  const plain = parseChat(chat());
+  assert.equal(plain?.goal, null);
+  assert.equal(plain?.goals, null);
+  // Unknown values are not trusted; the chat still shows.
+  const odd = parseChat(
+    chat({
+      goal: { status: "done", review: "pending" },
+      goals: { maxTokenBudget: -1 },
+    }),
+  );
+  assert.equal(odd?.goal, null);
+  assert.equal(odd?.goals, null);
+});
+
 test("lists chats for this tab's tenant with a cursor", async (t) => {
   const sent = mockFetch(t, () =>
     Response.json({ chats: [chat(), { id: "bad" }], nextCursor: "17_abc" }),

@@ -396,11 +396,15 @@ and a goal reducer. Status text copies Codex's footer wording.
 
 **Acceptance criteria:**
 - [ ] A `run.started` while the chat is open attaches to the run without a reload.
-- [ ] Out-of-order or repeated goal events never move the goal backwards.
-- [ ] Status text for every Codex status plus review pending matches the one-pager.
+      Built: `watchChatGoal` and `withGoalRun` are tested, and `tenant-chat.tsx` follows
+      each goal run (one that starts while a reply is on screen waits for it to be
+      saved). No test drives the screen itself; Checkpoint C's manual run confirms it.
+- [x] Out-of-order or repeated goal events never move the goal backwards.
+- [x] Status text for every Codex status plus review pending matches the one-pager.
 
 **Verification:**
-- [ ] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
+- [x] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
+      (845/846; the one failure, `system/type.css` drift, is already on main)
 
 **Dependencies:** Task 12
 
@@ -420,12 +424,18 @@ with the limit message at the limit; absent once the chat has had a goal.
 
 **Acceptance criteria:**
 - [ ] Starting shows the goal card at once and the first goal turn streams in.
-- [ ] `GOAL_LIMIT` and objective-length errors are shown in the dialog, not as a toast
+      Partly met: the started goal is applied at once and goal runs attach (Task 13);
+      the card itself is Task 15.
+- [x] `GOAL_LIMIT` and objective-length errors are shown in the dialog, not as a toast
       that loses the text.
 - [ ] Keyboard only: open, fill, choose a preset, submit and cancel.
+      Partly met: the markup is checked (labelled objective, radio presets, submit and
+      cancel buttons, Escape cancels); no test presses keys. The Goal button is never
+      disabled at the limit: a refusal shows in the dialog instead (decided 2026-10-31).
 
 **Verification:**
-- [ ] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
+- [x] `frontend`: `npm test`, `npm run typecheck`, `npm run build` (852/853; `type.css`
+      drift is on main)
 
 **Dependencies:** Task 13
 
@@ -445,12 +455,16 @@ shows "The agent proposed a goal. Choose a budget to start." Goal turns render a
 assistant replies with no user bubble.
 
 **Acceptance criteria:**
-- [ ] Stop during a goal turn leaves the card on "Goal paused" and Resume continues it.
-- [ ] The meter and time update from `goal.updated` while turns run.
-- [ ] The resume prompt appears only for the three Codex statuses, once per opening.
+- [x] Stop during a goal turn leaves the card on "Goal paused" and Resume continues it.
+      Card: `goal-card.test.ts`; Stop pauses and Resume continues: the adapter Stop test
+      and platform-next "pause gives the slot back … resume … continues". Resume now
+      also works from stalled and usage-limited, as Codex's footer offers.
+- [x] The meter and time update from `goal.updated` while turns run.
+- [x] The resume prompt appears only for the three Codex statuses, once per opening.
 
 **Verification:**
-- [ ] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
+- [x] `frontend`: `npm test`, `npm run typecheck`, `npm run build` (858/859; `type.css`
+      drift is on main)
 
 **Dependencies:** Task 14
 
@@ -468,14 +482,15 @@ optional higher preset. On budget-limited: Raise budget (only presets above `tok
 up to the maximum) or, at the maximum, Accept as is and Clear.
 
 **Acceptance criteria:**
-- [ ] Request changes shows the merged-objective length before sending and refuses over
+- [x] Request changes shows the merged-objective length before sending and refuses over
       4000 characters.
-- [ ] Raise offers no preset at or below `tokensUsed`.
-- [ ] Approve shows "Goal achieved"; Accept as is shows "Goal achieved (stopped at
+- [x] Raise offers no preset at or below `tokensUsed`.
+- [x] Approve shows "Goal achieved"; Accept as is shows "Goal achieved (stopped at
       budget)".
 
 **Verification:**
-- [ ] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
+- [x] `frontend`: `npm test`, `npm run typecheck`, `npm run build` (861/862; `type.css`
+      drift is on main)
 
 **Dependencies:** Task 15
 
@@ -492,12 +507,15 @@ up to the maximum) or, at the maximum, Accept as is and Clear.
 from the chat list response and the open chat's stream.
 
 **Acceptance criteria:**
-- [ ] Badges for pursuing, paused, stalled, usage-limited, budget-limited, waiting for
+- [x] Badges for pursuing, paused, stalled, usage-limited, budget-limited, waiting for
       review and achieved, with text not only colour.
 - [ ] A goal finishing in the open chat updates its badge without a reload.
+      Built: `withGoalBadge` is tested and `tenant-chat.tsx` applies it from the open
+      chat's goal stream. No test drives the screen; Checkpoint C's manual run confirms it.
 
 **Verification:**
-- [ ] `frontend`: `npm test`, `npm run typecheck`, `npm run build`
+- [x] `frontend`: `npm test`, `npm run typecheck`, `npm run build` (863/864; `type.css`
+      drift is on main)
 
 **Dependencies:** Task 13 (can run in parallel with Tasks 14–16)
 
@@ -522,13 +540,23 @@ the pinned Codex with the fixture model through the whole flow, including a plat
 restart mid-goal and two tabs racing for the last slot.
 
 **Acceptance criteria:**
-- [ ] Start → three turns with no browser → complete → request changes → complete →
+- [x] Start → three turns with no browser → complete → request changes → complete →
       approve, every turn saved once.
-- [ ] A restart mid-goal loses and duplicates nothing.
-- [ ] Two simultaneous starts for the last slot: one succeeds, one gets `GOAL_LIMIT`.
+      `chats.test.ts` "a goal started by route runs three turns …"; fails when approve
+      records nothing (mutation checked).
+- [x] A restart mid-goal loses and duplicates nothing.
+      Covered by the Task 9 test "a platform restart mid-goal: the sweeps resume it …"
+      (platform and adapter both restart; nothing lost, nothing resent).
+- [x] Two simultaneous starts for the last slot: one succeeds, one gets `GOAL_LIMIT`.
+      `chats.test.ts` "two starts racing for the last slot …"; fails when the cap is
+      ignored (mutation checked). Lives in `chats.test.ts`, which already has the stack.
 
 **Verification:**
-- [ ] `platform-next`: `npm test` (integration)
+- [x] `platform-next`: `npm test` (integration), typecheck and format pass, except six
+      `coding-chat.test.ts` tests (2026-10-31). Not goal work: this worktree's `vendor/`
+      is a symlink to the main checkout, and Codex's sandboxed patch helper fails when
+      started through that symlinked path. With `RUNTIME_CODEX_BINARY` set to the real
+      path all 7 pass; the same tests pass in the main checkout.
 
 **Dependencies:** Checkpoint B (Checkpoint C is deferred with Phase 3)
 

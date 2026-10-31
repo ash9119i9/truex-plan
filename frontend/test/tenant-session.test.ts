@@ -75,3 +75,28 @@ test("a tenant response cannot substitute another tenant or forge a role", async
     );
   }
 });
+
+test("the tenant's goal presets come with the session; a malformed or absent setting means goals are off", async () => {
+  const goals = {
+    presets: [100_000, 300_000, 1_000_000],
+    maxTokenBudget: 3_000_000,
+  };
+  const read = async (body: unknown) => {
+    const { auth } = fixture(() =>
+      Response.json({ tenant: { ...tenant, goals: body } }),
+    );
+    const result = await fetchMe({ auth, tenantId: TENANT_ID });
+    assert.equal(result.kind, "ok");
+    return result.kind === "ok" ? result.me.goals : undefined;
+  };
+  assert.deepEqual(await read(goals), goals);
+  assert.equal(await read(null), null);
+  assert.equal(await read(undefined), null);
+  for (const bad of [
+    { presets: [100_000, 300_000], maxTokenBudget: 3_000_000 },
+    { presets: [100_000, 300_000, -1], maxTokenBudget: 3_000_000 },
+    { presets: [100_000, 300_000, 1_000_000] },
+    "on",
+  ])
+    assert.equal(await read(bad), null, JSON.stringify(bad));
+});

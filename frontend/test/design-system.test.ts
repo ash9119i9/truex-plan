@@ -33,6 +33,7 @@ const TOKENS_ONLY: string[] = [
   "styles/app/activity-panel.css",
   "styles/app/agents.css",
   "styles/app/agent-desk.css",
+  "styles/app/goal.css",
   "styles/app/auth.css",
   "styles/app/tools.css",
   "styles/app/viewer.css",

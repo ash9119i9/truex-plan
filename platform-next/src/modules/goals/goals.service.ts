@@ -53,6 +53,8 @@ export interface GoalView {
   timeUsedSeconds: number;
   origin: GoalOrigin;
   review: GoalReview;
+  // The goal document's revision: of two views, the higher one is newer.
+  rev: number;
 }
 
 export function viewOf(doc: GoalDoc): GoalView {
@@ -65,6 +67,7 @@ export function viewOf(doc: GoalDoc): GoalView {
     timeUsedSeconds: goal.timeUsedSeconds,
     origin: doc.origin,
     review: doc.review,
+    rev: doc.rev,
   };
 }
 
@@ -293,8 +296,17 @@ export class GoalsService implements OnModuleInit {
     const chat = await this.goalChat(context, chatId);
     const saved = await this.liveGoal(context, chatId);
     if (saved.goal.status === "active") return { goal: viewOf(saved) };
-    if (saved.goal.status !== "paused")
-      throw new DomainError("CONFLICT", "Only a paused goal can be resumed.");
+    // The statuses Codex's footer offers /goal resume for.
+    const status = saved.goal.status;
+    if (
+      status !== "paused" &&
+      status !== "blocked" &&
+      status !== "usageLimited"
+    )
+      throw new DomainError(
+        "CONFLICT",
+        "Only a paused, stalled or usage-limited goal can be resumed.",
+      );
     if (saved.origin === "model")
       throw new DomainError(
         "CONFLICT",

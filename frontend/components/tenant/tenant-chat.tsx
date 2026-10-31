@@ -78,6 +78,32 @@ import {
 import type { FollowUpItem } from "@/lib/suggestions";
 import { followRun } from "@/lib/tenant-chat-stream";
 import {
+  applyGoalEvent,
+  NO_GOAL,
+  watchChatGoal,
+  withGoalRun,
+  goalOffer,
+  goalPresets,
+  goalStartFailure,
+  startGoal,
+  withGoal,
+  acceptGoal,
+  approveGoal,
+  clearGoal,
+  editGoal,
+  pauseGoal,
+  raiseGoalBudget,
+  requestGoalChanges,
+  promptOnOpen,
+  resumeGoal,
+  withGoalBadge,
+  type GoalAction,
+  type GoalState,
+  type TenantGoal,
+} from "@/lib/tenant-goal";
+import { GoalDialog } from "./goal-dialog";
+import { GoalCard } from "./goal-card";
+import {
   discardUpload,
   fetchUploadSettings,
   fileProblem,
@@ -578,6 +604,190 @@ export function TenantChat() {
       },
     });
   }, [followChat, followRunId, followKey, load, addFiles]);
+
+  // ---- The open chat's goal ----
+  // Read from the chat event stream while the chat is open. A goal turn
+  // Codex starts is followed like any reply; one that starts while another
+  // reply is on screen waits until that reply is saved.
+  const [goal, setGoal] = useState<{ chatId: string; state: GoalState } | null>(
+    null,
+  );
+  const queuedGoalRun = useRef<{ chatId: string; runId: string } | null>(null);
+  const attachGoalRun = useCallback((chatId: string, runId: string) => {
+    const current = threadRef.current;
+    if (current?.chat.id !== chatId) return;
+    const next = withGoalRun(current, runId);
+    if (!next) {
+      queuedGoalRun.current = { chatId, runId };
+      return;
+    }
+    queuedGoalRun.current = null;
+    if (next === current) return;
+    setThread(next);
+    setChats((list) => withChat(list, next.chat));
+    setLive((live) =>
+      live?.chatId === chatId && live.reply.runId === runId
+        ? live
+        : { chatId, reply: liveReply(runId) },
+    );
+  }, []);
+  const goalChatId = openThread?.chat.id ?? null;
+  useEffect(() => {
+    if (!goalChatId) return;
+    queuedGoalRun.current = null;
+    setGoal({ chatId: goalChatId, state: NO_GOAL });
+    return watchChatGoal(goalChatId, {
+      onGoalEvent: (event) =>
+        setGoal((current) => {
+          const state =
+            current?.chatId === goalChatId ? current.state : NO_GOAL;
+          const next = applyGoalEvent(state, event);
+          return current?.chatId === goalChatId && next === state
+            ? current
+            : { chatId: goalChatId, state: next };
+        }),
+      onRun: (runId) => attachGoalRun(goalChatId, runId),
+    });
+  }, [goalChatId, attachGoalRun]);
+  const goalRunHolder = openThread?.chat.activeRunId ?? null;
+  useEffect(() => {
+    const queued = queuedGoalRun.current;
+    if (!queued || goalRunHolder || queued.chatId !== goalChatId) return;
+    attachGoalRun(queued.chatId, queued.runId);
+  }, [goalChatId, goalRunHolder, attachGoalRun]);
+  const openGoal = goal && goal.chatId === openId ? goal.state : NO_GOAL;
+  // The open chat's row follows its goal stream, so a goal finishing here
+  // updates its badge without a reload.
+  // updates its badge without a reload. Re-applied after every list change:
+  // a load, a saved reply or an attached goal run puts the thread's own
+  // summary back, read before the goal changed. withGoalBadge returns the
+  // same list when nothing differs, so this settles at once.
+  useEffect(() => {
+    if (!openId) return;
+    setChats((list) => withGoalBadge(list, openId, openGoal));
+  }, [openId, openGoal, chats]);
+
+  // The start dialog. Its request ID is kept across retries, so a start
+  // whose answer was lost returns the goal it started instead of a second.
+  const [goalDraft, setGoalDraft] = useState<{
+    chatId: string;
+    requestId: string;
+    objective: string;
+    budget: number;
+    error: string;
+    starting: boolean;
+  } | null>(null);
+  const openGoalDialog = (chatId: string, presets: number[]) =>
+    setGoalDraft({
+      chatId,
+      requestId: crypto.randomUUID(),
+      objective: "",
+      budget: presets[1] ?? presets[0]!,
+      error: "",
+      starting: false,
+    });
+  const submitGoal = async () => {
+    const draft = goalDraft;
+    if (!draft || draft.starting) return;
+    setGoalDraft({ ...draft, starting: true, error: "" });
+    try {
+      const started = await startGoal(draft.chatId, {
+        clientRequestId: draft.requestId,
+        objective: draft.objective,
+        tokenBudget: draft.budget,
+      });
+      setGoal((current) =>
+        current?.chatId === draft.chatId
+          ? { chatId: draft.chatId, state: withGoal(current.state, started) }
+          : current,
+      );
+      setGoalDraft(null);
+      setAnnouncement("Goal started.");
+    } catch (error) {
+      setGoalDraft((current) =>
+        current?.requestId === draft.requestId
+          ? { ...current, starting: false, error: goalStartFailure(error) }
+          : current,
+      );
+    }
+  };
+
+  // The goal card's actions. A refusal stays on the card; the goal shown is
+  // the platform's answer, applied only when newer than what is on screen.
+  const [goalWork, setGoalWork] = useState<{
+    chatId: string;
+    working: GoalAction["kind"] | null;
+    error: string;
+  } | null>(null);
+  // "Resume paused goal?", decided once per opening of a chat.
+  const [resumeAsk, setResumeAsk] = useState<{
+    chatId: string;
+    show: boolean;
+  } | null>(null);
+  const openGoalNow = openGoal.goal;
+  useEffect(() => {
+    setResumeAsk((prev) => promptOnOpen(prev, openId, openGoalNow));
+  }, [openId, openGoalNow]);
+  // Kept across retries of one proposal's start, like the dialog's.
+  const proposalRequest = useRef<{ chatId: string; id: string } | null>(null);
+  const actOnGoal = async (chatId: string, action: GoalAction) => {
+    setGoalWork({ chatId, working: action.kind, error: "" });
+    try {
+      if (action.kind === "clear") {
+        await clearGoal(chatId);
+        setGoal((current) =>
+          current?.chatId === chatId
+            ? {
+                chatId,
+                state: applyGoalEvent(current.state, {
+                  type: "goal.cleared",
+                  data: {},
+                }),
+              }
+            : current,
+        );
+      } else {
+        let next: TenantGoal;
+        if (action.kind === "pause") next = await pauseGoal(chatId);
+        else if (action.kind === "resume") next = await resumeGoal(chatId);
+        else if (action.kind === "edit")
+          next = await editGoal(chatId, action.objective);
+        else if (action.kind === "approve") next = await approveGoal(chatId);
+        else if (action.kind === "accept") next = await acceptGoal(chatId);
+        else if (action.kind === "changes")
+          next = await requestGoalChanges(
+            chatId,
+            action.feedback,
+            action.tokenBudget,
+          );
+        else if (action.kind === "raise")
+          next = await raiseGoalBudget(chatId, action.tokenBudget);
+        else {
+          if (proposalRequest.current?.chatId !== chatId)
+            proposalRequest.current = { chatId, id: crypto.randomUUID() };
+          next = await startGoal(chatId, {
+            clientRequestId: proposalRequest.current.id,
+            tokenBudget: action.tokenBudget,
+          });
+        }
+        setGoal((current) =>
+          current?.chatId === chatId
+            ? { chatId, state: withGoal(current.state, next) }
+            : current,
+        );
+      }
+      setGoalWork((current) => (current?.chatId === chatId ? null : current));
+      setResumeAsk((prev) =>
+        prev?.chatId === chatId ? { chatId, show: false } : prev,
+      );
+    } catch (error) {
+      setGoalWork((current) =>
+        current?.chatId === chatId
+          ? { chatId, working: null, error: goalStartFailure(error) }
+          : current,
+      );
+    }
+  };
 
   // Stable, like loadOlder, so typing a draft does not re-render the
   // transcript (dev build, 54 messages: it added 8–16 ms per keystroke).
@@ -1706,6 +1916,22 @@ export function TenantChat() {
                   onConnect={(slug) => void connect(slug)}
                 />
               )}
+              {openGoal.goal && (
+                <GoalCard
+                  goal={openGoal.goal}
+                  presets={goalPresets(chat, me.goals)}
+                  maxTokenBudget={chat.goals?.maxTokenBudget ?? 0}
+                  working={
+                    goalWork?.chatId === chat.id ? goalWork.working : null
+                  }
+                  error={goalWork?.chatId === chat.id ? goalWork.error : ""}
+                  prompt={resumeAsk?.chatId === chat.id && resumeAsk.show}
+                  onAction={(action) => void actOnGoal(chat.id, action)}
+                  onDismissPrompt={() =>
+                    setResumeAsk({ chatId: chat.id, show: false })
+                  }
+                />
+              )}
               <RequestDock
                 live={shownLive}
                 connectors={chat.connectors}
@@ -1738,7 +1964,41 @@ export function TenantChat() {
                 onAddFiles={attachFiles}
                 onRemoveFile={removeFile}
                 fileError={fileErrors[draftKey] ?? ""}
+                bar={
+                  goalOffer({
+                    chat,
+                    settings: me.goals,
+                    state: openGoal,
+                  }) ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        openGoalDialog(chat.id, goalPresets(chat, me.goals))
+                      }
+                    >
+                      Goal
+                    </Button>
+                  ) : undefined
+                }
               />
+              {goalDraft?.chatId === chat.id && (
+                <GoalDialog
+                  presets={goalPresets(chat, me.goals)}
+                  objective={goalDraft.objective}
+                  onObjective={(objective) =>
+                    setGoalDraft((d) => (d ? { ...d, objective } : d))
+                  }
+                  budget={goalDraft.budget}
+                  onBudget={(budget) =>
+                    setGoalDraft((d) => (d ? { ...d, budget } : d))
+                  }
+                  error={goalDraft.error}
+                  starting={goalDraft.starting}
+                  onStart={() => void submitGoal()}
+                  onCancel={() => setGoalDraft(null)}
+                />
+              )}
             </>
           )}
           {dock}

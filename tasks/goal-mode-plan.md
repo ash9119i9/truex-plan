@@ -134,11 +134,12 @@ redesigned, so Phase 3 and Checkpoint C wait for that work; Task 18 follows Chec
 
 ### Checkpoint B: platform
 
-### Phase 3: frontend (deferred until the frontend redesign)
+### Phase 3: frontend (built after the redesign landed; Tasks 13, 14 and 17 each keep
+one box for the manual run in Checkpoint C)
 - [ ] Task 13: Goal client and chat stream
 - [ ] Task 14: Goal button and start dialog
-- [ ] Task 15: Goal card, resume prompt and proposed goals
-- [ ] Task 16: Review panel and raise budget
+- [x] Task 15: Goal card, resume prompt and proposed goals
+- [x] Task 16: Review panel and raise budget
 - [ ] Task 17: Chat-list badge
 
 ### Checkpoint C: feature complete (deferred with Phase 3)

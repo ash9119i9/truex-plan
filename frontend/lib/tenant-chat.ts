@@ -4,6 +4,12 @@
 // api(); the live reply stream is in tenant-chat-stream.ts.
 import { api } from "./api.ts";
 import {
+  GOAL_REVIEWS,
+  GOAL_STATUSES,
+  type GoalReview,
+  type GoalStatus,
+} from "./tenant-goal.ts";
+import {
   FOLLOW_UP_INTENTS,
   FOLLOW_UPS_MAX_CHARS,
   type FollowUpItem,
@@ -97,6 +103,11 @@ export interface ChatSummary {
   // The directory connectors this chat's agent attaches (always present,
   // [] when none), so a Connect card can name them.
   connectors: ConnectorRef[];
+  // The chat's goal for its badge; null when it has none or goal mode ended.
+  goal: { status: GoalStatus; review: GoalReview } | null;
+  // The goal maximum the chat was created with; null when goals are off in
+  // it, so it never offers a goal.
+  goals: { maxTokenBudget: number } | null;
 }
 
 export interface ChatMessage {
@@ -262,6 +273,20 @@ function parseModel(value: unknown): TenantModel | null {
   };
 }
 
+function parseGoalBadge(value: unknown): ChatSummary["goal"] {
+  const g = record(value);
+  const status = oneOf(g?.status, GOAL_STATUSES);
+  const review = oneOf(g?.review, GOAL_REVIEWS);
+  return status && review ? { status, review } : null;
+}
+
+function parseChatGoals(value: unknown): ChatSummary["goals"] {
+  const max = record(value)?.maxTokenBudget;
+  return typeof max === "number" && Number.isSafeInteger(max) && max > 0
+    ? { maxTokenBudget: max }
+    : null;
+}
+
 // A malformed chat from the server is dropped rather than rendered.
 export function parseChat(value: unknown): ChatSummary | null {
   const c = record(value);
@@ -296,6 +321,8 @@ export function parseChat(value: unknown): ChatSummary | null {
     lastMessageAt,
     createdAt,
     connectors: parseConnectorRefs(c.connectors),
+    goal: parseGoalBadge(c.goal),
+    goals: parseChatGoals(c.goals),
   };
 }
 
@@ -834,6 +861,8 @@ export function pendingThread(
     lastMessageAt: at,
     createdAt: at,
     connectors: agent.connectors,
+    goal: null,
+    goals: null,
   };
   return withPending({ chat, messages: [], runs: {}, hasMore: false }, pending);
 }

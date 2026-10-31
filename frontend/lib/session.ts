@@ -16,8 +16,38 @@ export interface Me {
   tenant: { id: string; name: string };
   role: Role;
   tenants: WorkspaceRef[];
+  /** The tenant's goal budgets for a new chat; null when goals are off. */
+  goals: GoalSettings | null;
   /** Sessions always come from Google sign-in and can be ended. */
   auth: "google";
+}
+
+export interface GoalSettings {
+  /** Three budgets a member chooses from. */
+  presets: [number, number, number];
+  /** The most any goal in a new chat can be raised to. */
+  maxTokenBudget: number;
+}
+
+const budget = (value: unknown): value is number =>
+  typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+
+// Anything malformed reads as goals off.
+function parseGoalSettings(value: unknown): GoalSettings | null {
+  const g = value as { presets?: unknown; maxTokenBudget?: unknown } | null;
+  if (!g || typeof g !== "object") return null;
+  const { presets, maxTokenBudget } = g;
+  if (
+    !Array.isArray(presets) ||
+    presets.length !== 3 ||
+    !presets.every(budget) ||
+    !budget(maxTokenBudget)
+  )
+    return null;
+  return {
+    presets: [presets[0], presets[1], presets[2]],
+    maxTokenBudget,
+  };
 }
 export const meKey = (me: Me) => `${me.user.id}:${me.tenant.id}`;
 
@@ -109,6 +139,8 @@ export function toMe(meBody: unknown, tenantsBody: unknown): MeResult {
       tenant: { id: tenant.id, name: tenant.name },
       role: tenant.role,
       tenants,
+      // The account listing carries no settings; a tenant route reads them.
+      goals: null,
       auth: "google",
     },
   };
@@ -181,7 +213,9 @@ export async function fetchMe(
   }
   if (tenantId === undefined) return toMe(bodies[0], bodies[1]);
   const user = parseUser(bodies[0]);
-  const tenant = (bodies[1] as { tenant?: WorkspaceRef } | null)?.tenant;
+  const tenant = (
+    bodies[1] as { tenant?: WorkspaceRef & { goals?: unknown } } | null
+  )?.tenant;
   if (
     !user ||
     !tenant ||
@@ -196,7 +230,8 @@ export async function fetchMe(
       user,
       tenant: { id: tenant.id, name: tenant.name },
       role: tenant.role,
-      tenants: [tenant],
+      tenants: [{ id: tenant.id, name: tenant.name, role: tenant.role }],
+      goals: parseGoalSettings(tenant.goals),
       auth: "google",
     },
   };

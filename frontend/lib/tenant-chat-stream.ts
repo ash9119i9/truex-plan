@@ -110,6 +110,21 @@ export function followRun(
   handlers: FollowHandlers,
   deps: FollowDeps = {},
 ): () => void {
+  return followStream(
+    `/api/v1/chats/${encodeURIComponent(chatId)}/runs/${encodeURIComponent(runId)}/stream`,
+    handlers,
+    deps,
+  );
+}
+
+// Follows any of the platform's event streams at `path`, reconnecting as
+// followRun describes. A stream that never sends `saved` ends only when it
+// cannot be followed.
+export function followStream(
+  path: string,
+  handlers: FollowHandlers,
+  deps: FollowDeps = {},
+): () => void {
   const session = deps.auth ?? defaultAuth;
   const sleep = deps.sleep ?? defaultSleep;
   const silenceMs = deps.silenceMs ?? SILENCE_MS;
@@ -117,7 +132,6 @@ export function followRun(
   const generation = identityGeneration();
   const live = () =>
     !stopped.signal.aborted && generation === identityGeneration();
-  const path = `/api/v1/chats/${encodeURIComponent(chatId)}/runs/${encodeURIComponent(runId)}/stream`;
 
   async function attempt(): Promise<Attempt> {
     const target = addressed(path);

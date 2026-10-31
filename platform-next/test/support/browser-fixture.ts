@@ -149,6 +149,17 @@ async function main() {
       operator: "browser-fixture",
       definition: builtinDefinition(),
     });
+    // BROWSER_FIXTURE_GOALS=1 turns goals on for the tenant's new chats.
+    if (process.env.BROWSER_FIXTURE_GOALS === "1")
+      await operator.setTenantGoals({
+        operator: "browser-fixture",
+        tenantId: new ObjectId("64b7f0c2a1b2c3d4e5f60719"),
+        goals: {
+          presets: [100_000, 300_000, 1_000_000],
+          maxTokenBudget: 3_000_000,
+          maxActive: 10,
+        },
+      });
     await new Promise<void>((resolve, reject) => {
       authorize.once("error", reject);
       authorize.listen(4102, "127.0.0.1", resolve);

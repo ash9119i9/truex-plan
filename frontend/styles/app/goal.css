@@ -1,0 +1,84 @@
+/* Goal mode (tasks/goal-mode-plan.md): the start dialog, the goal card and
+   the review. Only the .pt-goal strip is specified; the rest is the system's
+   dialog and field pieces restyled. Tokens only. */
+
+.gd {
+  display: flex;
+  flex-direction: column;
+  width: min(35rem, 100%);
+  max-height: calc(100dvh - var(--sp-8));
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--sh-3);
+}
+.gd-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-5) var(--sp-4);
+}
+.gd-objective {
+  resize: vertical;
+}
+.gd-count {
+  font-family: var(--f-mono);
+  font-size: var(--t-micro);
+  color: var(--ink-3);
+}
+.gd-budget {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.gd-label {
+  font-size: var(--t-meta);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+/* The goal card above the composer: the .pt-goal strip, then the status in
+   Codex's words and the owner's actions. */
+.gc {
+  overflow: hidden;
+  margin-bottom: var(--sp-2);
+}
+.gc .pt-goal {
+  background: var(--surface);
+}
+.gc-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+}
+.gc-status {
+  margin: 0;
+  font-size: var(--t-ui);
+  color: var(--ink);
+}
+.gc-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.gc-ask {
+  font-size: var(--t-meta);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.gc-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+/* A chat's goal status in the sidebar row, in words: on a second line under
+   the title, so the title keeps its width and the time stays on the first. */
+.cs-goal-badge {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: start;
+}
