@@ -304,11 +304,27 @@
   width: 19rem;
   min-width: 0;
   max-width: calc(100vw - var(--sp-6));
+  /* the picker sets --cs-menu-room to the space the chat area leaves it */
+  max-height: min(24rem, var(--cs-menu-room, 24rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  /* keyboard focus never lands a row under the pinned heading */
+  scroll-padding-block: var(--sp-6) var(--sp-1);
   border: 1px solid var(--line);
-  box-shadow: var(--sh-2);
+  box-shadow: var(--sh-3);
   text-align: start;
   transform-origin: 0 0;
   animation: cs-menu-down var(--tx-d-2) var(--tx-ease) both;
+}
+/* the heading stays put while a long list scrolls under it */
+.cs-agent-menu .tx-menu-h {
+  position: sticky;
+  top: calc(var(--sp-1) * -1);
+  z-index: 1;
+  margin: calc(var(--sp-1) * -1) calc(var(--sp-1) * -1) 0;
+  padding: var(--sp-3) calc(var(--sp-2) + var(--sp-1)) var(--sp-2);
+  background: var(--surface);
 }
 .cs-agent-menu.is-up {
   top: auto;

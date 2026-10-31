@@ -67,14 +67,29 @@ export interface MaskedPlaces {
 }
 
 const SKILL_COPY = "[0-9a-f]{64}/";
+const SKILL_COPY_PART = /^[0-9a-f]{0,64}$/;
+
+// What a run's secret reads as wherever it would be shown.
+export const SECRET_MARK = "•••";
+// Shorter values are too likely to appear in ordinary text to replace.
+const MIN_SECRET = 8;
 
 export class PathMask {
   private readonly pattern: RegExp;
   private readonly labels: ReadonlyMap<string, string>;
   private readonly skillsRoots: readonly string[];
+  // The longest text a place's (or secret's) name can span.
+  private readonly longest: number;
+  // First characters of every masked text, so streamCut skips the rest fast.
+  private readonly starts: ReadonlySet<string>;
 
   // `aliases` are other spellings of the state directory (its real path).
-  constructor(places: MaskedPlaces, aliases: readonly string[] = []) {
+  // `secrets` are a run's token values, shown as SECRET_MARK.
+  constructor(
+    private readonly places: MaskedPlaces,
+    private readonly aliases: readonly string[] = [],
+    secrets: readonly string[] = [],
+  ) {
     const labels = new Map<string, string>();
     const skillsRoots: string[] = [];
     for (const state of new Set([places.stateDir, ...aliases])) {
@@ -91,8 +106,17 @@ export class PathMask {
       skillsRoots.push(join(state, "skills") + "/");
       labels.set(state, "<state>");
     }
+    for (const secret of secrets)
+      if (secret.length >= MIN_SECRET) labels.set(secret, SECRET_MARK);
     this.labels = labels;
     this.skillsRoots = skillsRoots;
+    this.longest = Math.max(
+      ...[...labels.keys()].map((k) => k.length),
+      ...skillsRoots.map((r) => r.length + 65),
+    );
+    this.starts = new Set(
+      [...labels.keys(), ...skillsRoots].map((text) => text[0]!),
+    );
     const alternatives = [
       ...skillsRoots.map((root) => escape(root) + SKILL_COPY),
       // Longest first, so a chat's workspace wins over the chat itself.
@@ -123,13 +147,51 @@ export class PathMask {
     return cut;
   }
 
-  // The longest text a place's name can span.
-  private get longest(): number {
-    return Math.max(
-      ...[...this.labels.keys()].map((k) => k.length),
-      ...this.skillsRoots.map((r) => r.length + 65),
+  // The same places, plus a run's secrets.
+  withSecrets(secrets: readonly string[]): PathMask {
+    return new PathMask(this.places, this.aliases, secrets);
+  }
+
+  // Where streamed reply text can be cut so nothing masked is shown in part.
+  // Unlike command output, a reply is not held back a line at a time: only
+  // an end that could still grow into a place or secret waits for the next
+  // delta, and the cut never falls inside a whole one.
+  streamCut(text: string): number {
+    let cut = text.length;
+    for (let i = Math.max(0, text.length - this.longest); i < text.length; i++)
+      if (this.starts.has(text[i]!) && this.couldStart(text.slice(i))) {
+        cut = i;
+        break;
+      }
+    for (const match of text.matchAll(this.pattern)) {
+      const end = match.index + match[0].length;
+      if (match.index < cut && end > cut) return match.index;
+    }
+    return cut;
+  }
+
+  // Whether `rest` is the start of something masked (or all of it, which
+  // could still be the start of a longer place).
+  private couldStart(rest: string): boolean {
+    for (const key of this.labels.keys()) if (key.startsWith(rest)) return true;
+    return this.skillsRoots.some(
+      (root) =>
+        root.startsWith(rest) ||
+        (rest.startsWith(root) &&
+          SKILL_COPY_PART.test(rest.slice(root.length))),
     );
   }
+}
+
+// Variables Codex adds for the sandbox and its network proxy. Their values
+// (proxy ports, sandbox settings) are hidden in command output; the names
+// stay so the output still reads. Never applied to commands: an approval
+// card shows everything it asks about.
+const SANDBOX_ENV =
+  /^((?:export |declare -x )?(?:CODEX_\w+|(?:HTTPS?|ALL|NO|FTP|WSS?)_PROXY|(?:https?|all|no|ftp|wss?)_proxy|GIT_CONFIG_\w+)=).+$/gm;
+
+export function maskSandboxEnv(text: string): string {
+  return text.replace(SANDBOX_ENV, `$1${SECRET_MARK}`);
 }
 
 // Unbroken command output held back while it might end inside a path.

@@ -31,14 +31,17 @@ import {
   displayCommand,
   hasHiddenCharacters,
   isPush,
+  maskSandboxEnv,
   MAX_COMMAND_OUTPUT,
   MAX_DIFF_CHARS,
   OUTPUT_TAIL_LIMIT,
   parseChanges,
   PathMask,
+  SECRET_MARK,
   splitStreamed,
   workspacePath,
 } from "../../src/codex/activity";
+import { runSecrets } from "../../src/runtime/chat";
 
 const valid = () => ({
   runId: "run_1",
@@ -1508,6 +1511,152 @@ describe("path mask", () => {
     assert.ok(!r.shown.includes("/mnt") && !r.tail.startsWith("/workspace"));
     const all = r.shown + splitStreamed(mask, r.tail, true).shown;
     assert.equal(all, "x".repeat(OUTPUT_TAIL_LIMIT) + "$WORKSPACE" + "y");
+  });
+
+  const secret = "sk-live-0123456789abcdef";
+  const run = mask.withSecrets([secret, "short"]);
+
+  // Streams `pieces` the way ChatRuntime.streamReply does.
+  function streamReply(m: PathMask, pieces: string[]): string[] {
+    const shown: string[] = [];
+    let tail = "";
+    for (const piece of pieces) {
+      const text = tail + piece;
+      const cut = m.streamCut(text);
+      shown.push(m.apply(text.slice(0, cut)));
+      tail = text.slice(cut);
+    }
+    shown.push(m.apply(tail));
+    return shown;
+  }
+
+  test("a run's secrets read as the mark; short values are left alone", () => {
+    assert.equal(run.apply(`token=${secret}.`), `token=${SECRET_MARK}.`);
+    assert.equal(run.apply("a short word"), "a short word");
+    assert.equal(run.apply(`${root}/workspace`), "$WORKSPACE");
+    assert.equal(
+      mask.apply(secret),
+      secret,
+      "the chat's own mask is unchanged",
+    );
+  });
+
+  test("reply text never shows a secret or place in part", () => {
+    const reply = `Use ${secret} in ${root}/workspace/a.txt now`;
+    for (let size = 1; size <= 9; size++) {
+      const pieces: string[] = [];
+      for (let i = 0; i < reply.length; i += size)
+        pieces.push(reply.slice(i, i + size));
+      const shown = streamReply(run, pieces);
+      for (const part of shown) {
+        assert.ok(!part.includes("sk-live"), `size ${size}: ${part}`);
+        assert.ok(!part.includes("/mnt"), `size ${size}: ${part}`);
+      }
+      assert.equal(
+        shown.join(""),
+        `Use ${SECRET_MARK} in $WORKSPACE/a.txt now`,
+        `size ${size}`,
+      );
+    }
+  });
+
+  test("ordinary reply text is not held back", () => {
+    assert.equal(
+      run.streamCut("Hello there, world"),
+      "Hello there, world".length,
+    );
+    // Only an end that could grow into something masked waits.
+    assert.equal(run.streamCut("see /mn"), "see ".length);
+    assert.equal(run.streamCut("key sk-li"), "key ".length);
+    assert.equal(run.streamCut("a/b c/d"), "a/b c/d".length);
+  });
+
+  test("a skill copy's digest is held until it is whole", () => {
+    const text = `ran ${state}/skills/${"e".repeat(30)}`;
+    assert.equal(run.streamCut(text), "ran ".length);
+  });
+
+  test("sandbox and proxy variables keep their names, not their values", () => {
+    const env = [
+      "HTTPS_PROXY=http://127.0.0.1:43121",
+      "export no_proxy=localhost",
+      "declare -x CODEX_SANDBOX=seatbelt",
+      "GIT_CONFIG_VALUE_0=!f() { echo x; }; f",
+      "PATH=/usr/bin",
+    ].join("\n");
+    assert.equal(
+      maskSandboxEnv(env),
+      [
+        `HTTPS_PROXY=${SECRET_MARK}`,
+        `export no_proxy=${SECRET_MARK}`,
+        `declare -x CODEX_SANDBOX=${SECRET_MARK}`,
+        `GIT_CONFIG_VALUE_0=${SECRET_MARK}`,
+        "PATH=/usr/bin",
+      ].join("\n"),
+    );
+    assert.equal(maskSandboxEnv("echo $HTTPS_PROXY"), "echo $HTTPS_PROXY");
+  });
+});
+
+describe("run secrets", () => {
+  test("the plan checklist hides places and secrets", () => {
+    const mask = new PathMask({
+      stateDir: "/s",
+      chatRoot: "/s/t/a/c/b",
+      workspace: "/s/t/a/c/b/workspace",
+      scratch: "/s/t/a/c/b/scratch",
+      skillLinks: "/s/t/a/c/b/skills",
+    }).withSecrets(["sk-live-0123456789abcdef"]);
+    const plan = parsePlan(
+      {
+        explanation: "token sk-live-0123456789abcdef",
+        plan: [{ step: "edit /s/t/a/c/b/workspace/a.ts", status: "pending" }],
+      },
+      mask,
+    );
+    assert.equal(plan.explanation, `token ${SECRET_MARK}`);
+    assert.equal(plan.steps[0]!.step, "edit $WORKSPACE/a.ts");
+  });
+
+  test("gateway token, header values and their credentials, connector tokens", () => {
+    const request = parseStartRun(valid(), DEFAULT_LIMITS);
+    const secrets = runSecrets({
+      ...request,
+      mcp: [
+        {
+          name: "docs",
+          url: "https://mcp.example.com",
+          headers: { Authorization: "Bearer abcdefgh12345678" },
+          toolTimeoutSec: 30,
+          startupTimeoutSec: 10,
+        },
+      ],
+      network: {
+        hosts: [],
+        connectors: [
+          {
+            name: "github",
+            displayName: "GitHub",
+            access: "read_only",
+            hosts: ["api.github.com"],
+            reads: [],
+            critical: [],
+            credential: {
+              auth: ["bearer"],
+              urlPrefixes: ["https://api.github.com/"],
+              tokenPattern: "ghp_",
+              token: "ghp_0123456789abcdef",
+            },
+          },
+        ],
+      },
+    });
+    assert.deepEqual(secrets, [
+      "token-0123456789abcdef",
+      "Bearer abcdefgh12345678",
+      "abcdefgh12345678",
+      "ghp_0123456789abcdef",
+    ]);
   });
 });
 
